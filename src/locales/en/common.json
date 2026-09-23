@@ -1,6 +1,6 @@
 {
   "common": {
-    "home": "Home",
+    "home": "Tổng quan",
     "edit": "Edit",
     "close": "Close",
     "saveChanges": "Save Changes",
@@ -13,7 +13,11 @@
     "groups": {
       "menu": "Menu",
       "support": "Support",
-      "others": "Others"
+      "others": "Others",
+      "work": "Công việc",
+      "business": "Kinh doanh",
+      "aiCenter": "AI Center",
+      "system": "Hệ thống"
     },
     "badges": {
       "new": "new",
@@ -21,6 +25,14 @@
     },
     "items": {
       "dashboard": "Dashboard",
+      "newReport": "Báo cáo công việc",
+      "reportHistory": "Lịch sử báo cáo",
+      "tasks": "Công việc",
+      "customers": "Khách hàng",
+      "orders": "Đơn hàng",
+      "aiInsights": "AI Insights",
+      "employees": "Nhân viên",
+      "settings": "Cài đặt",
       "ecommerceHome": "Ecommerce",
       "analytics": "Analytics",
       "marketing": "Marketing",
@@ -38,7 +50,7 @@
       "videoGenerator": "Video Generator",
       "aiSettings": "AI Settings",
       "ecommerce": "E-commerce",
-      "products": "Products",
+      "products": "Sản phẩm",
       "addProduct": "Add Product",
       "billing": "Billing",
       "invoices": "Invoices",
@@ -62,7 +74,7 @@
       "pricingTables": "Pricing Tables",
       "faq": "FAQ",
       "apiKeys": "API Keys",
-      "integrations": "Integrations",
+      "integrations": "Tích hợp",
       "blankPage": "Blank Page",
       "error404": "404 Error",
       "error500": "500 Error",
@@ -126,6 +138,77 @@
       "title": "#1 Tailwind CSS Dashboard",
       "description": "Leading Tailwind CSS Admin Template with 500+ UI Component and Pages.",
       "purchasePlan": "Purchase Plan"
+    }
+  },
+  "modules": {
+    "newReport": "Báo cáo công việc",
+    "reportHistory": "Lịch sử báo cáo",
+    "reportDetail": "Chi tiết báo cáo",
+    "tasks": "Công việc",
+    "customers": "Khách hàng",
+    "customerDetail": "Chi tiết khách hàng",
+    "products": "Sản phẩm",
+    "orders": "Đơn hàng",
+    "aiInsights": "AI Insights",
+    "aiAssistant": "AI Assistant",
+    "employees": "Nhân viên",
+    "integrations": "Tích hợp",
+    "settings": "Cài đặt"
+  },
+  "modulePlaceholder": {
+    "message": "Module đang được phát triển.",
+    "metaDescription": "Trang {module} trong hệ thống nội bộ Kim Phục Sắc"
+  },
+  "managementDashboard": {
+    "title": "Tổng quan công việc",
+    "subtitle": "Theo dõi tình hình công việc và hoạt động nội bộ",
+    "metaDescription": "Tổng quan tình hình công việc trong hệ thống nội bộ Kim Phục Sắc",
+    "periods": {
+      "today": "Hôm nay",
+      "week": "Tuần này",
+      "month": "Tháng này"
+    },
+    "stats": {
+      "total": "Tổng công việc hôm nay",
+      "completed": "Đã hoàn thành",
+      "inProgress": "Đang thực hiện",
+      "blocked": "Có vấn đề"
+    },
+    "category": {
+      "title": "Phân loại công việc",
+      "total": "Tổng tỷ lệ"
+    },
+    "chartLoading": "Đang tải biểu đồ...",
+    "employeePerformance": {
+      "title": "Tiến độ công việc",
+      "employee": "Nhân viên",
+      "total": "Tổng công việc",
+      "completed": "Hoàn thành",
+      "inProgress": "Đang thực hiện",
+      "blocked": "Có vấn đề",
+      "completionRate": "Tỷ lệ hoàn thành"
+    },
+    "aiSummary": {
+      "title": "AI tổng hợp cho quản lý",
+      "badge": "AI Insight",
+      "attention": "Điểm cần chú ý"
+    },
+    "recentReports": {
+      "title": "Báo cáo gần đây",
+      "date": "Ngày",
+      "employee": "Nhân viên",
+      "department": "Phòng ban",
+      "taskCount": "Số công việc",
+      "completed": "Hoàn thành",
+      "status": "Trạng thái",
+      "action": "Thao tác",
+      "viewAll": "Xem tất cả",
+      "viewDetail": "Xem chi tiết",
+      "statuses": {
+        "completed": "Hoàn thành",
+        "inProgress": "Đang thực hiện",
+        "blocked": "Có vấn đề"
+      }
     }
   },
   "header": {

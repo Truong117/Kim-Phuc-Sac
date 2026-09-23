@@ -1,4 +1,4 @@
-import { Route, BrowserRouter as Router, Routes } from "react-router";
+import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
 import SignIn from "./pages/AuthPages/SignIn";
@@ -6,9 +6,10 @@ import SignUp from "./pages/AuthPages/SignUp";
 import Calendar from "./pages/Calendar";
 import BarChart from "./pages/Charts/BarChart";
 import LineChart from "./pages/Charts/LineChart";
-import Home from "./pages/Dashboard/Ecommerce";
+import Home from "./pages/Dashboard/Management";
 import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/OtherPage/Blank";
+import ModulePlaceholder from "./pages/OtherPage/ModulePlaceholder";
 import NotFound from "./pages/OtherPage/NotFound";
 import BasicTables from "./pages/Tables/BasicTables";
 import Alerts from "./pages/UiElements/Alerts";
@@ -27,7 +28,62 @@ export default function App() {
         <Routes>
           {/* Dashboard Layout */}
           <Route element={<AppLayout />}>
-            <Route index path="/" element={<Home />} />
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Home />} />
+
+            {/* KPS Modules */}
+            <Route
+              path="/reports/new"
+              element={<ModulePlaceholder titleKey="modules.newReport" />}
+            />
+            <Route
+              path="/reports"
+              element={<ModulePlaceholder titleKey="modules.reportHistory" />}
+            />
+            <Route
+              path="/reports/:id"
+              element={<ModulePlaceholder titleKey="modules.reportDetail" />}
+            />
+            <Route
+              path="/tasks"
+              element={<ModulePlaceholder titleKey="modules.tasks" />}
+            />
+            <Route
+              path="/customers"
+              element={<ModulePlaceholder titleKey="modules.customers" />}
+            />
+            <Route
+              path="/customers/:id"
+              element={<ModulePlaceholder titleKey="modules.customerDetail" />}
+            />
+            <Route
+              path="/products"
+              element={<ModulePlaceholder titleKey="modules.products" />}
+            />
+            <Route
+              path="/orders"
+              element={<ModulePlaceholder titleKey="modules.orders" />}
+            />
+            <Route
+              path="/ai/insights"
+              element={<ModulePlaceholder titleKey="modules.aiInsights" />}
+            />
+            <Route
+              path="/ai/assistant"
+              element={<ModulePlaceholder titleKey="modules.aiAssistant" />}
+            />
+            <Route
+              path="/employees"
+              element={<ModulePlaceholder titleKey="modules.employees" />}
+            />
+            <Route
+              path="/integrations"
+              element={<ModulePlaceholder titleKey="modules.integrations" />}
+            />
+            <Route
+              path="/settings"
+              element={<ModulePlaceholder titleKey="modules.settings" />}
+            />
 
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />
