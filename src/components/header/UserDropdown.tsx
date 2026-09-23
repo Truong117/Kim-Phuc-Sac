@@ -1,12 +1,20 @@
 import { useLanguage } from "@/context/LanguageContext";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { getLanguage, languages, type Locale } from "@/i18n/languages";
+import { currentUser } from "@/mocks/currentUser";
+import type { UserRole } from "@/types/user";
 import { cn } from "@/utils";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
+
+const roleKeyByRole: Record<UserRole, string> = {
+  ADMIN: "admin",
+  MANAGER: "manager",
+  EMPLOYEE: "employee",
+};
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
@@ -16,6 +24,8 @@ export default function UserDropdown() {
   const { language: locale, setLanguage } = useLanguage();
   const currentLang = getLanguage(locale as Locale);
   const CurrentFlagIcon = currentLang.FlagIcon;
+  const nameParts = currentUser.name.trim().split(/\s+/);
+  const initials = `${nameParts[0]?.[0] ?? ""}${nameParts.at(-1)?.[0] ?? ""}`;
 
   useClickOutside(subDropdownRef, () => {
     setIsSubDropdownOpen(false);
@@ -53,11 +63,11 @@ export default function UserDropdown() {
           className="me-3 flex size-11 items-center justify-center rounded-full bg-brand-500 text-theme-sm font-semibold text-white"
           aria-hidden="true"
         >
-          NA
+          {initials.toUpperCase()}
         </span>
 
         <span className="me-1 block text-theme-sm font-medium">
-          {t("userDropdown.mockUser.name")}
+          {currentUser.name}
         </span>
         <svg
           className={`stroke-gray-500 transition-transform duration-200 dark:stroke-gray-400 ${
@@ -86,10 +96,10 @@ export default function UserDropdown() {
       >
         <div>
           <span className="block text-theme-sm font-medium text-gray-700 no-underline dark:text-gray-400">
-            {t("userDropdown.mockUser.name")}
+            {currentUser.name}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 no-underline dark:text-gray-400">
-            {t("userDropdown.mockUser.role")}
+            {t(`userDropdown.roles.${roleKeyByRole[currentUser.role]}`)}
           </span>
         </div>
 

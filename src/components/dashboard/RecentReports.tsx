@@ -7,7 +7,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowRightIcon } from "@/icons";
-import type { RecentReport, ReportStatus } from "@/types/dashboard";
+import type { RecentReport } from "@/types/dashboard";
+import type { WorkStatus } from "@/types/reports";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
@@ -21,7 +22,7 @@ const statusColor = {
   BLOCKED: "error",
 } as const;
 
-const statusKey: Record<ReportStatus, string> = {
+const statusKey: Record<WorkStatus, string> = {
   COMPLETED: "completed",
   IN_PROGRESS: "inProgress",
   BLOCKED: "blocked",

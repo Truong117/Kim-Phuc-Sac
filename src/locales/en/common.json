@@ -159,6 +159,60 @@
     "message": "Module đang được phát triển.",
     "metaDescription": "Trang {module} trong hệ thống nội bộ Kim Phục Sắc"
   },
+  "dailyReport": {
+    "title": "Báo cáo công việc hằng ngày",
+    "subtitle": "Ghi nhận các công việc đã thực hiện trong ngày",
+    "metaDescription": "Tạo báo cáo công việc hằng ngày trong hệ thống nội bộ Kim Phục Sắc",
+    "reportInfo": {
+      "title": "Thông tin báo cáo",
+      "employee": "Nhân viên",
+      "department": "Phòng ban",
+      "reportDate": "Ngày báo cáo"
+    },
+    "workItem": {
+      "title": "Công việc #{number}",
+      "delete": "Xóa công việc",
+      "content": {
+        "label": "Nội dung công việc",
+        "placeholder": "Nhập nội dung công việc đã thực hiện"
+      },
+      "result": {
+        "label": "Kết quả",
+        "placeholder": "Nhập kết quả công việc"
+      },
+      "status": {
+        "label": "Trạng thái"
+      },
+      "statuses": {
+        "completed": "Hoàn thành",
+        "inProgress": "Đang thực hiện",
+        "blocked": "Có vấn đề"
+      },
+      "related": {
+        "title": "Thông tin liên quan (không bắt buộc)",
+        "customer": "Khách hàng",
+        "customerPlaceholder": "Chọn khách hàng",
+        "product": "Sản phẩm",
+        "productPlaceholder": "Chọn sản phẩm",
+        "note": "Ghi chú",
+        "notePlaceholder": "Nhập ghi chú nếu cần"
+      }
+    },
+    "addWorkItem": "Thêm công việc",
+    "validation": {
+      "content": "Vui lòng nhập nội dung công việc.",
+      "result": "Vui lòng nhập kết quả công việc.",
+      "status": "Vui lòng chọn trạng thái."
+    },
+    "actions": {
+      "cancel": "Hủy",
+      "submit": "Lưu báo cáo & Phân tích bằng AI"
+    },
+    "success": {
+      "title": "Báo cáo đã được ghi nhận.",
+      "message": "Dữ liệu hiện đang được xử lý ở chế độ mô phỏng và chưa gửi tới máy chủ."
+    }
+  },
   "managementDashboard": {
     "title": "Tổng quan công việc",
     "subtitle": "Theo dõi tình hình công việc và hoạt động nội bộ",
@@ -224,9 +278,10 @@
     }
   },
   "userDropdown": {
-    "mockUser": {
-      "name": "Nguyễn Văn A",
-      "role": "Quản lý"
+    "roles": {
+      "admin": "Quản trị viên",
+      "manager": "Quản lý",
+      "employee": "Nhân viên"
     },
     "editProfile": "Edit profile",
     "accountSettings": "Account settings",

@@ -167,7 +167,7 @@ export default function AppSidebar() {
     >
       <div
         className={cn(
-          "-mx-5 flex bg-orange-900 px-5 py-7",
+          "-mx-5 flex bg-sidebar-accent px-5 py-7",
           !isExpanded && !isHovered ? "xl:justify-center" : "justify-start",
         )}
       >

@@ -11,6 +11,7 @@ import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/OtherPage/Blank";
 import ModulePlaceholder from "./pages/OtherPage/ModulePlaceholder";
 import NotFound from "./pages/OtherPage/NotFound";
+import NewReport from "./pages/Reports/NewReport";
 import BasicTables from "./pages/Tables/BasicTables";
 import Alerts from "./pages/UiElements/Alerts";
 import Avatars from "./pages/UiElements/Avatars";
@@ -32,10 +33,7 @@ export default function App() {
             <Route path="/dashboard" element={<Home />} />
 
             {/* KPS Modules */}
-            <Route
-              path="/reports/new"
-              element={<ModulePlaceholder titleKey="modules.newReport" />}
-            />
+            <Route path="/reports/new" element={<NewReport />} />
             <Route
               path="/reports"
               element={<ModulePlaceholder titleKey="modules.reportHistory" />}

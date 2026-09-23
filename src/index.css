@@ -53,6 +53,9 @@
   --color-brand-900: #641b38;
   --color-brand-950: #39091c;
 
+  --color-sidebar-accent: #5c3b1b;
+  --color-sidebar-selected: #7A5A39;
+
   --color-blue-light-25: #f5fbff;
   --color-blue-light-50: #f0f9ff;
   --color-blue-light-100: #e0f2fe;
@@ -201,7 +204,7 @@
 }
 
 @utility menu-item-active {
-  @apply bg-brand-50 text-brand-500 dark:bg-brand-500/[0.12] dark:text-brand-400;
+  @apply bg-sidebar-selected text-white dark:bg-sidebar-selected dark:text-white;
 }
 
 @utility menu-item-inactive {
@@ -213,7 +216,7 @@
 }
 
 @utility menu-item-icon-active {
-  @apply text-brand-500 dark:text-brand-400;
+  @apply text-white dark:text-white;
 }
 
 @utility menu-item-icon-inactive {

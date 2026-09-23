@@ -1,3 +1,5 @@
+import type { WorkStatus } from "@/types/reports";
+
 export type DashboardPeriod = "today" | "week" | "month";
 
 export type DashboardStatKind =
@@ -28,8 +30,6 @@ export interface AIManagementInsight {
   highlights: string[];
 }
 
-export type ReportStatus = "COMPLETED" | "IN_PROGRESS" | "BLOCKED";
-
 export interface RecentReport {
   id: string;
   reportDate: string;
@@ -37,5 +37,5 @@ export interface RecentReport {
   department: string;
   totalTasks: number;
   completedTasks: number;
-  status: ReportStatus;
+  status: WorkStatus;
 }
