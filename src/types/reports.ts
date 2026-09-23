@@ -1,5 +1,7 @@
 export type WorkStatus = "COMPLETED" | "IN_PROGRESS" | "BLOCKED";
 
+export type ProcessingStage = "saving" | "analyzing" | "completed";
+
 export interface WorkItemFormData {
   id: string;
   content: string;

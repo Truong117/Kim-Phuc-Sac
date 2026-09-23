@@ -6,7 +6,6 @@ import type { UserRole } from "@/types/user";
 import { cn } from "@/utils";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 
@@ -106,9 +105,7 @@ export default function UserDropdown() {
         <ul className="flex flex-col gap-1 border-b border-gray-200 pt-4 pb-3 dark:border-gray-800">
           <li>
             <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              to="/profile"
+              tag="button"
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -131,9 +128,7 @@ export default function UserDropdown() {
           </li>
           <li>
             <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              to="/profile"
+              tag="button"
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -156,9 +151,7 @@ export default function UserDropdown() {
           </li>
           <li>
             <DropdownItem
-              onItemClick={closeDropdown}
-              tag="a"
-              to="/profile"
+              tag="button"
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -266,9 +259,9 @@ export default function UserDropdown() {
             )}
           </li>
         </ul>
-        <Link
-          to="/signin"
-          className="group mt-3 flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+        <button
+          type="button"
+          className="group mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-start text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
         >
           <svg
             className="fill-gray-500 group-hover:fill-gray-700 dark:group-hover:fill-gray-300"
@@ -286,7 +279,7 @@ export default function UserDropdown() {
             />
           </svg>
           {t("userDropdown.signOut")}
-        </Link>
+        </button>
       </Dropdown>
     </div>
   );

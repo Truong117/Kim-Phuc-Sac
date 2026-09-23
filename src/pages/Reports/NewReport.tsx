@@ -2,20 +2,22 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import Form from "@/components/form/Form";
 import ReportInfo from "@/components/reports/ReportInfo";
+import ReportProcessingModal from "@/components/reports/ReportProcessingModal";
 import WorkItemList from "@/components/reports/WorkItemList";
-import Alert from "@/components/ui/alert/Alert";
 import Button from "@/components/ui/button/Button";
 import { currentUser } from "@/mocks/currentUser";
 import { mockCustomers, mockProducts } from "@/mocks/reports";
 import type {
   DailyReportFormData,
+  ProcessingStage,
   WorkItemField,
   WorkItemFormData,
   WorkItemTouchedFields,
   WorkItemValidationErrors,
 } from "@/types/reports";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 
 const customerOptions = mockCustomers.map((customer) => ({
   value: customer.id,
@@ -67,13 +69,34 @@ function createInitialReport(): DailyReportFormData {
 
 export default function NewReport() {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
+  const navigate = useNavigate();
   const [report, setReport] =
     useState<DailyReportFormData>(createInitialReport);
   const [touchedFields, setTouchedFields] = useState<
     Record<string, WorkItemTouchedFields>
   >({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
+  const [processingStage, setProcessingStage] =
+    useState<ProcessingStage | null>(null);
+  const isProcessing = processingStage !== null;
+
+  useEffect(() => {
+    if (processingStage === "saving") {
+      const savingTimer = window.setTimeout(
+        () => setProcessingStage("analyzing"),
+        800,
+      );
+      return () => window.clearTimeout(savingTimer);
+    }
+
+    if (processingStage === "analyzing") {
+      const analyzingTimer = window.setTimeout(
+        () => setProcessingStage("completed"),
+        1250,
+      );
+      return () => window.clearTimeout(analyzingTimer);
+    }
+  }, [processingStage]);
 
   const handleItemChange = (
     id: string,
@@ -85,7 +108,6 @@ export default function NewReport() {
         item.id === id ? { ...item, ...changes } : item,
       ),
     }));
-    setIsSubmitted(false);
   };
 
   const handleItemBlur = (id: string, field: WorkItemField) => {
@@ -103,7 +125,6 @@ export default function NewReport() {
       ...currentReport,
       workItems: [...currentReport.workItems, createEmptyWorkItem()],
     }));
-    setIsSubmitted(false);
   };
 
   const handleDeleteItem = (id: string) => {
@@ -120,7 +141,6 @@ export default function NewReport() {
       delete nextTouchedFields[id];
       return nextTouchedFields;
     });
-    setIsSubmitted(false);
   };
 
   const validateReport = () => {
@@ -180,14 +200,13 @@ export default function NewReport() {
     }
 
     setReport(submittedReport);
-    setIsSubmitted(true);
+    setProcessingStage("saving");
   };
 
   const handleCancel = () => {
     setReport(createInitialReport());
     setTouchedFields({});
     setSubmitAttempted(false);
-    setIsSubmitted(false);
   };
 
   return (
@@ -202,21 +221,12 @@ export default function NewReport() {
       </p>
 
       <Form onSubmit={handleSubmit} className="space-y-6">
-        {isSubmitted && (
-          <Alert
-            variant="success"
-            title={t("success.title")}
-            message={t("success.message")}
-          />
-        )}
-
         <ReportInfo
           employeeName={report.employeeName}
           department={report.department}
           reportDate={report.reportDate}
           onReportDateChange={(reportDate) => {
             setReport((currentReport) => ({ ...currentReport, reportDate }));
-            setIsSubmitted(false);
           }}
         />
 
@@ -238,14 +248,26 @@ export default function NewReport() {
             size="sm"
             className="w-full sm:w-auto"
             onClick={handleCancel}
+            disabled={isProcessing}
           >
             {t("actions.cancel")}
           </Button>
-          <Button type="submit" size="sm" className="w-full sm:w-auto">
+          <Button
+            type="submit"
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={isProcessing}
+          >
             {t("actions.submit")}
           </Button>
         </div>
       </Form>
+
+      <ReportProcessingModal
+        isOpen={isProcessing}
+        stage={processingStage ?? "saving"}
+        onContinue={() => navigate("/reports")}
+      />
     </>
   );
 }

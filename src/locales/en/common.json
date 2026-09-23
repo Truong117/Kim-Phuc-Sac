@@ -211,6 +211,21 @@
     "success": {
       "title": "Báo cáo đã được ghi nhận.",
       "message": "Dữ liệu hiện đang được xử lý ở chế độ mô phỏng và chưa gửi tới máy chủ."
+    },
+    "processing": {
+      "saving": {
+        "title": "Đang xử lý báo cáo",
+        "description": "Đang lưu dữ liệu báo cáo..."
+      },
+      "analyzing": {
+        "title": "AI đang phân tích báo cáo",
+        "description": "Đang phân loại và tổng hợp các công việc trong ngày..."
+      },
+      "completed": {
+        "title": "Xử lý hoàn tất",
+        "description": "Báo cáo đã được lưu thành công."
+      },
+      "continue": "Tiếp tục"
     }
   },
   "managementDashboard": {
