@@ -11,7 +11,7 @@ export interface DashboardStat {
 
 export interface WorkCategoryStat {
   category: string;
-  percentage: number;
+  count: number;
 }
 
 export interface EmployeePerformance {

@@ -48,7 +48,7 @@ export default function RecentReports({ reports }: RecentReportsProps) {
       </div>
 
       <div className="max-w-full overflow-x-auto border-t border-gray-100 dark:border-gray-800">
-        <Table className="min-w-220">
+        <Table className="min-w-190 table-fixed xl:min-w-full">
           <TableHeader>
             <TableRow className="border-b border-gray-100 dark:border-gray-800">
               {[
@@ -63,7 +63,7 @@ export default function RecentReports({ reports }: RecentReportsProps) {
                 <TableCell
                   key={key}
                   isHeader
-                  className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 sm:px-6 dark:text-gray-400"
+                  className="px-3 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
                 >
                   {t(key)}
                 </TableCell>
@@ -76,30 +76,30 @@ export default function RecentReports({ reports }: RecentReportsProps) {
                 key={report.id}
                 className="transition-colors hover:bg-gray-50 dark:hover:bg-white/2"
               >
-                <TableCell className="px-5 py-4 text-theme-sm whitespace-nowrap text-gray-600 sm:px-6 dark:text-gray-300">
+                <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
                   {report.reportDate}
                 </TableCell>
-                <TableCell className="px-5 py-4 text-theme-sm font-medium whitespace-nowrap text-gray-800 sm:px-6 dark:text-white/90">
-                  {report.employeeName}
+                <TableCell className="px-3 py-4 text-theme-xs font-medium text-gray-800 dark:text-white/90">
+                  <span className="line-clamp-2">{report.employeeName}</span>
                 </TableCell>
-                <TableCell className="px-5 py-4 text-theme-sm whitespace-nowrap text-gray-600 sm:px-6 dark:text-gray-300">
-                  {report.department}
+                <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
+                  <span className="line-clamp-2">{report.department}</span>
                 </TableCell>
-                <TableCell className="px-5 py-4 text-theme-sm text-gray-600 sm:px-6 dark:text-gray-300">
+                <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
                   {report.totalTasks}
                 </TableCell>
-                <TableCell className="px-5 py-4 text-theme-sm text-gray-600 sm:px-6 dark:text-gray-300">
+                <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
                   {report.completedTasks}
                 </TableCell>
-                <TableCell className="px-5 py-4 sm:px-6">
+                <TableCell className="px-3 py-4">
                   <Badge size="sm" color={statusColor[report.status]}>
                     {t(`statuses.${statusKey[report.status]}`)}
                   </Badge>
                 </TableCell>
-                <TableCell className="px-5 py-4 sm:px-6">
+                <TableCell className="px-3 py-4">
                   <Link
                     to={`/reports/${report.id}`}
-                    className="text-theme-sm font-medium whitespace-nowrap text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                    className="text-theme-xs font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
                   >
                     {t("viewDetail")}
                   </Link>

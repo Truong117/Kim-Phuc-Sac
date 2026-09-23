@@ -14,7 +14,7 @@ export default function AIManagementSummary({
   });
 
   return (
-    <section className="h-full rounded-2xl border border-brand-100 bg-brand-25 p-5 shadow-theme-xs sm:p-6 dark:border-brand-500/20 dark:bg-brand-500/10">
+    <section className="rounded-2xl border border-brand-100 bg-brand-25 p-5 shadow-theme-xs sm:p-6 dark:border-brand-500/20 dark:bg-brand-500/10">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-500 text-white">

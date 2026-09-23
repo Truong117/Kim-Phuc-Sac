@@ -22,6 +22,9 @@ export default function WorkCategoryChart({ data }: WorkCategoryChartProps) {
   const { t } = useTranslation("common", {
     keyPrefix: "managementDashboard",
   });
+  const total = data.reduce((sum, item) => sum + item.count, 0);
+  const getPercentage = (count: number) =>
+    total === 0 ? 0 : Math.round((count / total) * 100);
 
   const options: ApexOptions = {
     chart: {
@@ -47,7 +50,7 @@ export default function WorkCategoryChart({ data }: WorkCategoryChartProps) {
             total: {
               show: true,
               label: t("category.total"),
-              formatter: () => "100%",
+              formatter: () => String(total),
             },
           },
         },
@@ -55,7 +58,7 @@ export default function WorkCategoryChart({ data }: WorkCategoryChartProps) {
     },
     tooltip: {
       y: {
-        formatter: (value) => `${value}%`,
+        formatter: (value) => `${value} (${getPercentage(value)}%)`,
       },
     },
   };
@@ -73,7 +76,7 @@ export default function WorkCategoryChart({ data }: WorkCategoryChartProps) {
           >
             <ReactApexChart
               options={options}
-              series={data.map((item) => item.percentage)}
+              series={data.map((item) => item.count)}
               type="donut"
               height={260}
             />
@@ -93,7 +96,7 @@ export default function WorkCategoryChart({ data }: WorkCategoryChartProps) {
                 <span>{item.category}</span>
               </span>
               <span className="font-semibold text-gray-900 dark:text-white">
-                {item.percentage}%
+                {item.count} ({getPercentage(item.count)}%)
               </span>
             </li>
           ))}

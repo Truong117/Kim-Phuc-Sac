@@ -14,11 +14,11 @@ export const dashboardStats: DashboardStat[] = [
 ];
 
 export const workCategoryStats: WorkCategoryStat[] = [
-  { category: "Tư vấn / Bán hàng", percentage: 35 },
-  { category: "Chăm sóc khách hàng", percentage: 25 },
-  { category: "Báo cáo / Dữ liệu", percentage: 20 },
-  { category: "Họp / Phối hợp", percentage: 15 },
-  { category: "Khác", percentage: 5 },
+  { category: "Tư vấn / Bán hàng", count: 17 },
+  { category: "Chăm sóc khách hàng", count: 12 },
+  { category: "Báo cáo / Dữ liệu", count: 10 },
+  { category: "Họp / Phối hợp", count: 7 },
+  { category: "Khác", count: 2 },
 ];
 
 export const employeePerformance: EmployeePerformance[] = [
@@ -60,8 +60,8 @@ export const aiManagementInsight: AIManagementInsight = {
   summary:
     "Hôm nay hệ thống ghi nhận 48 công việc. 39 công việc đã hoàn thành. Hoạt động tập trung chủ yếu vào tư vấn bán hàng và chăm sóc khách hàng. Có 2 công việc đang gặp vấn đề và cần quản lý theo dõi.",
   highlights: [
-    "2 công việc đang bị blocked.",
-    "6 khách hàng cần follow-up.",
+    "2 công việc đang gặp vướng mắc.",
+    "6 khách hàng cần tiếp tục theo dõi.",
     "Nhóm chăm sóc khách hàng còn 3 công việc chưa hoàn thành.",
     "Tư vấn / bán hàng là nhóm công việc chiếm tỷ trọng lớn nhất hôm nay.",
   ],

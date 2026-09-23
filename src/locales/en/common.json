@@ -16,7 +16,7 @@
       "others": "Others",
       "work": "Công việc",
       "business": "Kinh doanh",
-      "aiCenter": "AI Center",
+      "aiCenter": "AI",
       "system": "Hệ thống"
     },
     "badges": {
@@ -30,7 +30,7 @@
       "tasks": "Công việc",
       "customers": "Khách hàng",
       "orders": "Đơn hàng",
-      "aiInsights": "AI Insights",
+      "aiInsights": "Phân tích AI",
       "employees": "Nhân viên",
       "settings": "Cài đặt",
       "ecommerceHome": "Ecommerce",
@@ -43,7 +43,7 @@
       "ai": "AI",
       "sales": "Sales",
       "finance": "Finance",
-      "aiAssistant": "AI Assistant",
+      "aiAssistant": "Trợ lý AI",
       "textGenerator": "Text Generator",
       "imageGenerator": "Image Generator",
       "codeGenerator": "Code Generator",
@@ -149,8 +149,8 @@
     "customerDetail": "Chi tiết khách hàng",
     "products": "Sản phẩm",
     "orders": "Đơn hàng",
-    "aiInsights": "AI Insights",
-    "aiAssistant": "AI Assistant",
+    "aiInsights": "Phân tích AI",
+    "aiAssistant": "Trợ lý AI",
     "employees": "Nhân viên",
     "integrations": "Tích hợp",
     "settings": "Cài đặt"
@@ -176,7 +176,7 @@
     },
     "category": {
       "title": "Phân loại công việc",
-      "total": "Tổng tỷ lệ"
+      "total": "Công việc"
     },
     "chartLoading": "Đang tải biểu đồ...",
     "employeePerformance": {
@@ -190,7 +190,7 @@
     },
     "aiSummary": {
       "title": "AI tổng hợp cho quản lý",
-      "badge": "AI Insight",
+      "badge": "Phân tích AI",
       "attention": "Điểm cần chú ý"
     },
     "recentReports": {
@@ -212,7 +212,7 @@
     }
   },
   "header": {
-    "searchPlaceholder": "Search or type command...",
+    "searchPlaceholder": "Tìm kiếm...",
     "toggleSidebar": "Toggle Sidebar",
     "notifications": {
       "title": "Notification",
@@ -224,6 +224,10 @@
     }
   },
   "userDropdown": {
+    "mockUser": {
+      "name": "Nguyễn Văn A",
+      "role": "Quản lý"
+    },
     "editProfile": "Edit profile",
     "accountSettings": "Account settings",
     "support": "Support",

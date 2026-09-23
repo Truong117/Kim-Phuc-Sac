@@ -49,11 +49,16 @@ export default function UserDropdown() {
         onClick={toggleDropdown}
         className="dropdown-toggle flex items-center text-gray-700 dark:text-gray-400"
       >
-        <span className="me-3 h-11 w-11 overflow-hidden rounded-full">
-          <img src="/images/user/owner.png" alt="User" />
+        <span
+          className="me-3 flex size-11 items-center justify-center rounded-full bg-brand-500 text-theme-sm font-semibold text-white"
+          aria-hidden="true"
+        >
+          NA
         </span>
 
-        <span className="me-1 block text-theme-sm font-medium">Musharof</span>
+        <span className="me-1 block text-theme-sm font-medium">
+          {t("userDropdown.mockUser.name")}
+        </span>
         <svg
           className={`stroke-gray-500 transition-transform duration-200 dark:stroke-gray-400 ${
             isOpen ? "rotate-180" : ""
@@ -81,10 +86,10 @@ export default function UserDropdown() {
       >
         <div>
           <span className="block text-theme-sm font-medium text-gray-700 no-underline dark:text-gray-400">
-            Musharof Chowdhury
+            {t("userDropdown.mockUser.name")}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 no-underline dark:text-gray-400">
-            randomuser@pimjo.com
+            {t("userDropdown.mockUser.role")}
           </span>
         </div>
 
