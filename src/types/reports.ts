@@ -1,5 +1,7 @@
 export type WorkStatus = "COMPLETED" | "IN_PROGRESS" | "BLOCKED";
 
+export type ReportOverallStatus = WorkStatus;
+
 export type ProcessingStage = "saving" | "analyzing" | "completed";
 
 export interface WorkItemFormData {
@@ -33,4 +35,28 @@ export type WorkItemTouchedFields = Partial<Record<WorkItemField, boolean>>;
 export interface ReportOption {
   id: string;
   name: string;
+}
+
+export interface ReportHistoryItem {
+  id: string;
+  reportDate: string;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  totalWorkItems: number;
+  completedWorkItems: number;
+  inProgressWorkItems: number;
+  blockedWorkItems: number;
+  primaryCategory?: string;
+  status: ReportOverallStatus;
+  createdAt: string;
+}
+
+export interface ReportHistoryFilterValues {
+  fromDate: string;
+  toDate: string;
+  employeeId: string;
+  department: string;
+  status: ReportOverallStatus | "";
+  search: string;
 }

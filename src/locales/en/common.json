@@ -228,6 +228,64 @@
       "continue": "Tiếp tục"
     }
   },
+  "reportHistory": {
+    "title": "Lịch sử báo cáo",
+    "subtitle": "Theo dõi và tra cứu các báo cáo công việc đã ghi nhận",
+    "metaDescription": "Lịch sử báo cáo công việc trong hệ thống nội bộ Kim Phục Sắc",
+    "filters": {
+      "title": "Bộ lọc báo cáo",
+      "fromDate": "Từ ngày",
+      "toDate": "Đến ngày",
+      "employee": "Nhân viên",
+      "allEmployees": "Tất cả nhân viên",
+      "department": "Phòng ban",
+      "allDepartments": "Tất cả phòng ban",
+      "status": "Trạng thái",
+      "allStatuses": "Tất cả trạng thái",
+      "search": "Tìm kiếm",
+      "searchPlaceholder": "Tìm theo nhân viên hoặc nội dung báo cáo...",
+      "reset": "Làm mới",
+      "statusOptions": {
+        "completed": "Hoàn thành",
+        "inProgress": "Đang thực hiện",
+        "blocked": "Có vấn đề"
+      }
+    },
+    "table": {
+      "title": "Danh sách báo cáo",
+      "description": "Các báo cáo công việc đã được ghi nhận",
+      "date": "Ngày",
+      "employee": "Nhân viên",
+      "department": "Phòng ban",
+      "workItemCount": "Số công việc",
+      "completed": "Hoàn thành",
+      "status": "Trạng thái",
+      "action": "Thao tác",
+      "viewDetail": "Xem chi tiết"
+    },
+    "statuses": {
+      "completed": "Hoàn thành",
+      "inProgress": "Đang thực hiện",
+      "blocked": "Có vấn đề"
+    },
+    "empty": {
+      "title": "Không tìm thấy báo cáo phù hợp.",
+      "description": "Hãy thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.",
+      "reset": "Xóa bộ lọc"
+    },
+    "pagination": {
+      "summary": "Hiển thị {from} - {to} của {total} báo cáo",
+      "ariaLabel": "Phân trang lịch sử báo cáo",
+      "previous": "Trước",
+      "next": "Sau"
+    }
+  },
+  "reportDetail": {
+    "title": "Chi tiết báo cáo",
+    "metaDescription": "Chi tiết báo cáo công việc trong hệ thống nội bộ Kim Phục Sắc",
+    "description": "Nội dung chi tiết báo cáo sẽ được phát triển ở bước tiếp theo.",
+    "back": "Quay lại lịch sử báo cáo"
+  },
   "managementDashboard": {
     "title": "Tổng quan công việc",
     "subtitle": "Theo dõi tình hình công việc và hoạt động nội bộ",
@@ -283,6 +341,7 @@
   "header": {
     "searchPlaceholder": "Tìm kiếm...",
     "toggleSidebar": "Toggle Sidebar",
+    "closeSidebar": "Đóng thanh điều hướng",
     "notifications": {
       "title": "Notification",
       "requestsPermission": "requests permission to change",

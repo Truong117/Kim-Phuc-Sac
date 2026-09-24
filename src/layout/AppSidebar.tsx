@@ -6,6 +6,7 @@ import {
   CalenderIcon,
   CartIcon,
   ChatIcon,
+  CloseIcon,
   DocsIcon,
   GridIcon,
   HorizontaLDots,
@@ -156,7 +157,7 @@ export default function AppSidebar() {
   return (
     <aside
       className={cn(
-        "fixed inset-s-0 top-0 z-50 flex h-screen flex-col border-e border-gray-200 bg-white px-5 text-gray-900 transition-all duration-300 ease-in-out xl:translate-x-0 xl:rtl:translate-x-0 dark:border-gray-800 dark:bg-gray-900",
+        "fixed inset-s-0 top-0 z-999999 flex h-screen flex-col border-e border-gray-200 bg-white px-5 text-gray-900 transition-all duration-300 ease-in-out xl:translate-x-0 xl:rtl:translate-x-0 dark:border-gray-800 dark:bg-gray-900",
         isExpanded || isMobileOpen ? "w-72.5" : isHovered ? "w-72.5" : "w-22.5",
         isMobileOpen
           ? "translate-x-0"
@@ -167,13 +168,24 @@ export default function AppSidebar() {
     >
       <div
         className={cn(
-          "-mx-5 flex bg-sidebar-accent px-5 py-7",
-          !isExpanded && !isHovered ? "xl:justify-center" : "justify-start",
+          "-mx-5 flex items-center justify-between bg-sidebar-accent px-5 py-7",
+          !isExpanded && !isHovered && "xl:justify-center",
         )}
       >
         <Link to="/dashboard" aria-label="KIM PHỤC SẮC Internal System">
           <BrandMark compact={!showContent} inverted />
         </Link>
+
+        {isMobileOpen && (
+          <button
+            type="button"
+            onClick={() => setIsMobileOpen(false)}
+            aria-label={t("header.closeSidebar")}
+            className="flex size-10 items-center justify-center rounded-lg text-white/80 transition-colors hover:bg-white/10 hover:text-white xl:hidden"
+          >
+            <CloseIcon className="size-5" />
+          </button>
+        )}
       </div>
 
       <div className="no-scrollbar flex flex-col overflow-y-auto pt-5 pb-8 duration-300 ease-linear">
