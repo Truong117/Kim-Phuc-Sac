@@ -1,6 +1,7 @@
 import GridShape from "@/components/common/GridShape";
 import PageMeta from "@/components/common/PageMeta";
 import { cn } from "@/utils";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
 interface NotFoundProps {
@@ -8,11 +9,13 @@ interface NotFoundProps {
 }
 
 export default function NotFound({ className }: NotFoundProps) {
+  const { t } = useTranslation("common", { keyPrefix: "notFound" });
+
   return (
     <>
       <PageMeta
-        title="React.js 404 Page | TailAdmin - React.js Admin Dashboard Template"
-        description="This is React.js 404  page for TailAdmin - React.js Tailwind CSS Admin Dashboard Template"
+        title={`${t("title")} | KIM PHỤC SẮC`}
+        description={t("metaDescription")}
       />
       <div
         className={cn(
@@ -23,7 +26,7 @@ export default function NotFound({ className }: NotFoundProps) {
         <GridShape />
         <div className="mx-auto w-full max-w-60.5 text-center sm:max-w-118">
           <h1 className="mb-8 text-title-md font-bold text-gray-800 xl:text-title-2xl dark:text-white/90">
-            ERROR
+            {t("error")}
           </h1>
 
           <img src="/images/error/404.svg" alt="404" className="dark:hidden" />
@@ -34,7 +37,7 @@ export default function NotFound({ className }: NotFoundProps) {
           />
 
           <p className="mt-10 mb-6 text-base text-gray-700 sm:text-lg dark:text-gray-400">
-            We can’t seem to find the page you are looking for!
+            {t("message")}
           </p>
 
           <Link
@@ -43,7 +46,7 @@ export default function NotFound({ className }: NotFoundProps) {
               "inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-3.5 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/3 dark:hover:text-gray-200",
             )}
           >
-            Back to Home Page
+            {t("backHome")}
           </Link>
         </div>
         {/* <!-- Footer --> */}
@@ -52,7 +55,7 @@ export default function NotFound({ className }: NotFoundProps) {
             "absolute inset-s-1/2 bottom-6 -translate-x-1/2 text-center text-sm text-gray-500 rtl:translate-x-1/2 dark:text-gray-400",
           )}
         >
-          &copy; {new Date().getFullYear()} - TailAdmin
+          &copy; {new Date().getFullYear()} - KIM PHỤC SẮC
         </p>
       </div>
     </>
