@@ -227,6 +227,37 @@
     "toggleSidebar": "Đóng hoặc mở thanh điều hướng",
     "closeSidebar": "Đóng thanh điều hướng"
   },
+  "auth": {
+    "initializing": "Đang kiểm tra phiên đăng nhập...",
+    "login": {
+      "metaTitle": "Đăng nhập | KIM PHỤC SẮC",
+      "metaDescription": "Đăng nhập KPS Internal System",
+      "title": "Đăng nhập",
+      "subtitle": "Sử dụng tài khoản nội bộ để tiếp tục",
+      "email": {
+        "label": "Email",
+        "placeholder": "Nhập email công việc"
+      },
+      "password": {
+        "label": "Mật khẩu",
+        "placeholder": "Nhập mật khẩu"
+      },
+      "submit": "Đăng nhập",
+      "submitting": "Đang đăng nhập...",
+      "validation": {
+        "emailRequired": "Vui lòng nhập email.",
+        "emailInvalid": "Email không đúng định dạng.",
+        "passwordRequired": "Vui lòng nhập mật khẩu."
+      },
+      "errors": {
+        "invalidCredentials": "Email hoặc mật khẩu không chính xác.",
+        "sessionExpired": "Phiên bảo mật đã hết hạn. Vui lòng thử lại.",
+        "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+        "server": "Máy chủ đang gặp sự cố. Vui lòng thử lại sau.",
+        "unexpected": "Đã xảy ra lỗi không mong muốn. Vui lòng thử lại."
+      }
+    }
+  },
   "userDropdown": {
     "roles": {
       "admin": "Quản trị viên",
@@ -237,7 +268,9 @@
     "accountSettings": "Cài đặt tài khoản",
     "support": "Hỗ trợ",
     "language": "Ngôn ngữ",
-    "signOut": "Đăng xuất"
+    "signOut": "Đăng xuất",
+    "signingOut": "Đang đăng xuất...",
+    "signOutError": "Không thể đăng xuất. Vui lòng thử lại."
   },
   "notFound": {
     "title": "Không tìm thấy trang",

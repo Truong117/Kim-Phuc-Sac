@@ -1,29 +1,27 @@
 import { useLanguage } from "@/context/LanguageContext";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { useAuth } from "@/hooks/useAuth";
 import { getLanguage, languages, type Locale } from "@/i18n/languages";
-import { currentUser } from "@/mocks/currentUser";
-import type { UserRole } from "@/types/user";
 import { cn } from "@/utils";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
-
-const roleKeyByRole: Record<UserRole, string> = {
-  ADMIN: "admin",
-  MANAGER: "manager",
-  EMPLOYEE: "employee",
-};
 
 export default function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubDropdownOpen, setIsSubDropdownOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
   const subDropdownRef = useRef<HTMLLIElement>(null);
   const { t } = useTranslation();
+  const { currentUser, logout } = useAuth();
   const { language: locale, setLanguage } = useLanguage();
+  const navigate = useNavigate();
   const currentLang = getLanguage(locale as Locale);
   const CurrentFlagIcon = currentLang.FlagIcon;
-  const nameParts = currentUser.name.trim().split(/\s+/);
+  const nameParts = currentUser?.name.trim().split(/\s+/) ?? [];
   const initials = `${nameParts[0]?.[0] ?? ""}${nameParts.at(-1)?.[0] ?? ""}`;
 
   useClickOutside(subDropdownRef, () => {
@@ -38,6 +36,7 @@ export default function UserDropdown() {
   const toggleDropdown = () => {
     setIsOpen((prev) => !prev);
     setIsSubDropdownOpen(false);
+    setLogoutError(null);
   };
 
   const closeDropdown = () => {
@@ -51,6 +50,25 @@ export default function UserDropdown() {
       setIsSubDropdownOpen(false);
     };
   }, []);
+
+  if (!currentUser) {
+    return null;
+  }
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    setLogoutError(null);
+
+    try {
+      await logout();
+      closeDropdown();
+      navigate("/login", { replace: true });
+    } catch {
+      setLogoutError(t("userDropdown.signOutError"));
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <div className="relative">
@@ -98,7 +116,7 @@ export default function UserDropdown() {
             {currentUser.name}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 no-underline dark:text-gray-400">
-            {t(`userDropdown.roles.${roleKeyByRole[currentUser.role]}`)}
+            {currentUser.email}
           </span>
         </div>
 
@@ -261,7 +279,9 @@ export default function UserDropdown() {
         </ul>
         <button
           type="button"
-          className="group mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-start text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          className="group mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-start text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
         >
           <svg
             className="fill-gray-500 group-hover:fill-gray-700 dark:group-hover:fill-gray-300"
@@ -278,8 +298,15 @@ export default function UserDropdown() {
               fill=""
             />
           </svg>
-          {t("userDropdown.signOut")}
+          {isLoggingOut
+            ? t("userDropdown.signingOut")
+            : t("userDropdown.signOut")}
         </button>
+        {logoutError && (
+          <p className="mt-2 px-3 text-theme-xs text-error-500" role="alert">
+            {logoutError}
+          </p>
+        )}
       </Dropdown>
     </div>
   );
