@@ -13,8 +13,11 @@ Yêu cầu Node.js `>=20.19.0` hoặc `>=22.12.0`.
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
+
+`VITE_API_BASE_URL` trong `.env.local` phải trỏ tới Laravel backend; convention local được khuyến nghị là `http://localhost:8000`.
 
 Kiểm tra frontend:
 
