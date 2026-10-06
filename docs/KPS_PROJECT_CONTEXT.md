@@ -1,6 +1,6 @@
 # KPS Internal System — Project Context
 
-Last repository audit: 2026-10-05 (Asia/Saigon)
+Last repository audit: 2026-10-06 (Asia/Saigon)
 
 This document is the handoff baseline for future work. It distinguishes:
 
@@ -25,10 +25,8 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
 - Current branch: `main`
 - Tracking branch: `origin/main`
-- Audited commit: `92c190e` (`feat: report history`)
-- Existing dirty file at the start of this audit: `package-lock.json`
-  - The only observed diff changes `brace-expansion` from `5.0.9` to `5.0.12`.
-  - This change predates the cleanup and was preserved while the lockfile was updated for dependency removal.
+- Audited base commit: `d7c68f3` (`finalize phase 1`).
+- The working tree was clean at the start of the backend-foundation task.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -60,7 +58,23 @@ Available scripts:
 - `npm run lint` — ESLint
 - `npm run preview` — Vite preview
 
-There is no automated test script.
+There is no frontend automated test script.
+
+### Verified backend foundation
+
+The Laravel API foundation lives in `backend/` and is intentionally independent from the React/Vite toolchain at the repository root.
+
+| Area | Current repository |
+| --- | --- |
+| Runtime | PHP `8.2.12` |
+| Framework | Laravel Framework `12.69.3` |
+| Dependency manager | Composer `2.10.3` with `backend/composer.lock` |
+| API routing | `backend/routes/api.php`, registered in `backend/bootstrap/app.php` |
+| Public endpoint | `GET /api/health` |
+| Planned application database | MySQL |
+| Automated tests | PHPUnit; SQLite in-memory test configuration |
+
+The backend currently contains only framework/default migrations. No KPS business tables, authentication flow, authorization model, or business API has been implemented.
 
 ## 4. Current application architecture
 
@@ -78,7 +92,7 @@ There is no automated test script.
   - `src/types/`
   - `src/mocks/`
 - There is no `src/services/` or `src/features/` layer yet.
-- There is no backend, database client, HTTP API client, or persisted application data in this repository.
+- A Laravel API foundation now exists under `backend/`, but the frontend has no HTTP API client or service integration and still has no persisted application data.
 - KPS pages import mock data directly. This is acceptable for the current prototype but is not yet the intended UI → service → API boundary.
 
 ### Planned / Business decision
@@ -89,15 +103,23 @@ The long-term boundary is:
 React/Vite frontend
   -> service layer
   -> Laravel REST API
-  -> MySQL or PostgreSQL
+  -> MySQL
   -> external integrations (AI, Pancake, others)
 ```
 
-The frontend must never connect directly to the database. AI, Pancake, and other secrets must remain on the backend and must not be exposed through `VITE_*` variables.
+The frontend must never connect directly to the database. AI, Pancake, and other secrets must remain on the backend and must not be exposed through `VITE_*` variables. The only current frontend API convention is `VITE_API_BASE_URL`; no business request uses it yet.
 
 ## 5. Repository structure relevant to KPS
 
 ```text
+backend/
+├── app/                           # Laravel application code
+├── bootstrap/app.php              # framework bootstrap and route registration
+├── config/cors.php                # frontend origin from FRONTEND_URL
+├── database/migrations/           # Laravel framework/default migrations only
+├── routes/api.php                 # public API routes; currently health only
+└── tests/                          # PHPUnit tests
+
 src/
 ├── App.tsx                         # all route registration
 ├── main.tsx                        # root providers and global CSS imports
@@ -282,7 +304,7 @@ Limitations:
 | Settings | Placeholder only |
 | Authentication | Not implemented; obsolete template auth UI was removed |
 | Authorization / RBAC | Not implemented |
-| Backend / database | Not present in this repository |
+| Backend / database | Laravel 12 foundation and health endpoint implemented; MySQL planned; no business schema or persistence integration |
 
 ## 10. State and data management
 
@@ -293,7 +315,7 @@ Limitations:
   - `LanguageContext` — selected language metadata, HTML `lang`/`dir`, and `localStorage`
   - `SidebarContext` — desktop/mobile sidebar state
 - Feature state uses local React state and memoization.
-- There is no Redux, Zustand, server-state library, or API cache.
+- There is no Redux, Zustand, server-state library, API cache, or frontend API client.
 - Mock data for KPS lives in `src/mocks/`.
 
 ### Internationalization gap
@@ -400,6 +422,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 - `vercel.json` currently rewrites `/(.*)` to `/index.html`.
 - Demo URL from the project handoff: `https://kimphucsac.vercel.app/`.
 - There is no authentication, authorization, permission enforcement, or protected route handling. The unused TailAdmin sign-in/sign-up demos were removed to avoid implying otherwise.
+- A public Laravel API foundation is present at `backend/`; `GET /api/health` is the only KPS API endpoint.
 
 ### Planned / Business decision
 
@@ -424,7 +447,7 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 1. `npm run build` passes. The KPS application chunk is about 448 KB (about 135 KB gzip), while the lazily loaded `react-apexcharts` vendor chunk remains large at about 926 KB (about 265 KB gzip).
 2. `npm run lint` passes with four Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. There is no automated test suite.
+3. The frontend has no automated test suite. The backend has a minimal PHPUnit suite, including the health endpoint contract.
 4. Report submit, report history, dashboard filters, and AI analysis are not connected to services or persistent state.
 5. Report-detail and CRM routes are placeholders.
 6. Authentication and permission enforcement are absent.
@@ -441,6 +464,6 @@ The Phase 1 cleanup removed verified-unused demo routes, pages, components, asse
 2. Before API work, define a narrow customer service interface and mock implementation so components do not import CRM mocks directly.
 3. Decide whether the product is Vietnamese-only for now or must restore all four locale dictionaries; then align `i18n/index.ts`, `i18n/languages.ts`, and `LanguageContext.tsx`.
 4. Schedule a separate maintenance task for the Fast Refresh warnings and large chart vendor chunk; do not mix that cleanup into the first CRM feature.
-5. When backend work begins, define authentication/permission enforcement and data-security boundaries before using real customer data.
+5. The next backend task may define authentication/permission enforcement and data-security boundaries. Do not add real customer data or business schemas before those decisions are approved.
 
 Do not implement CRM or change the sidebar until a concrete requirement is approved.
