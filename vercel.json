@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://kim-phuc-sac.onrender.com/api/:path*"
+    },
+    {
+      "source": "/sanctum/:path*",
+      "destination": "https://kim-phuc-sac.onrender.com/sanctum/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
