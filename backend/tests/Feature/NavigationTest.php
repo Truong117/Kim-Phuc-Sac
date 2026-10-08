@@ -15,7 +15,16 @@ class NavigationTest extends TestCase
 
     public function test_navigation_requires_authentication(): void
     {
-        $this->getJson('/api/navigation')->assertUnauthorized();
+        $response = $this->get('/api/navigation');
+
+        $response
+            ->assertUnauthorized()
+            ->assertHeader('Content-Type', 'application/json')
+            ->assertExactJson([
+                'message' => 'Unauthenticated.',
+            ]);
+
+        $this->assertNotSame(500, $response->getStatusCode());
     }
 
     public function test_navigation_returns_only_allowed_ui_keys_in_mapping_order(): void
