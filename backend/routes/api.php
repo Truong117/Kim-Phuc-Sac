@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\NavigationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -19,3 +20,6 @@ Route::prefix('auth')->group(function () {
         Route::post('/logout', [AuthenticatedSessionController::class, 'destroy']);
     });
 });
+
+Route::get('/navigation', NavigationController::class)
+    ->middleware('auth:sanctum');

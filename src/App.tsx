@@ -1,4 +1,5 @@
 import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router";
+import AuthorizationRoute from "./components/auth/AuthorizationRoute";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
@@ -22,57 +23,93 @@ export default function App() {
             {/* Dashboard Layout */}
             <Route element={<AppLayout />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard" element={<Home />} />
+              <Route element={<AuthorizationRoute navigationKey="dashboard" />}>
+                <Route path="/dashboard" element={<Home />} />
+              </Route>
 
               {/* KPS Modules */}
-              <Route path="/reports/new" element={<NewReport />} />
-              <Route path="/reports" element={<ReportHistory />} />
               <Route
-                path="/reports/:id"
-                element={<ReportDetailPlaceholder />}
-              />
+                element={<AuthorizationRoute navigationKey="reports.new" />}
+              >
+                <Route path="/reports/new" element={<NewReport />} />
+              </Route>
               <Route
-                path="/tasks"
-                element={<ModulePlaceholder titleKey="modules.tasks" />}
-              />
+                element={<AuthorizationRoute navigationKey="reports.history" />}
+              >
+                <Route path="/reports" element={<ReportHistory />} />
+                <Route
+                  path="/reports/:id"
+                  element={<ReportDetailPlaceholder />}
+                />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="tasks" />}>
+                <Route
+                  path="/tasks"
+                  element={<ModulePlaceholder titleKey="modules.tasks" />}
+                />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="customers" />}>
+                <Route
+                  path="/customers"
+                  element={<ModulePlaceholder titleKey="modules.customers" />}
+                />
+                <Route
+                  path="/customers/:id"
+                  element={
+                    <ModulePlaceholder titleKey="modules.customerDetail" />
+                  }
+                />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="products" />}>
+                <Route
+                  path="/products"
+                  element={<ModulePlaceholder titleKey="modules.products" />}
+                />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="orders" />}>
+                <Route
+                  path="/orders"
+                  element={<ModulePlaceholder titleKey="modules.orders" />}
+                />
+              </Route>
               <Route
-                path="/customers"
-                element={<ModulePlaceholder titleKey="modules.customers" />}
-              />
+                element={<AuthorizationRoute navigationKey="ai.insights" />}
+              >
+                <Route
+                  path="/ai/insights"
+                  element={<ModulePlaceholder titleKey="modules.aiInsights" />}
+                />
+              </Route>
               <Route
-                path="/customers/:id"
-                element={
-                  <ModulePlaceholder titleKey="modules.customerDetail" />
-                }
-              />
+                element={<AuthorizationRoute navigationKey="ai.assistant" />}
+              >
+                <Route
+                  path="/ai/assistant"
+                  element={<ModulePlaceholder titleKey="modules.aiAssistant" />}
+                />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="employees" />}>
+                <Route
+                  path="/employees"
+                  element={<ModulePlaceholder titleKey="modules.employees" />}
+                />
+              </Route>
               <Route
-                path="/products"
-                element={<ModulePlaceholder titleKey="modules.products" />}
-              />
-              <Route
-                path="/orders"
-                element={<ModulePlaceholder titleKey="modules.orders" />}
-              />
-              <Route
-                path="/ai/insights"
-                element={<ModulePlaceholder titleKey="modules.aiInsights" />}
-              />
-              <Route
-                path="/ai/assistant"
-                element={<ModulePlaceholder titleKey="modules.aiAssistant" />}
-              />
-              <Route
-                path="/employees"
-                element={<ModulePlaceholder titleKey="modules.employees" />}
-              />
-              <Route
-                path="/integrations"
-                element={<ModulePlaceholder titleKey="modules.integrations" />}
-              />
-              <Route
-                path="/settings"
-                element={<ModulePlaceholder titleKey="modules.settings" />}
-              />
+                element={<AuthorizationRoute navigationKey="integrations" />}
+              >
+                <Route
+                  path="/integrations"
+                  element={
+                    <ModulePlaceholder titleKey="modules.integrations" />
+                  }
+                />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="settings" />}>
+                <Route
+                  path="/settings"
+                  element={<ModulePlaceholder titleKey="modules.settings" />}
+                />
+              </Route>
             </Route>
           </Route>
 
