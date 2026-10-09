@@ -73,6 +73,7 @@ class AuthorizationSeederTest extends TestCase
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.comment', DataScope::DEPARTMENT);
         $this->assertSeededScope('OFFICE_STAFF', 'reports.view', DataScope::OWN);
+        $this->assertSeededScope('SALES_MANAGER', 'dashboard.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('SALES_MANAGER', 'reports.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('SALES_MANAGER', 'reports.comment', DataScope::DEPARTMENT);
         $this->assertSeededScope('SALES_MANAGER', 'customers.view', DataScope::TEAM);
