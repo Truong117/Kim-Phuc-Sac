@@ -1,4 +1,5 @@
 import { SidebarProvider, useSidebar } from "@/context/SidebarContext";
+import NotificationProvider from "@/context/NotificationProvider";
 import { cn } from "@/utils";
 import { Outlet } from "react-router";
 import AppHeader from "./AppHeader";
@@ -31,9 +32,11 @@ const LayoutContent: React.FC = () => {
 
 const AppLayout: React.FC = () => {
   return (
-    <SidebarProvider>
-      <LayoutContent />
-    </SidebarProvider>
+    <NotificationProvider>
+      <SidebarProvider>
+        <LayoutContent />
+      </SidebarProvider>
+    </NotificationProvider>
   );
 };
 

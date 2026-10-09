@@ -7,13 +7,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ArrowRightIcon } from "@/icons";
-import type { RecentReport } from "@/types/dashboard";
-import type { WorkStatus } from "@/types/reports";
+import type { ReportListItem, WorkStatus } from "@/types/reports";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
 interface RecentReportsProps {
-  reports: RecentReport[];
+  reports: ReportListItem[];
+  isLoading: boolean;
 }
 
 const statusColor = {
@@ -28,7 +28,15 @@ const statusKey: Record<WorkStatus, string> = {
   BLOCKED: "blocked",
 };
 
-export default function RecentReports({ reports }: RecentReportsProps) {
+const formatDate = (date: string) => {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+};
+
+export default function RecentReports({
+  reports,
+  isLoading,
+}: RecentReportsProps) {
   const { t } = useTranslation("common", {
     keyPrefix: "managementDashboard.recentReports",
   });
@@ -41,7 +49,7 @@ export default function RecentReports({ reports }: RecentReportsProps) {
         </h2>
         <Link
           to="/reports"
-          className="inline-flex items-center gap-1.5 text-theme-sm font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+          className="inline-flex items-center gap-1.5 text-theme-sm font-medium text-kps-primary transition-colors hover:text-kps-primary-hover dark:text-sidebar-selected"
         >
           {t("viewAll")}
           <ArrowRightIcon className="size-4 rtl:rotate-180" />
@@ -72,35 +80,47 @@ export default function RecentReports({ reports }: RecentReportsProps) {
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {reports.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={7}
+                  className="px-4 py-10 text-center text-theme-sm text-gray-500 dark:text-gray-400"
+                >
+                  {isLoading ? t("loading") : t("empty")}
+                </TableCell>
+              </TableRow>
+            )}
             {reports.map((report) => (
               <TableRow
                 key={report.id}
                 className="transition-colors hover:bg-gray-50 dark:hover:bg-white/2"
               >
                 <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
-                  {report.reportDate}
+                  {formatDate(report.report_date)}
                 </TableCell>
                 <TableCell className="px-3 py-4 text-theme-xs font-medium text-gray-800 dark:text-white/90">
-                  <span className="line-clamp-2">{report.employeeName}</span>
+                  <span className="line-clamp-2">{report.employee.name}</span>
                 </TableCell>
                 <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
-                  <span className="line-clamp-2">{report.department}</span>
+                  <span className="line-clamp-2">
+                    {report.department?.name ?? "—"}
+                  </span>
                 </TableCell>
                 <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
-                  {report.totalTasks}
+                  {report.counts.items}
                 </TableCell>
                 <TableCell className="px-3 py-4 text-theme-xs text-gray-600 dark:text-gray-300">
-                  {report.completedTasks}
+                  {report.counts.completed}
                 </TableCell>
                 <TableCell className="px-3 py-4">
-                  <Badge size="sm" color={statusColor[report.status]}>
-                    {t(`statuses.${statusKey[report.status]}`)}
+                  <Badge size="sm" color={statusColor[report.overall_status]}>
+                    {t(`statuses.${statusKey[report.overall_status]}`)}
                   </Badge>
                 </TableCell>
                 <TableCell className="px-3 py-4">
                   <Link
                     to={`/reports/${report.id}`}
-                    className="text-theme-xs font-medium text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                    className="text-theme-xs font-medium text-kps-primary transition-colors hover:text-kps-primary-hover dark:text-sidebar-selected"
                   >
                     {t("viewDetail")}
                   </Link>

@@ -51,6 +51,9 @@
     "title": "Báo cáo công việc hằng ngày",
     "subtitle": "Ghi nhận các công việc đã thực hiện trong ngày",
     "metaDescription": "Tạo báo cáo công việc hằng ngày trong hệ thống nội bộ Kim Phục Sắc",
+    "loading": "Đang tải báo cáo hôm nay...",
+    "unknown": "Chưa xác định",
+    "notAssigned": "Chưa phân công",
     "reportInfo": {
       "title": "Thông tin báo cáo",
       "employee": "Nhân viên",
@@ -76,50 +79,72 @@
         "inProgress": "Đang thực hiện",
         "blocked": "Có vấn đề"
       },
-      "related": {
-        "title": "Thông tin liên quan (không bắt buộc)",
-        "customer": "Khách hàng",
-        "customerPlaceholder": "Chọn khách hàng",
-        "product": "Sản phẩm",
-        "productPlaceholder": "Chọn sản phẩm",
-        "note": "Ghi chú",
-        "notePlaceholder": "Nhập ghi chú nếu cần"
+      "note": {
+        "label": "Ghi chú",
+        "placeholder": "Nhập ghi chú nếu cần"
       }
     },
     "addWorkItem": "Thêm công việc",
+    "workItemLimit": "Mỗi báo cáo được tối đa 50 công việc.",
     "validation": {
       "content": "Vui lòng nhập nội dung công việc.",
       "result": "Vui lòng nhập kết quả công việc.",
       "status": "Vui lòng chọn trạng thái."
     },
     "actions": {
-      "cancel": "Hủy",
-      "submit": "Lưu báo cáo & Phân tích bằng AI"
+      "reset": "Đặt lại",
+      "save": "Lưu báo cáo",
+      "update": "Cập nhật báo cáo",
+      "saving": "Đang lưu...",
+      "retry": "Thử lại",
+      "goHome": "Trở về trang chủ",
+      "viewHistory": "Xem lịch sử báo cáo"
     },
-    "success": {
-      "title": "Báo cáo đã được ghi nhận.",
-      "message": "Dữ liệu hiện đang được xử lý ở chế độ mô phỏng và chưa gửi tới máy chủ."
+    "saveModal": {
+      "saving": "Đang lưu báo cáo...",
+      "successTitle": "Lưu báo cáo thành công",
+      "successDescription": "Báo cáo ngày {date} đã được lưu.",
+      "goHome": "Trở về trang chủ",
+      "review": "Xem lại"
     },
-    "processing": {
-      "saving": {
-        "title": "Đang xử lý báo cáo",
-        "description": "Đang lưu dữ liệu báo cáo..."
-      },
-      "analyzing": {
-        "title": "AI đang phân tích báo cáo",
-        "description": "Đang phân loại và tổng hợp các công việc trong ngày..."
-      },
-      "completed": {
-        "title": "Xử lý hoàn tất",
-        "description": "Báo cáo đã được lưu thành công."
-      },
-      "continue": "Tiếp tục"
+    "notRequired": {
+      "title": "Bạn không cần thực hiện báo cáo hằng ngày",
+      "description": "Bạn có thể theo dõi báo cáo của nhân viên tại Lịch sử báo cáo."
+    },
+    "existing": {
+      "badge": "Đã báo cáo",
+      "title": "Bạn đã gửi báo cáo hôm nay",
+      "description": "Bạn vẫn có thể chỉnh sửa báo cáo đến {cutoff}. Sau thời gian này, báo cáo sẽ được chốt."
+    },
+    "locked": {
+      "badge": "Đã chốt",
+      "title": "Báo cáo hôm nay đã được chốt",
+      "description": "Báo cáo ngày {date} đã được chốt lúc {cutoff} và không thể chỉnh sửa."
+    },
+    "readOnly": {
+      "badge": "Chỉ xem",
+      "title": "Báo cáo hôm nay không thể chỉnh sửa",
+      "description": "Báo cáo ngày {date} hiện chỉ có thể xem. Thời hạn đã lưu là {cutoff}."
+    },
+    "closed": {
+      "title": "Đã hết thời gian gửi báo cáo hôm nay",
+      "description": "Thời gian gửi báo cáo ngày {date} đã kết thúc lúc {cutoff}."
+    },
+    "unavailable": {
+      "title": "Không thể tạo báo cáo hôm nay",
+      "description": "Trạng thái hiện tại không cho phép tạo báo cáo. Vui lòng tải lại hoặc liên hệ quản trị viên nếu cần hỗ trợ."
+    },
+    "errors": {
+      "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      "load": "Không thể tải trạng thái báo cáo hôm nay. Vui lòng thử lại.",
+      "save": "Không thể lưu báo cáo. Vui lòng thử lại."
     }
   },
   "reportHistory": {
     "title": "Lịch sử báo cáo",
     "subtitle": "Theo dõi và tra cứu các báo cáo công việc đã ghi nhận",
     "metaDescription": "Lịch sử báo cáo công việc trong hệ thống nội bộ Kim Phục Sắc",
+    "loading": "Đang tải lịch sử báo cáo...",
     "filters": {
       "title": "Bộ lọc báo cáo",
       "fromDate": "Từ ngày",
@@ -128,6 +153,9 @@
       "allEmployees": "Tất cả nhân viên",
       "department": "Phòng ban",
       "allDepartments": "Tất cả phòng ban",
+      "location": "Địa điểm",
+      "allLocations": "Tất cả địa điểm",
+      "loadingOptions": "Đang tải dữ liệu...",
       "status": "Trạng thái",
       "allStatuses": "Tất cả trạng thái",
       "search": "Tìm kiếm",
@@ -148,6 +176,8 @@
       "workItemCount": "Số công việc",
       "completed": "Hoàn thành",
       "status": "Trạng thái",
+      "comments": "Nhận xét",
+      "unread": "{count} mới",
       "action": "Thao tác",
       "viewDetail": "Xem chi tiết"
     },
@@ -159,6 +189,8 @@
     "empty": {
       "title": "Không tìm thấy báo cáo phù hợp.",
       "description": "Hãy thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.",
+      "initialTitle": "Chưa có báo cáo công việc.",
+      "initialDescription": "Các báo cáo trong phạm vi được phép xem sẽ xuất hiện tại đây.",
       "reset": "Xóa bộ lọc"
     },
     "pagination": {
@@ -166,13 +198,56 @@
       "ariaLabel": "Phân trang lịch sử báo cáo",
       "previous": "Trước",
       "next": "Sau"
+    },
+    "errors": {
+      "references": "Không thể tải các tùy chọn bộ lọc báo cáo.",
+      "forbidden": "Bạn không có quyền xem lịch sử báo cáo.",
+      "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      "load": "Không thể tải lịch sử báo cáo. Vui lòng thử lại."
+    },
+    "actions": {
+      "retry": "Thử lại"
     }
   },
   "reportDetail": {
     "title": "Chi tiết báo cáo",
     "metaDescription": "Chi tiết báo cáo công việc trong hệ thống nội bộ Kim Phục Sắc",
-    "description": "Nội dung chi tiết báo cáo sẽ được phát triển ở bước tiếp theo.",
-    "back": "Quay lại lịch sử báo cáo"
+    "loading": "Đang tải chi tiết báo cáo...",
+    "back": "Quay lại lịch sử báo cáo",
+    "edit": "Chỉnh sửa báo cáo hôm nay",
+    "summary": {
+      "date": "Ngày báo cáo",
+      "employee": "Nhân viên",
+      "department": "Phòng ban",
+      "location": "Địa điểm",
+      "updatedAt": "Cập nhật gần nhất",
+      "locked": "Đã khóa",
+      "open": "Có thể chỉnh sửa"
+    },
+    "items": {
+      "title": "Nội dung công việc",
+      "itemTitle": "Công việc #{number}",
+      "content": "Nội dung công việc",
+      "result": "Kết quả",
+      "note": "Ghi chú"
+    },
+    "comments": {
+      "title": "Nhận xét",
+      "empty": "Chưa có nhận xét cho báo cáo này.",
+      "formLabel": "Thêm nhận xét quản lý",
+      "placeholder": "Nhập nội dung nhận xét...",
+      "submit": "Gửi nhận xét",
+      "submitting": "Đang gửi...",
+      "validation": "Vui lòng nhập nội dung nhận xét.",
+      "success": "Nhận xét đã được gửi.",
+      "error": "Không thể gửi nhận xét. Vui lòng thử lại."
+    },
+    "errors": {
+      "notFound": "Không tìm thấy báo cáo hoặc bạn không có quyền xem báo cáo này.",
+      "forbidden": "Bạn không có quyền xem báo cáo này.",
+      "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      "load": "Không thể tải chi tiết báo cáo. Vui lòng thử lại."
+    }
   },
   "managementDashboard": {
     "title": "Tổng quan công việc",
@@ -210,6 +285,8 @@
     },
     "recentReports": {
       "title": "Báo cáo gần đây",
+      "loading": "Đang tải báo cáo gần đây...",
+      "empty": "Chưa có báo cáo trong phạm vi được phép xem.",
       "date": "Ngày",
       "employee": "Nhân viên",
       "department": "Phòng ban",
@@ -394,6 +471,18 @@
     "searchPlaceholder": "Tìm kiếm...",
     "toggleSidebar": "Đóng hoặc mở thanh điều hướng",
     "closeSidebar": "Đóng thanh điều hướng"
+  },
+  "notifications": {
+    "title": "Thông báo",
+    "open": "Mở thông báo",
+    "close": "Đóng thông báo",
+    "loading": "Đang tải thông báo...",
+    "empty": "Bạn chưa có thông báo.",
+    "unreadCount": "{count} thông báo chưa đọc",
+    "markAllRead": "Đánh dấu tất cả đã đọc",
+    "loadError": "Không thể tải thông báo.",
+    "actionError": "Không thể cập nhật thông báo. Vui lòng thử lại.",
+    "retry": "Thử lại"
   },
   "auth": {
     "initializing": "Đang kiểm tra phiên đăng nhập...",

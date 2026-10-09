@@ -23,9 +23,8 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/user-management-v1`
-- User Management V1 started from commit `006be72` (merged Authorization V1 baseline).
-- The working tree was clean at the start of the User Management V1 task.
+- Current branch: `feature/work-report-v1`
+- Work Report V1 builds on the completed Authentication, Authorization, and User Management V1 baseline.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -74,7 +73,7 @@ The Laravel API foundation lives in `backend/` and is intentionally independent 
 | Application/session database | MySQL `8.4.11` locally; SQLite in-memory for tests |
 | Automated tests | PHPUnit; SQLite in-memory test configuration |
 
-Authentication V1 reuses the default `users` and `sessions` tables. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. No CRM persistence has been implemented.
+Authentication V1 reuses the default `users` and `sessions` tables. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. No CRM persistence has been implemented.
 
 ## 4. Current application architecture
 
@@ -83,17 +82,18 @@ Authentication V1 reuses the default `users` and `sessions` tables. Authorizatio
 - The application is a client-side SPA.
 - `src/main.tsx` installs the theme, language, Helmet, authentication, and authorization providers.
 - `src/App.tsx` owns all routes.
-- `src/layout/AppLayout.tsx` provides the standard sidebar/header shell and installs `SidebarProvider` for dashboard routes.
+- `src/layout/AppLayout.tsx` provides the standard sidebar/header shell and installs `SidebarProvider` plus the authenticated `NotificationProvider` for dashboard routes.
 - KPS domain UI is currently split into focused files under:
   - `src/pages/Dashboard/Management.tsx`
   - `src/pages/Reports/`
   - `src/components/dashboard/`
   - `src/components/reports/`
   - `src/types/`
-  - `src/mocks/`
-- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior; focused auth and navigation services use it. There is no general business service or `src/features/` layer yet.
-- A Laravel API exists under `backend/`; Authentication V1 and Authorization V1 are integrated, while Phase 1 business screens still have no persistence service.
-- KPS pages import mock data directly. This is acceptable for the current prototype but is not yet the intended UI → service → API boundary.
+  - `src/services/`
+  - `src/mocks/` (dashboard-only prototype data)
+- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior. Focused auth, navigation, user-management, report, and notification services use it.
+- The Laravel API under `backend/` implements Authentication V1, Authorization V1, User Management V1, and Work Report V1. The daily report, report history/detail/comments, recent reports, and header notifications now consume the Work Report API.
+- Remaining mock data is limited to the management dashboard's prototype KPI/category/AI content; report-domain mocks were removed.
 
 ### Planned / Business decision
 
@@ -107,7 +107,7 @@ React/Vite frontend
   -> external integrations (AI, Pancake, others)
 ```
 
-The frontend must never connect directly to the database. AI, Pancake, and other secrets must remain on the backend and must not be exposed through `VITE_*` variables. Authentication uses `VITE_API_BASE_URL`; no Phase 1 business request uses the API yet.
+The frontend must never connect directly to the database. AI, Pancake, and other secrets must remain on the backend and must not be exposed through `VITE_*` variables. Authentication and business services use `VITE_API_BASE_URL`.
 
 ## 5. Repository structure relevant to KPS
 
@@ -117,9 +117,10 @@ backend/
 ├── bootstrap/app.php              # framework bootstrap and route registration
 ├── config/cors.php                # credentialed frontend origin from FRONTEND_URL
 ├── config/sanctum.php             # stateful SPA authentication configuration
-├── database/migrations/           # framework plus Authorization V1 schema
+├── config/reports.php             # KPS business timezone and daily cutoff
+├── database/migrations/           # framework, Authorization V1, and Work Report V1 schema
 ├── database/seeders/              # idempotent RBAC and KPS structure master data
-├── routes/api.php                 # health, auth, navigation, and user-management routes
+├── routes/api.php                 # health, auth, navigation, user-management, report, and notification routes
 └── tests/                          # PHPUnit tests
 
 src/
@@ -135,6 +136,8 @@ src/
 │   ├── AuthProvider.tsx
 │   ├── AuthorizationContext.ts
 │   ├── AuthorizationProvider.tsx
+│   ├── NotificationContext.ts
+│   ├── NotificationProvider.tsx
 │   ├── ThemeContext.tsx
 │   ├── SidebarContext.tsx
 │   └── LanguageContext.tsx
@@ -144,7 +147,7 @@ src/
 │   ├── Employees/                  # user list/create/edit pages
 │   ├── Reports/NewReport.tsx
 │   ├── Reports/ReportHistory.tsx
-│   ├── Reports/ReportDetailPlaceholder.tsx
+│   ├── Reports/ReportDetail.tsx
 │   ├── OtherPage/ModulePlaceholder.tsx
 │   └── OtherPage/NotFound.tsx
 ├── components/
@@ -156,20 +159,21 @@ src/
 │   ├── form/
 │   └── ui/
 ├── mocks/
-│   ├── currentUser.ts
-│   ├── dashboard.ts
-│   ├── reports.ts
-│   └── reportHistory.ts
+│   └── dashboard.ts                 # remaining dashboard-only prototype data
 ├── services/apiClient.ts           # shared credentialed fetch client
 ├── services/authService.ts         # Sanctum CSRF/session requests
 ├── services/navigationService.ts   # allowed navigation-key request
 ├── services/userService.ts         # User Management API requests
+├── services/reportService.ts       # Work Report API requests
+├── services/notificationService.ts # notification API requests
 ├── hooks/useAuth.ts                # authenticated-user context hook
 ├── hooks/useAuthorization.ts       # navigation-key UX authorization hook
+├── hooks/useNotifications.ts       # authenticated notification context hook
 ├── types/
 │   ├── auth.ts
 │   ├── dashboard.ts
 │   ├── reports.ts
+│   ├── notifications.ts
 │   ├── userManagement.ts
 │   └── user.ts
 ├── i18n/
@@ -193,10 +197,10 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 | Route | Current component | Status |
 | --- | --- | --- |
 | `/` | redirect to `/dashboard` | Implemented |
-| `/dashboard` | `Dashboard/Management` | Phase 1 prototype implemented |
-| `/reports/new` | `Reports/NewReport` | Phase 1 prototype implemented |
-| `/reports` | `Reports/ReportHistory` | Phase 1 prototype implemented |
-| `/reports/:id` | `ReportDetailPlaceholder` | Placeholder only |
+| `/dashboard` | `Dashboard/Management` | Phase 1 prototype; recent reports use Work Report API |
+| `/reports/new` | `Reports/NewReport` | Work Report V1 create/edit/locked/exempt states implemented |
+| `/reports` | `Reports/ReportHistory` | Work Report V1 scoped history implemented |
+| `/reports/:id` | `Reports/ReportDetail` | Work Report V1 detail/comments implemented |
 | `/tasks` | `ModulePlaceholder` | Placeholder only |
 | `/customers` | `ModulePlaceholder` | Placeholder only |
 | `/customers/:id` | `ModulePlaceholder` | Placeholder only |
@@ -218,7 +222,7 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 
 There are no retained public TailAdmin demo routes. Authentication V1 adds only the KPS login route; registration and account-recovery routes remain absent.
 
-All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication and a separate navigation-key guard for authorization UX. Unauthenticated users are redirected to `/login`; authenticated users without a route's navigation key see the KPS 403 page rather than being redirected to login. The wildcard KPS 404 route remains outside the protected layout.
+All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication. Most module routes also use a navigation-key guard for authorization UX. `/reports/new` deliberately relies on the safe `GET /api/reports/today` state instead of the navigation guard so an exempt membership following a direct URL sees the non-participant state rather than a false 403 page; its sidebar item is still controlled by backend navigation output. The wildcard KPS 404 route remains outside the protected layout.
 
 ### Backend authentication routes
 
@@ -245,6 +249,26 @@ All routes below require `auth:sanctum`, an active KPS membership, and the indic
 | `PATCH /api/users/{id}/role` | `users.assign_role` | Replace all assignments with one primary role |
 | `PATCH /api/users/{id}/status` | `users.disable` | Activate/deactivate KPS membership |
 | `GET /api/reference/{roles,departments,locations}` | `users.view` | Safe `{id, name}` form/filter references |
+
+### Backend Work Report routes
+
+All routes require `auth:sanctum` and an active KPS membership. Report list/detail/comment access is additionally constrained by backend report scope. Full request/response examples are documented in `docs/WORK_REPORT_V1_API.md`.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/reports/today` | Server-authoritative business date, cutoff, report-participation state, current report, and create action state |
+| `GET /api/reports/references` | Scope-safe employee/department/location filter options |
+| `GET /api/reports` | Scoped paginated report history with derived status/counts |
+| `POST /api/reports` | Create exactly one report for the authenticated author/business date |
+| `GET /api/reports/{id}` | Scoped report detail with ordered items/comments/action state |
+| `PATCH /api/reports/{id}` | Author-only atomic item replacement before the persisted deadline |
+| `POST /api/reports/{id}/comments` | Scoped manager comment after deadline plus author notification |
+| `PATCH /api/reports/{id}/notifications/read` | Mark the author's report-comment notifications read |
+| `GET /api/notifications` | Safe recipient-only notification list and unread count |
+| `PATCH /api/notifications/read-all` | Idempotently mark all recipient notifications read |
+| `PATCH /api/notifications/{id}/read` | Idempotently mark one recipient notification read |
+
+Work Report V1 has a business-level participation rule: an active KPS membership containing `OWNER` is exempt from submitting or editing daily reports, even when another assigned role grants `reports.create`. OWNER retains organization-wide report viewing and may comment on other employees' locked reports. `ADMIN` is not exempt and remains a normal report participant. The backend exposes only the opaque `reporting_required` boolean, hides the create-report navigation item for exempt memberships, and stores no `report_required` database field in V1. Future missing-report metrics must exclude OWNER from the expected-report population.
 
 ## 7. Current sidebar
 
@@ -284,7 +308,7 @@ Dashboard, the two report pages, and User Management now have KPS-specific funct
 - The sidebar uses brown tokens: `sidebar-accent: #5c3b1b` and `sidebar-selected: #7A5A39`.
 - Most global `brand-*` tokens remain pink/magenta (`brand-500: #b72c54`) and are still used by dashboard filters, AI cards, loading indicators, and links. Therefore the handoff's “primary brown” direction is only partially applied.
 
-### B. Management dashboard — completed as a mock prototype
+### B. Management dashboard — hybrid prototype
 
 Implemented in `src/pages/Dashboard/Management.tsx`, `src/components/dashboard/`, and `src/mocks/dashboard.ts`:
 
@@ -294,60 +318,43 @@ Implemented in `src/pages/Dashboard/Management.tsx`, `src/components/dashboard/`
 - KPI values: total 48, completed 39 (81%), in progress 7 (15%), blocked 2 (4%)
 - Work-category values: 17, 12, 10, 7, 2 (total 48)
 - Work progress table displayed as “Tiến độ công việc”
-- Recent reports table
+- Recent reports table backed by the scoped Work Report API
 - AI management summary, explicitly backed by static mock content
 
 Limitations:
 
-- Changing the period only updates local selected state; it does not change the displayed mock dataset.
+- Changing the period only updates local selected state; it does not change the displayed mock KPI/category dataset or the recent-reports request.
 - The source component/type is still named `EmployeePerformance`, although the visible UI correctly avoids presenting the section as an employee performance judgment.
 
-### C. Daily work report — completed as a mock form prototype
+### C. Daily work report — Work Report V1 implemented
 
-Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `src/types/reports.ts`, `src/mocks/currentUser.ts`, and `src/mocks/reports.ts`:
+Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `src/types/reports.ts`, and `src/services/reportService.ts`:
 
-- Read-only mock employee and department
-- Editable report date
-- One or more work items
-- Required content, result, and status fields
-- Statuses: `COMPLETED`, `IN_PROGRESS`, `BLOCKED`
-- Optional customer, product, and note fields
-- Add/remove work items with automatic numbering
-- Required-field validation after blur or submit, not immediately on initial render
-- Processing modal stages: saving → analyzing → completed
+- Server-authoritative business date, cutoff, existing report, and opaque action state from `GET /api/reports/today`
+- Opaque `reporting_required` state for the OWNER exemption; the frontend does not inspect role names or permission codes
+- Create-before-cutoff and author-edit-before-persisted-deadline flows
+- Locked/read-only and closed-without-report states
+- One or more work items containing only content, result, `COMPLETED|IN_PROGRESS|BLOCKED` status, and optional note
+- Atomic replacement through the backend update contract; conflict responses trigger a fresh today-state request
+- No fake AI processing, timers, editable date, customer/product fields, or report-domain mock persistence
 
-Limitations:
+### D. Report history, detail, comments, and notifications — Work Report V1 implemented
 
-- Submit only logs the normalized form in development and starts timers.
-- No report is persisted, and no history row is created.
-- Saving and AI analysis are simulated with `setTimeout` (800 ms and 1250 ms).
-- There is no `reportService` or `aiService` yet.
-
-### D. Report history — completed as a mock list prototype
-
-Implemented in `src/pages/Reports/ReportHistory.tsx`, `src/components/reports/`, and `src/mocks/reportHistory.ts`:
-
-- From/to date filters
-- Employee, department, and status filters
-- Text search
-- Client-side pagination (8 records per page)
-- Report table and status badges
-- Links to `/reports/:id`
-
-Limitations:
-
-- All data is static and filtered in memory.
-- Overall report statuses are stored on mock rows. The proposed derivation rule from work-item statuses is not implemented as domain logic.
-- Report detail is a placeholder page only.
+- History uses backend scope, filters, search, pagination, derived overall status/counts, and viewer-specific unread-comment counts.
+- Filter references come only from `GET /api/reports/references`; User Management references are not reused.
+- Detail renders ordered items and chronological comments plus opaque `can_edit`/`can_comment` actions.
+- Manager comments use the append-only API. Opening a report explicitly marks only that report's comment notifications read after detail is loaded.
+- The header dropdown uses safe notification payloads, shows unread state, supports mark-one/mark-all, refreshes on open/focus/visibility, and polls every two minutes only while the document is visible.
+- Report detail handles scoped `403`/`404`, network, and general failures without attempting to infer backend permissions.
 
 ## 9. Module status
 
 | Module | Status |
 | --- | --- |
-| Management dashboard | Mock prototype implemented |
-| Daily work report | Mock form and processing flow implemented; no persistence |
-| Report history | Mock filtering/table/pagination implemented |
-| Report detail | Placeholder only |
+| Management dashboard | Hybrid prototype: scoped recent reports are live; KPI/category/AI content remains mock |
+| Daily work report | Work Report V1 create/edit/locked/read-only frontend and backend implemented |
+| Report history | Work Report V1 scoped, filtered, paginated frontend and backend implemented |
+| Report detail | Work Report V1 detail, comments, unread state, and notifications implemented |
 | Tasks | Placeholder only |
 | Customers / CRM | List and detail routes are placeholders only |
 | Products | Placeholder only |
@@ -358,7 +365,7 @@ Limitations:
 | Settings | Placeholder only |
 | Authentication | V1 implemented with Sanctum session/cookie auth, login, current user, logout, route protection, and tests |
 | Authorization / RBAC | V1 implemented: organization membership → roles → permissions → optional data scope, backend navigation mapping, permission middleware, route UX guards, and tests |
-| Backend / database | Laravel 12, MySQL/TiDB-compatible schema, Authentication V1, Authorization V1, and User Management V1 implemented; no CRM persistence integration |
+| Backend / database | Laravel 12, MySQL/TiDB/SQLite-compatible schema, Authentication V1, Authorization V1, User Management V1, and Work Report V1 implemented; no CRM persistence integration |
 
 User Management V1 seeds the following extensible KPS department master data: `HR_ADMIN` (Hành chính nhân sự), `MARKETING`, `MEDIA`, `ACCOUNTING` (Kế toán), `SALES`, and `IT`. It deliberately creates no locations and stores no fixed headcount values.
 
@@ -369,13 +376,14 @@ User Management V1 seeds the following extensible KPS department master data: `H
 - Global UI state uses React Context only:
   - `AuthProvider` — current authenticated user, startup session restore, login, and logout
   - `AuthorizationProvider` — allowed navigation keys and frontend route/menu UX state
+  - `NotificationProvider` — authenticated safe notifications, unread count, refresh lifecycle, and read actions
   - `ThemeContext` — light/dark theme and `localStorage`
   - `LanguageContext` — selected language metadata, HTML `lang`/`dir`, and `localStorage`
   - `SidebarContext` — desktop/mobile sidebar state
 - Feature state uses local React state and memoization.
-- There is no Redux, Zustand, server-state library, or API cache. Authentication, navigation, and User Management use the shared native-fetch API client with `credentials: "include"`.
+- There is no Redux, Zustand, server-state library, or API cache. Authentication, navigation, User Management, Work Reports, and notifications use the shared native-fetch API client with `credentials: "include"`.
 - The API client exposes HTTP status, safe backend messages, and Laravel validation errors. A global 401/419 signal clears authenticated state; 403 and 409 responses do not end the session.
-- Mock data for KPS lives in `src/mocks/`.
+- Remaining KPS mock data in `src/mocks/` serves only the non-report management-dashboard prototype.
 
 ### Internationalization gap
 
@@ -460,7 +468,6 @@ Do not encode assumptions for these questions without confirmed requirements.
 **Current verified state**
 
 - Dashboard AI summary is static mock content.
-- Daily report “AI analysis” is a timed UI simulation.
 - No external AI API is called.
 - No AI output is persisted.
 
@@ -509,15 +516,15 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 ## 17. Known technical debt and audit findings
 
-1. `npm run build` passes. After User Management V1, the KPS application chunk is about 498 KB (about 144 KB gzip), while the lazily loaded `react-apexcharts` vendor chunk remains large at about 926 KB (about 265 KB gzip).
+1. `npm run build` passes. The main KPS application chunk is roughly 500 KB (roughly 150 KB gzip), while the lazily loaded `react-apexcharts` vendor chunk remains large at about 926 KB (about 265 KB gzip).
 2. `npm run lint` passes with four Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards, navigation output, safe payloads, and idempotent RBAC/department seeding.
-4. Report submit, report history, dashboard filters, and AI analysis are not connected to services or persistent state.
-5. Report-detail and CRM routes are placeholders. The `/employees` routes are no longer placeholders, but they manage internal accounts rather than a separate HR employee-profile domain.
+3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards, Work Report cutoff/scope/transaction/notification behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
+4. Dashboard KPI/category/period data and the dashboard AI summary remain mock; the recent-report table is connected to the Work Report API.
+5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
 6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset/change-password, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
 7. Internationalization configuration and available resources are inconsistent, as described above.
 8. Global brand tokens remain pink/magenta while the intended KPS primary color is brown; only sidebar-specific tokens consistently use brown.
-9. The active notification dropdown still contains template-style mock people/content and sample avatars. It remains because it is part of the live header and requires a separate product decision rather than a cleanup deletion.
+9. Header notifications currently cover Work Report comment notifications only; broader notification types require a separate product/API decision.
 10. The active user dropdown uses the authenticated user's name/email and supports logout. Profile, account settings, and support actions remain no-op pending separate features; existing inline SVG icons still require later design review.
 
 The Phase 1 cleanup removed verified-unused demo routes, pages, components, assets, styles, translations, and dependencies without changing KPS business behavior.

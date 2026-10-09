@@ -2,7 +2,6 @@ import type {
   AIManagementInsight,
   DashboardStat,
   EmployeePerformance,
-  RecentReport,
   WorkCategoryStat,
 } from "@/types/dashboard";
 
@@ -66,51 +65,3 @@ export const aiManagementInsight: AIManagementInsight = {
     "Tư vấn / bán hàng là nhóm công việc chiếm tỷ trọng lớn nhất hôm nay.",
   ],
 };
-
-export const recentReports: RecentReport[] = [
-  {
-    id: "report-20260923-01",
-    reportDate: "23/09/2026",
-    employeeName: "Nguyễn Văn A",
-    department: "Kinh doanh",
-    totalTasks: 8,
-    completedTasks: 7,
-    status: "IN_PROGRESS",
-  },
-  {
-    id: "report-20260923-02",
-    reportDate: "23/09/2026",
-    employeeName: "Trần Thị B",
-    department: "CSKH",
-    totalTasks: 10,
-    completedTasks: 8,
-    status: "BLOCKED",
-  },
-  {
-    id: "report-20260922-01",
-    reportDate: "22/09/2026",
-    employeeName: "Lê Văn C",
-    department: "Marketing",
-    totalTasks: 7,
-    completedTasks: 7,
-    status: "COMPLETED",
-  },
-  {
-    id: "report-20260922-02",
-    reportDate: "22/09/2026",
-    employeeName: "Phạm Thị D",
-    department: "Vận hành",
-    totalTasks: 9,
-    completedTasks: 7,
-    status: "BLOCKED",
-  },
-  {
-    id: "report-20260921-01",
-    reportDate: "21/09/2026",
-    employeeName: "Đỗ Minh E",
-    department: "Kinh doanh",
-    totalTasks: 8,
-    completedTasks: 8,
-    status: "COMPLETED",
-  },
-];

@@ -11,7 +11,7 @@ import EmployeeList from "./pages/Employees/EmployeeList";
 import ModulePlaceholder from "./pages/OtherPage/ModulePlaceholder";
 import NotFound from "./pages/OtherPage/NotFound";
 import NewReport from "./pages/Reports/NewReport";
-import ReportDetailPlaceholder from "./pages/Reports/ReportDetailPlaceholder";
+import ReportDetail from "./pages/Reports/ReportDetail";
 import ReportHistory from "./pages/Reports/ReportHistory";
 
 export default function App() {
@@ -31,18 +31,14 @@ export default function App() {
               </Route>
 
               {/* KPS Modules */}
-              <Route
-                element={<AuthorizationRoute navigationKey="reports.new" />}
-              >
-                <Route path="/reports/new" element={<NewReport />} />
-              </Route>
+              <Route path="/reports/new" element={<NewReport />} />
               <Route
                 element={<AuthorizationRoute navigationKey="reports.history" />}
               >
                 <Route path="/reports" element={<ReportHistory />} />
                 <Route
                   path="/reports/:id"
-                  element={<ReportDetailPlaceholder />}
+                  element={<ReportDetail />}
                 />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="tasks" />}>

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureActiveKpsMembership;
+use App\Http\Middleware\EnsureReportParticipant;
 use App\Http\Middleware\EnsureUserHasPermission;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -22,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'active_kps_membership' => EnsureActiveKpsMembership::class,
             'permission' => EnsureUserHasPermission::class,
+            'report_participant' => EnsureReportParticipant::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

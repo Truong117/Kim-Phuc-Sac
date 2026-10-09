@@ -89,6 +89,32 @@ class NavigationTest extends TestCase
             ]);
     }
 
+    public function test_owner_exemption_hides_create_report_navigation_even_with_another_role_grant(): void
+    {
+        $owner = User::factory()->create();
+        $membership = $this->createMembership($owner);
+        $ownerRoleId = $this->createRole('OWNER', 'Chủ sở hữu');
+        $workerRoleId = $this->createRole('WORKER_WITH_REPORT_CREATE');
+        $reportsViewId = $this->createPermission('reports.view');
+        $reportsCreateId = $this->createPermission('reports.create');
+
+        $this->attachRole($membership['membership_id'], $ownerRoleId, true);
+        $this->attachRole($membership['membership_id'], $workerRoleId);
+        $this->grantPermission($ownerRoleId, $reportsViewId, DataScope::ALL->value);
+        $this->grantPermission($workerRoleId, $reportsCreateId, DataScope::OWN->value);
+
+        $response = $this
+            ->actingAs($owner, 'web')
+            ->getJson('/api/navigation')
+            ->assertOk()
+            ->assertExactJson([
+                'items' => ['reports.history'],
+            ]);
+
+        $this->assertStringNotContainsString('OWNER', $response->getContent());
+        $this->assertStringNotContainsString('reports.create', $response->getContent());
+    }
+
     public function test_navigation_rejects_authenticated_user_without_an_active_kps_membership(): void
     {
         $userWithoutMembership = User::factory()->create();

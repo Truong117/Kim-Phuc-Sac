@@ -31,4 +31,9 @@ class Department extends Model
     {
         return $this->hasMany(OrganizationMembership::class);
     }
+
+    public function dailyReports(): HasMany
+    {
+        return $this->hasMany(DailyReport::class);
+    }
 }

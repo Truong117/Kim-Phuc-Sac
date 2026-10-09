@@ -2,6 +2,12 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\NavigationController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\Reports\ReportCommentController;
+use App\Http\Controllers\Reports\ReportController;
+use App\Http\Controllers\Reports\ReportNotificationController;
+use App\Http\Controllers\Reports\ReportReferenceController;
+use App\Http\Controllers\Reports\TodayReportController;
 use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
 use Illuminate\Support\Facades\Route;
@@ -26,6 +32,30 @@ Route::prefix('auth')->group(function () {
 
 Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () {
     Route::get('/navigation', NavigationController::class);
+
+    Route::get('/reports/today', TodayReportController::class);
+    Route::get('/reports/references', ReportReferenceController::class)
+        ->middleware('permission:reports.view');
+    Route::get('/reports', [ReportController::class, 'index'])
+        ->middleware('permission:reports.view');
+    Route::post('/reports', [ReportController::class, 'store'])
+        ->middleware(['report_participant', 'permission:reports.create']);
+    Route::post('/reports/{id}/comments', [ReportCommentController::class, 'store'])
+        ->whereNumber('id')
+        ->middleware(['permission:reports.view', 'permission:reports.comment']);
+    Route::patch('/reports/{id}/notifications/read', [ReportNotificationController::class, 'update'])
+        ->whereNumber('id');
+    Route::get('/reports/{id}', [ReportController::class, 'show'])
+        ->whereNumber('id')
+        ->middleware('permission:reports.view');
+    Route::patch('/reports/{id}', [ReportController::class, 'update'])
+        ->whereNumber('id')
+        ->middleware(['report_participant', 'permission:reports.create']);
+
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::patch('/notifications/read-all', [NotificationController::class, 'readAll']);
+    Route::patch('/notifications/{id}/read', [NotificationController::class, 'read'])
+        ->whereNumber('id');
 
     Route::get('/users', [UserController::class, 'index'])
         ->middleware('permission:users.view,organization');
