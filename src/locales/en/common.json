@@ -258,6 +258,15 @@
       }
     }
   },
+  "authorization": {
+    "loading": "Đang tải quyền truy cập...",
+    "forbidden": {
+      "title": "Không có quyền truy cập",
+      "metaDescription": "Trang bị giới hạn quyền truy cập trong KPS Internal System",
+      "error": "LỖI 403",
+      "message": "Bạn không có quyền truy cập trang này. Vui lòng liên hệ quản trị viên nếu bạn cần được cấp quyền."
+    }
+  },
   "userDropdown": {
     "roles": {
       "admin": "Quản trị viên",

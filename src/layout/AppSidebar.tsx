@@ -1,5 +1,6 @@
 import BrandMark from "@/components/common/BrandMark";
 import { useSidebar } from "@/context/SidebarContext";
+import { useAuthorization } from "@/hooks/useAuthorization";
 import {
   AiIcon,
   BoxCubeIcon,
@@ -16,12 +17,14 @@ import {
   TaskIcon,
   UserCircleIcon,
 } from "@/icons";
+import type { NavigationKey } from "@/types/authorization";
 import { cn } from "@/utils";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
 
 interface NavItem {
+  navigationKey: NavigationKey;
   nameKey: string;
   icon: React.ReactNode;
   path: string;
@@ -38,6 +41,7 @@ const navGroups: NavGroup[] = [
   {
     items: [
       {
+        navigationKey: "dashboard",
         nameKey: "dashboard",
         icon: <GridIcon fontSize={24} />,
         path: "/dashboard",
@@ -48,11 +52,13 @@ const navGroups: NavGroup[] = [
     labelKey: "work",
     items: [
       {
+        navigationKey: "reports.new",
         nameKey: "newReport",
         icon: <DocsIcon fontSize={24} />,
         path: "/reports/new",
       },
       {
+        navigationKey: "reports.history",
         nameKey: "reportHistory",
         icon: <CalenderIcon fontSize={24} />,
         path: "/reports",
@@ -60,6 +66,7 @@ const navGroups: NavGroup[] = [
         excludedChildPaths: ["/reports/new"],
       },
       {
+        navigationKey: "tasks",
         nameKey: "tasks",
         icon: <TaskIcon fontSize={24} />,
         path: "/tasks",
@@ -70,17 +77,20 @@ const navGroups: NavGroup[] = [
     labelKey: "business",
     items: [
       {
+        navigationKey: "customers",
         nameKey: "customers",
         icon: <UserCircleIcon fontSize={24} />,
         path: "/customers",
         matchChildren: true,
       },
       {
+        navigationKey: "products",
         nameKey: "products",
         icon: <BoxCubeIcon fontSize={24} />,
         path: "/products",
       },
       {
+        navigationKey: "orders",
         nameKey: "orders",
         icon: <CartIcon fontSize={24} />,
         path: "/orders",
@@ -91,11 +101,13 @@ const navGroups: NavGroup[] = [
     labelKey: "aiCenter",
     items: [
       {
+        navigationKey: "ai.insights",
         nameKey: "aiInsights",
         icon: <AiIcon fontSize={24} />,
         path: "/ai/insights",
       },
       {
+        navigationKey: "ai.assistant",
         nameKey: "aiAssistant",
         icon: <ChatIcon fontSize={24} />,
         path: "/ai/assistant",
@@ -106,16 +118,19 @@ const navGroups: NavGroup[] = [
     labelKey: "system",
     items: [
       {
+        navigationKey: "employees",
         nameKey: "employees",
         icon: <MultiUserIcon fontSize={24} />,
         path: "/employees",
       },
       {
+        navigationKey: "integrations",
         nameKey: "integrations",
         icon: <PlugInIcon fontSize={24} />,
         path: "/integrations",
       },
       {
+        navigationKey: "settings",
         nameKey: "settings",
         icon: <SettingsAltIcon fontSize={24} />,
         path: "/settings",
@@ -128,8 +143,15 @@ export default function AppSidebar() {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered, setIsMobileOpen } =
     useSidebar();
   const { t } = useTranslation();
+  const { canNavigate } = useAuthorization();
   const location = useLocation();
   const showContent = isExpanded || isHovered || isMobileOpen;
+  const visibleNavGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => canNavigate(item.navigationKey)),
+    }))
+    .filter((group) => group.items.length > 0);
 
   useEffect(() => {
     if (isMobileOpen) {
@@ -191,7 +213,7 @@ export default function AppSidebar() {
       <div className="no-scrollbar flex flex-col overflow-y-auto pt-5 pb-8 duration-300 ease-linear">
         <nav>
           <div className="flex flex-col gap-5">
-            {navGroups.map((group, groupIndex) => (
+            {visibleNavGroups.map((group, groupIndex) => (
               <div key={group.labelKey ?? `primary-${groupIndex}`}>
                 {group.labelKey && (
                   <h2

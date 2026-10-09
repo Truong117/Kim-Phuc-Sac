@@ -4,10 +4,13 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
 class AuthenticationTest extends TestCase
 {
+    use AuthorizationFixtures;
     use RefreshDatabase;
 
     /**
@@ -56,6 +59,10 @@ class AuthenticationTest extends TestCase
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'organization' => null,
+                'department' => null,
+                'location' => null,
+                'role' => null,
             ]);
 
         $this->assertAuthenticatedAs($user);
@@ -116,7 +123,86 @@ class AuthenticationTest extends TestCase
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'organization' => null,
+                'department' => null,
+                'location' => null,
+                'role' => null,
             ]);
+
+        $this->assertSafeDisplayPayload($response->getContent());
+    }
+
+    public function test_current_user_endpoint_returns_active_membership_display_context_and_primary_role_only(): void
+    {
+        $user = User::factory()->create();
+        $membership = $this->createMembership($user);
+        $now = now();
+
+        $departmentId = DB::table('departments')->insertGetId([
+            'organization_id' => $membership['organization_id'],
+            'code' => 'SALES',
+            'name' => 'Phòng Kinh doanh',
+            'is_active' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        $locationId = DB::table('locations')->insertGetId([
+            'organization_id' => $membership['organization_id'],
+            'code' => 'HCM',
+            'name' => 'Chi nhánh Hồ Chí Minh',
+            'type' => 'office',
+            'is_active' => true,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('organization_memberships')
+            ->where('id', $membership['membership_id'])
+            ->update([
+                'department_id' => $departmentId,
+                'location_id' => $locationId,
+                'updated_at' => $now,
+            ]);
+
+        $primaryRoleId = $this->createRole('PRIMARY_TEST_ROLE', 'Vai trò chính');
+        $secondaryRoleId = $this->createRole('SECONDARY_TEST_ROLE', 'Vai trò phụ');
+        $this->attachRole($membership['membership_id'], $secondaryRoleId);
+        $this->attachRole($membership['membership_id'], $primaryRoleId, isPrimary: true);
+
+        $organizationName = DB::table('organizations')
+            ->where('id', $membership['organization_id'])
+            ->value('name');
+
+        $response = $this
+            ->actingAs($user, 'web')
+            ->withHeaders($this->spaHeaders())
+            ->getJson('/api/auth/me');
+
+        $response
+            ->assertOk()
+            ->assertExactJson([
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'organization' => [
+                    'id' => $membership['organization_id'],
+                    'name' => $organizationName,
+                ],
+                'department' => [
+                    'id' => $departmentId,
+                    'name' => 'Phòng Kinh doanh',
+                ],
+                'location' => [
+                    'id' => $locationId,
+                    'name' => 'Chi nhánh Hồ Chí Minh',
+                ],
+                'role' => [
+                    'name' => 'Vai trò chính',
+                ],
+            ]);
+
+        $this->assertSafeDisplayPayload($response->getContent());
+        $this->assertStringNotContainsString('Vai trò phụ', $response->getContent());
     }
 
     public function test_authenticated_user_can_log_out_and_session_data_is_invalidated(): void
@@ -152,5 +238,12 @@ class AuthenticationTest extends TestCase
             ->withHeaders($this->spaHeaders())
             ->getJson('/api/auth/me')
             ->assertUnauthorized();
+    }
+
+    private function assertSafeDisplayPayload(string $content): void
+    {
+        foreach (['permissions', 'permission_codes', 'data_scope', 'role_permissions', 'role_code'] as $sensitiveKey) {
+            $this->assertStringNotContainsString($sensitiveKey, $content);
+        }
     }
 }

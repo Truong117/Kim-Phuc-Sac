@@ -1,6 +1,6 @@
 # KPS Internal System — Project Context
 
-Last repository audit: 2026-10-06 (Asia/Saigon)
+Last repository audit: 2026-10-08 (Asia/Saigon)
 
 This document is the handoff baseline for future work. It distinguishes:
 
@@ -23,10 +23,9 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/authentication-v1`
-- Tracking branch: `origin/feature/authentication-v1`
-- Audited base commit: `38f31ea` (`feat: add backend foundation`).
-- The working tree was clean at the start of the Authentication V1 task.
+- Current branch: `feature/authorization-v1`
+- Audited base commit: `9b7a3ef` (`Configure Vercel`).
+- The working tree was clean at the start of the Authorization V1 task.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -75,14 +74,14 @@ The Laravel API foundation lives in `backend/` and is intentionally independent 
 | Application/session database | MySQL `8.4.11` locally; SQLite in-memory for tests |
 | Automated tests | PHPUnit; SQLite in-memory test configuration |
 
-The backend currently contains only framework/default migrations. Authentication V1 reuses the default `users` and `sessions` tables; no KPS business tables, authorization model, or business API has been implemented.
+Authentication V1 reuses the default `users` and `sessions` tables. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. No CRM or other KPS business persistence has been implemented.
 
 ## 4. Current application architecture
 
 ### Verified
 
 - The application is a client-side SPA.
-- `src/main.tsx` installs the theme, language, Helmet, and authentication providers.
+- `src/main.tsx` installs the theme, language, Helmet, authentication, and authorization providers.
 - `src/App.tsx` owns all routes.
 - `src/layout/AppLayout.tsx` provides the standard sidebar/header shell and installs `SidebarProvider` for dashboard routes.
 - KPS domain UI is currently split into focused files under:
@@ -92,8 +91,8 @@ The backend currently contains only framework/default migrations. Authentication
   - `src/components/reports/`
   - `src/types/`
   - `src/mocks/`
-- `src/services/authService.ts` is the first frontend API service. There is no general business service or `src/features/` layer yet.
-- A Laravel API exists under `backend/`; Authentication V1 is integrated, while Phase 1 business screens still have no persistence service.
+- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior; focused auth and navigation services use it. There is no general business service or `src/features/` layer yet.
+- A Laravel API exists under `backend/`; Authentication V1 and Authorization V1 are integrated, while Phase 1 business screens still have no persistence service.
 - KPS pages import mock data directly. This is acceptable for the current prototype but is not yet the intended UI → service → API boundary.
 
 ### Planned / Business decision
@@ -118,8 +117,9 @@ backend/
 ├── bootstrap/app.php              # framework bootstrap and route registration
 ├── config/cors.php                # credentialed frontend origin from FRONTEND_URL
 ├── config/sanctum.php             # stateful SPA authentication configuration
-├── database/migrations/           # Laravel framework/default migrations only
-├── routes/api.php                 # health and Authentication V1 routes
+├── database/migrations/           # framework plus Authorization V1 schema
+├── database/seeders/              # idempotent organization/RBAC reference data
+├── routes/api.php                 # health, auth, and navigation routes
 └── tests/                          # PHPUnit tests
 
 src/
@@ -133,6 +133,8 @@ src/
 ├── context/
 │   ├── AuthContext.ts
 │   ├── AuthProvider.tsx
+│   ├── AuthorizationContext.ts
+│   ├── AuthorizationProvider.tsx
 │   ├── ThemeContext.tsx
 │   ├── SidebarContext.tsx
 │   └── LanguageContext.tsx
@@ -156,8 +158,11 @@ src/
 │   ├── dashboard.ts
 │   ├── reports.ts
 │   └── reportHistory.ts
+├── services/apiClient.ts           # shared credentialed fetch client
 ├── services/authService.ts         # Sanctum CSRF/session requests
+├── services/navigationService.ts   # allowed navigation-key request
 ├── hooks/useAuth.ts                # authenticated-user context hook
+├── hooks/useAuthorization.ts       # navigation-key UX authorization hook
 ├── types/
 │   ├── auth.ts
 │   ├── dashboard.ts
@@ -207,7 +212,7 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 
 There are no retained public TailAdmin demo routes. Authentication V1 adds only the KPS login route; registration and account-recovery routes remain absent.
 
-All `AppLayout` routes are wrapped by `ProtectedRoute`. Unauthenticated users are redirected to `/login`; authenticated users visiting `/login` are redirected to `/dashboard`. The wildcard KPS 404 route remains outside the protected layout.
+All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication and a separate navigation-key guard for authorization UX. Unauthenticated users are redirected to `/login`; authenticated users without a route's navigation key see the KPS 403 page rather than being redirected to login. The wildcard KPS 404 route remains outside the protected layout.
 
 ### Backend authentication routes
 
@@ -215,8 +220,9 @@ All `AppLayout` routes are wrapped by `ProtectedRoute`. Unauthenticated users ar
 | --- | --- | --- |
 | `GET /sanctum/csrf-cookie` | Public | Initialize Sanctum CSRF cookie |
 | `POST /api/auth/login` | Public, CSRF-protected | Validate credentials and create the server session |
-| `GET /api/auth/me` | `auth:sanctum` | Return `id`, `name`, and `email` for the current user |
+| `GET /api/auth/me` | `auth:sanctum` | Return user identity plus safe organization/department/location/primary-role display context |
 | `POST /api/auth/logout` | `auth:sanctum`, CSRF-protected | Invalidate the current session |
+| `GET /api/navigation` | `auth:sanctum` | Return only the allowed frontend navigation keys |
 
 ## 7. Current sidebar
 
@@ -245,7 +251,7 @@ HỆ THỐNG
 - Cài đặt                  -> /settings
 ```
 
-Only Dashboard and the two report pages have KPS-specific functional implementations. The remaining sidebar destinations are placeholders.
+Only Dashboard and the two report pages have KPS-specific functional implementations. The remaining sidebar destinations are placeholders. The backend maps permissions to UI navigation keys; the frontend filters sidebar items with those keys and hides empty group headings. This menu filtering is UX only and is not a security boundary.
 
 ## 8. Phase 1 implementation status
 
@@ -329,8 +335,8 @@ Limitations:
 | Integrations / Pancake | Placeholder only |
 | Settings | Placeholder only |
 | Authentication | V1 implemented with Sanctum session/cookie auth, login, current user, logout, route protection, and tests |
-| Authorization / RBAC | Not implemented |
-| Backend / database | Laravel 12, MySQL, health endpoint, and Authentication V1 implemented; no business schema or persistence integration |
+| Authorization / RBAC | V1 implemented: organization membership → roles → permissions → optional data scope, backend navigation mapping, permission middleware, route UX guards, and tests |
+| Backend / database | Laravel 12, MySQL, health endpoint, Authentication V1, and Authorization V1 foundation implemented; no CRM/business persistence integration |
 
 ## 10. State and data management
 
@@ -338,11 +344,12 @@ Limitations:
 
 - Global UI state uses React Context only:
   - `AuthProvider` — current authenticated user, startup session restore, login, and logout
+  - `AuthorizationProvider` — allowed navigation keys and frontend route/menu UX state
   - `ThemeContext` — light/dark theme and `localStorage`
   - `LanguageContext` — selected language metadata, HTML `lang`/`dir`, and `localStorage`
   - `SidebarContext` — desktop/mobile sidebar state
 - Feature state uses local React state and memoization.
-- There is no Redux, Zustand, server-state library, or API cache. Authentication uses a focused native-fetch service with `credentials: "include"`.
+- There is no Redux, Zustand, server-state library, or API cache. Authentication and navigation use the shared native-fetch API client with `credentials: "include"`.
 - Mock data for KPS lives in `src/mocks/`.
 
 ### Internationalization gap
@@ -449,18 +456,21 @@ Do not encode assumptions for these questions without confirmed requirements.
 - `vercel.json` currently rewrites `/(.*)` to `/index.html`.
 - Demo URL from the project handoff: `https://kimphucsac.vercel.app/`.
 - Authentication V1 is implemented with Sanctum first-party SPA authentication, Laravel's `web` session guard, CSRF protection, credentialed CORS, and `auth:sanctum` on protected endpoints.
+- Authorization V1 is backend-owned. It resolves the active default organization membership in an active organization, aggregates all assigned roles, and exposes a `permission:<code>` middleware for protected backend actions.
+- Data scopes are represented by the backend-only order `SELF < OWN < TEAM < DEPARTMENT < LOCATION < ORGANIZATION < ALL`; the broadest grant wins when multiple roles provide the same permission.
+- `/api/auth/me` returns display context only, and `/api/navigation` returns UI navigation keys only. Permission codes, role codes, role-permission assignments, and data scopes are not sent to the frontend.
+- Frontend menu hiding and route guards are UX controls only. Backend permission enforcement remains authoritative.
 - The recommended local convention is frontend `http://localhost:5173` and backend `http://localhost:8000` so stateful cookies remain consistent.
-- There is no public registration, bearer-token/JWT flow, password recovery, profile management, authorization, permission enforcement, or role model.
+- There is no public registration, bearer-token/JWT flow, password recovery, profile management, or authorization-management UI.
 - `GET /api/health` remains public.
 
 ### Planned / Business decision
 
 - Intended internal hostname: a single subdomain such as `noibo.kimphucsac.com.vn`.
 - Intended topology: one frontend, one backend, one database, and one authentication system.
-- Role/permission checks should control menus, routes, and functions, while the backend must independently enforce every protected API action.
-- Hiding a frontend menu is not security.
-- Prefer permission-based authorization over hardcoding all behavior by role.
-- Reference roles (not final requirements): `ADMIN`, `MANAGER`, `OFFICE_STAFF`, `SALES_STAFF`, `CSKH_STAFF`, `SPA_STAFF`.
+- Every future protected business endpoint must apply backend permission enforcement; frontend checks must never be treated as sufficient.
+- Data-scope-aware CRM query filtering is future work and must be implemented with the business repositories/queries rather than trusted frontend filters.
+- External dealer and external spa tenancy remain future work; Authorization V1 models only the internal `KPS` organization.
 - Revisit the catch-all Vercel rewrite if `/api` is later served on the same domain.
 - Use mock data only until real customer-data handling has been approved. Production CRM data will require authentication, backend authorization, secure APIs/secrets, access controls, and appropriate auditability.
 
@@ -474,12 +484,12 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 ## 17. Known technical debt and audit findings
 
-1. `npm run build` passes. The KPS application chunk is about 448 KB (about 135 KB gzip), while the lazily loaded `react-apexcharts` vendor chunk remains large at about 926 KB (about 265 KB gzip).
+1. `npm run build` passes. The KPS application chunk is about 460 KB (about 137 KB gzip), while the lazily loaded `react-apexcharts` vendor chunk remains large at about 926 KB (about 265 KB gzip).
 2. `npm run lint` passes with four Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. The frontend has no automated test suite. The backend PHPUnit suite covers the health endpoint plus Authentication V1 login, invalid credentials, current user, logout/session invalidation, session regeneration, and CSRF cookie behavior.
+3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, authorization resolution/scopes, middleware enforcement, navigation output, safe display context, and idempotent authorization seeding.
 4. Report submit, report history, dashboard filters, and AI analysis are not connected to services or persistent state.
 5. Report-detail and CRM routes are placeholders.
-6. Authorization, roles, permissions, profile management, password reset, email verification, and 2FA remain absent by design.
+6. Authorization V1 provides the schema and enforcement foundation, but existing users are deliberately not assigned memberships or roles automatically. Data-scope-aware business queries, profile management, password reset, email verification, and 2FA remain absent by design.
 7. Internationalization configuration and available resources are inconsistent, as described above.
 8. Global brand tokens remain pink/magenta while the intended KPS primary color is brown; only sidebar-specific tokens consistently use brown.
 9. The active notification dropdown still contains template-style mock people/content and sample avatars. It remains because it is part of the live header and requires a separate product decision rather than a cleanup deletion.
@@ -493,6 +503,7 @@ The Phase 1 cleanup removed verified-unused demo routes, pages, components, asse
 2. Before API work, define a narrow customer service interface and mock implementation so components do not import CRM mocks directly.
 3. Decide whether the product is Vietnamese-only for now or must restore all four locale dictionaries; then align `i18n/index.ts`, `i18n/languages.ts`, and `LanguageContext.tsx`.
 4. Schedule a separate maintenance task for the Fast Refresh warnings and large chart vendor chunk; do not mix that cleanup into the first CRM feature.
-5. Define the authorization and permission model in a separate approved task before protecting business actions or using real customer data. Do not infer roles, organization, department, or location from Authentication V1.
+5. Before using an existing account with protected routes, create its active default KPS membership and assign at least one role explicitly. Do not auto-assign roles to arbitrary users.
+6. Apply the backend permission middleware and data-scope query constraints as each real business API is introduced; do not rely on the frontend navigation guard.
 
 Do not implement CRM or change the sidebar until a concrete requirement is approved.
