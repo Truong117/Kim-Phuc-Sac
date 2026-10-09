@@ -4,28 +4,44 @@ interface BrandMarkProps {
   compact?: boolean;
   className?: string;
   inverted?: boolean;
+  size?: "default" | "large";
 }
 
 export default function BrandMark({
   compact = false,
   className,
   inverted = false,
+  size = "default",
 }: BrandMarkProps) {
+  const isLarge = size === "large";
+
   return (
-    <div className={cn("flex items-center gap-3", className)}>
+    <div
+      className={cn(
+        "flex items-center",
+        isLarge ? "gap-3 sm:gap-4" : "gap-3",
+        className,
+      )}
+    >
       <img
         src={
           inverted ? "/images/logo/logo trang.png" : "/images/logo/logo mau.png"
         }
         alt="Logo Kim Phục Sắc"
-        className="size-12 shrink-0 object-contain"
+        className={cn(
+          "shrink-0 object-contain",
+          isLarge ? "size-14 sm:size-20" : "size-12",
+        )}
       />
 
       {!compact && (
-        <span className="min-w-0 leading-none">
+        <span className={cn("min-w-0", isLarge ? "leading-tight" : "leading-none")}>
           <span
             className={cn(
-              "block text-base font-bold tracking-wide whitespace-nowrap",
+              "block font-bold whitespace-nowrap",
+              isLarge
+                ? "text-lg tracking-[0.08em] sm:text-2xl"
+                : "text-base tracking-wide",
               inverted ? "text-white" : "text-gray-900 dark:text-white",
             )}
           >
@@ -33,7 +49,10 @@ export default function BrandMark({
           </span>
           <span
             className={cn(
-              "mt-1.5 block text-theme-xs font-medium tracking-[0.18em] uppercase",
+              "block font-medium uppercase",
+              isLarge
+                ? "mt-2 text-sm font-semibold tracking-[0.2em]"
+                : "mt-1.5 text-theme-xs tracking-[0.18em]",
               inverted ? "text-white/75" : "text-gray-500 dark:text-gray-400",
             )}
           >

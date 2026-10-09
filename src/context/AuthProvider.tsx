@@ -1,4 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/context/AuthContext";
+import { subscribeToSessionExpiration } from "@/services/apiClient";
 import { AuthServiceError } from "@/services/authService";
 import * as authService from "@/services/authService";
 import type { AuthUser, LoginCredentials } from "@/types/auth";
@@ -7,6 +8,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 export default function AuthProvider({ children }: React.PropsWithChildren) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+
+  useEffect(
+    () => subscribeToSessionExpiration(() => setCurrentUser(null)),
+    [],
+  );
 
   useEffect(() => {
     let isActive = true;
@@ -39,6 +45,11 @@ export default function AuthProvider({ children }: React.PropsWithChildren) {
     setCurrentUser(user);
   }, []);
 
+  const refreshCurrentUser = useCallback(async () => {
+    const user = await authService.getCurrentUser();
+    setCurrentUser(user);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authService.logout();
@@ -63,8 +74,9 @@ export default function AuthProvider({ children }: React.PropsWithChildren) {
       isInitializing,
       login,
       logout,
+      refreshCurrentUser,
     }),
-    [currentUser, isInitializing, login, logout],
+    [currentUser, isInitializing, login, logout, refreshCurrentUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

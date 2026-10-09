@@ -122,6 +122,7 @@ const navGroups: NavGroup[] = [
         nameKey: "employees",
         icon: <MultiUserIcon fontSize={24} />,
         path: "/employees",
+        matchChildren: true,
       },
       {
         navigationKey: "integrations",

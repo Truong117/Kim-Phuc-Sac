@@ -4,23 +4,35 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\KpsMembershipResolver;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthenticatedSessionController extends Controller
 {
+    public function __construct(private readonly KpsMembershipResolver $memberships) {}
+
     public function store(Request $request): JsonResponse
     {
+        $request->merge([
+            'email' => Str::lower(trim((string) $request->input('email'))),
+        ]);
+
         $credentials = $request->validate([
             'email' => ['required', 'string', 'email'],
             'password' => ['required', 'string'],
         ]);
 
-        if (! Auth::guard('web')->attempt($credentials)) {
+        if (! Auth::guard('web')->attemptWhen(
+            $credentials,
+            fn ($candidate): bool => $candidate instanceof User
+                && $this->memberships->activeMembershipFor($candidate) !== null,
+        )) {
             throw ValidationException::withMessages([
                 'email' => ['Email hoặc mật khẩu không chính xác.'],
             ]);
@@ -65,12 +77,9 @@ class AuthenticatedSessionController extends Controller
      */
     private function userPayload(User $user): array
     {
-        $membership = $user
-            ->organizationMemberships()
-            ->where('is_default', true)
-            ->where('is_active', true)
-            ->whereHas('organization', fn ($query) => $query->where('is_active', true))
-            ->with([
+        $membership = $this->memberships->activeMembershipFor(
+            $user,
+            [
                 'organization:id,name',
                 'department:id,name',
                 'location:id,name',
@@ -79,9 +88,8 @@ class AuthenticatedSessionController extends Controller
                         ->wherePivot('is_primary', true)
                         ->orderBy('roles.id');
                 },
-            ])
-            ->orderBy('id')
-            ->first();
+            ],
+        );
 
         $primaryRole = $membership?->roles->first();
 

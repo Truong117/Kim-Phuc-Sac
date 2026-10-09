@@ -6,6 +6,9 @@ import { useTranslation } from "react-i18next";
 
 const ReactApexChart = lazy(() => import("react-apexcharts"));
 
+const uiFontFamily =
+  '"Be Vietnam Pro", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
 interface WorkCategoryChartProps {
   data: WorkCategoryStat[];
 }
@@ -29,7 +32,7 @@ export default function WorkCategoryChart({ data }: WorkCategoryChartProps) {
   const options: ApexOptions = {
     chart: {
       type: "donut",
-      fontFamily: "Outfit, sans-serif",
+      fontFamily: uiFontFamily,
     },
     colors: categoryColors.map((color) => color.chart),
     labels: data.map((item) => item.category),

@@ -1,26 +1,52 @@
 export type ValidationErrors = Record<string, string[]>;
 
 type ErrorPayload = {
+  message?: unknown;
   errors?: ValidationErrors;
 };
 
-export class AuthServiceError extends Error {
+type SessionExpirationListener = () => void;
+
+const sessionExpirationListeners = new Set<SessionExpirationListener>();
+
+export class ApiServiceError extends Error {
   readonly status: number;
   readonly validationErrors?: ValidationErrors;
 
-  constructor(status: number, validationErrors?: ValidationErrors) {
-    super(`Authentication request failed with status ${status}.`);
-    this.name = "AuthServiceError";
+  constructor(
+    status: number,
+    message?: string,
+    validationErrors?: ValidationErrors,
+  ) {
+    super(message ?? `API request failed with status ${status}.`);
+    this.name = "ApiServiceError";
     this.status = status;
     this.validationErrors = validationErrors;
   }
 }
 
+// Backwards-compatible name for Authentication V1 consumers.
+export { ApiServiceError as AuthServiceError };
+
+export const subscribeToSessionExpiration = (
+  listener: SessionExpirationListener,
+) => {
+  sessionExpirationListeners.add(listener);
+
+  return () => {
+    sessionExpirationListeners.delete(listener);
+  };
+};
+
+const notifySessionExpiration = () => {
+  sessionExpirationListeners.forEach((listener) => listener());
+};
+
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
 const getApiBaseUrl = () => {
   if (!configuredApiBaseUrl) {
-    throw new AuthServiceError(0);
+    throw new ApiServiceError(0);
   }
 
   return configuredApiBaseUrl.replace(/\/+$/, "");
@@ -71,13 +97,25 @@ export const apiRequest = async <T>(
       credentials: "include",
       headers,
     });
-  } catch {
-    throw new AuthServiceError(0);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+
+    throw new ApiServiceError(0);
   }
 
   if (!response.ok) {
     const payload = await parseErrorPayload(response);
-    throw new AuthServiceError(response.status, payload.errors);
+    if ([401, 419].includes(response.status)) {
+      notifySessionExpiration();
+    }
+
+    throw new ApiServiceError(
+      response.status,
+      typeof payload.message === "string" ? payload.message : undefined,
+      payload.errors,
+    );
   }
 
   if (response.status === 204) {

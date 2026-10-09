@@ -120,18 +120,13 @@ export default function Login() {
 
       <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10 dark:bg-gray-950">
         <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-theme-lg sm:p-8 dark:border-gray-800 dark:bg-gray-900">
-          <BrandMark className="justify-center" />
+          <h1 className="sr-only">{t("auth.login.title")}</h1>
+          <BrandMark size="large" className="justify-center" />
+          <p className="mt-5 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+            {t("auth.login.subtitle")}
+          </p>
 
-          <div className="mt-8 text-center">
-            <h1 className="text-title-sm font-semibold text-gray-900 dark:text-white">
-              {t("auth.login.title")}
-            </h1>
-            <p className="mt-2 text-theme-sm text-gray-500 dark:text-gray-400">
-              {t("auth.login.subtitle")}
-            </p>
-          </div>
-
-          <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
+          <form className="mt-7 space-y-5" onSubmit={handleSubmit} noValidate>
             <div>
               <Label htmlFor="email">{t("auth.login.email.label")}</Label>
               <Input
@@ -179,6 +174,7 @@ export default function Login() {
                 }}
                 placeholder={t("auth.login.password.placeholder")}
                 autoComplete="current-password"
+                showPasswordToggle
                 disabled={isSubmitting}
                 error={Boolean(fieldErrors.password)}
                 hint={fieldErrors.password}

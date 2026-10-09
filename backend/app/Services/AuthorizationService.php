@@ -11,6 +11,8 @@ class AuthorizationService
     /** @var array<string, OrganizationMembership|null> */
     private array $resolvedMemberships = [];
 
+    public function __construct(private readonly KpsMembershipResolver $memberships) {}
+
     public function allows(User $user, string $permission): bool
     {
         $membership = $this->membershipFor($user);
@@ -67,13 +69,9 @@ class AuthorizationService
             return $this->resolvedMemberships[$cacheKey];
         }
 
-        return $this->resolvedMemberships[$cacheKey] = $user
-            ->organizationMemberships()
-            ->where('is_default', true)
-            ->where('is_active', true)
-            ->whereHas('organization', fn ($query) => $query->where('is_active', true))
-            ->with('roles.permissions')
-            ->orderBy('id')
-            ->first();
+        return $this->resolvedMemberships[$cacheKey] = $this->memberships->activeMembershipFor(
+            $user,
+            ['roles.permissions'],
+        );
     }
 }

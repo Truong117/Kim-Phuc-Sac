@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\DataScope;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use Closure;
@@ -15,11 +16,26 @@ class EnsureUserHasPermission
     /**
      * @param  Closure(Request): Response  $next
      */
-    public function handle(Request $request, Closure $next, string $permission): Response
-    {
+    public function handle(
+        Request $request,
+        Closure $next,
+        string $permission,
+        string $scopePolicy = 'any',
+    ): Response {
         $user = $request->user();
 
-        if (! $user instanceof User || ! $this->authorization->allows($user, $permission)) {
+        $isAllowed = $user instanceof User
+            && $this->authorization->allows($user, $permission);
+
+        if ($isAllowed && $scopePolicy === 'organization') {
+            $isAllowed = in_array(
+                $this->authorization->scopeFor($user, $permission),
+                [DataScope::ORGANIZATION, DataScope::ALL],
+                true,
+            );
+        }
+
+        if (! $isAllowed) {
             return response()->json([
                 'message' => 'Bạn không có quyền thực hiện thao tác này.',
             ], 403);

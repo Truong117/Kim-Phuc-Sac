@@ -89,16 +89,19 @@ class NavigationTest extends TestCase
             ]);
     }
 
-    public function test_navigation_is_empty_without_an_authorization_context(): void
+    public function test_navigation_rejects_authenticated_user_without_an_active_kps_membership(): void
     {
         $userWithoutMembership = User::factory()->create();
 
         $this
             ->actingAs($userWithoutMembership, 'web')
             ->getJson('/api/navigation')
-            ->assertOk()
-            ->assertExactJson(['items' => []]);
+            ->assertUnauthorized()
+            ->assertExactJson(['message' => 'Unauthenticated.']);
+    }
 
+    public function test_navigation_is_empty_for_an_active_kps_member_without_a_role(): void
+    {
         $userWithoutRole = User::factory()->create();
         $this->createMembership($userWithoutRole);
 
@@ -107,5 +110,41 @@ class NavigationTest extends TestCase
             ->getJson('/api/navigation')
             ->assertOk()
             ->assertExactJson(['items' => []]);
+    }
+
+    public function test_users_view_grants_the_employees_navigation_key(): void
+    {
+        $userWithUsersPermission = User::factory()->create();
+        $usersMembership = $this->createMembership($userWithUsersPermission);
+        $usersRoleId = $this->createRole('USERS_VIEW_ROLE');
+        $usersPermissionId = $this->createPermission('users.view');
+        $this->attachRole($usersMembership['membership_id'], $usersRoleId, isPrimary: true);
+        $this->grantPermission($usersRoleId, $usersPermissionId, DataScope::ORGANIZATION->value);
+
+        $this
+            ->actingAs($userWithUsersPermission, 'web')
+            ->getJson('/api/navigation')
+            ->assertOk()
+            ->assertJsonPath('items', ['employees']);
+    }
+
+    public function test_legacy_employees_view_does_not_grant_the_employees_navigation_key(): void
+    {
+        $userWithLegacyEmployeesPermission = User::factory()->create();
+        $employeesMembership = $this->createMembership($userWithLegacyEmployeesPermission);
+        $employeesRoleId = $this->createRole('EMPLOYEES_VIEW_ONLY_ROLE');
+        $employeesPermissionId = $this->createPermission('employees.view');
+        $this->attachRole($employeesMembership['membership_id'], $employeesRoleId, isPrimary: true);
+        $this->grantPermission(
+            $employeesRoleId,
+            $employeesPermissionId,
+            DataScope::ORGANIZATION->value,
+        );
+
+        $this
+            ->actingAs($userWithLegacyEmployeesPermission, 'web')
+            ->getJson('/api/navigation')
+            ->assertOk()
+            ->assertJsonPath('items', []);
     }
 }
