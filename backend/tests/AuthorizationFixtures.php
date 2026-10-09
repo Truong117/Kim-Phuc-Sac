@@ -19,18 +19,34 @@ trait AuthorizationFixtures
         bool $isDefault = true,
         ?int $departmentId = null,
         ?int $locationId = null,
+        string $organizationCode = 'KPS',
     ): array {
         $sequence = ++$this->authorizationFixtureSequence;
         $now = now();
 
-        $organizationId = DB::table('organizations')->insertGetId([
-            'code' => "TEST-{$user->id}-{$sequence}",
-            'name' => "Test Organization {$sequence}",
-            'type' => 'internal',
-            'is_active' => $organizationIsActive,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        $organizationId = DB::table('organizations')
+            ->where('code', $organizationCode)
+            ->value('id');
+
+        if ($organizationId === null) {
+            $organizationId = DB::table('organizations')->insertGetId([
+                'code' => $organizationCode,
+                'name' => $organizationCode === 'KPS'
+                    ? 'Kim Phục Sắc'
+                    : "Test Organization {$sequence}",
+                'type' => 'internal',
+                'is_active' => $organizationIsActive,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        } else {
+            DB::table('organizations')
+                ->where('id', $organizationId)
+                ->update([
+                    'is_active' => $organizationIsActive,
+                    'updated_at' => $now,
+                ]);
+        }
 
         $membershipId = DB::table('organization_memberships')->insertGetId([
             'user_id' => $user->id,
@@ -53,9 +69,16 @@ trait AuthorizationFixtures
     {
         $sequence = ++$this->authorizationFixtureSequence;
         $now = now();
+        $roleCode = $code ?? "TEST_ROLE_{$sequence}";
+
+        $roleId = DB::table('roles')->where('code', $roleCode)->value('id');
+
+        if ($roleId !== null) {
+            return (int) $roleId;
+        }
 
         return DB::table('roles')->insertGetId([
-            'code' => $code ?? "TEST_ROLE_{$sequence}",
+            'code' => $roleCode,
             'name' => $name ?? "Test Role {$sequence}",
             'description' => null,
             'is_system' => true,
@@ -67,6 +90,12 @@ trait AuthorizationFixtures
     protected function createPermission(string $code): int
     {
         $now = now();
+
+        $permissionId = DB::table('permissions')->where('code', $code)->value('id');
+
+        if ($permissionId !== null) {
+            return (int) $permissionId;
+        }
 
         return DB::table('permissions')->insertGetId([
             'code' => $code,
@@ -81,25 +110,33 @@ trait AuthorizationFixtures
     {
         $now = now();
 
-        DB::table('membership_roles')->insert([
-            'membership_id' => $membershipId,
-            'role_id' => $roleId,
-            'is_primary' => $isPrimary,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('membership_roles')->updateOrInsert(
+            [
+                'membership_id' => $membershipId,
+                'role_id' => $roleId,
+            ],
+            [
+                'is_primary' => $isPrimary,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        );
     }
 
     protected function grantPermission(int $roleId, int $permissionId, ?string $scope): void
     {
         $now = now();
 
-        DB::table('role_permissions')->insert([
-            'role_id' => $roleId,
-            'permission_id' => $permissionId,
-            'data_scope' => $scope,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        DB::table('role_permissions')->updateOrInsert(
+            [
+                'role_id' => $roleId,
+                'permission_id' => $permissionId,
+            ],
+            [
+                'data_scope' => $scope,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+        );
     }
 }

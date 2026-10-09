@@ -19,7 +19,7 @@ class NavigationController extends Controller
         'orders' => 'orders.view',
         'ai.insights' => 'ai.insights.view',
         'ai.assistant' => 'ai.assistant.use',
-        'employees' => 'employees.view',
+        'employees' => 'users.view',
         'integrations' => 'integrations.view',
         'settings' => 'settings.view',
     ];

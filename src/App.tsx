@@ -5,6 +5,9 @@ import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
 import Login from "./pages/Auth/Login";
 import Home from "./pages/Dashboard/Management";
+import EmployeeCreate from "./pages/Employees/EmployeeCreate";
+import EmployeeEdit from "./pages/Employees/EmployeeEdit";
+import EmployeeList from "./pages/Employees/EmployeeList";
 import ModulePlaceholder from "./pages/OtherPage/ModulePlaceholder";
 import NotFound from "./pages/OtherPage/NotFound";
 import NewReport from "./pages/Reports/NewReport";
@@ -89,10 +92,9 @@ export default function App() {
                 />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="employees" />}>
-                <Route
-                  path="/employees"
-                  element={<ModulePlaceholder titleKey="modules.employees" />}
-                />
+                <Route path="/employees" element={<EmployeeList />} />
+                <Route path="/employees/new" element={<EmployeeCreate />} />
+                <Route path="/employees/:id" element={<EmployeeEdit />} />
               </Route>
               <Route
                 element={<AuthorizationRoute navigationKey="integrations" />}

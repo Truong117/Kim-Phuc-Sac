@@ -94,7 +94,7 @@ export default function WorkItemForm({
           <button
             type="button"
             onClick={() => onDelete(item.id)}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-theme-sm font-medium text-error-600 transition-colors hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-theme-sm font-semibold text-error-600 transition-colors hover:bg-error-50 dark:text-error-400 dark:hover:bg-error-500/10"
           >
             <TrashBinIcon className="size-4.5" />
             {t("delete")}

@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Enums\DataScope;
+use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -13,8 +14,8 @@ class AuthorizationSeederTest extends TestCase
 
     public function test_authorization_seed_is_idempotent_and_does_not_invent_people_or_structure(): void
     {
-        $this->seed();
-        $this->seed();
+        $this->seed(AuthorizationSeeder::class);
+        $this->seed(AuthorizationSeeder::class);
 
         $this->assertDatabaseCount('organizations', 1);
         $this->assertDatabaseHas('organizations', [
@@ -36,7 +37,7 @@ class AuthorizationSeederTest extends TestCase
 
     public function test_seeded_roles_have_the_expected_grant_counts_and_representative_scopes(): void
     {
-        $this->seed();
+        $this->seed(AuthorizationSeeder::class);
 
         $expectedGrantCounts = [
             'OWNER' => 38,
@@ -68,6 +69,40 @@ class AuthorizationSeederTest extends TestCase
         $this->assertSeededScope('SALES_STAFF', 'products.view', DataScope::ORGANIZATION);
         $this->assertSeededScope('KPS_SPA_MANAGER', 'spa.appointments.view', DataScope::LOCATION);
         $this->assertSeededScope('KPS_SPA_STAFF', 'spa.appointments.view', DataScope::OWN);
+    }
+
+    public function test_only_owner_and_admin_receive_user_management_permissions(): void
+    {
+        $this->seed(AuthorizationSeeder::class);
+
+        $userPermissions = [
+            'users.view',
+            'users.create',
+            'users.update',
+            'users.disable',
+            'users.assign_role',
+        ];
+
+        foreach (['OWNER', 'ADMIN'] as $roleCode) {
+            $actual = DB::table('role_permissions')
+                ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('roles.code', $roleCode)
+                ->whereIn('permissions.code', $userPermissions)
+                ->where('role_permissions.data_scope', DataScope::ALL->value)
+                ->count();
+
+            $this->assertSame(5, $actual, "{$roleCode} must retain all user-management grants.");
+        }
+
+        $nonPrivilegedGrantCount = DB::table('role_permissions')
+            ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+            ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+            ->whereNotIn('roles.code', ['OWNER', 'ADMIN'])
+            ->whereIn('permissions.code', $userPermissions)
+            ->count();
+
+        $this->assertSame(0, $nonPrivilegedGrantCount);
     }
 
     private function assertSeededScope(string $roleCode, string $permissionCode, ?DataScope $scope): void

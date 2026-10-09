@@ -5,16 +5,18 @@ interface Option {
   label: string;
 }
 
-interface SelectProps {
+interface SelectProps extends Omit<
+  React.SelectHTMLAttributes<HTMLSelectElement>,
+  "defaultValue" | "onChange" | "value"
+> {
   options: Option[];
   placeholder?: string;
   onChange: (value: string) => void;
-  className?: string;
   defaultValue?: string;
   value?: string;
-  id?: string;
-  name?: string;
   allowClear?: boolean;
+  error?: boolean;
+  hint?: string;
 }
 
 const Select: React.FC<SelectProps> = ({
@@ -27,6 +29,10 @@ const Select: React.FC<SelectProps> = ({
   id,
   name,
   allowClear = false,
+  disabled = false,
+  error = false,
+  hint,
+  ...props
 }) => {
   const [internalValue, setInternalValue] = useState<string>(defaultValue);
   const selectedValue = value ?? internalValue;
@@ -44,13 +50,21 @@ const Select: React.FC<SelectProps> = ({
       <select
         id={id}
         name={name}
-        className={`h-11 w-full appearance-none rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pe-11 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800 ${
+        className={`h-11 w-full appearance-none rounded-lg border bg-transparent px-4 py-2.5 pe-11 text-sm shadow-theme-xs placeholder:text-gray-400 focus:ring-3 focus:outline-hidden disabled:cursor-not-allowed disabled:bg-gray-100 disabled:opacity-50 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:disabled:bg-gray-800 ${
+          error
+            ? "border-error-500 focus:border-error-300 focus:ring-error-500/20 dark:border-error-500 dark:focus:border-error-800"
+            : "border-gray-300 focus:border-brand-300 focus:ring-brand-500/10 dark:border-gray-700 dark:focus:border-brand-800"
+        } ${
           selectedValue
             ? "text-gray-800 dark:text-white/90"
             : "text-gray-400 dark:text-gray-400"
         } ${className}`}
         value={selectedValue}
         onChange={handleChange}
+        disabled={disabled}
+        aria-invalid={error || undefined}
+        aria-describedby={hint && id ? `${id}-hint` : undefined}
+        {...props}
       >
         {/* Placeholder option */}
         <option
@@ -87,6 +101,16 @@ const Select: React.FC<SelectProps> = ({
           strokeLinejoin="round"
         />
       </svg>
+      {hint && (
+        <p
+          id={id ? `${id}-hint` : undefined}
+          className={`mt-1.5 text-xs ${
+            error ? "text-error-500" : "text-gray-500 dark:text-gray-400"
+          }`}
+        >
+          {hint}
+        </p>
+      )}
     </div>
   );
 };

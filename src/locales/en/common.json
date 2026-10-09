@@ -2,6 +2,10 @@
   "common": {
     "home": "Tổng quan"
   },
+  "passwordVisibility": {
+    "show": "Hiển thị mật khẩu",
+    "hide": "Ẩn mật khẩu"
+  },
   "sidebar": {
     "groups": {
       "work": "Công việc",
@@ -220,6 +224,170 @@
         "inProgress": "Đang thực hiện",
         "blocked": "Có vấn đề"
       }
+    }
+  },
+  "userManagement": {
+    "list": {
+      "title": "Quản lý nhân viên",
+      "subtitle": "Quản lý tài khoản, phòng ban, chức vụ và quyền truy cập hệ thống KPS",
+      "metaDescription": "Quản lý tài khoản nhân viên trong KPS Internal System",
+      "add": "Thêm nhân viên",
+      "loading": "Đang tải danh sách nhân viên...",
+      "empty": "Chưa có tài khoản nhân viên.",
+      "emptyDescription": "Tạo tài khoản đầu tiên để bắt đầu quản lý người dùng KPS.",
+      "emptyFiltered": "Không tìm thấy nhân viên phù hợp.",
+      "emptyFilteredDescription": "Hãy thử thay đổi bộ lọc hoặc từ khóa tìm kiếm."
+    },
+    "filters": {
+      "title": "Bộ lọc nhân viên",
+      "search": "Tìm kiếm",
+      "searchPlaceholder": "Tìm theo họ tên hoặc email...",
+      "department": "Phòng ban",
+      "allDepartments": "Tất cả phòng ban",
+      "role": "Chức vụ",
+      "allRoles": "Tất cả chức vụ",
+      "status": "Trạng thái",
+      "allStatuses": "Tất cả trạng thái",
+      "loadingOptions": "Đang tải dữ liệu...",
+      "reset": "Xóa bộ lọc",
+      "statusOptions": {
+        "active": "Đang hoạt động",
+        "inactive": "Đã vô hiệu hóa"
+      }
+    },
+    "table": {
+      "title": "Danh sách nhân viên",
+      "description": "Các tài khoản thuộc tổ chức KPS",
+      "name": "Họ tên",
+      "email": "Email",
+      "department": "Phòng ban",
+      "role": "Chức vụ",
+      "status": "Trạng thái",
+      "actions": "Thao tác",
+      "edit": "Chỉnh sửa",
+      "notAssigned": "Chưa phân công"
+    },
+    "pagination": {
+      "summary": "Hiển thị {from} - {to} của {total} nhân viên",
+      "ariaLabel": "Phân trang danh sách nhân viên",
+      "previous": "Trước",
+      "next": "Sau"
+    },
+    "statuses": {
+      "active": "Đang hoạt động",
+      "inactive": "Đã vô hiệu hóa"
+    },
+    "create": {
+      "title": "Thêm nhân viên",
+      "subtitle": "Tạo tài khoản và phân công chức vụ ban đầu trong hệ thống KPS",
+      "metaDescription": "Tạo tài khoản nhân viên trong KPS Internal System",
+      "loading": "Đang tải dữ liệu biểu mẫu...",
+      "success": "Tài khoản nhân viên đã được tạo thành công."
+    },
+    "edit": {
+      "title": "Chỉnh sửa nhân viên",
+      "subtitle": "Cập nhật thông tin tài khoản, chức vụ và trạng thái truy cập",
+      "metaDescription": "Chỉnh sửa tài khoản nhân viên trong KPS Internal System",
+      "loading": "Đang tải thông tin nhân viên...",
+      "profileSaved": "Thông tin nhân viên đã được cập nhật.",
+      "roleSaved": "Chức vụ của nhân viên đã được cập nhật.",
+      "accountActivated": "Tài khoản đã được kích hoạt.",
+      "accountDeactivated": "Tài khoản đã được vô hiệu hóa.",
+      "unsavedChanges": "Vui lòng cập nhật các thay đổi trước khi hoàn tất.",
+      "complete": "Hoàn tất"
+    },
+    "form": {
+      "profileTitle": "Thông tin tài khoản",
+      "profileDescription": "Thông tin nhận diện và đơn vị công tác của nhân viên",
+      "passwordTitle": "Mật khẩu tạm thời",
+      "passwordDescription": "Cung cấp mật khẩu ban đầu từ 8 đến 72 ký tự cho tài khoản mới",
+      "roleTitle": "Chức vụ ban đầu",
+      "roleDescription": "Chọn chức vụ và quyền truy cập phù hợp cho nhân viên",
+      "name": {
+        "label": "Họ tên",
+        "placeholder": "Nhập họ tên nhân viên"
+      },
+      "email": {
+        "label": "Email",
+        "placeholder": "Nhập email công việc"
+      },
+      "department": {
+        "label": "Phòng ban",
+        "placeholder": "Chọn phòng ban"
+      },
+      "location": {
+        "label": "Địa điểm",
+        "placeholder": "Chọn địa điểm",
+        "empty": "Chưa có địa điểm"
+      },
+      "password": {
+        "label": "Mật khẩu tạm thời",
+        "placeholder": "Nhập mật khẩu tạm thời"
+      },
+      "passwordConfirmation": {
+        "label": "Xác nhận mật khẩu",
+        "placeholder": "Nhập lại mật khẩu tạm thời"
+      },
+      "role": {
+        "label": "Chức vụ",
+        "placeholder": "Chọn chức vụ"
+      },
+      "validation": {
+        "nameRequired": "Vui lòng nhập họ tên.",
+        "emailRequired": "Vui lòng nhập email.",
+        "emailInvalid": "Email không đúng định dạng.",
+        "passwordRequired": "Vui lòng nhập mật khẩu tạm thời.",
+        "passwordLength": "Mật khẩu phải có từ 8 đến 72 ký tự.",
+        "passwordConfirmationRequired": "Vui lòng xác nhận mật khẩu.",
+        "passwordMismatch": "Mật khẩu xác nhận không khớp.",
+        "roleRequired": "Vui lòng chọn chức vụ."
+      },
+      "cancel": "Hủy",
+      "create": "Tạo tài khoản",
+      "save": "Cập nhật",
+      "submitting": "Đang lưu..."
+    },
+    "roleManagement": {
+      "title": "Chức vụ",
+      "description": "Chọn chức vụ và quyền truy cập phù hợp cho nhân viên.",
+      "label": "Chức vụ",
+      "placeholder": "Chọn chức vụ",
+      "selfNotice": "Bạn không thể thay đổi chức vụ của chính mình.",
+      "save": "Cập nhật",
+      "submitting": "Đang cập nhật..."
+    },
+    "accessStatus": {
+      "title": "Trạng thái truy cập",
+      "description": "Kiểm soát quyền đăng nhập và sử dụng các API được bảo vệ",
+      "current": "Trạng thái hiện tại",
+      "selfNotice": "Bạn không thể vô hiệu hóa tài khoản của chính mình.",
+      "activate": "Kích hoạt tài khoản",
+      "deactivate": "Vô hiệu hóa tài khoản"
+    },
+    "statusConfirmation": {
+      "activateTitle": "Kích hoạt tài khoản?",
+      "activateDescription": "Tài khoản của {name} sẽ có thể đăng nhập và truy cập hệ thống theo chức vụ được phân công.",
+      "deactivateTitle": "Vô hiệu hóa tài khoản?",
+      "deactivateDescription": "Tài khoản của {name} sẽ không thể đăng nhập hoặc tiếp tục sử dụng các API được bảo vệ.",
+      "cancel": "Hủy",
+      "activate": "Kích hoạt",
+      "deactivate": "Vô hiệu hóa",
+      "submitting": "Đang cập nhật..."
+    },
+    "errors": {
+      "title": "Không thể tải dữ liệu",
+      "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      "forbidden": "Bạn không có quyền thực hiện thao tác này.",
+      "references": "Không thể tải danh sách phòng ban, chức vụ hoặc địa điểm.",
+      "loadList": "Không thể tải danh sách nhân viên. Vui lòng thử lại.",
+      "loadDetail": "Không thể tải thông tin nhân viên. Vui lòng thử lại.",
+      "notFound": "Không tìm thấy tài khoản nhân viên thuộc tổ chức KPS.",
+      "validation": "Dữ liệu chưa hợp lệ. Vui lòng kiểm tra lại.",
+      "save": "Không thể lưu thay đổi. Vui lòng thử lại."
+    },
+    "actions": {
+      "retry": "Thử lại",
+      "backToList": "Quay lại danh sách"
     }
   },
   "header": {

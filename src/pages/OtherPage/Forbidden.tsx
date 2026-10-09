@@ -17,7 +17,7 @@ export default function Forbidden() {
           <p className="text-title-lg font-bold text-kps-primary dark:text-kps-primary">
             {t("error")}
           </p>
-          <h1 className="mt-4 text-title-sm font-semibold text-gray-900 dark:text-white">
+          <h1 className="mt-4 text-title-sm font-bold text-gray-900 dark:text-white">
             {t("title")}
           </h1>
           <p className="mt-3 text-theme-sm text-gray-500 dark:text-gray-400">

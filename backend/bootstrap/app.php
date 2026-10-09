@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureActiveKpsMembership;
 use App\Http\Middleware\EnsureUserHasPermission;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -19,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request): ?string => $request->is('api/*') ? null : route('login'),
         );
         $middleware->alias([
+            'active_kps_membership' => EnsureActiveKpsMembership::class,
             'permission' => EnsureUserHasPermission::class,
         ]);
     })

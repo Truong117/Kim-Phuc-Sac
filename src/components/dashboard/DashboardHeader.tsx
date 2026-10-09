@@ -34,7 +34,7 @@ export default function DashboardHeader({
             type="button"
             aria-pressed={period === item}
             onClick={() => onPeriodChange(item)}
-            className={`rounded-md px-3 py-2 text-theme-sm font-medium transition-colors sm:px-4 ${
+            className={`rounded-md px-3 py-2 text-theme-sm font-semibold transition-colors sm:px-4 ${
               period === item
                 ? "bg-brand-500 text-white"
                 : "text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
