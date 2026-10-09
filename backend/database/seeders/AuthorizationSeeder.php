@@ -251,6 +251,7 @@ class AuthorizationSeeder extends Seeder
                 'orders.view',
                 'orders.manage',
             ], DataScope::TEAM, [
+                'dashboard.view' => DataScope::DEPARTMENT,
                 'reports.view' => DataScope::DEPARTMENT,
                 'reports.comment' => DataScope::DEPARTMENT,
                 'products.view' => DataScope::ORGANIZATION,

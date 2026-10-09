@@ -61,6 +61,37 @@ class AuthorizationService
         return $broadestScope;
     }
 
+    /** @return list<DataScope|null> */
+    public function scopesFor(User $user, string $permission): array
+    {
+        $membership = $this->membershipFor($user);
+
+        if ($membership === null) {
+            return [];
+        }
+
+        $scopes = [];
+        $seen = [];
+
+        foreach ($membership->roles as $role) {
+            foreach ($role->permissions as $grantedPermission) {
+                if ($grantedPermission->code !== $permission) {
+                    continue;
+                }
+
+                $scope = $grantedPermission->pivot?->getAttribute('data_scope');
+                $key = $scope instanceof DataScope ? $scope->value : '__unscoped__';
+
+                if (! isset($seen[$key])) {
+                    $scopes[] = $scope instanceof DataScope ? $scope : null;
+                    $seen[$key] = true;
+                }
+            }
+        }
+
+        return $scopes;
+    }
+
     private function membershipFor(User $user): ?OrganizationMembership
     {
         $cacheKey = (string) $user->getKey();

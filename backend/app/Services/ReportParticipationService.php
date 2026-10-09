@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\OrganizationMembership;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class ReportParticipationService
@@ -29,5 +30,17 @@ class ReportParticipationService
         if (! $this->isParticipant($subject)) {
             throw new AccessDeniedHttpException(self::NOT_PARTICIPANT_MESSAGE);
         }
+    }
+
+    /**
+     * @param  Builder<OrganizationMembership>  $query
+     * @return Builder<OrganizationMembership>
+     */
+    public function applyParticipantScope(Builder $query): Builder
+    {
+        return $query->whereDoesntHave(
+            'roles',
+            fn (Builder $roles): Builder => $roles->where('roles.code', self::EXEMPT_ROLE_CODE),
+        );
     }
 }

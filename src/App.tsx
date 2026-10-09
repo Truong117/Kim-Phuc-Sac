@@ -4,7 +4,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
 import Login from "./pages/Auth/Login";
-import Home from "./pages/Dashboard/Management";
+import Overview from "./pages/Dashboard/Overview";
 import EmployeeCreate from "./pages/Employees/EmployeeCreate";
 import EmployeeEdit from "./pages/Employees/EmployeeEdit";
 import EmployeeList from "./pages/Employees/EmployeeList";
@@ -25,9 +25,9 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             {/* Dashboard Layout */}
             <Route element={<AppLayout />}>
-              <Route index element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<Navigate to="/" replace />} />
               <Route element={<AuthorizationRoute navigationKey="dashboard" />}>
-                <Route path="/dashboard" element={<Home />} />
+                <Route index element={<Overview />} />
               </Route>
 
               {/* KPS Modules */}

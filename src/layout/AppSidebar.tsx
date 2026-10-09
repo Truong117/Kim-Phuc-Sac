@@ -44,7 +44,7 @@ const navGroups: NavGroup[] = [
         navigationKey: "dashboard",
         nameKey: "dashboard",
         icon: <GridIcon fontSize={24} />,
-        path: "/dashboard",
+        path: "/",
       },
     ],
   },
@@ -195,7 +195,7 @@ export default function AppSidebar() {
           !isExpanded && !isHovered && "xl:justify-center",
         )}
       >
-        <Link to="/dashboard" aria-label="KIM PHỤC SẮC Internal System">
+        <Link to="/" aria-label="KIM PHỤC SẮC Internal System">
           <BrandMark compact={!showContent} inverted />
         </Link>
 

@@ -14,7 +14,7 @@
       "system": "Hệ thống"
     },
     "items": {
-      "dashboard": "Dashboard",
+      "dashboard": "Tổng quan",
       "newReport": "Báo cáo công việc",
       "reportHistory": "Lịch sử báo cáo",
       "tasks": "Công việc",
@@ -249,58 +249,121 @@
       "load": "Không thể tải chi tiết báo cáo. Vui lòng thử lại."
     }
   },
-  "managementDashboard": {
-    "title": "Tổng quan công việc",
-    "subtitle": "Theo dõi tình hình công việc và hoạt động nội bộ",
-    "metaDescription": "Tổng quan tình hình công việc trong hệ thống nội bộ Kim Phục Sắc",
-    "periods": {
-      "today": "Hôm nay",
-      "week": "Tuần này",
-      "month": "Tháng này"
+  "overview": {
+    "metaTitle": "Tổng quan",
+    "metaDescription": "Tổng quan hoạt động và báo cáo công việc trong KPS Internal System",
+    "loading": "Đang tải Tổng quan...",
+    "subtitle": "Dữ liệu báo cáo công việc trong ngày hôm nay",
+    "titles": {
+      "organization": "Tổng quan doanh nghiệp",
+      "department": "Tổng quan phòng ban",
+      "departmentWithName": "Tổng quan phòng {name}",
+      "location": "Tổng quan cơ sở",
+      "locationWithName": "Tổng quan cơ sở {name}",
+      "personal": "Tổng quan cá nhân"
     },
-    "stats": {
-      "total": "Tổng công việc hôm nay",
-      "completed": "Đã hoàn thành",
-      "inProgress": "Đang thực hiện",
+    "reporting": {
+      "title": "Tình hình báo cáo hôm nay",
+      "headline": "Đã có báo cáo: {submitted} / {expected}",
+      "expected": "Số người cần báo cáo",
+      "submitted": "Đã có báo cáo",
+      "missing": "Chưa có báo cáo"
+    },
+    "work": {
+      "title": "Tình hình công việc hôm nay",
+      "total": "Tổng công việc",
+      "completed": "Hoàn thành",
+      "in_progress": "Đang thực hiện",
       "blocked": "Có vấn đề"
     },
-    "category": {
-      "title": "Phân loại công việc",
-      "total": "Công việc"
+    "selfReport": {
+      "title": "Báo cáo của tôi",
+      "states": {
+        "not_submitted_open": "Chưa gửi báo cáo",
+        "submitted_editable": "Đã gửi báo cáo",
+        "locked": "Đã chốt",
+        "not_submitted_closed": "Không có báo cáo hôm nay"
+      },
+      "descriptions": {
+        "open": "Có thể gửi hoặc cập nhật báo cáo đến {cutoff}.",
+        "locked": "Báo cáo đã được chốt lúc {cutoff} và không thể chỉnh sửa.",
+        "closed": "Thời gian gửi báo cáo đã kết thúc lúc {cutoff}."
+      },
+      "workSummary": "{total} công việc · {completed} hoàn thành · {inProgress} đang thực hiện · {blocked} có vấn đề",
+      "actions": {
+        "create": "Lập báo cáo",
+        "update": "Xem / cập nhật",
+        "view": "Xem báo cáo"
+      }
     },
-    "chartLoading": "Đang tải biểu đồ...",
-    "employeePerformance": {
-      "title": "Tiến độ công việc",
-      "employee": "Nhân viên",
+    "departmentBreakdown": {
+      "title": "Tổng quan theo phòng ban",
+      "department": "Phòng ban",
+      "reporting": "Báo cáo",
       "total": "Tổng công việc",
       "completed": "Hoàn thành",
       "inProgress": "Đang thực hiện",
       "blocked": "Có vấn đề",
-      "completionRate": "Tỷ lệ hoàn thành"
+      "unassigned": "Chưa phân công",
+      "missing": "{count} chưa có",
+      "empty": "Chưa có phòng ban để hiển thị."
     },
-    "aiSummary": {
-      "title": "AI tổng hợp cho quản lý",
-      "badge": "Phân tích AI",
-      "attention": "Điểm cần chú ý"
+    "peopleProgress": {
+      "title": "Tiến độ công việc",
+      "employee": "Nhân viên",
+      "reportState": "Báo cáo hôm nay",
+      "total": "Tổng công việc",
+      "completed": "Hoàn thành",
+      "inProgress": "Đang thực hiện",
+      "blocked": "Có vấn đề",
+      "action": "Thao tác",
+      "view": "Xem báo cáo",
+      "empty": "Chưa có nhân viên thuộc phạm vi hiện tại.",
+      "states": {
+        "submitted": "Đã có báo cáo",
+        "missing": "Chưa có báo cáo"
+      }
+    },
+    "attention": {
+      "title": "Công việc cần chú ý",
+      "empty": "Không có công việc gặp vấn đề trong hôm nay.",
+      "viewItem": "Xem báo cáo của {employee}"
     },
     "recentReports": {
       "title": "Báo cáo gần đây",
-      "loading": "Đang tải báo cáo gần đây...",
       "empty": "Chưa có báo cáo trong phạm vi được phép xem.",
       "date": "Ngày",
       "employee": "Nhân viên",
-      "department": "Phòng ban",
-      "taskCount": "Số công việc",
+      "department": "Đơn vị",
+      "total": "Số công việc",
       "completed": "Hoàn thành",
       "status": "Trạng thái",
       "action": "Thao tác",
       "viewAll": "Xem tất cả",
-      "viewDetail": "Xem chi tiết",
-      "statuses": {
-        "completed": "Hoàn thành",
-        "inProgress": "Đang thực hiện",
-        "blocked": "Có vấn đề"
-      }
+      "view": "Xem chi tiết"
+    },
+    "personal": {
+      "todayReport": "Báo cáo hôm nay",
+      "myWork": "Công việc của tôi hôm nay",
+      "reportedItems": "Nội dung đã báo cáo"
+    },
+    "feedback": {
+      "title": "Phản hồi mới",
+      "description": "Nhận xét gần đây về báo cáo của bạn",
+      "unread": "{count} chưa đọc",
+      "new": "Chưa đọc",
+      "loading": "Đang tải phản hồi...",
+      "empty": "Bạn chưa có phản hồi mới.",
+      "loadError": "Không thể tải phản hồi.",
+      "actionError": "Không thể mở phản hồi. Vui lòng thử lại.",
+      "retry": "Thử lại"
+    },
+    "errors": {
+      "title": "Không thể tải Tổng quan",
+      "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      "forbidden": "Phạm vi Tổng quan của tài khoản chưa được cấu hình hợp lệ.",
+      "load": "Đã xảy ra lỗi khi tải dữ liệu Tổng quan.",
+      "retry": "Thử lại"
     }
   },
   "userManagement": {

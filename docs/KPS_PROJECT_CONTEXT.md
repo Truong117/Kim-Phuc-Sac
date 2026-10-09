@@ -23,8 +23,8 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/work-report-v1`
-- Work Report V1 builds on the completed Authentication, Authorization, and User Management V1 baseline.
+- Current branch: `feature/dashboard-v1`
+- Dashboard V1 builds on the completed Authentication, Authorization, User Management, and Work Report V1 baseline.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -42,10 +42,9 @@ The package is named `kps-internal-system`, version `2.4.0`, and is private.
 | Routing | `react-router` `^8.3.1`, `BrowserRouter` |
 | Internationalization | i18next `^26.4.0`, react-i18next `^17.0.12` |
 | Metadata | `react-helmet-async` |
-| Charts | ApexCharts / react-apexcharts |
 | Package manager | npm with `package-lock.json` |
 
-Unused template libraries for FullCalendar, Swiper, flatpickr, vector/maps, simplebar, and React DnD were removed during the Phase 1 repository cleanup.
+Unused template libraries for FullCalendar, Swiper, flatpickr, vector/maps, simplebar, React DnD, and ApexCharts were removed after their remaining demo consumers were retired.
 
 The audit ran successfully on Node `v22.23.3` and npm `10.9.9`.
 
@@ -84,16 +83,15 @@ Authentication V1 reuses the default `users` and `sessions` tables. Authorizatio
 - `src/App.tsx` owns all routes.
 - `src/layout/AppLayout.tsx` provides the standard sidebar/header shell and installs `SidebarProvider` plus the authenticated `NotificationProvider` for dashboard routes.
 - KPS domain UI is currently split into focused files under:
-  - `src/pages/Dashboard/Management.tsx`
+  - `src/pages/Dashboard/Overview.tsx`
   - `src/pages/Reports/`
   - `src/components/dashboard/`
   - `src/components/reports/`
   - `src/types/`
   - `src/services/`
-  - `src/mocks/` (dashboard-only prototype data)
 - `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior. Focused auth, navigation, user-management, report, and notification services use it.
-- The Laravel API under `backend/` implements Authentication V1, Authorization V1, User Management V1, and Work Report V1. The daily report, report history/detail/comments, recent reports, and header notifications now consume the Work Report API.
-- Remaining mock data is limited to the management dashboard's prototype KPI/category/AI content; report-domain mocks were removed.
+- The Laravel API under `backend/` implements Authentication V1, Authorization V1, User Management V1, Work Report V1, and Dashboard V1. The overview, daily report, report history/detail/comments, recent reports, and header notifications consume real backend APIs.
+- Dashboard prototype KPI/category/AI mocks and report-domain mocks have been removed.
 
 ### Planned / Business decision
 
@@ -143,7 +141,7 @@ src/
 │   └── LanguageContext.tsx
 ├── pages/
 │   ├── Auth/Login.tsx
-│   ├── Dashboard/Management.tsx
+│   ├── Dashboard/Overview.tsx
 │   ├── Employees/                  # user list/create/edit pages
 │   ├── Reports/NewReport.tsx
 │   ├── Reports/ReportHistory.tsx
@@ -158,8 +156,7 @@ src/
 │   ├── common/
 │   ├── form/
 │   └── ui/
-├── mocks/
-│   └── dashboard.ts                 # remaining dashboard-only prototype data
+├── services/dashboardService.ts    # scoped Dashboard V1 request
 ├── services/apiClient.ts           # shared credentialed fetch client
 ├── services/authService.ts         # Sanctum CSRF/session requests
 ├── services/navigationService.ts   # allowed navigation-key request
@@ -196,8 +193,8 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 
 | Route | Current component | Status |
 | --- | --- | --- |
-| `/` | redirect to `/dashboard` | Implemented |
-| `/dashboard` | `Dashboard/Management` | Phase 1 prototype; recent reports use Work Report API |
+| `/` | `Dashboard/Overview` | Dashboard V1 implemented; canonical Tổng quan route |
+| `/dashboard` | redirect to `/` | Backward-compatible redirect |
 | `/reports/new` | `Reports/NewReport` | Work Report V1 create/edit/locked/exempt states implemented |
 | `/reports` | `Reports/ReportHistory` | Work Report V1 scoped history implemented |
 | `/reports/:id` | `Reports/ReportDetail` | Work Report V1 detail/comments implemented |
@@ -222,7 +219,7 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 
 There are no retained public TailAdmin demo routes. Authentication V1 adds only the KPS login route; registration and account-recovery routes remain absent.
 
-All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication. Most module routes also use a navigation-key guard for authorization UX. `/reports/new` deliberately relies on the safe `GET /api/reports/today` state instead of the navigation guard so an exempt membership following a direct URL sees the non-participant state rather than a false 403 page; its sidebar item is still controlled by backend navigation output. The wildcard KPS 404 route remains outside the protected layout.
+All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication. Most module routes also use a navigation-key guard for authorization UX. `/` is the canonical Tổng quan route and `/dashboard` redirects to it. `/reports/new` deliberately relies on the safe `GET /api/reports/today` state instead of the navigation guard so an exempt membership following a direct URL sees the non-participant state rather than a false 403 page; its sidebar item is still controlled by backend navigation output. The wildcard KPS 404 route remains outside the protected layout.
 
 ### Backend authentication routes
 
@@ -250,6 +247,10 @@ All routes below require `auth:sanctum`, an active KPS membership, and the indic
 | `PATCH /api/users/{id}/status` | `users.disable` | Activate/deactivate KPS membership |
 | `GET /api/reference/{roles,departments,locations}` | `users.view` | Safe `{id, name}` form/filter references |
 
+### Backend Dashboard route
+
+`GET /api/dashboard` requires `auth:sanctum`, an active/default KPS membership, and `dashboard.view`. It returns one safe server-resolved mode (`organization`, `department`, `location`, or `personal`) plus today's scoped reporting/work aggregates, opaque self-report state, and the mode-appropriate sections. It accepts no frontend scope or organization-unit authorization parameters. Full semantics and examples are documented in `docs/DASHBOARD_V1_API.md`.
+
 ### Backend Work Report routes
 
 All routes require `auth:sanctum` and an active KPS membership. Report list/detail/comment access is additionally constrained by backend report scope. Full request/response examples are documented in `docs/WORK_REPORT_V1_API.md`.
@@ -275,7 +276,7 @@ Work Report V1 has a business-level participation rule: an active KPS membership
 **Verified** in `src/layout/AppSidebar.tsx`:
 
 ```text
-Dashboard
+Tổng quan                    -> /
 
 CÔNG VIỆC
 - Báo cáo công việc        -> /reports/new
@@ -297,7 +298,7 @@ HỆ THỐNG
 - Cài đặt                  -> /settings
 ```
 
-Dashboard, the two report pages, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `users.view` to the opaque frontend navigation key `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
+Tổng quan, the two report pages, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `users.view` to the opaque frontend navigation key `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
 
 ## 8. Phase 1 implementation status
 
@@ -306,25 +307,20 @@ Dashboard, the two report pages, and User Management now have KPS-specific funct
 - Kim Phục Sắc logo assets and `BrandMark` are present.
 - The sidebar/header shell is responsive and has dark-mode styles.
 - The sidebar uses brown tokens: `sidebar-accent: #5c3b1b` and `sidebar-selected: #7A5A39`.
-- Most global `brand-*` tokens remain pink/magenta (`brand-500: #b72c54`) and are still used by dashboard filters, AI cards, loading indicators, and links. Therefore the handoff's “primary brown” direction is only partially applied.
+- Most global `brand-*` tokens remain pink/magenta (`brand-500: #b72c54`) for retained shared/template-era components. KPS-specific Dashboard, login, navigation, and report actions use the brown `kps-primary` direction, so any future token normalization should remain a separate reviewed change.
 
-### B. Management dashboard — hybrid prototype
+### B. Tổng quan — Dashboard V1 implemented
 
-Implemented in `src/pages/Dashboard/Management.tsx`, `src/components/dashboard/`, and `src/mocks/dashboard.ts`:
+Implemented by `GET /api/dashboard`, `src/pages/Dashboard/Overview.tsx`, and section-oriented components under `src/components/dashboard/`:
 
-- Title: “Tổng quan công việc”
-- Subtitle: “Theo dõi tình hình công việc và hoạt động nội bộ”
-- Period controls: today, week, month
-- KPI values: total 48, completed 39 (81%), in progress 7 (15%), blocked 2 (4%)
-- Work-category values: 17, 12, 10, 7, 2 (total 48)
-- Work progress table displayed as “Tiến độ công việc”
-- Recent reports table backed by the scoped Work Report API
-- AI management summary, explicitly backed by static mock content
-
-Limitations:
-
-- Changing the period only updates local selected state; it does not change the displayed mock KPI/category dataset or the recent-reports request.
-- The source component/type is still named `EmployeePerformance`, although the visible UI correctly avoids presenting the section as an employee performance judgment.
+- One backend-owned safe mode: organization, department, location, or personal.
+- Organization, current department, current location, and own-data views are resolved without exposing roles, permissions, or data scopes.
+- Today-only reporting population and work aggregates use real Work Report data.
+- Current active/default memberships determine expected/submitted/missing people; daily-report snapshots determine work and report visibility.
+- OWNER is excluded from expected reporters and receives no self-report card; ADMIN and managers remain report participants.
+- Organization department breakdown, manager people progress, blocked attention items, and five recent authorized reports are real scoped data.
+- Personal mode shows today's self-report/work plus existing safe report-comment notifications.
+- The old fake period switcher, AI summary, work-category chart, employee-performance mock, and dashboard mock file were removed.
 
 ### C. Daily work report — Work Report V1 implemented
 
@@ -351,7 +347,7 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 
 | Module | Status |
 | --- | --- |
-| Management dashboard | Hybrid prototype: scoped recent reports are live; KPI/category/AI content remains mock |
+| Tổng quan / Dashboard | V1 implemented: backend-owned modes, today reporting/work aggregates, self-report state, progress, attention, recent reports, and personal feedback |
 | Daily work report | Work Report V1 create/edit/locked/read-only frontend and backend implemented |
 | Report history | Work Report V1 scoped, filtered, paginated frontend and backend implemented |
 | Report detail | Work Report V1 detail, comments, unread state, and notifications implemented |
@@ -365,7 +361,7 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 | Settings | Placeholder only |
 | Authentication | V1 implemented with Sanctum session/cookie auth, login, current user, logout, route protection, and tests |
 | Authorization / RBAC | V1 implemented: organization membership → roles → permissions → optional data scope, backend navigation mapping, permission middleware, route UX guards, and tests |
-| Backend / database | Laravel 12, MySQL/TiDB/SQLite-compatible schema, Authentication V1, Authorization V1, User Management V1, and Work Report V1 implemented; no CRM persistence integration |
+| Backend / database | Laravel 12, MySQL/TiDB/SQLite-compatible schema, Authentication V1, Authorization V1, User Management V1, Work Report V1, and Dashboard V1 implemented; no CRM persistence integration |
 
 User Management V1 seeds the following extensible KPS department master data: `HR_ADMIN` (Hành chính nhân sự), `MARKETING`, `MEDIA`, `ACCOUNTING` (Kế toán), `SALES`, and `IT`. It deliberately creates no locations and stores no fixed headcount values.
 
@@ -381,9 +377,9 @@ User Management V1 seeds the following extensible KPS department master data: `H
   - `LanguageContext` — selected language metadata, HTML `lang`/`dir`, and `localStorage`
   - `SidebarContext` — desktop/mobile sidebar state
 - Feature state uses local React state and memoization.
-- There is no Redux, Zustand, server-state library, or API cache. Authentication, navigation, User Management, Work Reports, and notifications use the shared native-fetch API client with `credentials: "include"`.
+- There is no Redux, Zustand, server-state library, or API cache. Authentication, navigation, User Management, Work Reports, Dashboard, and notifications use the shared native-fetch API client with `credentials: "include"`.
 - The API client exposes HTTP status, safe backend messages, and Laravel validation errors. A global 401/419 signal clears authenticated state; 403 and 409 responses do not end the session.
-- Remaining KPS mock data in `src/mocks/` serves only the non-report management-dashboard prototype.
+- Dashboard and report-domain mock data have been removed; placeholder modules still contain no fabricated business records.
 
 ### Internationalization gap
 
@@ -406,7 +402,7 @@ Do not silently invent the missing translations during an unrelated feature. Con
 - Route pages render `PageMeta` and generally use `PageBreadCrumb`.
 - Reusable form and UI primitives come from `src/components/form/` and `src/components/ui/`.
 - KPS report and dashboard code uses explicit domain types instead of `any`.
-- The work-category chart uses `React.lazy` and `Suspense` for `react-apexcharts`.
+- Dashboard V1 uses server aggregates and compact tables/cards; the obsolete ApexCharts prototype was removed.
 
 ### Working rules for future changes
 
@@ -467,7 +463,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 
 **Current verified state**
 
-- Dashboard AI summary is static mock content.
+- The fake Dashboard AI summary has been removed.
 - No external AI API is called.
 - No AI output is persisted.
 
@@ -489,7 +485,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 - Demo URL from the project handoff: `https://kimphucsac.vercel.app/`.
 - Authentication V1 is implemented with Sanctum first-party SPA authentication, Laravel's `web` session guard, CSRF protection, credentialed CORS, and `auth:sanctum` on protected endpoints.
 - Authorization V1 remains backend-owned. It now resolves the active/default membership specifically for organization code `KPS`, aggregates all assigned roles, and exposes a `permission:<code>` middleware for protected backend actions.
-- Data scopes are represented by the backend-only order `SELF < OWN < TEAM < DEPARTMENT < LOCATION < ORGANIZATION < ALL`; the broadest grant wins when multiple roles provide the same permission.
+- Data scopes are represented by the backend-only order `SELF < OWN < TEAM < DEPARTMENT < LOCATION < ORGANIZATION < ALL`; the broadest grant wins for existing generic authorization consumers. Dashboard V1 deliberately resolves the full scope set instead, because department and location are independent business dimensions; TEAM and conflicting management dimensions fail closed.
 - `/api/auth/me` returns display context only, and `/api/navigation` returns UI navigation keys only. Permission codes, role codes, role-permission assignments, and data scopes are not sent to the frontend.
 - Frontend menu hiding and route guards are UX controls only. Backend permission enforcement remains authoritative.
 - The recommended local convention is frontend `http://localhost:5173` and backend `http://localhost:8000` so stateful cookies remain consistent.
@@ -516,14 +512,14 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 ## 17. Known technical debt and audit findings
 
-1. `npm run build` passes. The main KPS application chunk is roughly 500 KB (roughly 150 KB gzip), while the lazily loaded `react-apexcharts` vendor chunk remains large at about 926 KB (about 265 KB gzip).
+1. `npm run build` passes. The main KPS application chunk remains roughly 500 KB (roughly 150 KB gzip). ApexCharts and its former large vendor chunk were removed with the unused category chart.
 2. `npm run lint` passes with four Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards, Work Report cutoff/scope/transaction/notification behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
-4. Dashboard KPI/category/period data and the dashboard AI summary remain mock; the recent-report table is connected to the Work Report API.
+3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
+4. Dashboard V1 is intentionally today-only. Week/month reporting trends, attendance/leave semantics, tasks, CRM metrics, AI summaries, and work categories remain deferred.
 5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
 6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset/change-password, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
 7. Internationalization configuration and available resources are inconsistent, as described above.
-8. Global brand tokens remain pink/magenta while the intended KPS primary color is brown; only sidebar-specific tokens consistently use brown.
+8. Global legacy `brand-*` tokens remain pink/magenta in retained shared components, while KPS-specific Dashboard, login, navigation, and report actions use the brown `kps-primary` direction.
 9. Header notifications currently cover Work Report comment notifications only; broader notification types require a separate product/API decision.
 10. The active user dropdown uses the authenticated user's name/email and supports logout. Profile, account settings, and support actions remain no-op pending separate features; existing inline SVG icons still require later design review.
 
@@ -534,7 +530,7 @@ The Phase 1 cleanup removed verified-unused demo routes, pages, components, asse
 1. Confirm the first CRM slice and answer only the business questions needed for that slice. A sensible first candidate is a read-only/mock customer list plus customer profile information architecture, but the owner model, customer-type model, status semantics, and permission visibility must be agreed first.
 2. Before API work, define a narrow customer service interface and mock implementation so components do not import CRM mocks directly.
 3. Decide whether the product is Vietnamese-only for now or must restore all four locale dictionaries; then align `i18n/index.ts`, `i18n/languages.ts`, and `LanguageContext.tsx`.
-4. Schedule a separate maintenance task for the Fast Refresh warnings and large chart vendor chunk; do not mix that cleanup into the first CRM feature.
+4. Schedule a separate maintenance task for the four Fast Refresh warnings; do not mix that context-export refactor into the first CRM feature.
 5. Use User Management V1 for new internal accounts. Existing orphan users still require an explicit active/default KPS membership and role before they can log in; do not auto-assign roles to arbitrary users.
 6. Apply the backend permission middleware and data-scope query constraints as each real business API is introduced; do not rely on the frontend navigation guard.
 
