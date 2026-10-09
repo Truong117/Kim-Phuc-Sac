@@ -1,5 +1,3 @@
-import type { WorkStatus } from "@/types/reports";
-
 export type DashboardPeriod = "today" | "week" | "month";
 
 export type DashboardStatKind =
@@ -28,14 +26,4 @@ export interface EmployeePerformance {
 export interface AIManagementInsight {
   summary: string;
   highlights: string[];
-}
-
-export interface RecentReport {
-  id: string;
-  reportDate: string;
-  employeeName: string;
-  department: string;
-  totalTasks: number;
-  completedTasks: number;
-  status: WorkStatus;
 }

@@ -25,8 +25,8 @@ class AuthorizationSeederTest extends TestCase
             'is_active' => true,
         ]);
         $this->assertDatabaseCount('roles', 8);
-        $this->assertDatabaseCount('permissions', 38);
-        $this->assertDatabaseCount('role_permissions', 132);
+        $this->assertDatabaseCount('permissions', 39);
+        $this->assertDatabaseCount('role_permissions', 136);
 
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('departments', 0);
@@ -41,12 +41,12 @@ class AuthorizationSeederTest extends TestCase
 
         $expectedGrantCounts = [
             'OWNER' => 38,
-            'ADMIN' => 38,
-            'DEPARTMENT_MANAGER' => 7,
+            'ADMIN' => 39,
+            'DEPARTMENT_MANAGER' => 8,
             'OFFICE_STAFF' => 4,
-            'SALES_MANAGER' => 14,
+            'SALES_MANAGER' => 15,
             'SALES_STAFF' => 11,
-            'KPS_SPA_MANAGER' => 12,
+            'KPS_SPA_MANAGER' => 13,
             'KPS_SPA_STAFF' => 8,
         ];
 
@@ -61,14 +61,42 @@ class AuthorizationSeederTest extends TestCase
 
         $this->assertSeededScope('OWNER', 'dashboard.view', DataScope::ALL);
         $this->assertSeededScope('OWNER', 'settings.manage', null);
+        $this->assertFalse(DB::table('role_permissions')
+            ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+            ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+            ->where('roles.code', 'OWNER')
+            ->where('permissions.code', 'reports.create')
+            ->exists());
+        $this->assertSeededScope('OWNER', 'reports.view', DataScope::ALL);
+        $this->assertSeededScope('OWNER', 'reports.comment', DataScope::ALL);
+        $this->assertSeededScope('ADMIN', 'reports.create', DataScope::ALL);
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.view', DataScope::DEPARTMENT);
+        $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.comment', DataScope::DEPARTMENT);
         $this->assertSeededScope('OFFICE_STAFF', 'reports.view', DataScope::OWN);
+        $this->assertSeededScope('SALES_MANAGER', 'reports.view', DataScope::DEPARTMENT);
+        $this->assertSeededScope('SALES_MANAGER', 'reports.comment', DataScope::DEPARTMENT);
         $this->assertSeededScope('SALES_MANAGER', 'customers.view', DataScope::TEAM);
         $this->assertSeededScope('SALES_MANAGER', 'products.view', DataScope::ORGANIZATION);
         $this->assertSeededScope('SALES_MANAGER', 'ai.assistant.use', null);
         $this->assertSeededScope('SALES_STAFF', 'products.view', DataScope::ORGANIZATION);
         $this->assertSeededScope('KPS_SPA_MANAGER', 'spa.appointments.view', DataScope::LOCATION);
+        $this->assertSeededScope('KPS_SPA_MANAGER', 'reports.comment', DataScope::LOCATION);
         $this->assertSeededScope('KPS_SPA_STAFF', 'spa.appointments.view', DataScope::OWN);
+
+        foreach (['OFFICE_STAFF', 'SALES_STAFF', 'KPS_SPA_STAFF'] as $roleCode) {
+            $this->assertNull(DB::table('role_permissions')
+                ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('roles.code', $roleCode)
+                ->where('permissions.code', 'reports.comment')
+                ->value('role_permissions.data_scope'));
+            $this->assertFalse(DB::table('role_permissions')
+                ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('roles.code', $roleCode)
+                ->where('permissions.code', 'reports.comment')
+                ->exists());
+        }
     }
 
     public function test_only_owner_and_admin_receive_user_management_permissions(): void

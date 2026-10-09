@@ -9,18 +9,50 @@ import {
   aiManagementInsight,
   dashboardStats,
   employeePerformance,
-  recentReports,
   workCategoryStats,
 } from "@/mocks/dashboard";
+import { getReports } from "@/services/reportService";
 import type { DashboardPeriod } from "@/types/dashboard";
-import { useState } from "react";
+import type { ReportListItem } from "@/types/reports";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export default function Management() {
   const [period, setPeriod] = useState<DashboardPeriod>("today");
+  const [recentReports, setRecentReports] = useState<ReportListItem[]>([]);
+  const [isRecentReportsLoading, setIsRecentReportsLoading] = useState(true);
   const { t } = useTranslation("common", {
     keyPrefix: "managementDashboard",
   });
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    getReports(
+      {
+        fromDate: "",
+        toDate: "",
+        employeeId: "",
+        departmentId: "",
+        locationId: "",
+        status: "",
+        search: "",
+        page: 1,
+        perPage: 5,
+      },
+      abortController.signal,
+    )
+      .then((response) => setRecentReports(response.data))
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setRecentReports([]);
+        }
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) setIsRecentReportsLoading(false);
+      });
+
+    return () => abortController.abort();
+  }, []);
 
   return (
     <>
@@ -44,7 +76,10 @@ export default function Management() {
             <AIManagementSummary {...aiManagementInsight} />
           </div>
           <div className="col-span-12 xl:col-span-7">
-            <RecentReports reports={recentReports} />
+            <RecentReports
+              reports={recentReports}
+              isLoading={isRecentReportsLoading}
+            />
           </div>
         </div>
       </div>

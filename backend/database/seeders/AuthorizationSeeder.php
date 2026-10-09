@@ -15,6 +15,7 @@ class AuthorizationSeeder extends Seeder
         'dashboard.view',
         'reports.create',
         'reports.view',
+        'reports.comment',
         'reports.approve',
         'tasks.view',
         'tasks.manage',
@@ -150,6 +151,7 @@ class AuthorizationSeeder extends Seeder
 
             'reports.create' => ['name' => 'Tạo báo cáo', 'module' => 'reports'],
             'reports.view' => ['name' => 'Xem báo cáo', 'module' => 'reports'],
+            'reports.comment' => ['name' => 'Bình luận báo cáo', 'module' => 'reports'],
             'reports.approve' => ['name' => 'Phê duyệt báo cáo', 'module' => 'reports'],
 
             'tasks.view' => ['name' => 'Xem công việc', 'module' => 'tasks'],
@@ -213,13 +215,17 @@ class AuthorizationSeeder extends Seeder
             $allPermissions[$permissionCode] = DataScope::ALL;
         }
 
+        $ownerPermissions = $allPermissions;
+        unset($ownerPermissions['reports.create']);
+
         return [
-            'OWNER' => $allPermissions,
+            'OWNER' => $ownerPermissions,
             'ADMIN' => $allPermissions,
             'DEPARTMENT_MANAGER' => $this->grants([
                 'dashboard.view',
                 'reports.create',
                 'reports.view',
+                'reports.comment',
                 'reports.approve',
                 'tasks.view',
                 'tasks.manage',
@@ -245,6 +251,8 @@ class AuthorizationSeeder extends Seeder
                 'orders.view',
                 'orders.manage',
             ], DataScope::TEAM, [
+                'reports.view' => DataScope::DEPARTMENT,
+                'reports.comment' => DataScope::DEPARTMENT,
                 'products.view' => DataScope::ORGANIZATION,
                 'ai.assistant.use' => null,
             ]),
@@ -266,6 +274,7 @@ class AuthorizationSeeder extends Seeder
                 'dashboard.view',
                 'reports.create',
                 'reports.view',
+                'reports.comment',
                 'tasks.view',
                 'tasks.manage',
                 'customers.view',

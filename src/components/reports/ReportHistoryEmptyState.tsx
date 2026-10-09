@@ -4,10 +4,12 @@ import { useTranslation } from "react-i18next";
 
 interface ReportHistoryEmptyStateProps {
   onReset: () => void;
+  hasFilters: boolean;
 }
 
 export default function ReportHistoryEmptyState({
   onReset,
+  hasFilters,
 }: ReportHistoryEmptyStateProps) {
   const { t } = useTranslation("common", {
     keyPrefix: "reportHistory.empty",
@@ -19,19 +21,21 @@ export default function ReportHistoryEmptyState({
         <SearchIcon className="size-7" />
       </span>
       <h2 className="mt-5 text-lg font-semibold text-gray-900 dark:text-white">
-        {t("title")}
+        {t(hasFilters ? "title" : "initialTitle")}
       </h2>
       <p className="mx-auto mt-2 max-w-md text-theme-sm text-gray-500 dark:text-gray-400">
-        {t("description")}
+        {t(hasFilters ? "description" : "initialDescription")}
       </p>
-      <Button
-        type="button"
-        size="sm"
-        className="mt-6 !bg-sidebar-accent hover:opacity-90"
-        onClick={onReset}
-      >
-        {t("reset")}
-      </Button>
+      {hasFilters && (
+        <Button
+          type="button"
+          size="sm"
+          className="mt-6 !bg-kps-primary hover:!bg-kps-primary-hover"
+          onClick={onReset}
+        >
+          {t("reset")}
+        </Button>
+      )}
     </section>
   );
 }

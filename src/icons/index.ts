@@ -1,6 +1,7 @@
 export { ReactComponent as AiIcon } from "./ai-icon.svg?react";
 export { ReactComponent as AlertHexaIcon } from "./alert-hexa.svg?react";
 export { ReactComponent as ArrowRightIcon } from "./arrow-right.svg?react";
+export { ReactComponent as BellIcon } from "./bell.svg?react";
 export { ReactComponent as BoxCubeIcon } from "./box-cube.svg?react";
 export { ReactComponent as CalenderIcon } from "./calender-line.svg?react";
 export { ReactComponent as CartIcon } from "./cart-icon.svg?react";
