@@ -2,6 +2,7 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import EmployeeAccessStatus from "@/components/employees/EmployeeAccessStatus";
 import EmployeeForm from "@/components/employees/EmployeeForm";
+import EmployeeReadOnlyDetails from "@/components/employees/EmployeeReadOnlyDetails";
 import EmployeeRoleManagement from "@/components/employees/EmployeeRoleManagement";
 import EmployeeStatusConfirmation from "@/components/employees/EmployeeStatusConfirmation";
 import Button from "@/components/ui/button/Button";
@@ -309,68 +310,90 @@ export default function EmployeeEdit() {
             </div>
           )}
 
-          <EmployeeForm
-            key={`profile-${data.user.id}`}
-            mode="edit"
-            initialValues={{
-              name: data.user.name,
-              email: data.user.email,
-              password: "",
-              passwordConfirmation: "",
-              departmentId: data.user.department
-                ? String(data.user.department.id)
-                : "",
-              locationId: data.user.location
-                ? String(data.user.location.id)
-                : "",
-              roleId: "",
-            }}
-            departments={includeReference(
-              data.references.departments,
-              data.user.department,
-            )}
-            locations={includeReference(
-              data.references.locations,
-              data.user.location,
-            )}
-            roles={data.references.roles}
-            isSubmitting={isProfileSubmitting}
-            serverErrors={profileErrors}
-            requestError={profileError}
-            successMessage={profileSuccess}
-            onInteraction={clearProfileFeedback}
-            onDirtyChange={setIsProfileDirty}
-            onSubmit={handleProfileSubmit}
-          />
+          {data.user.is_protected && (
+            <div
+              role="note"
+              className="rounded-xl border border-warning-200 bg-warning-50 px-5 py-4 dark:border-warning-800 dark:bg-warning-500/10"
+            >
+              <h2 className="text-theme-sm font-semibold text-warning-800 dark:text-warning-300">
+                {t("protectedAccount.title")}
+              </h2>
+              <p className="mt-1 text-theme-sm text-warning-700 dark:text-warning-400">
+                {t("protectedAccount.description")}
+              </p>
+            </div>
+          )}
 
-          <EmployeeRoleManagement
-            key={`role-${data.user.id}`}
-            user={data.user}
-            roles={includeReference(data.references.roles, data.user.role)}
-            isCurrentUser={isCurrentUser}
-            isSubmitting={isRoleSubmitting}
-            error={roleError}
-            success={roleSuccess}
-            onDirtyChange={setIsRoleDirty}
-            onInteraction={() => {
-              setRoleError(null);
-              setRoleSuccess(null);
-            }}
-            onSave={handleRoleSave}
-          />
+          {data.user.actions.can_edit ? (
+            <EmployeeForm
+              key={`profile-${data.user.id}`}
+              mode="edit"
+              initialValues={{
+                name: data.user.name,
+                email: data.user.email,
+                password: "",
+                passwordConfirmation: "",
+                departmentId: data.user.department
+                  ? String(data.user.department.id)
+                  : "",
+                locationId: data.user.location
+                  ? String(data.user.location.id)
+                  : "",
+                roleId: "",
+              }}
+              departments={includeReference(
+                data.references.departments,
+                data.user.department,
+              )}
+              locations={includeReference(
+                data.references.locations,
+                data.user.location,
+              )}
+              roles={data.references.roles}
+              isSubmitting={isProfileSubmitting}
+              serverErrors={profileErrors}
+              requestError={profileError}
+              successMessage={profileSuccess}
+              onInteraction={clearProfileFeedback}
+              onDirtyChange={setIsProfileDirty}
+              onSubmit={handleProfileSubmit}
+            />
+          ) : (
+            <EmployeeReadOnlyDetails user={data.user} />
+          )}
 
-          <EmployeeAccessStatus
-            user={data.user}
-            isCurrentUser={isCurrentUser}
-            isSubmitting={isStatusSubmitting}
-            error={statusError}
-            success={statusSuccess}
-            onChangeStatus={() => {
-              setStatusError(null);
-              setStatusSuccess(null);
-              setIsStatusConfirmationOpen(true);
-            }}
-          />
+          {data.user.actions.can_change_role && (
+            <EmployeeRoleManagement
+              key={`role-${data.user.id}`}
+              user={data.user}
+              roles={includeReference(data.references.roles, data.user.role)}
+              isCurrentUser={isCurrentUser}
+              isSubmitting={isRoleSubmitting}
+              error={roleError}
+              success={roleSuccess}
+              onDirtyChange={setIsRoleDirty}
+              onInteraction={() => {
+                setRoleError(null);
+                setRoleSuccess(null);
+              }}
+              onSave={handleRoleSave}
+            />
+          )}
+
+          {data.user.actions.can_change_status && (
+            <EmployeeAccessStatus
+              user={data.user}
+              isCurrentUser={isCurrentUser}
+              isSubmitting={isStatusSubmitting}
+              error={statusError}
+              success={statusSuccess}
+              onChangeStatus={() => {
+                setStatusError(null);
+                setStatusSuccess(null);
+                setIsStatusConfirmationOpen(true);
+              }}
+            />
+          )}
 
           <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 sm:flex-row sm:items-center dark:border-gray-800 dark:bg-white/3">
             <div className="min-w-0 flex-1">
@@ -393,13 +416,15 @@ export default function EmployeeEdit() {
             </Button>
           </div>
 
-          <EmployeeStatusConfirmation
-            user={data.user}
-            isOpen={isStatusConfirmationOpen}
-            isSubmitting={isStatusSubmitting}
-            onClose={() => setIsStatusConfirmationOpen(false)}
-            onConfirm={() => void handleStatusConfirm()}
-          />
+          {data.user.actions.can_change_status && (
+            <EmployeeStatusConfirmation
+              user={data.user}
+              isOpen={isStatusConfirmationOpen}
+              isSubmitting={isStatusSubmitting}
+              onClose={() => setIsStatusConfirmationOpen(false)}
+              onConfirm={() => void handleStatusConfirm()}
+            />
+          )}
         </div>
       )}
     </>

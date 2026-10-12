@@ -114,6 +114,10 @@ class AuthorizationSeeder extends Seeder
                 'name' => 'Quản trị viên',
                 'description' => 'Toàn quyền quản trị hệ thống.',
             ],
+            'HR_MANAGER' => [
+                'name' => 'Hành chính nhân sự',
+                'description' => 'Quản lý tài khoản nhân viên trong tổ chức KPS.',
+            ],
             'DEPARTMENT_MANAGER' => [
                 'name' => 'Quản lý phòng ban',
                 'description' => 'Quản lý công việc và báo cáo trong phòng ban.',
@@ -221,6 +225,18 @@ class AuthorizationSeeder extends Seeder
         return [
             'OWNER' => $ownerPermissions,
             'ADMIN' => $allPermissions,
+            'HR_MANAGER' => $this->grants([
+                'dashboard.view',
+                'reports.create',
+                'reports.view',
+                'tasks.view',
+            ], DataScope::OWN, [
+                'users.view' => DataScope::ORGANIZATION,
+                'users.create' => DataScope::ORGANIZATION,
+                'users.update' => DataScope::ORGANIZATION,
+                'users.disable' => DataScope::ORGANIZATION,
+                'users.assign_role' => DataScope::ORGANIZATION,
+            ]),
             'DEPARTMENT_MANAGER' => $this->grants([
                 'dashboard.view',
                 'reports.create',

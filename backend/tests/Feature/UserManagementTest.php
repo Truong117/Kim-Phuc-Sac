@@ -770,6 +770,12 @@ class UserManagementTest extends TestCase
                             ->value('name'),
                     ],
                     'is_active' => true,
+                    'is_protected' => false,
+                    'actions' => [
+                        'can_edit' => true,
+                        'can_change_role' => true,
+                        'can_change_status' => true,
+                    ],
                 ],
             ]);
 

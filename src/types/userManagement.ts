@@ -11,6 +11,12 @@ export type ManagedUser = {
   location: ReferenceItem | null;
   role: ReferenceItem | null;
   is_active: boolean;
+  is_protected: boolean;
+  actions: {
+    can_edit: boolean;
+    can_change_role: boolean;
+    can_change_status: boolean;
+  };
 };
 
 export type UserStatusFilter = "" | "active" | "inactive";

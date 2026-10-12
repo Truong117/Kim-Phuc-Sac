@@ -18,7 +18,9 @@ class ManagedUserResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $primaryRole = $this->roles->first();
+        $primaryRole = $this->roles->first(
+            fn ($role): bool => (bool) $role->pivot?->getAttribute('is_primary'),
+        );
 
         return [
             'id' => $this->user->id,
@@ -37,6 +39,12 @@ class ManagedUserResource extends JsonResource
                 'name' => $primaryRole->name,
             ],
             'is_active' => $this->is_active,
+            'is_protected' => (bool) $this->getAttribute('is_protected_for_actor'),
+            'actions' => $this->getAttribute('user_management_actions') ?? [
+                'can_edit' => false,
+                'can_change_role' => false,
+                'can_change_status' => false,
+            ],
         ];
     }
 }
