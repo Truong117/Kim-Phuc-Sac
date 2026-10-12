@@ -1,33 +1,38 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-import enCommon from "../locales/en/common.json";
+import viCommon from "../locales/vi/common.json";
+import {
+  defaultLocale,
+  getLanguage,
+  locales,
+  migrateStoredLocale,
+} from "./languages";
 
 export const resources = {
-  en: {
-    common: enCommon,
+  vi: {
+    common: viCommon,
   },
 } as const;
 
 export const defaultNS = "common";
-export const fallbackLng = "en";
+export const fallbackLng = defaultLocale;
 
-const savedLng =
-  typeof window !== "undefined"
-    ? localStorage.getItem("i18nextLng") || localStorage.getItem("language")
-    : null;
-const browserLng =
-  typeof window !== "undefined"
-    ? navigator.language.split("-")[0]
-    : fallbackLng;
 const initialLng =
-  savedLng ||
-  (resources[browserLng as keyof typeof resources] ? browserLng : fallbackLng);
+  typeof window !== "undefined"
+    ? migrateStoredLocale(localStorage, navigator.language)
+    : fallbackLng;
+
+if (typeof document !== "undefined") {
+  document.documentElement.lang = initialLng;
+  document.documentElement.dir = getLanguage(initialLng).dir;
+}
 
 i18n.use(initReactI18next).init({
   resources,
   lng: initialLng,
   fallbackLng,
+  supportedLngs: [...locales],
   defaultNS,
   ns: ["common"],
   interpolation: {

@@ -24,3 +24,4 @@ export { ReactComponent as TimeIcon } from "./time.svg?react";
 export { ReactComponent as TrashBinIcon } from "./trash.svg?react";
 export { ReactComponent as UsFlagIcon } from "./flag-us.svg?react";
 export { ReactComponent as UserCircleIcon } from "./user-circle.svg?react";
+export { ReactComponent as VnFlagIcon } from "./flag-vn.svg?react";

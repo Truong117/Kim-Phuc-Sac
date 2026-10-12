@@ -1,55 +1,59 @@
-import { UsFlagIcon } from "@/icons";
-import type React from "react";
+import { VnFlagIcon } from "@/icons";
 
-export const locales = ["en"] as const;
-export type Locale = (typeof locales)[number];
-export const defaultLocale: Locale = "en";
-
-export interface Language {
-  id: Locale;
-  name: string;
-  shortName: string;
-  dir: "ltr" | "rtl";
-  FlagIcon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
-  badge?: string;
-}
-
-export const languages: Language[] = [
+export const languages = [
   {
-    id: "en",
-    name: "English",
-    shortName: "English",
+    id: "vi",
+    name: "Tiếng Việt",
+    shortName: "VIE",
     dir: "ltr",
-    FlagIcon: UsFlagIcon,
+    FlagIcon: VnFlagIcon,
   },
-  // {
-  //   id: "ar",
-  //   name: "Arabic (Saudi)",
-  //   shortName: "Arabic",
-  //   dir: "rtl",
-  //   FlagIcon: SaFlagIcon,
-  //   badge: "RTL",
-  // },
-  // {
-  //   id: "es",
-  //   name: "Español",
-  //   shortName: "Español",
-  //   dir: "ltr",
-  //   FlagIcon: EsFlagIcon,
-  // },
-  // {
-  //   id: "de",
-  //   name: "Deutsch",
-  //   shortName: "Deutsch",
-  //   dir: "ltr",
-  //   FlagIcon: DeFlagIcon,
-  // },
-];
+] as const;
 
-export function getLanguage(locale: Locale): Language {
-  return languages.find((l) => l.id === locale) || languages[0];
+export type Language = (typeof languages)[number];
+export type Locale = Language["id"];
+
+export const locales: readonly Locale[] = languages.map(
+  (language) => language.id,
+);
+export const defaultLocale: Locale = languages[0].id;
+
+interface LocaleStorage {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
 }
 
-export function isRtl(locale: Locale): boolean {
-  return getLanguage(locale).dir === "rtl";
+export function isLocale(value: string): value is Locale {
+  return languages.some((language) => language.id === value);
+}
+
+export function normalizeLocale(value?: string | null): Locale {
+  const languageCode = value?.trim().toLowerCase().split(/[-_]/)[0];
+
+  return languageCode && isLocale(languageCode)
+    ? languageCode
+    : defaultLocale;
+}
+
+export function migrateStoredLocale(
+  storage: LocaleStorage,
+  browserLanguage?: string | null,
+): Locale {
+  const savedLanguage =
+    storage.getItem("i18nextLng") || storage.getItem("language");
+  const locale = normalizeLocale(savedLanguage || browserLanguage);
+
+  storage.setItem("i18nextLng", locale);
+  storage.setItem("language", locale);
+
+  return locale;
+}
+
+export function getLanguage(locale: Locale | string): Language {
+  const normalizedLocale = normalizeLocale(locale);
+
+  return (
+    languages.find((language) => language.id === normalizedLocale) ||
+    languages[0]
+  );
 }

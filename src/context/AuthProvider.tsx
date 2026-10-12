@@ -50,6 +50,10 @@ export default function AuthProvider({ children }: React.PropsWithChildren) {
     setCurrentUser(user);
   }, []);
 
+  const updateCurrentUser = useCallback((user: AuthUser) => {
+    setCurrentUser(user);
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await authService.logout();
@@ -75,8 +79,16 @@ export default function AuthProvider({ children }: React.PropsWithChildren) {
       login,
       logout,
       refreshCurrentUser,
+      updateCurrentUser,
     }),
-    [currentUser, isInitializing, login, logout, refreshCurrentUser],
+    [
+      currentUser,
+      isInitializing,
+      login,
+      logout,
+      refreshCurrentUser,
+      updateCurrentUser,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
