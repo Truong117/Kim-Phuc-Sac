@@ -15,15 +15,16 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class UserManagementService
 {
-    private const PRIVILEGED_ROLE_CODES = ['OWNER', 'ADMIN'];
-
-    public function __construct(private readonly KpsMembershipResolver $memberships) {}
+    public function __construct(
+        private readonly KpsMembershipResolver $memberships,
+        private readonly UserManagementGuard $guard,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $filters
      * @return LengthAwarePaginator<OrganizationMembership>
      */
-    public function paginate(array $filters): LengthAwarePaginator
+    public function paginate(User $actor, array $filters): LengthAwarePaginator
     {
         $organization = $this->memberships->activeOrganizationOrFail();
         $query = $this->managedMembershipQuery($organization->id)
@@ -61,27 +62,42 @@ class UserManagementService
             );
         }
 
-        return $query
+        $users = $query
             ->orderBy('users.name')
             ->orderBy('users.id')
             ->paginate((int) ($filters['per_page'] ?? 20));
+
+        $users->getCollection()->each(
+            fn (OrganizationMembership $membership) => $this->decorateForActor($actor, $membership),
+        );
+
+        return $users;
     }
 
-    public function find(int $userId): OrganizationMembership
+    public function find(User $actor, int $userId): OrganizationMembership
     {
         $organization = $this->memberships->activeOrganizationOrFail();
 
-        return $this->findMembershipOrFail($organization->id, $userId);
+        return $this->decorateForActor(
+            $actor,
+            $this->findMembershipOrFail($organization->id, $userId),
+        );
     }
 
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function create(array $attributes): OrganizationMembership
+    public function create(User $actor, array $attributes): OrganizationMembership
     {
-        $organization = $this->memberships->activeOrganizationOrFail();
+        return DB::transaction(function () use ($actor, $attributes): OrganizationMembership {
+            $organization = $this->lockKpsOrganization();
+            $role = Role::query()->findOrFail((int) $attributes['role_id']);
+            $this->guard->assertRoleAssignable($actor, $role);
 
-        return DB::transaction(function () use ($attributes, $organization): OrganizationMembership {
+            if ($this->guard->isHrManagerRole($role)) {
+                $this->guard->assertHrManagerSlotAvailable($organization);
+            }
+
             $user = User::query()->create([
                 'name' => $attributes['name'],
                 'email' => $attributes['email'],
@@ -97,23 +113,23 @@ class UserManagementService
                 'is_active' => true,
             ]);
 
-            $membership->roles()->attach((int) $attributes['role_id'], [
+            $membership->roles()->attach($role->id, [
                 'is_primary' => true,
             ]);
 
-            return $this->loadForResponse($membership);
+            return $this->loadForResponse($actor, $membership);
         });
     }
 
     /**
      * @param  array<string, mixed>  $attributes
      */
-    public function update(int $userId, array $attributes): OrganizationMembership
+    public function update(User $actor, int $userId, array $attributes): OrganizationMembership
     {
-        $organization = $this->memberships->activeOrganizationOrFail();
-
-        return DB::transaction(function () use ($attributes, $organization, $userId): OrganizationMembership {
+        return DB::transaction(function () use ($actor, $attributes, $userId): OrganizationMembership {
+            $organization = $this->lockKpsOrganization();
             $membership = $this->findMembershipOrFail($organization->id, $userId, lock: true);
+            $this->guard->assertTargetMutable($actor, $membership);
 
             $userAttributes = array_intersect_key($attributes, array_flip(['name', 'email']));
 
@@ -130,7 +146,7 @@ class UserManagementService
                 $membership->update($membershipAttributes);
             }
 
-            return $this->loadForResponse($membership);
+            return $this->loadForResponse($actor, $membership);
         });
     }
 
@@ -140,7 +156,9 @@ class UserManagementService
             $organization = $this->lockKpsOrganization();
             $membership = $this->findMembershipOrFail($organization->id, $userId, lock: true);
             $newRole = Role::query()->findOrFail($roleId);
-            $currentRoles = $membership->roles()->orderBy('roles.id')->get();
+            $this->guard->assertTargetMutable($actor, $membership);
+            $this->guard->assertRoleAssignable($actor, $newRole);
+            $currentRoles = $membership->roles;
             $currentPrimaryRole = $currentRoles->first(
                 fn (Role $role): bool => (bool) $role->pivot?->getAttribute('is_primary'),
             );
@@ -148,26 +166,31 @@ class UserManagementService
                 && $currentPrimaryRole?->id === $newRole->id;
 
             if ($isExactNoOp) {
-                return $this->loadForResponse($membership);
+                return $this->loadForResponse($actor, $membership);
             }
 
             if ($actor->id === $membership->user_id) {
                 throw new ConflictHttpException('Bạn không thể thay đổi vai trò của chính mình.');
             }
 
-            $currentlyPrivileged = $currentRoles
-                ->contains(fn (Role $role): bool => in_array($role->code, self::PRIVILEGED_ROLE_CODES, true));
-            $willBePrivileged = in_array($newRole->code, self::PRIVILEGED_ROLE_CODES, true);
+            $currentlyPrivileged = $this->guard->hasAdministrativeRole($membership);
+            $willBePrivileged = $this->guard->isAdministrativeRole($newRole);
 
             if ($membership->is_active && $currentlyPrivileged && ! $willBePrivileged) {
-                $this->ensureOtherActivePrivilegedMembershipExists($organization, $membership);
+                $this->guard->assertOtherActiveAdministratorExists($organization, $membership);
+            }
+
+            if ($membership->is_active
+                && $membership->is_default
+                && $this->guard->isHrManagerRole($newRole)) {
+                $this->guard->assertHrManagerSlotAvailable($organization, $membership);
             }
 
             $membership->roles()->sync([
                 $newRole->id => ['is_primary' => true],
             ]);
 
-            return $this->loadForResponse($membership);
+            return $this->loadForResponse($actor, $membership);
         });
     }
 
@@ -176,22 +199,29 @@ class UserManagementService
         return DB::transaction(function () use ($actor, $isActive, $userId): OrganizationMembership {
             $organization = $this->lockKpsOrganization();
             $membership = $this->findMembershipOrFail($organization->id, $userId, lock: true);
+            $this->guard->assertTargetMutable($actor, $membership);
 
             if (! $isActive && $actor->id === $membership->user_id) {
                 throw new ConflictHttpException('Bạn không thể vô hiệu hóa tài khoản của chính mình.');
             }
 
             if ($membership->is_active === $isActive) {
-                return $this->loadForResponse($membership);
+                return $this->loadForResponse($actor, $membership);
             }
 
-            if (! $isActive && $this->hasPrivilegedRole($membership)) {
-                $this->ensureOtherActivePrivilegedMembershipExists($organization, $membership);
+            if (! $isActive && $this->guard->hasAdministrativeRole($membership)) {
+                $this->guard->assertOtherActiveAdministratorExists($organization, $membership);
+            }
+
+            if ($isActive
+                && $membership->is_default
+                && $this->guard->hasHrManagerRole($membership)) {
+                $this->guard->assertHrManagerSlotAvailable($organization, $membership);
             }
 
             $membership->update(['is_active' => $isActive]);
 
-            return $this->loadForResponse($membership);
+            return $this->loadForResponse($actor, $membership);
         });
     }
 
@@ -205,7 +235,7 @@ class UserManagementService
                 'location:id,name',
                 'roles' => function (BelongsToMany $roles): void {
                     $roles
-                        ->wherePivot('is_primary', true)
+                        ->orderByDesc('membership_roles.is_primary')
                         ->orderBy('roles.id');
                 },
             ]);
@@ -226,18 +256,22 @@ class UserManagementService
         return $query->firstOrFail();
     }
 
-    private function loadForResponse(OrganizationMembership $membership): OrganizationMembership
-    {
-        return $membership->load([
+    private function loadForResponse(
+        User $actor,
+        OrganizationMembership $membership,
+    ): OrganizationMembership {
+        $membership->load([
             'user:id,name,email',
             'department:id,name',
             'location:id,name',
             'roles' => function (BelongsToMany $roles): void {
                 $roles
-                    ->wherePivot('is_primary', true)
+                    ->orderByDesc('membership_roles.is_primary')
                     ->orderBy('roles.id');
             },
         ]);
+
+        return $this->decorateForActor($actor, $membership);
     }
 
     private function lockKpsOrganization(): Organization
@@ -249,31 +283,19 @@ class UserManagementService
             ->firstOrFail();
     }
 
-    private function hasPrivilegedRole(OrganizationMembership $membership): bool
-    {
-        return $membership
-            ->roles()
-            ->whereIn('roles.code', self::PRIVILEGED_ROLE_CODES)
-            ->exists();
-    }
-
-    private function ensureOtherActivePrivilegedMembershipExists(
-        Organization $organization,
+    private function decorateForActor(
+        User $actor,
         OrganizationMembership $membership,
-    ): void {
-        $hasOtherPrivilegedMembership = OrganizationMembership::query()
-            ->where('organization_id', $organization->id)
-            ->whereKeyNot($membership->id)
-            ->where('is_default', true)
-            ->where('is_active', true)
-            ->whereHas('roles', fn (Builder $roles): Builder => $roles
-                ->whereIn('roles.code', self::PRIVILEGED_ROLE_CODES))
-            ->exists();
+    ): OrganizationMembership {
+        $membership->setAttribute(
+            'user_management_actions',
+            $this->guard->actionsFor($actor, $membership),
+        );
+        $membership->setAttribute(
+            'is_protected_for_actor',
+            $this->guard->isProtectedForActor($actor, $membership),
+        );
 
-        if (! $hasOtherPrivilegedMembership) {
-            throw new ConflictHttpException(
-                'Phải duy trì ít nhất một tài khoản OWNER hoặc ADMIN đang hoạt động.',
-            );
-        }
+        return $membership;
     }
 }

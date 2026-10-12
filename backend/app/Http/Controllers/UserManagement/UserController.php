@@ -21,7 +21,9 @@ class UserController extends Controller
 
     public function index(IndexUsersRequest $request): JsonResponse
     {
-        $users = $this->users->paginate($request->validated());
+        /** @var User $actor */
+        $actor = $request->user();
+        $users = $this->users->paginate($actor, $request->validated());
 
         return response()->json([
             'data' => ManagedUserResource::collection($users->getCollection())->resolve($request),
@@ -38,22 +40,29 @@ class UserController extends Controller
 
     public function store(StoreUserRequest $request): JsonResponse
     {
-        $membership = $this->users->create($request->validated());
+        /** @var User $actor */
+        $actor = $request->user();
+        $membership = $this->users->create($actor, $request->validated());
 
         return $this->managedUserResponse($request, $membership, 201);
     }
 
     public function show(Request $request, string $id): JsonResponse
     {
+        /** @var User $actor */
+        $actor = $request->user();
+
         return $this->managedUserResponse(
             $request,
-            $this->users->find((int) $id),
+            $this->users->find($actor, (int) $id),
         );
     }
 
     public function update(UpdateUserRequest $request, string $id): JsonResponse
     {
-        $membership = $this->users->update((int) $id, $request->validated());
+        /** @var User $actor */
+        $actor = $request->user();
+        $membership = $this->users->update($actor, (int) $id, $request->validated());
 
         return $this->managedUserResponse($request, $membership);
     }

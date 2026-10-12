@@ -24,9 +24,9 @@ class AuthorizationSeederTest extends TestCase
             'type' => 'internal',
             'is_active' => true,
         ]);
-        $this->assertDatabaseCount('roles', 8);
+        $this->assertDatabaseCount('roles', 9);
         $this->assertDatabaseCount('permissions', 39);
-        $this->assertDatabaseCount('role_permissions', 136);
+        $this->assertDatabaseCount('role_permissions', 145);
 
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('departments', 0);
@@ -42,6 +42,7 @@ class AuthorizationSeederTest extends TestCase
         $expectedGrantCounts = [
             'OWNER' => 38,
             'ADMIN' => 39,
+            'HR_MANAGER' => 9,
             'DEPARTMENT_MANAGER' => 8,
             'OFFICE_STAFF' => 4,
             'SALES_MANAGER' => 15,
@@ -70,6 +71,14 @@ class AuthorizationSeederTest extends TestCase
         $this->assertSeededScope('OWNER', 'reports.view', DataScope::ALL);
         $this->assertSeededScope('OWNER', 'reports.comment', DataScope::ALL);
         $this->assertSeededScope('ADMIN', 'reports.create', DataScope::ALL);
+        $this->assertSeededScope('HR_MANAGER', 'dashboard.view', DataScope::OWN);
+        $this->assertSeededScope('HR_MANAGER', 'reports.create', DataScope::OWN);
+        $this->assertSeededScope('HR_MANAGER', 'reports.view', DataScope::OWN);
+        $this->assertSeededScope('HR_MANAGER', 'users.view', DataScope::ORGANIZATION);
+        $this->assertSeededScope('HR_MANAGER', 'users.create', DataScope::ORGANIZATION);
+        $this->assertSeededScope('HR_MANAGER', 'users.update', DataScope::ORGANIZATION);
+        $this->assertSeededScope('HR_MANAGER', 'users.disable', DataScope::ORGANIZATION);
+        $this->assertSeededScope('HR_MANAGER', 'users.assign_role', DataScope::ORGANIZATION);
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.comment', DataScope::DEPARTMENT);
         $this->assertSeededScope('OFFICE_STAFF', 'reports.view', DataScope::OWN);
@@ -100,7 +109,7 @@ class AuthorizationSeederTest extends TestCase
         }
     }
 
-    public function test_only_owner_and_admin_receive_user_management_permissions(): void
+    public function test_owner_admin_and_hr_manager_receive_user_management_permissions(): void
     {
         $this->seed(AuthorizationSeeder::class);
 
@@ -124,10 +133,20 @@ class AuthorizationSeederTest extends TestCase
             $this->assertSame(5, $actual, "{$roleCode} must retain all user-management grants.");
         }
 
+        $hrManagerGrantCount = DB::table('role_permissions')
+            ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+            ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+            ->where('roles.code', 'HR_MANAGER')
+            ->whereIn('permissions.code', $userPermissions)
+            ->where('role_permissions.data_scope', DataScope::ORGANIZATION->value)
+            ->count();
+
+        $this->assertSame(5, $hrManagerGrantCount);
+
         $nonPrivilegedGrantCount = DB::table('role_permissions')
             ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
             ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
-            ->whereNotIn('roles.code', ['OWNER', 'ADMIN'])
+            ->whereNotIn('roles.code', ['OWNER', 'ADMIN', 'HR_MANAGER'])
             ->whereIn('permissions.code', $userPermissions)
             ->count();
 

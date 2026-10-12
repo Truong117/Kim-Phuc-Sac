@@ -1,6 +1,6 @@
 # KPS Internal System — Project Context
 
-Last repository audit: 2026-10-09 (Asia/Saigon)
+Last repository audit: 2026-10-12 (Asia/Saigon)
 
 This document is the handoff baseline for future work. It distinguishes:
 
@@ -23,8 +23,8 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/dashboard-v1`
-- Dashboard V1 builds on the completed Authentication, Authorization, User Management, and Work Report V1 baseline.
+- Current branch: `feature/hr-user-management`
+- HR User Management authorization builds on the completed Authentication, Authorization, User Management, Work Report, and Dashboard V1 baseline.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -343,6 +343,16 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 - The header dropdown uses safe notification payloads, shows unread state, supports mark-one/mark-all, refreshes on open/focus/visibility, and polls every two minutes only while the document is visible.
 - Report detail handles scoped `403`/`404`, network, and general failures without attempting to infer backend permissions.
 
+### E. HR User Management authorization — implemented
+
+- `HR_MANAGER` is the dedicated “Hành chính nhân sự” role. The `HR_ADMIN` department remains organization structure only and never grants authority by itself.
+- HR_MANAGER receives organization-scoped User Management permissions plus personal Dashboard, own Work Report, and normal employee capabilities.
+- HR may view every KPS employee account, but OWNER/ADMIN memberships are read-only for HR even when those roles are secondary roles.
+- OWNER, ADMIN, and HR_MANAGER are privileged assignment roles. Only OWNER/ADMIN may assign them; backend enforcement remains authoritative even for crafted requests.
+- KPS permits at most one active/default HR_MANAGER membership. Create, role-change, and reactivation flows enforce the rule while holding the KPS organization lock.
+- User payloads expose only `is_protected` and opaque `actions`; they do not expose permission codes, data scopes, role codes, or policy reasons.
+- The employee list marks protected accounts, and employee detail becomes read-only when backend actions disallow mutation.
+
 ## 9. Module status
 
 | Module | Status |
@@ -356,14 +366,14 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 | Products | Placeholder only |
 | Orders | Placeholder only |
 | AI insights / assistant | Placeholders only |
-| Employees / User Management | V1 implemented: list/search/filter/pagination, create, edit, primary-role replacement, and membership activation/deactivation |
+| Employees / User Management | V1 plus HR authorization: scoped HR CRUD for normal employees, protected OWNER/ADMIN targets, safe role references/actions, and one active HR_MANAGER holder |
 | Integrations / Pancake | Placeholder only |
 | Settings | Placeholder only |
 | Authentication | V1 implemented with Sanctum session/cookie auth, login, current user, logout, route protection, and tests |
 | Authorization / RBAC | V1 implemented: organization membership → roles → permissions → optional data scope, backend navigation mapping, permission middleware, route UX guards, and tests |
 | Backend / database | Laravel 12, MySQL/TiDB/SQLite-compatible schema, Authentication V1, Authorization V1, User Management V1, Work Report V1, and Dashboard V1 implemented; no CRM persistence integration |
 
-User Management V1 seeds the following extensible KPS department master data: `HR_ADMIN` (Hành chính nhân sự), `MARKETING`, `MEDIA`, `ACCOUNTING` (Kế toán), `SALES`, and `IT`. It deliberately creates no locations and stores no fixed headcount values.
+User Management V1 seeds the following extensible KPS department master data: `HR_ADMIN` (Hành chính nhân sự), `MARKETING`, `MEDIA`, `ACCOUNTING` (Kế toán), `SALES`, and `IT`. It deliberately creates no locations and stores no fixed headcount values. `HR_ADMIN` is not an authorization source; HR authority comes only from the separately assigned `HR_MANAGER` role.
 
 ## 10. State and data management
 
@@ -488,6 +498,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 - Data scopes are represented by the backend-only order `SELF < OWN < TEAM < DEPARTMENT < LOCATION < ORGANIZATION < ALL`; the broadest grant wins for existing generic authorization consumers. Dashboard V1 deliberately resolves the full scope set instead, because department and location are independent business dimensions; TEAM and conflicting management dimensions fail closed.
 - `/api/auth/me` returns display context only, and `/api/navigation` returns UI navigation keys only. Permission codes, role codes, role-permission assignments, and data scopes are not sent to the frontend.
 - Frontend menu hiding and route guards are UX controls only. Backend permission enforcement remains authoritative.
+- HR User Management uses organization-scoped `users.*` grants, centralized protected-target/privileged-role rules, and transaction-level organization locking for the single active HR_MANAGER constraint.
 - The recommended local convention is frontend `http://localhost:5173` and backend `http://localhost:8000` so stateful cookies remain consistent.
 - There is no public registration, bearer-token/JWT flow, password recovery, self-service profile page, or authorization-matrix UI. Admin-managed account profile fields are available through User Management V1.
 - `GET /api/health` remains public.
@@ -514,7 +525,7 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 1. `npm run build` passes. The main KPS application chunk remains roughly 500 KB (roughly 150 KB gzip). ApexCharts and its former large vendor chunk were removed with the unused category chart.
 2. `npm run lint` passes with four Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
+3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
 4. Dashboard V1 is intentionally today-only. Week/month reporting trends, attendance/leave semantics, tasks, CRM metrics, AI summaries, and work categories remain deferred.
 5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
 6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset/change-password, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.

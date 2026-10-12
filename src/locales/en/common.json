@@ -405,6 +405,8 @@
       "status": "Trạng thái",
       "actions": "Thao tác",
       "edit": "Chỉnh sửa",
+      "view": "Xem",
+      "protected": "Được bảo vệ",
       "notAssigned": "Chưa phân công"
     },
     "pagination": {
@@ -435,6 +437,21 @@
       "accountDeactivated": "Tài khoản đã được vô hiệu hóa.",
       "unsavedChanges": "Vui lòng cập nhật các thay đổi trước khi hoàn tất.",
       "complete": "Hoàn tất"
+    },
+    "protectedAccount": {
+      "title": "Tài khoản quản trị cấp cao",
+      "description": "Bạn chỉ có quyền xem thông tin tài khoản này."
+    },
+    "readOnly": {
+      "title": "Thông tin tài khoản",
+      "description": "Thông tin tài khoản và đơn vị công tác của nhân viên",
+      "name": "Họ tên",
+      "email": "Email",
+      "department": "Phòng ban",
+      "location": "Địa điểm",
+      "role": "Chức vụ",
+      "status": "Trạng thái truy cập",
+      "notAssigned": "Chưa phân công"
     },
     "form": {
       "profileTitle": "Thông tin tài khoản",

@@ -8,15 +8,20 @@ use App\Models\Department;
 use App\Models\Location;
 use App\Models\OrganizationMembership;
 use App\Models\Role;
+use App\Models\User;
+use App\Services\UserManagementGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class ReferenceController extends Controller
 {
-    public function roles(): JsonResponse
+    public function roles(Request $request, UserManagementGuard $guard): JsonResponse
     {
+        /** @var User $actor */
+        $actor = $request->user();
+
         return response()->json([
-            'data' => Role::query()
+            'data' => $guard->applyAssignableRoleScope(Role::query(), $actor)
                 ->orderBy('name')
                 ->orderBy('id')
                 ->get(['id', 'name']),

@@ -5,6 +5,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Badge from "@/components/ui/badge/Badge";
 import type { ManagedUser } from "@/types/userManagement";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
@@ -55,7 +56,14 @@ export default function EmployeeTable({ users }: EmployeeTableProps) {
                 className="transition-colors hover:bg-gray-50 dark:hover:bg-white/2"
               >
                 <TableCell className="px-4 py-4 text-theme-sm font-medium whitespace-nowrap text-gray-800 dark:text-white/90">
-                  {user.name}
+                  <div className="flex items-center gap-2">
+                    <span>{user.name}</span>
+                    {user.is_protected && (
+                      <Badge size="sm" color="light">
+                        {t("protected")}
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="px-4 py-4 text-theme-sm whitespace-nowrap text-gray-600 dark:text-gray-300">
                   {user.email}
@@ -74,7 +82,7 @@ export default function EmployeeTable({ users }: EmployeeTableProps) {
                     to={`/employees/${user.id}`}
                     className="rounded text-theme-sm font-medium text-sidebar-accent transition-opacity hover:opacity-75 focus-visible:ring-2 focus-visible:ring-kps-primary/40 focus-visible:outline-none dark:text-sidebar-selected"
                   >
-                    {t("edit")}
+                    {t(user.is_protected ? "view" : "edit")}
                   </Link>
                 </TableCell>
               </TableRow>
