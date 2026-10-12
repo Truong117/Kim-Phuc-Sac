@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NavigationController;
@@ -32,6 +33,11 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () {
+    Route::prefix('account')->group(function () {
+        Route::patch('/profile', [AccountController::class, 'updateProfile']);
+        Route::patch('/password', [AccountController::class, 'updatePassword']);
+    });
+
     Route::get('/navigation', NavigationController::class);
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view');

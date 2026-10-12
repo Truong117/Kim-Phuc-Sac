@@ -23,8 +23,8 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/hr-user-management`
-- HR User Management authorization builds on the completed Authentication, Authorization, User Management, Work Report, and Dashboard V1 baseline.
+- Current branch: `feature/profile-account-settings`
+- Profile V1 builds on the completed Authentication, Authorization, User Management, Work Report, Dashboard, and HR User Management baseline.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -72,7 +72,7 @@ The Laravel API foundation lives in `backend/` and is intentionally independent 
 | Application/session database | MySQL `8.4.11` locally; SQLite in-memory for tests |
 | Automated tests | PHPUnit; SQLite in-memory test configuration |
 
-Authentication V1 reuses the default `users` and `sessions` tables. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. No CRM persistence has been implemented.
+Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 reuses the existing user identity fields and does not add profile-media schema. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. No CRM persistence has been implemented.
 
 ## 4. Current application architecture
 
@@ -143,6 +143,8 @@ src/
 │   ├── Auth/Login.tsx
 │   ├── Dashboard/Overview.tsx
 │   ├── Employees/                  # user list/create/edit pages
+│   ├── Profile/Profile.tsx          # authenticated self-service profile
+│   ├── Account/Account.tsx          # authenticated account security settings
 │   ├── Reports/NewReport.tsx
 │   ├── Reports/ReportHistory.tsx
 │   ├── Reports/ReportDetail.tsx
@@ -152,6 +154,8 @@ src/
 │   ├── auth/
 │   ├── dashboard/
 │   ├── employees/                  # User Management V1 components
+│   ├── profile/                    # personal and work information
+│   ├── account/                    # read-only account summary and password change
 │   ├── reports/
 │   ├── common/
 │   ├── form/
@@ -163,6 +167,7 @@ src/
 ├── services/userService.ts         # User Management API requests
 ├── services/reportService.ts       # Work Report API requests
 ├── services/notificationService.ts # notification API requests
+├── services/accountService.ts      # self-service profile/password requests
 ├── hooks/useAuth.ts                # authenticated-user context hook
 ├── hooks/useAuthorization.ts       # navigation-key UX authorization hook
 ├── hooks/useNotifications.ts       # authenticated notification context hook
@@ -176,7 +181,7 @@ src/
 ├── i18n/
 │   ├── index.ts
 │   └── languages.ts
-└── locales/en/common.json
+└── locales/vi/common.json
 ```
 
 The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, profile, forms, tables, UI elements, ecommerce, and standalone chart demos. Reusable primitives still consumed by KPS pages were deliberately retained.
@@ -208,6 +213,8 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 | `/employees` | `Employees/EmployeeList` | User Management V1 list implemented |
 | `/employees/new` | `Employees/EmployeeCreate` | User Management V1 create form implemented |
 | `/employees/:id` | `Employees/EmployeeEdit` | Profile, role, and access-status management implemented |
+| `/profile` | `Profile/Profile` | Profile V1 self-service name and read-only work context |
+| `/account` | `Account/Account` | Read-only login summary and self-service password change |
 | `/integrations` | `ModulePlaceholder` | Placeholder only |
 | `/settings` | `ModulePlaceholder` | Placeholder only |
 
@@ -219,7 +226,7 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 
 There are no retained public TailAdmin demo routes. Authentication V1 adds only the KPS login route; registration and account-recovery routes remain absent.
 
-All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication. Most module routes also use a navigation-key guard for authorization UX. `/` is the canonical Tổng quan route and `/dashboard` redirects to it. `/reports/new` deliberately relies on the safe `GET /api/reports/today` state instead of the navigation guard so an exempt membership following a direct URL sees the non-participant state rather than a false 403 page; its sidebar item is still controlled by backend navigation output. The wildcard KPS 404 route remains outside the protected layout.
+All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication. Most module routes also use a navigation-key guard for authorization UX. `/profile` and `/account` are authenticated self-service routes and deliberately require no role/navigation permission. `/` is the canonical Tổng quan route and `/dashboard` redirects to it. `/reports/new` deliberately relies on the safe `GET /api/reports/today` state instead of the navigation guard so an exempt membership following a direct URL sees the non-participant state rather than a false 403 page; its sidebar item is still controlled by backend navigation output. The wildcard KPS 404 route remains outside the protected layout.
 
 ### Backend authentication routes
 
@@ -232,6 +239,17 @@ All `AppLayout` routes are wrapped by `ProtectedRoute` for authentication. Most 
 | `GET /api/navigation` | `auth:sanctum`, active KPS membership | Return only the allowed frontend navigation keys |
 
 Login now requires an active, default KPS membership in the active KPS organization in addition to valid credentials. Protected application requests re-check that membership; a session whose membership becomes inactive receives JSON `401`, is logged out, and the frontend returns to `/login`. Logout intentionally remains available with `auth:sanctum` alone.
+
+### Backend Profile V1 routes
+
+All account routes require `auth:sanctum` and an active KPS membership. They always operate on the authenticated user and accept no target user ID.
+
+| Route | Purpose |
+| --- | --- |
+| `PATCH /api/account/profile` | Update only the authenticated user's display name |
+| `PATCH /api/account/password` | Verify the current password and replace it with an 8–72 character password |
+
+The shared authenticated-user payload used by login, `/api/auth/me`, and account mutations exposes only safe identity and organization display fields. Ảnh đại diện được hoãn sang phiên bản sau; no avatar storage provider or profile-media schema is currently required.
 
 ### Backend User Management routes
 
@@ -391,16 +409,14 @@ User Management V1 seeds the following extensible KPS department master data: `H
 - The API client exposes HTTP status, safe backend messages, and Laravel validation errors. A global 401/419 signal clears authenticated state; 403 and 409 responses do not end the session.
 - Dashboard and report-domain mock data have been removed; placeholder modules still contain no fabricated business records.
 
-### Internationalization gap
+### Internationalization
 
-- The only loaded i18next resource is `src/locales/en/common.json`.
-- That `en` file now contains only translation keys used by the KPS UI; most visible values are Vietnamese pending a localization decision.
-- `src/i18n/languages.ts` exposes only `en` in the visible language selector.
-- `LanguageContext.tsx` separately declares `en`, `ar`, `es`, and `de`, but translation dictionaries for `ar`, `es`, and `de` do not exist.
-- The current repository instructions expect four locale dictionaries and RTL support, but the implementation does not yet satisfy that contract.
-- Language definitions are duplicated between `src/i18n/languages.ts` and `src/context/LanguageContext.tsx` and can drift.
+- The application currently supports Vietnamese only, using canonical locale `vi` and `src/locales/vi/common.json`.
+- `src/i18n/languages.ts` is the authoritative supported-language configuration and exposes `Tiếng Việt`, `VIE`, LTR direction, and the local Vietnam flag icon.
+- i18next defaults and falls back to `vi`; `LanguageContext` consumes the same language configuration and synchronizes HTML `lang`/`dir` plus both persisted language keys.
+- Legacy or unsupported stored locale values, including `en`, are normalized to `vi` during initialization.
 
-Do not silently invent the missing translations during an unrelated feature. Confirm the localization strategy first.
+Do not add another locale or translation resource without a localization decision.
 
 ## 11. UI and coding conventions
 
@@ -500,7 +516,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 - Frontend menu hiding and route guards are UX controls only. Backend permission enforcement remains authoritative.
 - HR User Management uses organization-scoped `users.*` grants, centralized protected-target/privileged-role rules, and transaction-level organization locking for the single active HR_MANAGER constraint.
 - The recommended local convention is frontend `http://localhost:5173` and backend `http://localhost:8000` so stateful cookies remain consistent.
-- There is no public registration, bearer-token/JWT flow, password recovery, self-service profile page, or authorization-matrix UI. Admin-managed account profile fields are available through User Management V1.
+- There is no public registration, bearer-token/JWT flow, password recovery, or authorization-matrix UI. Profile V1 provides authenticated self-service name/password management while organization fields and email remain administrator/HR controlled.
 - `GET /api/health` remains public.
 
 ### Planned / Business decision
@@ -524,15 +540,15 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 ## 17. Known technical debt and audit findings
 
 1. `npm run build` passes. The main KPS application chunk remains roughly 500 KB (roughly 150 KB gzip). ApexCharts and its former large vendor chunk were removed with the unused category chart.
-2. `npm run lint` passes with four Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. The frontend has no automated test suite. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
+2. `npm run lint` passes with three Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
+3. The frontend has lightweight Node contract tests for navigation, Profile/Account route separation, and locale migration. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, Profile V1, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
 4. Dashboard V1 is intentionally today-only. Week/month reporting trends, attendance/leave semantics, tasks, CRM metrics, AI summaries, and work categories remain deferred.
 5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
-6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset/change-password, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
-7. Internationalization configuration and available resources are inconsistent, as described above.
+6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
+7. Vietnamese is the only supported locale; adding other languages remains a separate product/localization decision.
 8. Global legacy `brand-*` tokens remain pink/magenta in retained shared components, while KPS-specific Dashboard, login, navigation, and report actions use the brown `kps-primary` direction.
 9. Header notifications currently cover Work Report comment notifications only; broader notification types require a separate product/API decision.
-10. The active user dropdown uses the authenticated user's name/email and supports logout. Profile, account settings, and support actions remain no-op pending separate features; existing inline SVG icons still require later design review.
+10. The active user dropdown uses the authenticated user's name/email with an initials indicator, links to Profile and Account Settings, and supports logout. The support action remains a no-op; existing inline SVG icons still require later design review.
 
 The Phase 1 cleanup removed verified-unused demo routes, pages, components, assets, styles, translations, and dependencies without changing KPS business behavior.
 
@@ -540,7 +556,7 @@ The Phase 1 cleanup removed verified-unused demo routes, pages, components, asse
 
 1. Confirm the first CRM slice and answer only the business questions needed for that slice. A sensible first candidate is a read-only/mock customer list plus customer profile information architecture, but the owner model, customer-type model, status semantics, and permission visibility must be agreed first.
 2. Before API work, define a narrow customer service interface and mock implementation so components do not import CRM mocks directly.
-3. Decide whether the product is Vietnamese-only for now or must restore all four locale dictionaries; then align `i18n/index.ts`, `i18n/languages.ts`, and `LanguageContext.tsx`.
+3. Keep Vietnamese as the sole locale until a separate product decision approves additional translation resources.
 4. Schedule a separate maintenance task for the four Fast Refresh warnings; do not mix that context-export refactor into the first CRM feature.
 5. Use User Management V1 for new internal accounts. Existing orphan users still require an explicit active/default KPS membership and role before they can log in; do not auto-assign roles to arbitrary users.
 6. Apply the backend permission middleware and data-scope query constraints as each real business API is introduced; do not rely on the frontend navigation guard.

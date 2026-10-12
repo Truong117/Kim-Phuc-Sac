@@ -604,6 +604,61 @@
       "message": "Bạn không có quyền truy cập trang này. Vui lòng liên hệ quản trị viên nếu bạn cần được cấp quyền."
     }
   },
+  "profile": {
+    "metaTitle": "Hồ sơ cá nhân | KIM PHỤC SẮC",
+    "metaDescription": "Quản lý hồ sơ cá nhân trong KPS Internal System",
+    "title": "Hồ sơ cá nhân",
+    "subtitle": "Cập nhật thông tin hiển thị của bạn",
+    "personal": {
+      "title": "Thông tin cá nhân",
+      "description": "Bạn có thể thay đổi tên hiển thị; email do quản trị viên hoặc HR quản lý",
+      "name": "Họ và tên",
+      "email": "Email",
+      "emailNotice": "Liên hệ quản trị viên hoặc HR nếu cần thay đổi email.",
+      "save": "Lưu thay đổi",
+      "saving": "Đang lưu...",
+      "success": "Họ và tên đã được cập nhật.",
+      "nameRequired": "Vui lòng nhập họ và tên.",
+      "saveError": "Không thể cập nhật thông tin cá nhân. Vui lòng thử lại.",
+      "networkError": "Không thể kết nối tới máy chủ. Vui lòng thử lại."
+    },
+    "work": {
+      "title": "Thông tin công việc",
+      "description": "Thông tin tổ chức chỉ được cập nhật bởi quản trị viên hoặc HR",
+      "organization": "Tổ chức",
+      "role": "Chức vụ",
+      "department": "Phòng ban",
+      "location": "Địa điểm",
+      "notAssigned": "Chưa phân công"
+    }
+  },
+  "account": {
+    "metaTitle": "Cài đặt tài khoản | KIM PHỤC SẮC",
+    "metaDescription": "Quản lý thông tin đăng nhập và bảo mật tài khoản KPS",
+    "title": "Cài đặt tài khoản",
+    "subtitle": "Quản lý thông tin đăng nhập và bảo mật tài khoản",
+    "summary": {
+      "title": "Thông tin tài khoản",
+      "description": "Thông tin đăng nhập hiện tại của bạn",
+      "name": "Họ tên",
+      "email": "Email đăng nhập"
+    },
+    "password": {
+      "title": "Đổi mật khẩu",
+      "description": "Mật khẩu mới phải có từ 8 đến 72 ký tự",
+      "current": "Mật khẩu hiện tại",
+      "new": "Mật khẩu mới",
+      "confirmation": "Xác nhận mật khẩu mới",
+      "save": "Đổi mật khẩu",
+      "saving": "Đang cập nhật...",
+      "success": "Mật khẩu đã được cập nhật.",
+      "currentRequired": "Vui lòng nhập mật khẩu hiện tại.",
+      "length": "Mật khẩu mới phải có từ 8 đến 72 ký tự.",
+      "confirmationMismatch": "Mật khẩu xác nhận không khớp.",
+      "saveError": "Không thể cập nhật mật khẩu. Vui lòng thử lại.",
+      "networkError": "Không thể kết nối tới máy chủ. Vui lòng thử lại."
+    }
+  },
   "userDropdown": {
     "roles": {
       "admin": "Quản trị viên",

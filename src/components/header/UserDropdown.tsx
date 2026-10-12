@@ -19,7 +19,7 @@ export default function UserDropdown() {
   const { currentUser, logout } = useAuth();
   const { language: locale, setLanguage } = useLanguage();
   const navigate = useNavigate();
-  const currentLang = getLanguage(locale as Locale);
+  const currentLang = getLanguage(locale);
   const CurrentFlagIcon = currentLang.FlagIcon;
   const nameParts = currentUser?.name.trim().split(/\s+/) ?? [];
   const initials = `${nameParts[0]?.[0] ?? ""}${nameParts.at(-1)?.[0] ?? ""}`;
@@ -73,11 +73,12 @@ export default function UserDropdown() {
   return (
     <div className="relative">
       <button
+        type="button"
         onClick={toggleDropdown}
         className="dropdown-toggle flex items-center text-gray-700 dark:text-gray-400"
       >
         <span
-          className="me-3 flex size-11 items-center justify-center rounded-full bg-brand-500 text-theme-sm font-semibold text-white"
+          className="me-3 flex size-11 items-center justify-center rounded-full bg-kps-primary text-theme-sm font-semibold text-white"
           aria-hidden="true"
         >
           {initials.toUpperCase()}
@@ -123,7 +124,9 @@ export default function UserDropdown() {
         <ul className="flex flex-col gap-1 border-b border-gray-200 pt-4 pb-3 dark:border-gray-800">
           <li>
             <DropdownItem
-              tag="button"
+              tag="a"
+              to="/profile"
+              onItemClick={closeDropdown}
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -146,7 +149,9 @@ export default function UserDropdown() {
           </li>
           <li>
             <DropdownItem
-              tag="button"
+              tag="a"
+              to="/account"
+              onItemClick={closeDropdown}
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -263,11 +268,6 @@ export default function UserDropdown() {
                             <span className="truncate">{language.name}</span>
                           </span>
 
-                          {language.badge && (
-                            <span className="rounded bg-warning-50 px-1.5 py-0.5 text-theme-xs font-semibold text-warning-600 dark:bg-warning-500/15 dark:text-warning-400">
-                              {language.badge}
-                            </span>
-                          )}
                         </button>
                       </li>
                     );

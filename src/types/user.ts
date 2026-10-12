@@ -5,5 +5,4 @@ export interface CurrentUser {
   name: string;
   department: string;
   role: UserRole;
-  avatar?: string;
 }

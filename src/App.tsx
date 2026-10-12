@@ -3,6 +3,7 @@ import AuthorizationRoute from "./components/auth/AuthorizationRoute";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
+import Account from "./pages/Account/Account";
 import Login from "./pages/Auth/Login";
 import Overview from "./pages/Dashboard/Overview";
 import EmployeeCreate from "./pages/Employees/EmployeeCreate";
@@ -10,6 +11,7 @@ import EmployeeEdit from "./pages/Employees/EmployeeEdit";
 import EmployeeList from "./pages/Employees/EmployeeList";
 import ModulePlaceholder from "./pages/OtherPage/ModulePlaceholder";
 import NotFound from "./pages/OtherPage/NotFound";
+import Profile from "./pages/Profile/Profile";
 import NewReport from "./pages/Reports/NewReport";
 import ReportDetail from "./pages/Reports/ReportDetail";
 import ReportHistory from "./pages/Reports/ReportHistory";
@@ -29,6 +31,8 @@ export default function App() {
               <Route element={<AuthorizationRoute navigationKey="dashboard" />}>
                 <Route index element={<Overview />} />
               </Route>
+              <Route path="/profile" element={<Profile />} />
+              <Route path="/account" element={<Account />} />
 
               {/* KPS Modules */}
               <Route path="/reports/new" element={<NewReport />} />
