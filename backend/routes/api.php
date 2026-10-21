@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AI\AiDailyReportController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NavigationController;
@@ -65,6 +66,18 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::patch('/notifications/read-all', [NotificationController::class, 'readAll']);
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'read'])
         ->whereNumber('id');
+
+    // AI Daily Report V1: same Sanctum membership + backend permission boundaries.
+    Route::prefix('ai/daily-reports')
+        ->middleware(['permission:ai.insights.view', 'permission:reports.view'])
+        ->group(function (): void {
+            Route::get('/', [AiDailyReportController::class, 'index']);
+            Route::get('/available-dates', [AiDailyReportController::class, 'availableDates']);
+            Route::get('/summary', [AiDailyReportController::class, 'summary']);
+            Route::get('/history', [AiDailyReportController::class, 'history']);
+            Route::post('/', [AiDailyReportController::class, 'store'])->middleware('throttle:4,1');
+            Route::get('/{id}', [AiDailyReportController::class, 'show'])->whereNumber('id');
+        });
 
     Route::get('/users', [UserController::class, 'index'])
         ->middleware('permission:users.view,organization');

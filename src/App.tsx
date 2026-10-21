@@ -3,6 +3,7 @@ import AuthorizationRoute from "./components/auth/AuthorizationRoute";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
+import AiDailyInsights from "./pages/AI/AiDailyInsights";
 import Account from "./pages/Account/Account";
 import Login from "./pages/Auth/Login";
 import Overview from "./pages/Dashboard/Overview";
@@ -80,7 +81,7 @@ export default function App() {
               >
                 <Route
                   path="/ai/insights"
-                  element={<ModulePlaceholder titleKey="modules.aiInsights" />}
+                  element={<AiDailyInsights />}
                 />
               </Route>
               <Route

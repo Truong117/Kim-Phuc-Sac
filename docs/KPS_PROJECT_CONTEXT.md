@@ -1,6 +1,6 @@
 # KPS Internal System — Project Context
 
-Last repository audit: 2026-10-12 (Asia/Saigon)
+Last repository audit: 2026-10-21 (Asia/Saigon)
 
 This document is the handoff baseline for future work. It distinguishes:
 
@@ -23,8 +23,8 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/profile-account-settings`
-- Profile V1 builds on the completed Authentication, Authorization, User Management, Work Report, Dashboard, and HR User Management baseline.
+- Current branch: `feature/ai-daily-report-v1`
+- AI Daily Report V1 builds on the completed Authentication, Authorization, User Management, Work Report, Dashboard, HR User Management, and Profile/Account baseline.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
 - `README.md` is now a concise KPS setup guide and retains the required TailAdmin attribution/license reference.
@@ -53,9 +53,8 @@ Available scripts:
 - `npm run dev` — Vite development server
 - `npm run build` — `tsc -b && vite build`
 - `npm run lint` — ESLint
+- `npm test` — lightweight Node contract tests
 - `npm run preview` — Vite preview
-
-There is no frontend automated test script.
 
 ### Verified backend foundation
 
@@ -72,7 +71,7 @@ The Laravel API foundation lives in `backend/` and is intentionally independent 
 | Application/session database | MySQL `8.4.11` locally; SQLite in-memory for tests |
 | Automated tests | PHPUnit; SQLite in-memory test configuration |
 
-Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 reuses the existing user identity fields and does not add profile-media schema. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. No CRM persistence has been implemented.
+Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 reuses the existing user identity fields and does not add profile-media schema. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. AI Daily Report V1 adds only `ai_daily_report_runs`; it reads scoped Work Report data without mutating it. No CRM persistence has been implemented.
 
 ## 4. Current application architecture
 
@@ -85,12 +84,13 @@ Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 r
 - KPS domain UI is currently split into focused files under:
   - `src/pages/Dashboard/Overview.tsx`
   - `src/pages/Reports/`
+  - `src/pages/AI/AiDailyInsights.tsx`
   - `src/components/dashboard/`
   - `src/components/reports/`
   - `src/types/`
   - `src/services/`
-- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior. Focused auth, navigation, user-management, report, and notification services use it.
-- The Laravel API under `backend/` implements Authentication V1, Authorization V1, User Management V1, Work Report V1, and Dashboard V1. The overview, daily report, report history/detail/comments, recent reports, and header notifications consume real backend APIs.
+- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior. Focused auth, navigation, user-management, report, notification, and AI Daily Report services use it.
+- The Laravel API under `backend/` implements Authentication V1, Authorization V1, User Management V1, Work Report V1, Dashboard V1, and mock-first AI Daily Report V1. The overview, daily report, report history/detail/comments, recent reports, header notifications, and AI insights page consume real backend APIs.
 - Dashboard prototype KPI/category/AI mocks and report-domain mocks have been removed.
 
 ### Planned / Business decision
@@ -116,7 +116,8 @@ backend/
 ├── config/cors.php                # credentialed frontend origin from FRONTEND_URL
 ├── config/sanctum.php             # stateful SPA authentication configuration
 ├── config/reports.php             # KPS business timezone and daily cutoff
-├── database/migrations/           # framework, Authorization V1, and Work Report V1 schema
+├── config/kps_ai.php              # AI driver and bounded context limits
+├── database/migrations/           # framework, Authorization, Work Report, and AI run schema
 ├── database/seeders/              # idempotent RBAC and KPS structure master data
 ├── routes/api.php                 # health, auth, navigation, user-management, report, and notification routes
 └── tests/                          # PHPUnit tests
@@ -142,6 +143,7 @@ src/
 ├── pages/
 │   ├── Auth/Login.tsx
 │   ├── Dashboard/Overview.tsx
+│   ├── AI/AiDailyInsights.tsx      # scoped mock-first AI Daily Report UI
 │   ├── Employees/                  # user list/create/edit pages
 │   ├── Profile/Profile.tsx          # authenticated self-service profile
 │   ├── Account/Account.tsx          # authenticated account security settings
@@ -167,6 +169,7 @@ src/
 ├── services/userService.ts         # User Management API requests
 ├── services/reportService.ts       # Work Report API requests
 ├── services/notificationService.ts # notification API requests
+├── services/aiDailyReportService.ts # AI summary/run/history requests
 ├── services/accountService.ts      # self-service profile/password requests
 ├── hooks/useAuth.ts                # authenticated-user context hook
 ├── hooks/useAuthorization.ts       # navigation-key UX authorization hook
@@ -176,6 +179,7 @@ src/
 │   ├── dashboard.ts
 │   ├── reports.ts
 │   ├── notifications.ts
+│   ├── aiDailyReport.ts
 │   ├── userManagement.ts
 │   └── user.ts
 ├── i18n/
@@ -208,7 +212,7 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 | `/customers/:id` | `ModulePlaceholder` | Placeholder only |
 | `/products` | `ModulePlaceholder` | Placeholder only |
 | `/orders` | `ModulePlaceholder` | Placeholder only |
-| `/ai/insights` | `ModulePlaceholder` | Placeholder only |
+| `/ai/insights` | `AI/AiDailyInsights` | AI Daily Report V1 implemented |
 | `/ai/assistant` | `ModulePlaceholder` | Placeholder only |
 | `/employees` | `Employees/EmployeeList` | User Management V1 list implemented |
 | `/employees/new` | `Employees/EmployeeCreate` | User Management V1 create form implemented |
@@ -289,6 +293,21 @@ All routes require `auth:sanctum` and an active KPS membership. Report list/deta
 
 Work Report V1 has a business-level participation rule: an active KPS membership containing `OWNER` is exempt from submitting or editing daily reports, even when another assigned role grants `reports.create`. OWNER retains organization-wide report viewing and may comment on other employees' locked reports. `ADMIN` is not exempt and remains a normal report participant. The backend exposes only the opaque `reporting_required` boolean, hides the create-report navigation item for exempt memberships, and stores no `report_required` database field in V1. Future missing-report metrics must exclude OWNER from the expected-report population.
 
+### Backend AI Daily Report routes
+
+All routes require `auth:sanctum`, an active KPS membership, `ai.insights.view`, and `reports.view`. Source reports are always selected through `ReportScopeService`; client-supplied scope filters cannot broaden access.
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/ai/daily-reports/available-dates` | Distinct locked report dates currently visible through `reports.view` and eligible under the AI V1 window |
+| `GET /api/ai/daily-reports/summary?date=YYYY-MM-DD` | Database-derived counts and authorized source report IDs; no AI call |
+| `GET /api/ai/daily-reports?date=YYYY-MM-DD` | Current requester's cached run for a date, or `null` |
+| `POST /api/ai/daily-reports` | Idempotently create/queue or retry one requester/day run |
+| `GET /api/ai/daily-reports/history` | Up to 31 current-requester runs, re-filtered by current access |
+| `GET /api/ai/daily-reports/{id}` | Current-requester run detail with current source-scope recheck |
+
+V1 accepts only the most recent 30 business dates and requires today's reporting window to be closed. A new run is rejected before persistence/dispatch when the selected date has no locked report in the requester's current scope; requester history and legacy empty runs remain readable through the history/detail endpoints. Run payloads decorate source IDs with only the scoped report author's display name and department snapshot so the UI can label source links without exposing email, membership, or authorization data. `KPS_AI_DRIVER=fake` is the safe default: the deterministic provider makes no network request. The database queue job checks permissions again when it executes, and completed/cached results remain subject to current report scope. OWNER/ADMIN receive the existing seeded AI permission; a department manager needs an explicit AI grant and then remains constrained by the existing department-scoped `reports.view` grant.
+
 ## 7. Current sidebar
 
 **Verified** in `src/layout/AppSidebar.tsx`:
@@ -316,7 +335,7 @@ HỆ THỐNG
 - Cài đặt                  -> /settings
 ```
 
-Tổng quan, the two report pages, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `users.view` to the opaque frontend navigation key `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
+Tổng quan, the two report pages, AI Insights, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `ai.insights.view` to `ai.insights` and `users.view` to `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
 
 ## 8. Phase 1 implementation status
 
@@ -371,6 +390,16 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 - User payloads expose only `is_protected` and opaque `actions`; they do not expose permission codes, data scopes, role codes, or policy reasons.
 - The employee list marks protected accounts, and employee detail becomes read-only when backend actions disallow mutation.
 
+### F. AI Daily Report V1 — implemented mock-first
+
+- OWNER/ADMIN can request deterministic analysis of locked Work Reports through a queued backend job.
+- PHP/database aggregation is the source of counts; fake-provider narrative output is labeled clearly and never treated as KPI or approval data.
+- Overview, requester-only history, and authorized source-report links are available at `/ai/insights`.
+- The date selector is an accessible calendar backed by the scoped available-dates API. It defaults to the latest eligible date, renders non-eligible days as disabled buttons, uses `dd/MM/yyyy` for display, and keeps `YYYY-MM-DD` for API calls.
+- Report sources use current backend data scope, and every cached result is rechecked after role/scope changes.
+- Work Report rows/items are read-only inputs to this module; no existing report workflow or state is changed.
+- The OpenAI adapter is dormant while `KPS_AI_DRIVER=fake`; no key or external data transfer is needed for V1.
+
 ## 9. Module status
 
 | Module | Status |
@@ -383,13 +412,13 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 | Customers / CRM | List and detail routes are placeholders only |
 | Products | Placeholder only |
 | Orders | Placeholder only |
-| AI insights / assistant | Placeholders only |
+| AI insights / assistant | AI Daily Report V1 implemented at `/ai/insights` with fake provider; assistant remains placeholder |
 | Employees / User Management | V1 plus HR authorization: scoped HR CRUD for normal employees, protected OWNER/ADMIN targets, safe role references/actions, and one active HR_MANAGER holder |
 | Integrations / Pancake | Placeholder only |
 | Settings | Placeholder only |
 | Authentication | V1 implemented with Sanctum session/cookie auth, login, current user, logout, route protection, and tests |
 | Authorization / RBAC | V1 implemented: organization membership → roles → permissions → optional data scope, backend navigation mapping, permission middleware, route UX guards, and tests |
-| Backend / database | Laravel 12, MySQL/TiDB/SQLite-compatible schema, Authentication V1, Authorization V1, User Management V1, Work Report V1, and Dashboard V1 implemented; no CRM persistence integration |
+| Backend / database | Laravel 12, MySQL/TiDB/SQLite-compatible schema, Authentication V1, Authorization V1, User Management V1, Work Report V1, Dashboard V1, and AI Daily Report V1 implemented; no CRM persistence integration |
 
 User Management V1 seeds the following extensible KPS department master data: `HR_ADMIN` (Hành chính nhân sự), `MARKETING`, `MEDIA`, `ACCOUNTING` (Kế toán), `SALES`, and `IT`. It deliberately creates no locations and stores no fixed headcount values. `HR_ADMIN` is not an authorization source; HR authority comes only from the separately assigned `HR_MANAGER` role.
 
@@ -489,9 +518,11 @@ Do not encode assumptions for these questions without confirmed requirements.
 
 **Current verified state**
 
-- The fake Dashboard AI summary has been removed.
-- No external AI API is called.
-- No AI output is persisted.
+- The fake Dashboard AI summary remains removed; AI analysis lives in its own authorized `/ai/insights` module.
+- `KPS_AI_DRIVER=fake` uses a deterministic backend provider and makes no external AI API call.
+- AI runs persist separately in `ai_daily_report_runs`; original Work Reports are never updated by analysis.
+- Counts and source IDs are derived in PHP from currently authorized reports. Narrative findings retain source report references for verification.
+- The OpenAI adapter is present only for a separately approved future activation and has not been enabled or live-tested.
 
 **Planned / Business decision**
 
@@ -541,7 +572,7 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 1. `npm run build` passes. The main KPS application chunk remains roughly 500 KB (roughly 150 KB gzip). ApexCharts and its former large vendor chunk were removed with the unused category chart.
 2. `npm run lint` passes with three Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
-3. The frontend has lightweight Node contract tests for navigation, Profile/Account route separation, and locale migration. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, Profile V1, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, navigation output, safe payloads, and idempotent RBAC/department seeding.
+3. The frontend has lightweight Node contract tests for navigation, Profile/Account route separation, and locale migration. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, Profile V1, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, AI owner/admin access, department scope, queue dispatch, revocation rechecks, history/source isolation, navigation output, safe payloads, and idempotent RBAC/department seeding.
 4. Dashboard V1 is intentionally today-only. Week/month reporting trends, attendance/leave semantics, tasks, CRM metrics, AI summaries, and work categories remain deferred.
 5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
 6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
@@ -549,6 +580,7 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 8. Global legacy `brand-*` tokens remain pink/magenta in retained shared components, while KPS-specific Dashboard, login, navigation, and report actions use the brown `kps-primary` direction.
 9. Header notifications currently cover Work Report comment notifications only; broader notification types require a separate product/API decision.
 10. The active user dropdown uses the authenticated user's name/email with an initials indicator, links to Profile and Account Settings, and supports logout. The support action remains a no-op; existing inline SVG icons still require later design review.
+11. The AI migration file is integrated and exercised by SQLite tests. Applying it to the local MySQL development database requires the local `MySQL84` service to be running; the current shell could not start the Windows service because Service Control Manager access was denied, and direct startup was also denied access to `D:\MySQL\Data`. No TiDB migration was attempted.
 
 The Phase 1 cleanup removed verified-unused demo routes, pages, components, assets, styles, translations, and dependencies without changing KPS business behavior.
 
