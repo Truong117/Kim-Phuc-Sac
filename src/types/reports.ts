@@ -78,6 +78,7 @@ export type ReportListResponse = {
 export type TodayReportState = {
   business_date: string;
   cutoff_at: string;
+  is_working_day: boolean;
   is_window_closed: boolean;
   reporting_required: boolean;
   report: DailyReport | null;

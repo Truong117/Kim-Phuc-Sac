@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AI\AiDailyReportController;
+use App\Http\Controllers\AI\AiExecutiveDashboardController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NavigationController;
@@ -66,6 +67,12 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::patch('/notifications/read-all', [NotificationController::class, 'readAll']);
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'read'])
         ->whereNumber('id');
+
+    Route::get('/ai/executive-dashboard', AiExecutiveDashboardController::class)
+        ->middleware([
+            'permission:ai.dashboard.view,organization',
+            'permission:reports.view,organization',
+        ]);
 
     // AI Daily Report V1: same Sanctum membership + backend permission boundaries.
     Route::prefix('ai/daily-reports')

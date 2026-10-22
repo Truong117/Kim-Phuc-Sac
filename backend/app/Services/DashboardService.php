@@ -37,6 +37,7 @@ class DashboardService
         ]) ?? throw new AccessDeniedHttpException;
         $mode = $this->modeResolver->resolve($viewer, $membership);
         $businessDate = $this->clock->businessDate();
+        $isWorkingDay = $this->clock->isWorkingDate($businessDate);
         $cutoff = $this->clock->cutoffForDate($businessDate);
         $todayReports = $this->dashboardReports($viewer, $membership, $mode)
             ->where('daily_reports.report_date', $businessDate);
@@ -51,6 +52,7 @@ class DashboardService
                 $expectedReporters,
                 $membership->organization_id,
                 $businessDate,
+                $isWorkingDay,
             );
         }
 
@@ -58,14 +60,16 @@ class DashboardService
             'mode' => $mode->value,
             'business_date' => $businessDate,
             'cutoff_at' => $this->clock->inBusinessTimezone($cutoff)->toIso8601String(),
+            'is_working_day' => $isWorkingDay,
             'context' => $this->context($membership, $mode),
             'reporting' => $reporting,
             'work' => $this->workSummary($todayReports),
             'self_report' => $this->selfReport($viewer, $membership),
             'group_breakdown' => $mode === DashboardMode::ORGANIZATION
-                ? $this->departmentBreakdown($membership, $businessDate)
+                ? $this->departmentBreakdown($membership, $businessDate, $isWorkingDay)
                 : [],
-            'people_progress' => in_array($mode, [DashboardMode::DEPARTMENT, DashboardMode::LOCATION], true)
+            'people_progress' => $isWorkingDay
+                && in_array($mode, [DashboardMode::DEPARTMENT, DashboardMode::LOCATION], true)
                 ? $this->peopleProgress(
                     $viewer,
                     $membership,
@@ -133,7 +137,12 @@ class DashboardService
         Builder $expectedReporters,
         int $organizationId,
         string $businessDate,
+        bool $isWorkingDay,
     ): array {
+        if (! $isWorkingDay) {
+            return ['expected' => 0, 'submitted' => 0, 'missing' => 0];
+        }
+
         $expected = (clone $expectedReporters)->count();
         $submitted = (clone $expectedReporters)
             ->whereExists(function ($query) use ($organizationId, $businessDate): void {
@@ -225,19 +234,22 @@ class DashboardService
     private function departmentBreakdown(
         OrganizationMembership $membership,
         string $businessDate,
+        bool $isWorkingDay,
     ): array {
         $expectedReporters = $this->expectedReporters($membership, DashboardMode::ORGANIZATION);
-        $expected = $this->groupedMembershipCounts($expectedReporters);
-        $submitted = $this->groupedMembershipCounts(
-            (clone $expectedReporters)->whereExists(function ($query) use ($membership, $businessDate): void {
-                $query
-                    ->selectRaw('1')
-                    ->from('daily_reports')
-                    ->whereColumn('daily_reports.user_id', 'organization_memberships.user_id')
-                    ->where('daily_reports.organization_id', $membership->organization_id)
-                    ->where('daily_reports.report_date', $businessDate);
-            }),
-        );
+        $expected = $isWorkingDay ? $this->groupedMembershipCounts($expectedReporters) : [];
+        $submitted = $isWorkingDay
+            ? $this->groupedMembershipCounts(
+                (clone $expectedReporters)->whereExists(function ($query) use ($membership, $businessDate): void {
+                    $query
+                        ->selectRaw('1')
+                        ->from('daily_reports')
+                        ->whereColumn('daily_reports.user_id', 'organization_memberships.user_id')
+                        ->where('daily_reports.organization_id', $membership->organization_id)
+                        ->where('daily_reports.report_date', $businessDate);
+                }),
+            )
+            : [];
         $work = $this->groupedDepartmentWork($membership->organization_id, $businessDate);
         $aggregateIds = collect(array_merge(array_keys($expected), array_keys($submitted), array_keys($work)))
             ->filter(fn (string|int $id): bool => $id !== 'unassigned')
@@ -528,7 +540,9 @@ class DashboardService
 
         if ($report === null) {
             return [
-                'state' => $today['is_window_closed'] ? 'not_submitted_closed' : 'not_submitted_open',
+                'state' => ! $today['is_working_day']
+                    ? 'non_working_day'
+                    : ($today['is_window_closed'] ? 'not_submitted_closed' : 'not_submitted_open'),
                 'report_id' => null,
                 'report_date' => $today['business_date'],
                 'cutoff_at' => $today['cutoff_at'],
@@ -557,7 +571,9 @@ class DashboardService
         }
 
         return [
-            'state' => $this->clock->isLocked($report->locked_at) ? 'locked' : 'submitted_editable',
+            'state' => ! $today['is_working_day']
+                ? 'non_working_day'
+                : ($this->clock->isLocked($report->locked_at) ? 'locked' : 'submitted_editable'),
             'report_id' => (int) $report->id,
             'report_date' => $report->report_date->toDateString(),
             'cutoff_at' => $this->clock->inBusinessTimezone($report->locked_at)->toIso8601String(),

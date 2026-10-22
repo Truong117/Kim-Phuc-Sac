@@ -35,7 +35,7 @@ class WorkReportTest extends TestCase
 
     public function test_creation_uses_server_context_enforces_cutoff_and_handles_duplicates_safely(): void
     {
-        CarbonImmutable::setTestNow('2026-10-09 10:59:00 UTC');
+        CarbonImmutable::setTestNow('2026-10-09 15:59:00 UTC');
         $author = $this->createReportUser(DataScope::OWN);
         $membership = $author->defaultOrganizationMembership;
 
@@ -67,7 +67,7 @@ class WorkReportTest extends TestCase
             'department_id' => $membership->department_id,
             'location_id' => $membership->location_id,
             'report_date' => '2026-10-09',
-            'locked_at' => '2026-10-09 11:00:00',
+            'locked_at' => '2026-10-09 16:00:00',
         ]);
 
         $duplicateResponse = $this->actingAs($author, 'web')
@@ -77,13 +77,13 @@ class WorkReportTest extends TestCase
         $this->assertStringNotContainsString('daily_reports_author_date_unique', $duplicateResponse->getContent());
 
         $other = $this->createReportUser(DataScope::OWN);
-        CarbonImmutable::setTestNow('2026-10-09 11:00:00 UTC');
+        CarbonImmutable::setTestNow('2026-10-09 16:00:00 UTC');
         $this->forgetAuthenticatedGuards();
         $this->actingAs($other, 'web')
             ->postJson('/api/reports', $this->validPayload())
             ->assertConflict();
 
-        CarbonImmutable::setTestNow('2026-10-09 11:01:00 UTC');
+        CarbonImmutable::setTestNow('2026-10-09 16:01:00 UTC');
         $this->actingAs($other, 'web')
             ->postJson('/api/reports', $this->validPayload())
             ->assertConflict();
@@ -92,6 +92,39 @@ class WorkReportTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.is_window_closed', true)
             ->assertJsonPath('data.actions.can_create', false);
+    }
+
+    public function test_sunday_disables_reporting_and_preserves_existing_deadlines(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-11 10:00:00 UTC');
+        $author = $this->createReportUser(DataScope::OWN);
+
+        $this->actingAs($author, 'web')
+            ->getJson('/api/reports/today')
+            ->assertOk()
+            ->assertJsonPath('data.business_date', '2026-10-11')
+            ->assertJsonPath('data.is_working_day', false)
+            ->assertJsonPath('data.is_window_closed', true)
+            ->assertJsonPath('data.reporting_required', false)
+            ->assertJsonPath('data.actions.can_create', false);
+
+        $this->actingAs($author, 'web')
+            ->postJson('/api/reports', $this->validPayload())
+            ->assertConflict();
+        $this->assertDatabaseCount('daily_reports', 0);
+
+        $historicalDeadline = '2026-10-11 11:00:00';
+        $report = $this->createReport($author, '2026-10-11', $historicalDeadline);
+        config(['reports.cutoff_time' => '23:00']);
+
+        $this->actingAs($author, 'web')
+            ->patchJson("/api/reports/{$report->id}", $this->validPayload())
+            ->assertConflict();
+
+        $this->assertDatabaseHas('daily_reports', [
+            'id' => $report->id,
+            'locked_at' => $historicalDeadline,
+        ]);
     }
 
     public function test_create_rejects_derived_fields_and_never_creates_a_historical_report(): void

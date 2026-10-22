@@ -58,8 +58,9 @@ class WorkReportService
     public function today(User $user): array
     {
         $membership = $this->activeMembership($user);
-        $reportingRequired = $this->participation->isParticipant($membership);
         $businessDate = $this->clock->businessDate();
+        $isWorkingDay = $this->clock->isWorkingDate($businessDate);
+        $reportingRequired = $isWorkingDay && $this->participation->isParticipant($membership);
         $cutoff = $this->clock->cutoffForDate($businessDate);
         $report = DailyReport::query()
             ->where('organization_id', $membership->organization_id)
@@ -74,12 +75,13 @@ class WorkReportService
         return [
             'business_date' => $businessDate,
             'cutoff_at' => $this->clock->inBusinessTimezone($cutoff)->toIso8601String(),
-            'is_window_closed' => $this->clock->isLocked($cutoff),
+            'is_working_day' => $isWorkingDay,
+            'is_window_closed' => $this->clock->isWindowClosed(),
             'reporting_required' => $reportingRequired,
             'report' => $report,
             'can_create' => $reportingRequired
                 && $this->authorization->allows($user, 'reports.create')
-                && ! $this->clock->isLocked($cutoff)
+                && ! $this->clock->isWindowClosed()
                 && $report === null,
         ];
     }
@@ -93,6 +95,10 @@ class WorkReportService
         $this->participation->ensureParticipant($membership);
         $date = $this->clock->businessDate();
         $lockedAt = $this->clock->cutoffForDate($date);
+
+        if (! $this->clock->isWorkingDate($date)) {
+            throw new ConflictHttpException('Chủ Nhật là ngày nghỉ, không thể tạo báo cáo công việc mới.');
+        }
 
         if ($this->clock->isLocked($lockedAt)) {
             throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
@@ -155,6 +161,10 @@ class WorkReportService
                 ->where('user_id', $author->id)
                 ->lockForUpdate()
                 ->findOrFail($reportId);
+
+            if (! $this->clock->isWorkingDate($report->report_date->toDateString())) {
+                throw new ConflictHttpException('Báo cáo ngày nghỉ chỉ có thể xem và không thể chỉnh sửa.');
+            }
 
             if ($this->clock->isLocked($report->locked_at)) {
                 throw new ConflictHttpException('Báo cáo đã bị khóa và không thể chỉnh sửa.');
@@ -301,6 +311,7 @@ class WorkReportService
         $report->setAttribute('can_edit', $report->user_id === $viewer->id
             && $this->participation->isParticipant($viewer)
             && $this->authorization->allows($viewer, 'reports.create')
+            && $this->clock->isWorkingDate($report->report_date->toDateString())
             && ! $this->clock->isLocked($report->locked_at));
         $report->setAttribute('can_comment', $this->canComment($viewer, $report));
 

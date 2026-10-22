@@ -290,7 +290,7 @@ class DashboardTest extends TestCase
             ->assertJsonPath('data.work.completed', 1)
             ->assertJsonPath('data.work.in_progress', 1);
 
-        CarbonImmutable::setTestNow('2026-10-09 11:00:00 UTC');
+        CarbonImmutable::setTestNow('2026-10-09 16:00:00 UTC');
         $this->actingAs($openUser, 'web')
             ->getJson('/api/dashboard')
             ->assertOk()
@@ -302,6 +302,25 @@ class DashboardTest extends TestCase
             ->getJson('/api/dashboard')
             ->assertOk()
             ->assertJsonPath('data.self_report.state', 'not_submitted_closed');
+    }
+
+    public function test_sunday_has_no_required_or_missing_reporters(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-11 10:00:00 UTC');
+        $departmentId = $this->departmentId('MARKETING');
+        $manager = $this->businessUser('DEPARTMENT_MANAGER', departmentId: $departmentId);
+        $this->businessUser('OFFICE_STAFF', departmentId: $departmentId);
+
+        $this->actingAs($manager, 'web')
+            ->getJson('/api/dashboard')
+            ->assertOk()
+            ->assertJsonPath('data.business_date', '2026-10-11')
+            ->assertJsonPath('data.is_working_day', false)
+            ->assertJsonPath('data.reporting.expected', 0)
+            ->assertJsonPath('data.reporting.submitted', 0)
+            ->assertJsonPath('data.reporting.missing', 0)
+            ->assertJsonPath('data.self_report.state', 'non_working_day')
+            ->assertJsonCount(0, 'data.people_progress');
     }
 
     public function test_dashboard_response_does_not_expose_authorization_internals(): void

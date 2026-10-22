@@ -21,6 +21,7 @@ const stateColor: Record<
   submitted_editable: "success",
   locked: "light",
   not_submitted_closed: "light",
+  non_working_day: "light",
 };
 
 const formatTime = (dateTime: string) =>
@@ -74,7 +75,9 @@ export default function SelfReportCard({ report, title }: SelfReportCardProps) {
               )}
             </div>
             <p className="mt-1 text-theme-sm text-gray-500 dark:text-gray-400">
-              {report.state === "not_submitted_closed"
+              {report.state === "non_working_day"
+                ? t("descriptions.nonWorkingDay")
+                : report.state === "not_submitted_closed"
                 ? t("descriptions.closed", {
                     cutoff: formatTime(report.cutoff_at),
                   })

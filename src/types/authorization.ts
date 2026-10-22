@@ -6,6 +6,7 @@ export const navigationKeys = [
   "customers",
   "products",
   "orders",
+  "ai.dashboard",
   "ai.insights",
   "ai.assistant",
   "employees",

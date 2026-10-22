@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
 import AiDailyInsights from "./pages/AI/AiDailyInsights";
+import AiExecutiveDashboard from "./pages/AI/AiExecutiveDashboard";
 import Account from "./pages/Account/Account";
 import Login from "./pages/Auth/Login";
 import Overview from "./pages/Dashboard/Overview";
@@ -41,10 +42,7 @@ export default function App() {
                 element={<AuthorizationRoute navigationKey="reports.history" />}
               >
                 <Route path="/reports" element={<ReportHistory />} />
-                <Route
-                  path="/reports/:id"
-                  element={<ReportDetail />}
-                />
+                <Route path="/reports/:id" element={<ReportDetail />} />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="tasks" />}>
                 <Route
@@ -77,12 +75,17 @@ export default function App() {
                 />
               </Route>
               <Route
-                element={<AuthorizationRoute navigationKey="ai.insights" />}
+                element={<AuthorizationRoute navigationKey="ai.dashboard" />}
               >
                 <Route
-                  path="/ai/insights"
-                  element={<AiDailyInsights />}
+                  path="/ai/dashboard"
+                  element={<AiExecutiveDashboard />}
                 />
+              </Route>
+              <Route
+                element={<AuthorizationRoute navigationKey="ai.insights" />}
+              >
+                <Route path="/ai/insights" element={<AiDailyInsights />} />
               </Route>
               <Route
                 element={<AuthorizationRoute navigationKey="ai.assistant" />}

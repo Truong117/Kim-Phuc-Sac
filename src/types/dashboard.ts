@@ -25,7 +25,8 @@ export type DashboardSelfReportState =
   | "not_submitted_open"
   | "submitted_editable"
   | "locked"
-  | "not_submitted_closed";
+  | "not_submitted_closed"
+  | "non_working_day";
 
 export type DashboardSelfReport = {
   state: DashboardSelfReportState;
@@ -79,6 +80,7 @@ export type DashboardData = {
   mode: DashboardMode;
   business_date: string;
   cutoff_at: string;
+  is_working_day: boolean;
   context: DashboardEntity | null;
   reporting: DashboardReporting | null;
   work: DashboardWork;

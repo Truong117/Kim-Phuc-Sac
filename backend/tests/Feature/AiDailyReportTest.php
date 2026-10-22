@@ -625,15 +625,15 @@ class AiDailyReportTest extends TestCase
     {
         $owner = $this->member('OWNER');
         $staff = $this->member('OFFICE_STAFF');
-        $this->addDailyReport($staff, date: '2026-10-10');
+        $this->addDailyReport($staff, date: '2026-10-10', lockedAt: '2026-10-10 16:00:00');
 
-        CarbonImmutable::setTestNow('2026-10-10 10:59:00 UTC');
+        CarbonImmutable::setTestNow('2026-10-10 15:59:00 UTC');
         $this->actingAs($owner, 'web')
             ->getJson('/api/ai/daily-reports/available-dates')
             ->assertOk()
             ->assertExactJson(['data' => ['dates' => []]]);
 
-        CarbonImmutable::setTestNow('2026-10-10 11:00:00 UTC');
+        CarbonImmutable::setTestNow('2026-10-10 16:00:00 UTC');
         $this->getJson('/api/ai/daily-reports/available-dates')
             ->assertOk()
             ->assertExactJson(['data' => ['dates' => ['2026-10-10']]]);

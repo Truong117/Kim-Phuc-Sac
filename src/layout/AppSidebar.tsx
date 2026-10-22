@@ -101,6 +101,12 @@ const navGroups: NavGroup[] = [
     labelKey: "aiCenter",
     items: [
       {
+        navigationKey: "ai.dashboard",
+        nameKey: "aiDashboard",
+        icon: <GridIcon fontSize={24} />,
+        path: "/ai/dashboard",
+      },
+      {
         navigationKey: "ai.insights",
         nameKey: "aiInsights",
         icon: <AiIcon fontSize={24} />,

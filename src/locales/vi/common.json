@@ -21,6 +21,7 @@
       "customers": "Khách hàng",
       "products": "Sản phẩm",
       "orders": "Đơn hàng",
+      "aiDashboard": "Phân tích điều hành",
       "aiInsights": "Phân tích AI",
       "aiAssistant": "Trợ lý AI",
       "employees": "Nhân viên",
@@ -110,6 +111,10 @@
     "notRequired": {
       "title": "Bạn không cần thực hiện báo cáo hằng ngày",
       "description": "Bạn có thể theo dõi báo cáo của nhân viên tại Lịch sử báo cáo."
+    },
+    "nonWorkingDay": {
+      "title": "Chủ Nhật là ngày nghỉ hằng tuần",
+      "description": "Ngày {date} không thuộc lịch làm việc nên bạn không cần và không thể tạo báo cáo mới."
     },
     "existing": {
       "badge": "Đã báo cáo",
@@ -282,12 +287,14 @@
         "not_submitted_open": "Chưa gửi báo cáo",
         "submitted_editable": "Đã gửi báo cáo",
         "locked": "Đã chốt",
-        "not_submitted_closed": "Không có báo cáo hôm nay"
+        "not_submitted_closed": "Không có báo cáo hôm nay",
+        "non_working_day": "Ngày nghỉ hằng tuần"
       },
       "descriptions": {
         "open": "Có thể gửi hoặc cập nhật báo cáo đến {cutoff}.",
         "locked": "Báo cáo đã được chốt lúc {cutoff} và không thể chỉnh sửa.",
-        "closed": "Thời gian gửi báo cáo đã kết thúc lúc {cutoff}."
+        "closed": "Thời gian gửi báo cáo đã kết thúc lúc {cutoff}.",
+        "nonWorkingDay": "Chủ Nhật không thuộc lịch làm việc và không yêu cầu nộp báo cáo."
       },
       "workSummary": "{total} công việc · {completed} hoàn thành · {inProgress} đang thực hiện · {blocked} có vấn đề",
       "actions": {
@@ -679,6 +686,102 @@
     "error": "LỖI 404",
     "message": "Không tìm thấy trang bạn đang yêu cầu.",
     "backHome": "Quay về tổng quan"
+  },
+  "aiExecutiveDashboard": {
+    "title": "Phân tích điều hành",
+    "metaTitle": "Phân tích điều hành",
+    "subtitle": "Phân tích xu hướng và vấn đề đáng chú ý từ Work Report đã khóa để hỗ trợ OWNER/ADMIN ra quyết định. Không đánh giá năng lực cá nhân.",
+    "fakeBadge": "PHÂN TÍCH QUY TẮC V1",
+    "loading": "Đang tải dữ liệu phân tích điều hành",
+    "period": {
+      "label": "Khoảng thời gian",
+      "7d": "7 ngày gần nhất",
+      "30d": "30 ngày gần nhất"
+    },
+    "actualPeriod": "Dữ liệu từ {start} đến {end}",
+    "generatedAt": "Tính lúc {time}",
+    "errors": {
+      "title": "Không thể tải phân tích điều hành",
+      "network": "Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
+      "unauthorized": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+      "forbidden": "Bạn không có quyền xem phân tích điều hành.",
+      "load": "Không thể tải dữ liệu điều hành lúc này. Vui lòng thử lại.",
+      "retry": "Thử lại"
+    },
+    "kpis": {
+      "title": "Thông tin tổng hợp",
+      "notEnoughData": "Chưa đủ dữ liệu",
+      "percentageValue": "{value}%",
+      "items": {
+        "reports": "Số báo cáo đã nộp",
+        "workItems": "Số đầu việc",
+        "completed": "Đã hoàn thành theo báo cáo nhân viên",
+        "inProgress": "Đang thực hiện",
+        "blocked": "Bị chặn",
+        "reportingRate": "Tỷ lệ báo cáo"
+      },
+      "reportingMethod": "Tỷ lệ báo cáo = {submitted}/{expected} lượt nộp dự kiến trong {workingDays} ngày làm việc (thứ Hai–thứ Bảy), dựa trên thành viên active/default hiện thuộc diện phải báo cáo. Không phải tỷ lệ tuân thủ hoặc đúng hạn."
+    },
+    "trend": {
+      "title": "Xu hướng 7/30 ngày",
+      "description": "Diễn biến số báo cáo và trạng thái đầu việc theo thời gian từ dữ liệu đã khóa.",
+      "legend": "Chú giải biểu đồ",
+      "series": {
+        "reports": "Báo cáo đã nộp",
+        "completed": "Đã hoàn thành theo báo cáo",
+        "inProgress": "Đang thực hiện",
+        "blocked": "Bị chặn"
+      },
+      "tooltip": "Ngày {date} · {reports} báo cáo · {completed} hoàn thành theo báo cáo · {inProgress} đang thực hiện · {blocked} bị chặn",
+      "emptyTitle": "Chưa có dữ liệu xu hướng",
+      "emptyDescription": "Không có báo cáo đã khóa để hiển thị trong khoảng thời gian này.",
+      "facts": {
+        "title": "Diễn giải dữ liệu",
+        "insufficient": "Cần ít nhất hai ngày có báo cáo đã khóa để mô tả biến động.",
+        "coverage": "Có dữ liệu báo cáo ở {observed}/{total} ngày trong kỳ.",
+        "peak": "Ngày {date} có nhiều đầu việc nhất: {count}.",
+        "blocked": "Ghi nhận {items} đầu việc bị chặn trên {days} ngày có báo cáo.",
+        "noBlocked": "Không ghi nhận đầu việc bị chặn trong các ngày có báo cáo.",
+        "limit": "Mô tả chỉ phản ánh số liệu trong kỳ hiện tại; chưa có dữ liệu kỳ trước để kết luận tăng, giảm hoặc nguyên nhân biến động."
+      }
+    },
+    "departments": {
+      "title": "Phân tích theo phòng ban",
+      "description": "Số liệu được nhóm theo phòng ban lưu trên từng báo cáo nguồn.",
+      "columns": {
+        "department": "Phòng ban",
+        "reports": "Báo cáo",
+        "total": "Tổng đầu việc",
+        "completed": "Hoàn thành theo báo cáo",
+        "inProgress": "Đang thực hiện",
+        "blocked": "Bị chặn"
+      },
+      "empty": "Chưa có dữ liệu phòng ban trong khoảng thời gian này.",
+      "unassigned": "Chưa có phòng ban",
+      "attentionSummary": "{departments} có số đầu việc bị chặn cao nhất trong kỳ: {count}.",
+      "noBlockedSummary": "Không có phòng ban nào ghi nhận đầu việc bị chặn trong kỳ.",
+      "attentionBadge": "Cần chú ý"
+    },
+    "insights": {
+      "title": "Nhận định điều hành",
+      "methodLabel": "Phân tích theo quy tắc — Fake AI V1",
+      "emptyTitle": "Chưa đủ dữ liệu để đưa ra nhận định",
+      "emptyDescription": "Hệ thống không suy đoán khi chưa có báo cáo nguồn hợp lệ.",
+      "noObservations": "Chưa phát hiện điểm cần chú ý theo các quy tắc hiện tại.",
+      "sourceFallback": "Báo cáo #{id}",
+      "sourceDetailed": "{employee} – {department} – Báo cáo #{id}",
+      "sourceWithoutDepartment": "{employee} – Báo cáo #{id}"
+    },
+    "priorityIssues": {
+      "title": "Vấn đề cần ưu tiên",
+      "description": "Các đầu việc bị chặn cần quản lý xem xét, kèm báo cáo nguồn để kiểm chứng.",
+      "emptyTitle": "Không có vấn đề bị chặn cần ưu tiên",
+      "emptyDescription": "Không ghi nhận đầu việc bị chặn trong dữ liệu hiện tại.",
+      "blockedBadge": "Bị chặn",
+      "note": "Ghi chú: {note}",
+      "sourceDetailed": "{employee} – {department} – Báo cáo #{id}",
+      "sourceWithoutDepartment": "{employee} – Báo cáo #{id}"
+    }
   },
   "aiDailyReport": {
     "title": "Phân tích báo cáo bằng AI",

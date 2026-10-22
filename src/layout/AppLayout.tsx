@@ -3,6 +3,7 @@ import NotificationProvider from "@/context/NotificationProvider";
 import { cn } from "@/utils";
 import { Outlet } from "react-router";
 import AppHeader from "./AppHeader";
+import KpsChatBubble from "@/components/chat/KpsChatBubble";
 import AppSidebar from "./AppSidebar";
 import Backdrop from "./Backdrop";
 
@@ -13,6 +14,7 @@ const LayoutContent: React.FC = () => {
     <div className="min-h-screen xl:flex">
       <AppSidebar />
       <Backdrop />
+      <KpsChatBubble />
 
       <div
         className={cn(

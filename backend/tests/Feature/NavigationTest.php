@@ -91,6 +91,28 @@ class NavigationTest extends TestCase
             ]);
     }
 
+    public function test_ai_dashboard_navigation_uses_its_own_opaque_permission_mapping(): void
+    {
+        $executive = User::factory()->create();
+        $membership = $this->createMembership($executive);
+        $roleId = $this->createRole('AI_EXECUTIVE_NAVIGATION');
+        $this->attachRole($membership['membership_id'], $roleId, true);
+        $this->grantPermission(
+            $roleId,
+            $this->createPermission('ai.dashboard.view'),
+            DataScope::ORGANIZATION->value,
+        );
+
+        $response = $this
+            ->actingAs($executive, 'web')
+            ->getJson('/api/navigation')
+            ->assertOk()
+            ->assertExactJson(['items' => ['ai.dashboard']]);
+
+        $this->assertStringNotContainsString('ai.dashboard.view', $response->getContent());
+        $this->assertStringNotContainsString('ai.insights.view', $response->getContent());
+    }
+
     public function test_owner_exemption_hides_create_report_navigation_even_with_another_role_grant(): void
     {
         $owner = User::factory()->create();
@@ -212,6 +234,7 @@ class NavigationTest extends TestCase
                     'customers',
                     'products',
                     'orders',
+                    'ai.dashboard',
                     'ai.insights',
                     'ai.assistant',
                     'employees',
@@ -239,6 +262,7 @@ class NavigationTest extends TestCase
                     'customers',
                     'products',
                     'orders',
+                    'ai.dashboard',
                     'ai.insights',
                     'ai.assistant',
                     'employees',
