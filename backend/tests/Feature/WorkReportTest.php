@@ -8,6 +8,7 @@ use App\Enums\UserNotificationType;
 use App\Models\DailyReport;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Services\AI\DailyReportContextBuilder;
 use App\Services\UserNotificationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -142,6 +143,44 @@ class WorkReportTest extends TestCase
         $this->assertDatabaseCount('daily_reports', 0);
     }
 
+    public function test_result_is_optional_normalized_to_a_string_and_available_to_ai_context(): void
+    {
+        CarbonImmutable::setTestNow('2026-10-09 08:00:00 UTC');
+        $author = $this->createReportUser(DataScope::OWN);
+
+        $response = $this->actingAs($author, 'web')->postJson('/api/reports', [
+            'items' => [
+                ['content' => 'Khong gui result', 'status' => 'IN_PROGRESS'],
+                ['content' => 'Result null', 'result' => null, 'status' => 'BLOCKED'],
+                ['content' => 'Result rong', 'result' => '', 'status' => 'COMPLETED'],
+                ['content' => 'Result hop le', 'result' => '  Da hoan thanh  ', 'status' => 'COMPLETED'],
+            ],
+        ])->assertCreated();
+
+        $response
+            ->assertJsonPath('data.items.0.result', '')
+            ->assertJsonPath('data.items.1.result', '')
+            ->assertJsonPath('data.items.2.result', '')
+            ->assertJsonPath('data.items.3.result', 'Da hoan thanh');
+
+        $reportId = (int) $response->json('data.id');
+        $this->assertDatabaseHas('daily_report_items', [
+            'daily_report_id' => $reportId,
+            'content' => 'Khong gui result',
+            'result' => '',
+        ]);
+
+        $this->actingAs($author, 'web')->patchJson("/api/reports/{$reportId}", [
+            'items' => [
+                ['content' => 'Cap nhat khong co result', 'status' => 'IN_PROGRESS'],
+            ],
+        ])->assertOk()->assertJsonPath('data.items.0.result', '');
+
+        CarbonImmutable::setTestNow('2026-10-09 16:00:00 UTC');
+        $context = app(DailyReportContextBuilder::class)->build($author, '2026-10-09');
+        $this->assertSame('', $context['reports'][0]['items'][0]['result']);
+    }
+
     public function test_update_is_author_only_atomic_and_uses_the_persisted_deadline(): void
     {
         CarbonImmutable::setTestNow('2026-10-09 09:00:00 UTC');
@@ -168,6 +207,22 @@ class WorkReportTest extends TestCase
         $this->actingAs($author, 'web')->patchJson("/api/reports/{$report->id}", [
             'items' => [['content' => '', 'result' => 'Không hợp lệ', 'status' => 'COMPLETED']],
         ])->assertUnprocessable();
+        $this->assertSame($itemIds, $report->items()->pluck('id')->all());
+
+        $this->actingAs($author, 'web')->patchJson("/api/reports/{$report->id}", [
+            'items' => [
+                ['content' => 'Hop le', 'status' => 'COMPLETED'],
+                ['content' => 'Batch khong hop le', 'result' => str_repeat('x', 5001), 'status' => 'COMPLETED'],
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors('items.1.result');
+        $this->assertSame($itemIds, $report->items()->pluck('id')->all());
+
+        $this->actingAs($author, 'web')->patchJson("/api/reports/{$report->id}", [
+            'items' => [['content' => 'Thieu trang thai']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('items.0.status');
+        $this->actingAs($author, 'web')->patchJson("/api/reports/{$report->id}", [
+            'items' => [['content' => 'Sai trang thai', 'status' => 'UNKNOWN']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('items.0.status');
         $this->assertSame($itemIds, $report->items()->pluck('id')->all());
 
         $other = $this->createReportUser(DataScope::ALL);

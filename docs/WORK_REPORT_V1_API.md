@@ -95,6 +95,8 @@ Payload chỉ nhận `items`:
 
 Có từ 1 đến 50 items. Backend tự gán organization, author, snapshot phòng ban/địa điểm, ngày nghiệp vụ, deadline và `sort_order`. Thành công trả `201` với detail resource. Báo cáo trùng ngày, đã đến cutoff hoặc được gửi vào Chủ Nhật trả `409`.
 
+`content` và `status` là bắt buộc. `result` là tùy chọn: client có thể bỏ key, gửi `null`, chuỗi rỗng hoặc chuỗi hợp lệ; backend chuẩn hóa trường hợp thiếu/`null` thành `""` và response luôn trả `result` dưới dạng string. `note` tiếp tục là tùy chọn.
+
 Membership thuộc diện miễn báo cáo bị từ chối bằng `403` an toàn ở cả create và update, kể cả khi một role khác trên cùng membership có quyền `reports.create`.
 
 Các trường dẫn xuất (`organization_id`, `user_id`, `department_id`, `location_id`, `report_date`, `locked_at`) bị từ chối với `422` nếu client gửi lên.

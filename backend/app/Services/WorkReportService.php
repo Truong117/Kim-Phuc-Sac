@@ -87,7 +87,7 @@ class WorkReportService
     }
 
     /**
-     * @param  list<array{content: string, result: string, status: string, note?: string|null}>  $items
+     * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
     public function create(User $author, array $items): DailyReport
     {
@@ -123,7 +123,7 @@ class WorkReportService
 
                 return $report;
             });
-        } catch (QueryException) {
+        } catch (QueryException $exception) {
             $duplicateExists = DailyReport::query()
                 ->where('organization_id', $membership->organization_id)
                 ->where('user_id', $author->id)
@@ -148,7 +148,7 @@ class WorkReportService
     }
 
     /**
-     * @param  list<array{content: string, result: string, status: string, note?: string|null}>  $items
+     * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
     public function update(User $author, int $reportId, array $items): DailyReport
     {
@@ -277,14 +277,14 @@ class WorkReportService
     }
 
     /**
-     * @param  list<array{content: string, result: string, status: string, note?: string|null}>  $items
+     * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
     private function replaceItems(DailyReport $report, array $items): void
     {
         $report->items()->createMany(array_map(
             fn (array $item, int $index): array => [
                 'content' => $item['content'],
-                'result' => $item['result'],
+                'result' => $item['result'] ?? '',
                 'status' => $item['status'],
                 'note' => $item['note'] ?? null,
                 'sort_order' => $index + 1,

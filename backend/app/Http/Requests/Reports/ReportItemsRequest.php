@@ -30,6 +30,10 @@ abstract class ReportItemsRequest extends FormRequest
                 }
             }
 
+            if (! array_key_exists('result', $item) || $item['result'] === null) {
+                $item['result'] = '';
+            }
+
             return $item;
         }, $this->input('items'));
 
@@ -49,7 +53,7 @@ abstract class ReportItemsRequest extends FormRequest
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*' => ['required', 'array:content,result,status,note'],
             'items.*.content' => ['required', 'string', 'max:5000'],
-            'items.*.result' => ['required', 'string', 'max:5000'],
+            'items.*.result' => ['nullable', 'string', 'max:5000'],
             'items.*.status' => ['required', Rule::enum(WorkStatus::class)],
             'items.*.note' => ['nullable', 'string', 'max:5000'],
         ];

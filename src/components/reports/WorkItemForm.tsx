@@ -108,7 +108,7 @@ export default function WorkItemForm({
 
           <div>
             <Label htmlFor={`result-${item.clientId}`}>
-              {t("result.label")} <span className="text-error-500">*</span>
+              {t("result.label")}
             </Label>
             <TextArea
               id={`result-${item.clientId}`}
@@ -171,7 +171,10 @@ export default function WorkItemForm({
             rows={2}
             value={item.note}
             placeholder={t("note.placeholder")}
+            error={Boolean(errors?.note)}
+            hint={errors?.note}
             onChange={(note) => onChange(item.clientId, { note })}
+            onBlur={() => onBlur(item.clientId, "note")}
           />
         </div>
       </div>

@@ -98,7 +98,7 @@ export type ReportReferences = {
 
 export type WorkItemInput = {
   content: string;
-  result: string;
+  result?: string | null;
   status: WorkStatus;
   note: string | null;
 };
@@ -117,6 +117,7 @@ export type WorkItemValidationErrors = {
   content?: string;
   result?: string;
   status?: string;
+  note?: string;
 };
 
 export type WorkItemField = keyof WorkItemValidationErrors;
