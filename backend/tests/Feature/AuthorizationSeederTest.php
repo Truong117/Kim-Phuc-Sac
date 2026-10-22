@@ -25,8 +25,8 @@ class AuthorizationSeederTest extends TestCase
             'is_active' => true,
         ]);
         $this->assertDatabaseCount('roles', 9);
-        $this->assertDatabaseCount('permissions', 39);
-        $this->assertDatabaseCount('role_permissions', 145);
+        $this->assertDatabaseCount('permissions', 40);
+        $this->assertDatabaseCount('role_permissions', 147);
 
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('departments', 0);
@@ -40,8 +40,8 @@ class AuthorizationSeederTest extends TestCase
         $this->seed(AuthorizationSeeder::class);
 
         $expectedGrantCounts = [
-            'OWNER' => 38,
-            'ADMIN' => 39,
+            'OWNER' => 39,
+            'ADMIN' => 40,
             'HR_MANAGER' => 9,
             'DEPARTMENT_MANAGER' => 8,
             'OFFICE_STAFF' => 4,
@@ -70,7 +70,9 @@ class AuthorizationSeederTest extends TestCase
             ->exists());
         $this->assertSeededScope('OWNER', 'reports.view', DataScope::ALL);
         $this->assertSeededScope('OWNER', 'reports.comment', DataScope::ALL);
+        $this->assertSeededScope('OWNER', 'ai.dashboard.view', DataScope::ALL);
         $this->assertSeededScope('ADMIN', 'reports.create', DataScope::ALL);
+        $this->assertSeededScope('ADMIN', 'ai.dashboard.view', DataScope::ALL);
         $this->assertSeededScope('HR_MANAGER', 'dashboard.view', DataScope::OWN);
         $this->assertSeededScope('HR_MANAGER', 'reports.create', DataScope::OWN);
         $this->assertSeededScope('HR_MANAGER', 'reports.view', DataScope::OWN);

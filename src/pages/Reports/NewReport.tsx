@@ -344,6 +344,24 @@ export default function NewReport() {
             {t("actions.retry")}
           </Button>
         </section>
+      ) : today && !today.is_working_day ? (
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-gray-200 bg-white px-6 py-10 text-center shadow-theme-xs dark:border-gray-800 dark:bg-white/3">
+            <TimeIcon className="mx-auto size-9 text-kps-primary dark:text-sidebar-selected" />
+            <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
+              {t("nonWorkingDay.title")}
+            </h2>
+            <p className="mx-auto mt-2 max-w-xl text-theme-sm text-gray-600 dark:text-gray-300">
+              {t("nonWorkingDay.description", {
+                date: formatDate(today.business_date),
+              })}
+            </p>
+          </section>
+          <ReportStateActions
+            homeLabel={t("actions.goHome")}
+            historyLabel={t("actions.viewHistory")}
+          />
+        </div>
       ) : today?.reporting_required === false ? (
         <div className="space-y-6">
           <section className="rounded-2xl border border-kps-primary/20 bg-white px-6 py-10 text-center shadow-theme-xs dark:border-kps-primary/30 dark:bg-white/3">

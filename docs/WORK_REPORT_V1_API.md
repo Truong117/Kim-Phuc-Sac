@@ -1,6 +1,6 @@
 # Work Report V1 — Backend API Contract
 
-Tất cả endpoint bên dưới dùng prefix `/api`, yêu cầu phiên đăng nhập Sanctum và membership KPS mặc định đang hoạt động. Thời gian lưu trong database và các trường `locked_at`, `created_at`, `updated_at`, `read_at` được trả về theo UTC ISO 8601. Ngày nghiệp vụ và cutoff được tính theo `REPORT_TIMEZONE` (mặc định `Asia/Ho_Chi_Minh`).
+Tất cả endpoint bên dưới dùng prefix `/api`, yêu cầu phiên đăng nhập Sanctum và membership KPS mặc định đang hoạt động. Thời gian lưu trong database và các trường `locked_at`, `created_at`, `updated_at`, `read_at` được trả về theo UTC ISO 8601. Ngày nghiệp vụ và cutoff được tính theo `REPORT_TIMEZONE` (mặc định `Asia/Ho_Chi_Minh`). Lịch làm việc là thứ Hai–thứ Bảy, cutoff mặc định là `23:00`; Chủ Nhật không có cửa sổ tạo báo cáo mới.
 
 ## Giá trị cố định
 
@@ -19,7 +19,8 @@ Tất cả endpoint bên dưới dùng prefix `/api`, yêu cầu phiên đăng n
 {
   "data": {
     "business_date": "2026-10-09",
-    "cutoff_at": "2026-10-09T18:00:00+07:00",
+    "cutoff_at": "2026-10-09T23:00:00+07:00",
+    "is_working_day": true,
     "is_window_closed": false,
     "reporting_required": true,
     "report": null,
@@ -28,7 +29,7 @@ Tất cả endpoint bên dưới dùng prefix `/api`, yêu cầu phiên đăng n
 }
 ```
 
-Nếu đã có báo cáo, `report` dùng cấu trúc detail bên dưới. Đúng thời điểm cutoff, `is_window_closed` là `true`.
+Nếu đã có báo cáo, `report` dùng cấu trúc detail bên dưới. Đúng thời điểm cutoff, `is_window_closed` là `true`. Vào Chủ Nhật, `is_working_day` là `false`, `is_window_closed` là `true`, `reporting_required` và `actions.can_create` đều là `false`; backend không chuyển ngày báo cáo về thứ Bảy.
 
 OWNER trả `reporting_required: false` và `actions.can_create: false` dù membership có thêm role khác cấp `reports.create`. Đây là exemption nghiệp vụ riêng của Work Report: OWNER vẫn xem danh sách/chi tiết theo scope `ALL` và vẫn bình luận report đã khóa của người khác. ADMIN không được miễn và tiếp tục trả `reporting_required: true`. V1 không có cột `report_required` trong database.
 
@@ -52,7 +53,7 @@ Response là Laravel paginated resource (`data`, `links`, `meta`). Mỗi phần 
 {
   "id": 42,
   "report_date": "2026-10-09",
-  "locked_at": "2026-10-09T11:00:00+00:00",
+  "locked_at": "2026-10-09T16:00:00+00:00",
   "is_locked": true,
   "overall_status": "BLOCKED",
   "employee": { "id": 7, "name": "Nguyễn Văn A" },
@@ -92,7 +93,7 @@ Payload chỉ nhận `items`:
 }
 ```
 
-Có từ 1 đến 50 items. Backend tự gán organization, author, snapshot phòng ban/địa điểm, ngày nghiệp vụ, deadline và `sort_order`. Thành công trả `201` với detail resource. Báo cáo trùng ngày hoặc đã đến cutoff trả `409`.
+Có từ 1 đến 50 items. Backend tự gán organization, author, snapshot phòng ban/địa điểm, ngày nghiệp vụ, deadline và `sort_order`. Thành công trả `201` với detail resource. Báo cáo trùng ngày, đã đến cutoff hoặc được gửi vào Chủ Nhật trả `409`.
 
 Membership thuộc diện miễn báo cáo bị từ chối bằng `403` an toàn ở cả create và update, kể cả khi một role khác trên cùng membership có quyền `reports.create`.
 

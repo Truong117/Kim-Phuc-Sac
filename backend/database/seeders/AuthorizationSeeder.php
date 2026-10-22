@@ -28,6 +28,7 @@ class AuthorizationSeeder extends Seeder
         'products.manage',
         'orders.view',
         'orders.manage',
+        'ai.dashboard.view',
         'ai.insights.view',
         'employees.view',
         'employees.manage',
@@ -173,6 +174,7 @@ class AuthorizationSeeder extends Seeder
             'orders.view' => ['name' => 'Xem đơn hàng', 'module' => 'orders'],
             'orders.manage' => ['name' => 'Quản lý đơn hàng', 'module' => 'orders'],
 
+            'ai.dashboard.view' => ['name' => 'Xem tổng quan AI điều hành', 'module' => 'ai'],
             'ai.insights.view' => ['name' => 'Xem phân tích AI', 'module' => 'ai'],
             'ai.assistant.use' => ['name' => 'Sử dụng trợ lý AI', 'module' => 'ai'],
 

@@ -42,7 +42,8 @@ The resolver evaluates the complete set of effective `dashboard.view` scopes rat
   "data": {
     "mode": "department",
     "business_date": "2026-10-09",
-    "cutoff_at": "2026-10-09T18:00:00+07:00",
+    "cutoff_at": "2026-10-09T23:00:00+07:00",
+    "is_working_day": true,
     "context": { "id": 4, "name": "Marketing" },
     "reporting": {
       "expected": 5,
@@ -59,7 +60,7 @@ The resolver evaluates the complete set of effective `dashboard.view` scopes rat
       "state": "submitted_editable",
       "report_id": 40,
       "report_date": "2026-10-09",
-      "cutoff_at": "2026-10-09T18:00:00+07:00",
+      "cutoff_at": "2026-10-09T23:00:00+07:00",
       "overall_status": "IN_PROGRESS",
       "work": {
         "total": 4,
@@ -91,6 +92,9 @@ Self-report states are opaque UI states:
 - `submitted_editable`
 - `locked`
 - `not_submitted_closed`
+- `non_working_day`
+
+Chủ Nhật trả `is_working_day: false`; các tổng `expected`, `submitted`, `missing` đều bằng `0`, `people_progress` rỗng và self-report dùng trạng thái `non_working_day`. Báo cáo Chủ Nhật đã tồn tại trong lịch sử không bị xóa và vẫn có thể xuất hiện trong các khu vực lịch sử theo scope.
 
 ## Current membership and report snapshots
 

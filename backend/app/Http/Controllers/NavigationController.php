@@ -18,6 +18,7 @@ class NavigationController extends Controller
         'customers' => 'customers.view',
         'products' => 'products.view',
         'orders' => 'orders.view',
+        'ai.dashboard' => 'ai.dashboard.view',
         'ai.insights' => 'ai.insights.view',
         'ai.assistant' => 'ai.assistant.use',
         'employees' => 'users.view',

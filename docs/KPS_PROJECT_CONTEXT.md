@@ -144,6 +144,7 @@ src/
 │   ├── Auth/Login.tsx
 │   ├── Dashboard/Overview.tsx
 │   ├── AI/AiDailyInsights.tsx      # scoped mock-first AI Daily Report UI
+│   ├── AI/AiExecutiveDashboard.tsx # OWNER/ADMIN 7/30-day operational analytics
 │   ├── Employees/                  # user list/create/edit pages
 │   ├── Profile/Profile.tsx          # authenticated self-service profile
 │   ├── Account/Account.tsx          # authenticated account security settings
@@ -155,6 +156,7 @@ src/
 ├── components/
 │   ├── auth/
 │   ├── dashboard/
+│   ├── ai/                         # AI calendar and Executive Dashboard sections
 │   ├── employees/                  # User Management V1 components
 │   ├── profile/                    # personal and work information
 │   ├── account/                    # read-only account summary and password change
@@ -170,6 +172,7 @@ src/
 ├── services/reportService.ts       # Work Report API requests
 ├── services/notificationService.ts # notification API requests
 ├── services/aiDailyReportService.ts # AI summary/run/history requests
+├── services/aiExecutiveDashboardService.ts # Executive Dashboard analytics request
 ├── services/accountService.ts      # self-service profile/password requests
 ├── hooks/useAuth.ts                # authenticated-user context hook
 ├── hooks/useAuthorization.ts       # navigation-key UX authorization hook
@@ -180,6 +183,7 @@ src/
 │   ├── reports.ts
 │   ├── notifications.ts
 │   ├── aiDailyReport.ts
+│   ├── aiExecutiveDashboard.ts
 │   ├── userManagement.ts
 │   └── user.ts
 ├── i18n/
@@ -212,6 +216,7 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 | `/customers/:id` | `ModulePlaceholder` | Placeholder only |
 | `/products` | `ModulePlaceholder` | Placeholder only |
 | `/orders` | `ModulePlaceholder` | Placeholder only |
+| `/ai/dashboard` | `AI/AiExecutiveDashboard` | Phân tích điều hành V1 implemented |
 | `/ai/insights` | `AI/AiDailyInsights` | AI Daily Report V1 implemented |
 | `/ai/assistant` | `ModulePlaceholder` | Placeholder only |
 | `/employees` | `Employees/EmployeeList` | User Management V1 list implemented |
@@ -279,7 +284,7 @@ All routes require `auth:sanctum` and an active KPS membership. Report list/deta
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/reports/today` | Server-authoritative business date, cutoff, report-participation state, current report, and create action state |
+| `GET /api/reports/today` | Server-authoritative business date, working-day/cutoff state, report-participation state, current report, and create action state |
 | `GET /api/reports/references` | Scope-safe employee/department/location filter options |
 | `GET /api/reports` | Scoped paginated report history with derived status/counts |
 | `POST /api/reports` | Create exactly one report for the authenticated author/business date |
@@ -291,7 +296,7 @@ All routes require `auth:sanctum` and an active KPS membership. Report list/deta
 | `PATCH /api/notifications/read-all` | Idempotently mark all recipient notifications read |
 | `PATCH /api/notifications/{id}/read` | Idempotently mark one recipient notification read |
 
-Work Report V1 has a business-level participation rule: an active KPS membership containing `OWNER` is exempt from submitting or editing daily reports, even when another assigned role grants `reports.create`. OWNER retains organization-wide report viewing and may comment on other employees' locked reports. `ADMIN` is not exempt and remains a normal report participant. The backend exposes only the opaque `reporting_required` boolean, hides the create-report navigation item for exempt memberships, and stores no `report_required` database field in V1. Future missing-report metrics must exclude OWNER from the expected-report population.
+Work Report V1 has a business-level participation rule: an active KPS membership containing `OWNER` is exempt from submitting or editing daily reports, even when another assigned role grants `reports.create`. OWNER retains organization-wide report viewing and may comment on other employees' locked reports. `ADMIN` is not exempt and remains a normal report participant. The backend exposes only the opaque `reporting_required` boolean, hides the create-report navigation item for exempt memberships, and stores no `report_required` database field in V1. The reporting calendar is Monday–Saturday in `Asia/Ho_Chi_Minh`; Sunday is a non-working day with no create/edit window and no expected/missing population. The configured cutoff for newly created reports is 23:00 local time and locks exactly at that instant.
 
 ### Backend AI Daily Report routes
 
@@ -307,6 +312,14 @@ All routes require `auth:sanctum`, an active KPS membership, `ai.insights.view`,
 | `GET /api/ai/daily-reports/{id}` | Current-requester run detail with current source-scope recheck |
 
 V1 accepts only the most recent 30 business dates and requires today's reporting window to be closed. A new run is rejected before persistence/dispatch when the selected date has no locked report in the requester's current scope; requester history and legacy empty runs remain readable through the history/detail endpoints. Run payloads decorate source IDs with only the scoped report author's display name and department snapshot so the UI can label source links without exposing email, membership, or authorization data. `KPS_AI_DRIVER=fake` is the safe default: the deterministic provider makes no network request. The database queue job checks permissions again when it executes, and completed/cached results remain subject to current report scope. OWNER/ADMIN receive the existing seeded AI permission; a department manager needs an explicit AI grant and then remains constrained by the existing department-scoped `reports.view` grant.
+
+### Backend AI Executive Dashboard route
+
+`GET /api/ai/executive-dashboard?period=7d|30d` is the backend-only Executive Dashboard V1 contract. It requires `auth:sanctum`, an active KPS membership, organization-wide `ai.dashboard.view`, and organization-wide `reports.view`. The seeded permission is granted only to OWNER and ADMIN. Every report query starts from `ReportScopeService`, is constrained to the active KPS organization, and includes only reports whose persisted `locked_at` is not later than the server-generated timestamp.
+
+The response contains locked report/work-item totals, daily trends, department snapshot aggregates, blocked attention items with safe source metadata, and rule-based observations. `COMPLETED` remains an employee-reported status and is never presented as acceptance. The selected 7/30-day windows remain calendar-day ranges, while reporting-rate expected submissions use current active/default non-OWNER memberships multiplied only by Monday–Saturday working days. Sunday historical reports remain in actual report/work totals but do not enter the reporting-rate numerator or denominator. When that denominator is unavailable, the API returns `insufficient_data` and a null rate instead of guessing. Historical membership effective dates, public holidays, and leave are not modeled in V1.
+
+Fresh installations receive `ai.dashboard.view` through `AuthorizationSeeder`. Existing databases should use the targeted `AiExecutiveDashboardPermissionSeeder`, which adds or updates only this permission and the OWNER/ADMIN `ALL` grants through `syncWithoutDetaching`. Running the full sync-based authorization seeder on an established database requires a prior role-permission drift review because it deliberately normalizes every seeded system role.
 
 ## 7. Current sidebar
 
@@ -326,6 +339,7 @@ KINH DOANH
 - Đơn hàng                 -> /orders
 
 AI
+- Phân tích điều hành         -> /ai/dashboard
 - Phân tích AI             -> /ai/insights
 - Trợ lý AI                -> /ai/assistant
 
@@ -335,7 +349,7 @@ HỆ THỐNG
 - Cài đặt                  -> /settings
 ```
 
-Tổng quan, the two report pages, AI Insights, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `ai.insights.view` to `ai.insights` and `users.view` to `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
+Tổng quan, the two report pages, Phân tích điều hành, AI Insights, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `ai.dashboard.view` to `ai.dashboard`, `ai.insights.view` to `ai.insights`, and `users.view` to `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
 
 ## 8. Phase 1 implementation status
 
@@ -364,6 +378,7 @@ Implemented by `GET /api/dashboard`, `src/pages/Dashboard/Overview.tsx`, and sec
 Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `src/types/reports.ts`, and `src/services/reportService.ts`:
 
 - Server-authoritative business date, cutoff, existing report, and opaque action state from `GET /api/reports/today`
+- Monday–Saturday working calendar, Sunday non-working state, and a 23:00 `Asia/Ho_Chi_Minh` cutoff for newly created reports
 - Opaque `reporting_required` state for the OWNER exemption; the frontend does not inspect role names or permission codes
 - Create-before-cutoff and author-edit-before-persisted-deadline flows
 - Locked/read-only and closed-without-report states
@@ -400,6 +415,17 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 - Work Report rows/items are read-only inputs to this module; no existing report workflow or state is changed.
 - The OpenAI adapter is dormant while `KPS_AI_DRIVER=fake`; no key or external data transfer is needed for V1.
 
+### G. AI Executive Dashboard V1 — implemented
+
+- `/ai/dashboard` is a separately guarded route using the opaque `ai.dashboard` navigation key; it does not reuse the AI Daily Report permission.
+- Its user-facing name is **Phân tích điều hành**, distinguishing its trend/decision-support purpose from the daily operational Tổng quan page.
+- The page loads the real 7/30-day backend contract, shows the backend-resolved date range and generated timestamp, and cancels/ignores stale requests when the period changes.
+- The hierarchy is analysis-first: rule-based executive observations, 7/30-day trend and factual data explanation, source-linked priority issues, department comparison, then compact summary KPIs.
+- Trend explanations require at least two days with locked reports and state only verifiable coverage, peak work volume, and blocked-day facts. They do not infer causes, performance, persistent work identity, or current-versus-previous-period change.
+- Department highlighting compares only the blocked counts returned for the selected period; it does not rank employee performance.
+- Null reporting rates and empty datasets are shown explicitly as insufficient data. The UI never labels the metric as compliance or on-time submission and never treats employee-reported `COMPLETED` as acceptance.
+- Loading skeleton, network/auth/forbidden errors, retry, dark mode, responsive tables, tooltip/focus behavior, and source links are implemented.
+
 ## 9. Module status
 
 | Module | Status |
@@ -412,7 +438,7 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 | Customers / CRM | List and detail routes are placeholders only |
 | Products | Placeholder only |
 | Orders | Placeholder only |
-| AI insights / assistant | AI Daily Report V1 implemented at `/ai/insights` with fake provider; assistant remains placeholder |
+| AI insights / assistant | AI Daily Report V1 implemented at `/ai/insights`; Phân tích điều hành V1 implemented at `/ai/dashboard`; both remain mock/rule-based and the assistant is still a placeholder |
 | Employees / User Management | V1 plus HR authorization: scoped HR CRUD for normal employees, protected OWNER/ADMIN targets, safe role references/actions, and one active HR_MANAGER holder |
 | Integrations / Pancake | Placeholder only |
 | Settings | Placeholder only |
@@ -570,10 +596,10 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 ## 17. Known technical debt and audit findings
 
-1. `npm run build` passes. The main KPS application chunk remains roughly 500 KB (roughly 150 KB gzip). ApexCharts and its former large vendor chunk were removed with the unused category chart.
+1. `npm run build` passes. The main KPS application chunk is roughly 581 KB (roughly 161 KB gzip). ApexCharts remains removed; the Executive Dashboard trend uses lightweight HTML/CSS without adding a chart dependency. Route-level code splitting remains a future performance improvement.
 2. `npm run lint` passes with three Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
 3. The frontend has lightweight Node contract tests for navigation, Profile/Account route separation, and locale migration. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, Profile V1, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, AI owner/admin access, department scope, queue dispatch, revocation rechecks, history/source isolation, navigation output, safe payloads, and idempotent RBAC/department seeding.
-4. Dashboard V1 is intentionally today-only. Week/month reporting trends, attendance/leave semantics, tasks, CRM metrics, AI summaries, and work categories remain deferred.
+4. The primary Dashboard V1 remains today-only. Phân tích điều hành provides current-period 7/30-day Work Report trends and excludes Sunday from the reporting-rate denominator, but previous-period comparisons, historical membership effective dates, public holidays, attendance/leave history, tasks, CRM metrics, and work categories remain deferred.
 5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
 6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
 7. Vietnamese is the only supported locale; adding other languages remains a separate product/localization decision.
