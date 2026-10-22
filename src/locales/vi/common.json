@@ -50,7 +50,7 @@
   },
   "dailyReport": {
     "title": "Báo cáo công việc hằng ngày",
-    "subtitle": "Ghi nhận các công việc đã thực hiện trong ngày",
+    "subtitle": "Ghi nhận công việc, tiến độ và những vấn đề phát sinh trong ngày.",
     "metaDescription": "Tạo báo cáo công việc hằng ngày trong hệ thống nội bộ Kim Phục Sắc",
     "loading": "Đang tải báo cáo hôm nay...",
     "unknown": "Chưa xác định",
@@ -61,6 +61,45 @@
       "department": "Phòng ban",
       "reportDate": "Ngày báo cáo"
     },
+    "editor": {
+      "ariaLabel": "Chọn cách nhập báo cáo",
+      "quick": "Báo cáo nhanh",
+      "detailed": "Báo cáo chi tiết"
+    },
+    "quick": {
+      "instructions": "Nhập nhanh nhiều công việc, mỗi dòng là một công việc.",
+      "arrowHint": "Có thể dùng dấu → hoặc -> để tách nội dung và kết quả, ví dụ: Cập nhật website -> Hoàn thành 5 bài viết.",
+      "inputLabel": "Công việc cần thêm",
+      "count": "{count} công việc",
+      "pendingCount": "{count} công việc mới đang chờ thêm",
+      "add": "Thêm vào báo cáo",
+      "itemTitle": "Công việc #{number}",
+      "deleteItem": "Xóa công việc #{number}",
+      "contentLabel": "Nội dung công việc",
+      "resultLabel": "Kết quả (không bắt buộc)",
+      "resultPlaceholder": "Có thể để trống nếu chưa có kết quả",
+      "notePreserved": "Ghi chú chi tiết đang được giữ nguyên. Chuyển sang Báo cáo chi tiết để chỉnh sửa.",
+      "emptyGroup": "Chưa có công việc trong nhóm này.",
+      "groups": {
+        "completed": {
+          "title": "Đã hoàn thành",
+          "placeholder": "Mỗi dòng một công việc đã hoàn thành"
+        },
+        "inProgress": {
+          "title": "Đang thực hiện",
+          "placeholder": "Mỗi dòng một công việc đang thực hiện"
+        },
+        "blocked": {
+          "title": "Có vấn đề / Bị chặn",
+          "placeholder": "Mỗi dòng một công việc đang gặp vấn đề"
+        }
+      },
+      "errors": {
+        "itemLimit": "Không thể thêm batch này vì mỗi báo cáo chỉ được tối đa {limit} công việc. Nội dung vừa nhập vẫn được giữ nguyên.",
+        "contentTooLong": "Nội dung tại dòng {line} vượt quá {limit} ký tự. Toàn bộ batch chưa được thêm.",
+        "resultTooLong": "Kết quả tại dòng {line} vượt quá {limit} ký tự. Toàn bộ batch chưa được thêm."
+      }
+    },
     "workItem": {
       "title": "Công việc #{number}",
       "delete": "Xóa công việc",
@@ -70,7 +109,7 @@
       },
       "result": {
         "label": "Kết quả",
-        "placeholder": "Nhập kết quả công việc"
+        "placeholder": "Có thể để trống nếu chưa có kết quả"
       },
       "status": {
         "label": "Trạng thái"
@@ -86,11 +125,77 @@
       }
     },
     "addWorkItem": "Thêm công việc",
+    "detailedEmpty": "Chưa có công việc. Chọn Thêm công việc để bắt đầu nhập chi tiết.",
     "workItemLimit": "Mỗi báo cáo được tối đa 50 công việc.",
     "validation": {
       "content": "Vui lòng nhập nội dung công việc.",
-      "result": "Vui lòng nhập kết quả công việc.",
-      "status": "Vui lòng chọn trạng thái."
+      "status": "Vui lòng chọn trạng thái.",
+      "maxLength": "Nội dung không được vượt quá {limit} ký tự.",
+      "atLeastOne": "Báo cáo cần có ít nhất một công việc.",
+      "reviewItems": "Vui lòng kiểm tra lại các công việc chưa hợp lệ."
+    },
+    "draft": {
+      "localOnly": "Bản nháp chỉ được lưu trên trình duyệt và thiết bị này trong tối đa 7 ngày.",
+      "status": {
+        "idle": "Tự động lưu nháp đã sẵn sàng",
+        "saving": "Đang lưu nháp...",
+        "saved": "Đã lưu nháp lúc {time}",
+        "restored": "Đã khôi phục bản nháp",
+        "error": "Không thể lưu nháp",
+        "conflict": "Bản nháp đã thay đổi ở tab khác"
+      },
+      "discard": {
+        "action": "Xóa bản nháp"
+      },
+      "pending": {
+        "COMPLETED": "Nội dung nhanh chưa thêm — Đã hoàn thành",
+        "IN_PROGRESS": "Nội dung nhanh chưa thêm — Đang thực hiện",
+        "BLOCKED": "Nội dung nhanh chưa thêm — Có vấn đề"
+      },
+      "dialog": {
+        "localNotice": "Bản nháp này nằm trong bộ nhớ cục bộ của trình duyệt, không được đồng bộ lên máy chủ.",
+        "restore": {
+          "title": "Tìm thấy bản nháp chưa gửi",
+          "conflictTitle": "Bản nháp và báo cáo trên máy chủ khác nhau",
+          "description": "Bản nháp gần nhất được lưu lúc {time}. Bạn muốn tiếp tục với nội dung nào?",
+          "conflictDescription": "Báo cáo trên máy chủ có thể đã thay đổi sau khi bản nháp được lưu lúc {time}. Hãy chọn rõ phiên bản muốn tiếp tục.",
+          "useServer": "Dùng dữ liệu máy chủ",
+          "useDraft": "Khôi phục bản nháp"
+        },
+        "locked": {
+          "title": "Không thể khôi phục bản nháp vào báo cáo hôm nay",
+          "description": "Bản nháp lưu lúc {time} không thể đưa vào biểu mẫu hiện không còn chỉnh sửa được. Bạn có thể xem hoặc sao chép nội dung bên dưới.",
+          "contentLabel": "Nội dung bản nháp của báo cáo đã khóa",
+          "discard": "Xóa bản nháp",
+          "close": "Đóng",
+          "copy": "Sao chép nội dung",
+          "copied": "Đã sao chép",
+          "copyFailed": "Không thể sao chép"
+        },
+        "external": {
+          "title": "Phát hiện thay đổi từ tab khác",
+          "description": "Một phiên bản bản nháp khác đã được lưu lúc {time}. Chọn phiên bản muốn tiếp tục để tránh ghi đè âm thầm.",
+          "deletedDescription": "Bản nháp đã bị xóa ở tab khác. Bạn có thể chấp nhận thay đổi đó hoặc giữ nội dung đang nhập tại tab này.",
+          "useExternal": "Dùng bản nháp từ tab khác",
+          "acceptDeletion": "Dùng dữ liệu máy chủ",
+          "keepCurrent": "Giữ nội dung tab này"
+        },
+        "discard": {
+          "title": "Xóa nội dung bản nháp?",
+          "description": "Nội dung chưa gửi sẽ bị xóa khỏi trình duyệt và biểu mẫu trở về dữ liệu hiện có trên máy chủ.",
+          "cancel": "Tiếp tục chỉnh sửa",
+          "confirm": "Xóa bản nháp"
+        }
+      }
+    },
+    "recovery": {
+      "title": "Báo cáo đã khóa trước khi lưu",
+      "description": "Nội dung chưa gửi được giữ tạm trên màn hình này. Bạn có thể sao chép để lưu lại.",
+      "contentLabel": "Nội dung báo cáo chưa gửi",
+      "copy": "Sao chép nội dung chưa gửi",
+      "copied": "Đã sao chép nội dung",
+      "copyFailed": "Không thể sao chép tự động",
+      "unselectedStatus": "Chưa chọn trạng thái"
     },
     "actions": {
       "reset": "Đặt lại",

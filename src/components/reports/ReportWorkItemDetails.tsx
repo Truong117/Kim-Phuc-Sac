@@ -31,24 +31,26 @@ export default function ReportWorkItemDetails({
               <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
                 {t("content")}
               </dt>
-              <dd className="mt-1 whitespace-pre-wrap text-theme-sm text-gray-800 dark:text-white/90">
+              <dd className="mt-1 text-theme-sm whitespace-pre-wrap text-gray-800 dark:text-white/90">
                 {item.content}
               </dd>
             </div>
-            <div>
-              <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
-                {t("result")}
-              </dt>
-              <dd className="mt-1 whitespace-pre-wrap text-theme-sm text-gray-800 dark:text-white/90">
-                {item.result}
-              </dd>
-            </div>
+            {item.result.trim() && (
+              <div>
+                <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                  {t("result")}
+                </dt>
+                <dd className="mt-1 text-theme-sm whitespace-pre-wrap text-gray-800 dark:text-white/90">
+                  {item.result}
+                </dd>
+              </div>
+            )}
             {item.note && (
               <div className="lg:col-span-2">
                 <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
                   {t("note")}
                 </dt>
-                <dd className="mt-1 whitespace-pre-wrap text-theme-sm text-gray-700 dark:text-gray-300">
+                <dd className="mt-1 text-theme-sm whitespace-pre-wrap text-gray-700 dark:text-gray-300">
                   {item.note}
                 </dd>
               </div>

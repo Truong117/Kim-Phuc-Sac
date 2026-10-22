@@ -33,13 +33,18 @@ export default function WorkItemList({
 
   return (
     <div className="space-y-5">
+      {items.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-8 text-center text-theme-sm text-gray-500 dark:border-gray-700 dark:bg-white/3 dark:text-gray-400">
+          {t("detailedEmpty")}
+        </div>
+      )}
       {items.map((item, index) => (
         <WorkItemForm
           key={item.clientId}
           index={index}
           item={item}
           errors={errors[item.clientId]}
-          canDelete={items.length > 1}
+          canDelete
           onChange={onItemChange}
           onBlur={onItemBlur}
           onDelete={onItemDelete}

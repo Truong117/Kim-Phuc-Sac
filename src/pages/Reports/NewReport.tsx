@@ -1,17 +1,22 @@
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import Form from "@/components/form/Form";
+import ReportDraftDialog from "@/components/reports/ReportDraftDialog";
+import ReportDraftStatus from "@/components/reports/ReportDraftStatus";
 import ReportInfo from "@/components/reports/ReportInfo";
 import ReportSaveModal, {
   type ReportSaveState,
 } from "@/components/reports/ReportSaveModal";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
+import QuickReportEditor from "@/components/reports/QuickReportEditor";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
 import { useAuth } from "@/hooks/useAuth";
+import { useWorkReportDraft } from "@/hooks/useWorkReportDraft";
 import { DocsIcon, TimeIcon } from "@/icons";
 import { ApiServiceError } from "@/services/apiClient";
+import type { WorkReportDraftData } from "@/services/workReportDraftStorage";
 import {
   createReport,
   getTodayReport,
@@ -25,8 +30,18 @@ import type {
   WorkItemFormData,
   WorkItemTouchedFields,
   WorkItemValidationErrors,
+  WorkStatus,
 } from "@/types/reports";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  buildCandidateItems,
+  createEmptyQuickReportDrafts,
+  QUICK_REPORT_MAX_FIELD_LENGTH,
+  realWorkItems,
+  serializeWorkItems,
+  type QuickReportBatchError,
+  type QuickReportDrafts,
+} from "@/utils/quickReport";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 
@@ -97,9 +112,16 @@ export default function NewReport() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [today, setToday] = useState<TodayReportState | null>(null);
-  const [items, setItems] = useState<WorkItemFormData[]>([
-    createEmptyWorkItem(),
-  ]);
+  const [items, setItems] = useState<WorkItemFormData[]>([]);
+  const [editorMode, setEditorMode] = useState<"quick" | "detailed">("quick");
+  const [quickDrafts, setQuickDrafts] = useState<QuickReportDrafts>(
+    createEmptyQuickReportDrafts,
+  );
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [recoveryText, setRecoveryText] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
   const [touchedFields, setTouchedFields] = useState<
     Record<string, WorkItemTouchedFields>
   >({});
@@ -110,12 +132,15 @@ export default function NewReport() {
     status: "idle",
   });
   const saveInFlightRef = useRef(false);
+  const quickTabRef = useRef<HTMLButtonElement>(null);
+  const detailedTabRef = useRef<HTMLButtonElement>(null);
 
   const applyTodayState = useCallback((state: TodayReportState) => {
     setToday(state);
-    setItems(
-      state.report ? mapReportItems(state.report) : [createEmptyWorkItem()],
-    );
+    setItems(state.report ? mapReportItems(state.report) : []);
+    setEditorMode("quick");
+    setQuickDrafts(createEmptyQuickReportDrafts());
+    setBatchError(null);
     setTouchedFields({});
     setSubmitAttempted(false);
   }, []);
@@ -160,18 +185,138 @@ export default function NewReport() {
     return () => abortController.abort();
   }, [applyTodayState, t]);
 
-  const validationErrors = items.reduce<
-    Record<string, WorkItemValidationErrors>
-  >((errors, item) => {
-    const itemErrors: WorkItemValidationErrors = {};
-    if (!item.content.trim()) itemErrors.content = t("validation.content");
-    if (!item.result.trim()) itemErrors.result = t("validation.result");
-    if (!item.status) itemErrors.status = t("validation.status");
-    if (Object.keys(itemErrors).length > 0) {
-      errors[item.clientId] = itemErrors;
+  const isClosed = Boolean(today?.is_window_closed);
+  const isReadOnly = Boolean(
+    today?.report && (today.report.is_locked || !today.report.actions.can_edit),
+  );
+  const cannotCreate = Boolean(
+    today && !today.report && !today.actions.can_create,
+  );
+  const isDraftEditable = Boolean(
+    today &&
+      today.is_working_day &&
+      today.reporting_required &&
+      !isClosed &&
+      !isReadOnly &&
+      !cannotCreate,
+  );
+
+  const draftContext = useMemo(
+    () =>
+      currentUser && today
+        ? {
+            userId: String(currentUser.id),
+            reportDate: today.business_date,
+          }
+        : null,
+    [currentUser, today],
+  );
+  const serverDraftData = useMemo<WorkReportDraftData>(
+    () => ({
+      items: today?.report ? mapReportItems(today.report) : [],
+      quickDrafts: createEmptyQuickReportDrafts(),
+      editorMode: "quick",
+    }),
+    [today],
+  );
+  const currentDraftData = useMemo<WorkReportDraftData>(
+    () => ({ items, quickDrafts, editorMode }),
+    [editorMode, items, quickDrafts],
+  );
+  const applyDraftData = useCallback((draftData: WorkReportDraftData) => {
+    setItems(draftData.items.map((item) => ({ ...item })));
+    setQuickDrafts({ ...draftData.quickDrafts });
+    setEditorMode(draftData.editorMode);
+    setBatchError(null);
+    setRecoveryText(null);
+    setCopyStatus("idle");
+    setTouchedFields({});
+    setSubmitAttempted(false);
+    setError(null);
+  }, []);
+  const reportDraft = useWorkReportDraft({
+    context: draftContext,
+    data: currentDraftData,
+    serverData: serverDraftData,
+    serverReportId: today?.report?.id ?? null,
+    serverUpdatedAt: today?.report?.updated_at ?? null,
+    editable: isDraftEditable,
+    active: isDraftEditable && saveState.status === "idle",
+    applyData: applyDraftData,
+  });
+
+  const lockedDraftText = useMemo(() => {
+    if (reportDraft.dialog?.kind !== "locked") return "";
+
+    const draft = reportDraft.dialog.draft.data;
+    const savedItems = serializeWorkItems(draft.items, {
+      note: t("workItem.note.label"),
+      unselectedStatus: t("recovery.unselectedStatus"),
+      statuses: {
+        COMPLETED: t("workItem.statuses.completed"),
+        IN_PROGRESS: t("workItem.statuses.inProgress"),
+        BLOCKED: t("workItem.statuses.blocked"),
+      },
+    });
+    const pendingGroups = (
+      ["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const
+    )
+      .filter((status) => draft.quickDrafts[status].trim())
+      .map(
+        (status) =>
+          `${t(`draft.pending.${status}`)}:\n${draft.quickDrafts[status]}`,
+      );
+
+    return [savedItems, ...pendingGroups].filter(Boolean).join("\n\n");
+  }, [reportDraft.dialog, t]);
+
+  const validateItems = (candidateItems: WorkItemFormData[]) =>
+    candidateItems.reduce<Record<string, WorkItemValidationErrors>>(
+      (errors, item) => {
+        const itemErrors: WorkItemValidationErrors = {};
+        if (!item.content.trim()) {
+          itemErrors.content = t("validation.content");
+        } else if (item.content.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
+          itemErrors.content = t("validation.maxLength", {
+            limit: QUICK_REPORT_MAX_FIELD_LENGTH,
+          });
+        }
+        if (item.result.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
+          itemErrors.result = t("validation.maxLength", {
+            limit: QUICK_REPORT_MAX_FIELD_LENGTH,
+          });
+        }
+        if (item.note.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
+          itemErrors.note = t("validation.maxLength", {
+            limit: QUICK_REPORT_MAX_FIELD_LENGTH,
+          });
+        }
+        if (!item.status) itemErrors.status = t("validation.status");
+        if (Object.keys(itemErrors).length > 0) {
+          errors[item.clientId] = itemErrors;
+        }
+        return errors;
+      },
+      {},
+    );
+
+  const validationErrors = validateItems(items);
+
+  const describeBatchError = (batchIssue: QuickReportBatchError) => {
+    if (batchIssue.code === "item_limit") {
+      return t("quick.errors.itemLimit", { limit: batchIssue.limit });
     }
-    return errors;
-  }, {});
+
+    return t(
+      batchIssue.code === "content_too_long"
+        ? "quick.errors.contentTooLong"
+        : "quick.errors.resultTooLong",
+      {
+        line: batchIssue.line,
+        limit: batchIssue.limit,
+      },
+    );
+  };
 
   const visibleErrors = Object.fromEntries(
     Object.entries(validationErrors).map(([clientId, itemErrors]) => [
@@ -180,7 +325,7 @@ export default function NewReport() {
         Object.entries(itemErrors).filter(([field]) =>
           Boolean(
             submitAttempted ||
-              touchedFields[clientId]?.[field as WorkItemField],
+            touchedFields[clientId]?.[field as WorkItemField],
           ),
         ),
       ) as WorkItemValidationErrors,
@@ -206,11 +351,7 @@ export default function NewReport() {
   };
 
   const handleDeleteItem = (clientId: string) => {
-    setItems((current) =>
-      current.length === 1
-        ? current
-        : current.filter((item) => item.clientId !== clientId),
-    );
+    setItems((current) => current.filter((item) => item.clientId !== clientId));
     setTouchedFields((current) => {
       const next = { ...current };
       delete next[clientId];
@@ -218,13 +359,60 @@ export default function NewReport() {
     });
   };
 
-  const resetItems = () => {
-    setItems(
-      today?.report ? mapReportItems(today.report) : [createEmptyWorkItem()],
-    );
-    setTouchedFields({});
-    setSubmitAttempted(false);
-    setError(null);
+  const appendQuickDrafts = (drafts: QuickReportDrafts) => {
+    const candidate = buildCandidateItems(items, drafts, createClientId);
+    if (!candidate.ok) {
+      setBatchError(describeBatchError(candidate.error));
+      return false;
+    }
+
+    setItems(candidate.items);
+    setBatchError(null);
+    return true;
+  };
+
+  const handleAddBatch = (status: WorkStatus) => {
+    const selectedDrafts = createEmptyQuickReportDrafts();
+    selectedDrafts[status] = quickDrafts[status];
+    if (!appendQuickDrafts(selectedDrafts)) return;
+
+    setQuickDrafts((current) => ({ ...current, [status]: "" }));
+  };
+
+  const handleEditorModeChange = (mode: "quick" | "detailed") => {
+    if (mode === editorMode) return;
+
+    if (mode === "detailed") {
+      if (!appendQuickDrafts(quickDrafts)) return;
+      setQuickDrafts(createEmptyQuickReportDrafts());
+    }
+
+    setEditorMode(mode);
+    requestAnimationFrame(() => {
+      (mode === "quick" ? quickTabRef : detailedTabRef).current?.focus();
+    });
+  };
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextMode =
+      event.key === "ArrowLeft" || event.key === "Home" ? "quick" : "detailed";
+    handleEditorModeChange(nextMode);
+  };
+
+  const copyRecoveryText = async () => {
+    if (!recoveryText) return;
+
+    try {
+      await navigator.clipboard.writeText(recoveryText);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
   };
 
   const handleSubmit = async () => {
@@ -232,23 +420,45 @@ export default function NewReport() {
 
     setSubmitAttempted(true);
     setError(null);
-    if (Object.keys(validationErrors).length > 0 || !today) return;
+    setRecoveryText(null);
+    setCopyStatus("idle");
+
+    const candidate = buildCandidateItems(items, quickDrafts, createClientId);
+    if (!candidate.ok) {
+      setBatchError(describeBatchError(candidate.error));
+      return;
+    }
+
+    const candidateItems = candidate.items;
+    const candidateErrors = validateItems(candidateItems);
+    if (!today) return;
+    if (candidateItems.length === 0) {
+      setError(t("validation.atLeastOne"));
+      return;
+    }
+    if (Object.keys(candidateErrors).length > 0) {
+      setError(t("validation.reviewItems"));
+      return;
+    }
+    setBatchError(null);
 
     const input: SaveReportInput = {
-      items: items.map((item) => ({
+      items: candidateItems.map((item) => ({
         content: item.content.trim(),
         result: item.result.trim(),
-        status: item.status || "IN_PROGRESS",
+        status: item.status as WorkStatus,
         note: item.note.trim() || null,
       })),
     };
 
+    reportDraft.flushNow();
     saveInFlightRef.current = true;
     setSaveState({ status: "saving" });
     try {
       const savedReport = today.report
         ? await updateReport(today.report.id, input)
         : await createReport(input);
+      reportDraft.handleSubmitSuccess();
       setToday((current) =>
         current
           ? {
@@ -272,6 +482,17 @@ export default function NewReport() {
         );
 
         if (submitError.status === 409) {
+          reportDraft.suspend();
+          const unsavedContent = serializeWorkItems(candidateItems, {
+            note: t("workItem.note.label"),
+            unselectedStatus: t("recovery.unselectedStatus"),
+            statuses: {
+              COMPLETED: t("workItem.statuses.completed"),
+              IN_PROGRESS: t("workItem.statuses.inProgress"),
+              BLOCKED: t("workItem.statuses.blocked"),
+            },
+          });
+          setRecoveryText(unsavedContent || null);
           try {
             applyTodayState(await getTodayReport());
           } catch {
@@ -295,14 +516,6 @@ export default function NewReport() {
     today?.report?.department?.name ??
     currentUser?.department?.name ??
     t("notAssigned");
-  const isClosed = Boolean(today?.is_window_closed);
-  const isReadOnly = Boolean(
-    today?.report && (today.report.is_locked || !today.report.actions.can_edit),
-  );
-  const cannotCreate = Boolean(
-    today && !today.report && !today.actions.can_create,
-  );
-
   return (
     <>
       <PageMeta
@@ -318,6 +531,18 @@ export default function NewReport() {
         state={saveState}
         onGoHome={() => navigate("/")}
         onReview={() => navigate("/reports")}
+      />
+      <ReportDraftDialog
+        state={reportDraft.dialog}
+        lockedDraftText={lockedDraftText}
+        onRestore={reportDraft.restoreDraft}
+        onUseServer={reportDraft.useServerData}
+        onUseExternal={reportDraft.useExternalData}
+        onKeepCurrent={reportDraft.keepCurrentData}
+        onDiscard={reportDraft.useServerData}
+        onCancelDiscard={reportDraft.cancelDiscard}
+        onDiscardLocked={reportDraft.discardLockedDraft}
+        onCloseLocked={reportDraft.closeLockedDraft}
       />
 
       {isLoading && !today ? (
@@ -397,6 +622,43 @@ export default function NewReport() {
             </div>
           )}
 
+          {recoveryText && (
+            <section className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-4 dark:border-warning-800 dark:bg-warning-500/10">
+              <h2 className="font-semibold text-gray-900 dark:text-white">
+                {t("recovery.title")}
+              </h2>
+              <p className="mt-1 text-theme-sm text-gray-600 dark:text-gray-300">
+                {t("recovery.description")}
+              </p>
+              <label htmlFor="unsaved-report-recovery" className="sr-only">
+                {t("recovery.contentLabel")}
+              </label>
+              <textarea
+                id="unsaved-report-recovery"
+                value={recoveryText}
+                readOnly
+                rows={6}
+                onFocus={(event) => event.currentTarget.select()}
+                className="mt-3 custom-scrollbar w-full resize-y rounded-lg border border-warning-300 bg-white px-4 py-3 text-theme-sm whitespace-pre-wrap text-gray-800 shadow-theme-xs focus:border-kps-primary focus:ring-3 focus:ring-kps-primary/20 focus:outline-none dark:border-warning-700 dark:bg-gray-900 dark:text-white/90"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => void copyRecoveryText()}
+              >
+                {t(
+                  copyStatus === "copied"
+                    ? "recovery.copied"
+                    : copyStatus === "error"
+                      ? "recovery.copyFailed"
+                      : "recovery.copy",
+                )}
+              </Button>
+            </section>
+          )}
+
           {today.report && isReadOnly ? (
             <>
               <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-theme-xs sm:p-6 dark:border-gray-800 dark:bg-white/3">
@@ -446,9 +708,7 @@ export default function NewReport() {
                 </h2>
                 <p className="mt-2 text-theme-sm text-gray-600 dark:text-gray-300">
                   {t(
-                    isClosed
-                      ? "closed.description"
-                      : "unavailable.description",
+                    isClosed ? "closed.description" : "unavailable.description",
                     {
                       date: formatDate(today.business_date),
                       cutoff: formatTime(today.cutoff_at),
@@ -480,15 +740,103 @@ export default function NewReport() {
               )}
 
               <Form onSubmit={() => void handleSubmit()} className="space-y-6">
-                <WorkItemList
-                  items={items}
-                  errors={visibleErrors}
-                  onItemChange={handleItemChange}
-                  onItemBlur={handleItemBlur}
-                  onItemAdd={() =>
-                    setItems((current) => [...current, createEmptyWorkItem()])
-                  }
-                  onItemDelete={handleDeleteItem}
+                <section className="rounded-2xl border border-gray-200 bg-white p-2 shadow-theme-xs dark:border-gray-800 dark:bg-white/3">
+                  <div
+                    role="tablist"
+                    aria-label={t("editor.ariaLabel")}
+                    className="grid grid-cols-2 gap-2"
+                  >
+                    <button
+                      ref={quickTabRef}
+                      type="button"
+                      role="tab"
+                      id="quick-report-tab"
+                      aria-selected={editorMode === "quick"}
+                      aria-controls="quick-report-panel"
+                      tabIndex={editorMode === "quick" ? 0 : -1}
+                      onKeyDown={handleTabKeyDown}
+                      onClick={() => handleEditorModeChange("quick")}
+                      className={`rounded-xl px-4 py-3 text-theme-sm font-semibold transition-colors focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none ${
+                        editorMode === "quick"
+                          ? "bg-kps-primary text-white shadow-theme-xs"
+                          : "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5"
+                      }`}
+                    >
+                      {t("editor.quick")}
+                    </button>
+                    <button
+                      ref={detailedTabRef}
+                      type="button"
+                      role="tab"
+                      id="detailed-report-tab"
+                      aria-selected={editorMode === "detailed"}
+                      aria-controls="detailed-report-panel"
+                      tabIndex={editorMode === "detailed" ? 0 : -1}
+                      onKeyDown={handleTabKeyDown}
+                      onClick={() => handleEditorModeChange("detailed")}
+                      className={`rounded-xl px-4 py-3 text-theme-sm font-semibold transition-colors focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none ${
+                        editorMode === "detailed"
+                          ? "bg-kps-primary text-white shadow-theme-xs"
+                          : "text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-white/5"
+                      }`}
+                    >
+                      {t("editor.detailed")}
+                    </button>
+                  </div>
+                </section>
+
+                {editorMode === "quick" ? (
+                  <div
+                    id="quick-report-panel"
+                    role="tabpanel"
+                    aria-labelledby="quick-report-tab"
+                  >
+                    <QuickReportEditor
+                      items={realWorkItems(items)}
+                      drafts={quickDrafts}
+                      errors={visibleErrors}
+                      batchError={batchError}
+                      disabled={isSaveFlowActive}
+                      onDraftChange={(status, value) => {
+                        setQuickDrafts((current) => ({
+                          ...current,
+                          [status]: value,
+                        }));
+                        setBatchError(null);
+                      }}
+                      onAddBatch={handleAddBatch}
+                      onItemChange={handleItemChange}
+                      onItemBlur={handleItemBlur}
+                      onItemDelete={handleDeleteItem}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    id="detailed-report-panel"
+                    role="tabpanel"
+                    aria-labelledby="detailed-report-tab"
+                  >
+                    <WorkItemList
+                      items={items}
+                      errors={visibleErrors}
+                      onItemChange={handleItemChange}
+                      onItemBlur={handleItemBlur}
+                      onItemAdd={() =>
+                        setItems((current) => [
+                          ...current,
+                          createEmptyWorkItem(),
+                        ])
+                      }
+                      onItemDelete={handleDeleteItem}
+                    />
+                  </div>
+                )}
+
+                <ReportDraftStatus
+                  indicator={reportDraft.indicator}
+                  canDiscard={reportDraft.hasUnsavedData}
+                  disabled={isSaveFlowActive}
+                  onDiscard={reportDraft.requestDiscard}
                 />
 
                 <div className="flex flex-col-reverse gap-3 rounded-2xl border border-gray-200 bg-white p-5 sm:flex-row sm:justify-end dark:border-gray-800 dark:bg-white/3">
@@ -497,8 +845,10 @@ export default function NewReport() {
                     variant="outline"
                     size="sm"
                     className="w-full sm:w-auto"
-                    onClick={resetItems}
-                    disabled={isSaveFlowActive}
+                    onClick={reportDraft.requestDiscard}
+                    disabled={
+                      isSaveFlowActive || !reportDraft.hasUnsavedData
+                    }
                   >
                     {t("actions.reset")}
                   </Button>
