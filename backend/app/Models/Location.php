@@ -37,4 +37,9 @@ class Location extends Model
     {
         return $this->hasMany(DailyReport::class);
     }
+
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
+    }
 }

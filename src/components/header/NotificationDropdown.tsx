@@ -1,6 +1,6 @@
 import { Dropdown } from "@/components/ui/dropdown/Dropdown";
 import { useNotifications } from "@/hooks/useNotifications";
-import { BellIcon, ChatIcon, CloseIcon } from "@/icons";
+import { BellIcon, ChatIcon, CloseIcon, TaskIcon } from "@/icons";
 import type { UserNotification } from "@/types/notifications";
 import { cn } from "@/utils";
 import { useState } from "react";
@@ -30,6 +30,13 @@ const getNotificationPath = (notification: UserNotification) => {
     notification.reference.type === "DAILY_REPORT"
   ) {
     return `/reports/${notification.reference.id}`;
+  }
+
+  if (
+    ["TASK_ASSIGNED", "TASK_REASSIGNED"].includes(notification.type) &&
+    notification.reference.type === "TASK"
+  ) {
+    return `/tasks/${notification.reference.id}`;
   }
 
   return null;
@@ -164,7 +171,11 @@ export default function NotificationDropdown() {
                     )}
                   >
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-kps-primary/10 text-kps-primary dark:bg-kps-primary/20 dark:text-sidebar-selected">
-                      <ChatIcon className="size-5" aria-hidden="true" />
+                      {notification.reference.type === "TASK" ? (
+                        <TaskIcon className="size-5" aria-hidden="true" />
+                      ) : (
+                        <ChatIcon className="size-5" aria-hidden="true" />
+                      )}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-start justify-between gap-2">

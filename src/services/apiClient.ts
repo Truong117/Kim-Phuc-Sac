@@ -128,3 +128,35 @@ export const apiRequest = async <T>(
 
   return (await response.json()) as T;
 };
+
+export const apiDownload = async (
+  path: string,
+  signal?: AbortSignal,
+): Promise<Blob> => {
+  let response: Response;
+
+  try {
+    response = await fetch(getApiBaseUrl() + path, {
+      credentials: "include",
+      headers: { Accept: "application/octet-stream" },
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    throw new ApiServiceError(0);
+  }
+
+  if (!response.ok) {
+    const payload = await parseErrorPayload(response);
+    if ([401, 419].includes(response.status)) notifySessionExpiration();
+    throw new ApiServiceError(
+      response.status,
+      typeof payload.message === "string" ? payload.message : undefined,
+      payload.errors,
+    );
+  }
+
+  return response.blob();
+};

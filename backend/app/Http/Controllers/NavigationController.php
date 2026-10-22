@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\DataScope;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\ReportParticipationService;
@@ -15,6 +16,7 @@ class NavigationController extends Controller
         'reports.new' => 'reports.create',
         'reports.history' => 'reports.view',
         'tasks' => 'tasks.view',
+        'weekly-plans' => 'weekly_plans.view',
         'customers' => 'customers.view',
         'products' => 'products.view',
         'orders' => 'orders.view',
@@ -41,7 +43,16 @@ class NavigationController extends Controller
                 continue;
             }
 
-            if ($authorization->allows($user, $permission)) {
+            $isAllowed = $authorization->allows($user, $permission);
+            if ($navigationKey === 'weekly-plans') {
+                $isAllowed = $isAllowed && in_array(
+                    $authorization->scopeFor($user, $permission),
+                    [DataScope::ORGANIZATION, DataScope::ALL],
+                    true,
+                );
+            }
+
+            if ($isAllowed) {
                 $items[] = $navigationKey;
             }
         }

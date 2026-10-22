@@ -19,6 +19,7 @@ class AuthorizationSeeder extends Seeder
         'reports.approve',
         'tasks.view',
         'tasks.manage',
+        'tasks.status.update',
         'customers.view',
         'customers.create',
         'customers.update',
@@ -152,6 +153,10 @@ class AuthorizationSeeder extends Seeder
     private function permissions(): array
     {
         return [
+            'tasks.status.update' => [
+                'name' => 'Cập nhật trạng thái công việc được giao',
+                'module' => 'tasks',
+            ],
             'dashboard.view' => ['name' => 'Xem tổng quan', 'module' => 'dashboard'],
 
             'reports.create' => ['name' => 'Tạo báo cáo', 'module' => 'reports'],
@@ -232,6 +237,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.create',
                 'reports.view',
                 'tasks.view',
+                'tasks.status.update',
             ], DataScope::OWN, [
                 'users.view' => DataScope::ORGANIZATION,
                 'users.create' => DataScope::ORGANIZATION,
@@ -247,6 +253,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.approve',
                 'tasks.view',
                 'tasks.manage',
+                'tasks.status.update',
                 'employees.view',
             ], DataScope::DEPARTMENT),
             'OFFICE_STAFF' => $this->grants([
@@ -254,6 +261,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.create',
                 'reports.view',
                 'tasks.view',
+                'tasks.status.update',
             ], DataScope::OWN),
             'SALES_MANAGER' => $this->grants([
                 'dashboard.view',
@@ -261,6 +269,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.view',
                 'tasks.view',
                 'tasks.manage',
+                'tasks.status.update',
                 'customers.view',
                 'customers.create',
                 'customers.update',
@@ -280,6 +289,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.create',
                 'reports.view',
                 'tasks.view',
+                'tasks.status.update',
                 'customers.view',
                 'customers.create',
                 'customers.update',
@@ -296,6 +306,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.comment',
                 'tasks.view',
                 'tasks.manage',
+                'tasks.status.update',
                 'customers.view',
                 'customers.update',
                 'spa.customers.view',
@@ -309,6 +320,7 @@ class AuthorizationSeeder extends Seeder
                 'reports.create',
                 'reports.view',
                 'tasks.view',
+                'tasks.status.update',
                 'customers.view',
                 'spa.customers.view',
                 'spa.appointments.view',

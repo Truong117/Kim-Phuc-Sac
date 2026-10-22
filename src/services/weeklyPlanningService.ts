@@ -1,0 +1,169 @@
+import { apiDownload, apiRequest } from "@/services/apiClient";
+import type {
+  WeeklyPlan,
+  WeeklyPlanEntryInput,
+  WeeklyPlanListResponse,
+  WeeklyPlanReferences,
+  WeeklyPlanReviewStatus,
+} from "@/types/weeklyPlanning";
+
+type WeeklyPlanResponse = { data: WeeklyPlan };
+type WeeklyPlanReferencesResponse = { data: WeeklyPlanReferences };
+
+export const getWeeklyPlans = (
+  page = 1,
+  signal?: AbortSignal,
+): Promise<WeeklyPlanListResponse> =>
+  apiRequest("/api/weekly-plans?page=" + page + "&per_page=20", { signal });
+
+export const getWeeklyPlanReferences = async (
+  signal?: AbortSignal,
+): Promise<WeeklyPlanReferences> => {
+  const response = await apiRequest<WeeklyPlanReferencesResponse>(
+    "/api/weekly-plans/references",
+    { signal },
+  );
+  return response.data;
+};
+
+export const getWeeklyPlan = async (
+  id: string | number,
+  signal?: AbortSignal,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + encodeURIComponent(String(id)),
+    { signal },
+  );
+  return response.data;
+};
+
+export const importWeeklyPlan = async (
+  file: File,
+  mapping: Record<string, string> = {},
+): Promise<WeeklyPlan> => {
+  const body = new FormData();
+  body.append("file", file);
+  Object.entries(mapping).forEach(([key, value]) => {
+    if (value) body.append("column_mapping[" + key + "]", value);
+  });
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/import",
+    { method: "POST", body },
+  );
+  return response.data;
+};
+
+export const reparseWeeklyPlan = async (
+  id: number,
+  mapping: Record<string, string>,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/reparse",
+    { method: "POST", body: JSON.stringify({ column_mapping: mapping }) },
+  );
+  return response.data;
+};
+
+export const downloadWeeklyPlanTemplate = () =>
+  apiDownload("/api/weekly-plans/template");
+
+export const addWeeklyPlanEntry = async (
+  id: number,
+  input: WeeklyPlanEntryInput,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/entries",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return response.data;
+};
+
+export const updateWeeklyPlanEntry = async (
+  id: number,
+  entryId: number,
+  input: WeeklyPlanEntryInput,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/entries/" + entryId,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return response.data;
+};
+
+export const deleteWeeklyPlanEntry = async (
+  id: number,
+  entryId: number,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/entries/" + entryId,
+    { method: "DELETE" },
+  );
+  return response.data;
+};
+
+const planAction = async (id: number, action: string): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/" + action,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return response.data;
+};
+
+export const submitWeeklyPlan = (id: number) => planAction(id, "submit");
+export const analyzeWeeklyPlan = (id: number) => planAction(id, "analyze");
+export const approveWeeklyPlan = (id: number) => planAction(id, "approve");
+export const publishWeeklyPlan = (id: number) => planAction(id, "publish");
+export const approveAndPublishWeeklyPlan = (id: number) =>
+  planAction(id, "approve-and-publish");
+
+export const reviewWeeklyPlanEmployee = async (
+  id: number,
+  assigneeId: number,
+  status: Exclude<WeeklyPlanReviewStatus, "PENDING">,
+  comment?: string,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/employee-reviews",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        assignee_id: assigneeId,
+        status,
+        comment: comment || null,
+      }),
+    },
+  );
+  return response.data;
+};
+
+export const decideWeeklyPlanSuggestion = async (
+  id: number,
+  suggestionId: number,
+  status: "ACCEPTED" | "REJECTED",
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/suggestions/" + suggestionId,
+    { method: "PATCH", body: JSON.stringify({ status }) },
+  );
+  return response.data;
+};
+
+export const addWeeklyPlanComment = async (
+  id: number,
+  content: string,
+  assigneeId?: number,
+  entryId?: number,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/comments",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content,
+        assignee_id: assigneeId ?? null,
+        entry_id: entryId ?? null,
+      }),
+    },
+  );
+  return response.data;
+};

@@ -29,6 +29,7 @@ interface NavItem {
   icon: React.ReactNode;
   path: string;
   matchChildren?: boolean;
+  activePaths?: string[];
   excludedChildPaths?: string[];
 }
 
@@ -70,6 +71,8 @@ const navGroups: NavGroup[] = [
         nameKey: "tasks",
         icon: <TaskIcon fontSize={24} />,
         path: "/tasks",
+        matchChildren: true,
+        activePaths: ["/weekly-plans"],
       },
     ],
   },
@@ -169,11 +172,15 @@ export default function AppSidebar() {
   }, [location.pathname]);
 
   const isActive = (item: NavItem) => {
-    if (location.pathname === item.path) {
-      return true;
-    }
+    const paths = [item.path, ...(item.activePaths ?? [])];
 
-    if (!item.matchChildren || !location.pathname.startsWith(`${item.path}/`)) {
+    if (
+      !paths.some(
+        (path) =>
+          location.pathname === path ||
+          (item.matchChildren && location.pathname.startsWith(`${path}/`)),
+      )
+    ) {
       return false;
     }
 

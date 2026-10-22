@@ -65,6 +65,21 @@ class User extends Authenticatable
         return $this->hasMany(DailyReport::class);
     }
 
+    public function createdTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'creator_id');
+    }
+
+    public function assignedTasks(): HasMany
+    {
+        return $this->hasMany(Task::class, 'assignee_id');
+    }
+
+    public function createdWeeklyPlans(): HasMany
+    {
+        return $this->hasMany(WeeklyPlan::class, 'created_by');
+    }
+
     public function receivedNotifications(): HasMany
     {
         return $this->hasMany(UserNotification::class, 'recipient_user_id');

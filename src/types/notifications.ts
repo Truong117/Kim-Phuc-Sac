@@ -1,10 +1,10 @@
 export type UserNotification = {
   id: number;
-  type: "REPORT_COMMENT";
+  type: "REPORT_COMMENT" | "TASK_ASSIGNED" | "TASK_REASSIGNED";
   title: string;
   message: string;
   actor: { id: number; name: string } | null;
-  reference: { type: "DAILY_REPORT"; id: number };
+  reference: { type: "DAILY_REPORT" | "TASK"; id: number };
   is_read: boolean;
   read_at: string | null;
   created_at: string;

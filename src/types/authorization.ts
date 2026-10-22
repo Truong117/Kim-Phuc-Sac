@@ -3,6 +3,7 @@ export const navigationKeys = [
   "reports.new",
   "reports.history",
   "tasks",
+  "weekly-plans",
   "customers",
   "products",
   "orders",

@@ -6,6 +6,7 @@ use App\Enums\NotificationReferenceType;
 use App\Enums\UserNotificationType;
 use App\Models\DailyReport;
 use App\Models\ReportComment;
+use App\Models\Task;
 use App\Models\User;
 use App\Models\UserNotification;
 use Carbon\CarbonImmutable;
@@ -29,6 +30,30 @@ class UserNotificationService
             'reference_id' => $report->id,
             'title' => 'Báo cáo có bình luận mới',
             'message' => "{$actor->name} đã bình luận về báo cáo ngày {$report->report_date->format('d/m/Y')}.",
+        ]);
+    }
+
+    public function createTaskAssignedNotification(
+        Task $task,
+        User $actor,
+        bool $isReassignment,
+    ): ?UserNotification {
+        if ($task->assignee_id === $actor->id) {
+            return null;
+        }
+
+        return UserNotification::query()->create([
+            'recipient_user_id' => $task->assignee_id,
+            'actor_user_id' => $actor->id,
+            'type' => $isReassignment
+                ? UserNotificationType::TASK_REASSIGNED
+                : UserNotificationType::TASK_ASSIGNED,
+            'reference_type' => NotificationReferenceType::TASK,
+            'reference_id' => $task->id,
+            'title' => $isReassignment
+                ? 'Bạn được chuyển giao công việc'
+                : 'Bạn có công việc mới',
+            'message' => "{$actor->name} đã giao cho bạn công việc “{$task->title}”.",
         ]);
     }
 

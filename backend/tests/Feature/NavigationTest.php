@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Enums\DataScope;
 use App\Models\User;
 use Database\Seeders\AuthorizationSeeder;
+use Database\Seeders\WeeklyPlanningPermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -111,6 +113,61 @@ class NavigationTest extends TestCase
 
         $this->assertStringNotContainsString('ai.dashboard.view', $response->getContent());
         $this->assertStringNotContainsString('ai.insights.view', $response->getContent());
+    }
+
+    public function test_weekly_planning_navigation_requires_an_organization_wide_scope(): void
+    {
+        $hr = User::factory()->create();
+        $membership = $this->createMembership($hr);
+        $roleId = $this->createRole('WEEKLY_PLANNING_NAVIGATION');
+        $permissionId = $this->createPermission('weekly_plans.view');
+        $this->attachRole($membership['membership_id'], $roleId, true);
+        $this->grantPermission($roleId, $permissionId, DataScope::DEPARTMENT->value);
+
+        $this->actingAs($hr, 'web')
+            ->getJson('/api/navigation')
+            ->assertOk()
+            ->assertExactJson(['items' => []]);
+
+        $this->grantPermission($roleId, $permissionId, DataScope::ORGANIZATION->value);
+
+        $response = $this->actingAs($hr, 'web')
+            ->getJson('/api/navigation')
+            ->assertOk()
+            ->assertExactJson(['items' => ['weekly-plans']]);
+
+        $this->assertStringNotContainsString('weekly_plans.view', $response->getContent());
+    }
+
+    #[DataProvider('weeklyNavigationRoles')]
+    public function test_seeded_weekly_navigation_matches_the_isolated_grant(
+        string $roleCode,
+        bool $shouldContainWeeklyPlanning,
+    ): void {
+        $this->seed(AuthorizationSeeder::class);
+        $this->seed(WeeklyPlanningPermissionSeeder::class);
+
+        $response = $this
+            ->actingAs($this->createUserWithSeededRole($roleCode), 'web')
+            ->getJson('/api/navigation')
+            ->assertOk();
+
+        if ($shouldContainWeeklyPlanning) {
+            $this->assertContains('weekly-plans', $response->json('items'));
+            $this->assertStringNotContainsString('weekly_plans.view', $response->getContent());
+        } else {
+            $this->assertNotContains('weekly-plans', $response->json('items'));
+        }
+    }
+
+    public static function weeklyNavigationRoles(): array
+    {
+        return [
+            'HR manager' => ['HR_MANAGER', true],
+            'owner' => ['OWNER', true],
+            'admin' => ['ADMIN', true],
+            'office staff' => ['OFFICE_STAFF', false],
+        ];
     }
 
     public function test_owner_exemption_hides_create_report_navigation_even_with_another_role_grant(): void

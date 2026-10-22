@@ -1,6 +1,6 @@
 # KPS Internal System — Project Context
 
-Last repository audit: 2026-10-21 (Asia/Saigon)
+Last repository audit: 2026-10-22 (Asia/Saigon)
 
 This document is the handoff baseline for future work. It distinguishes:
 
@@ -23,7 +23,7 @@ The current priority after the Phase 1 reporting prototype is the **Sales / CRM*
 **Verified**
 
 - Repository: `https://github.com/Truong117/Kim-Phuc-Sac.git`
-- Current branch: `feature/ai-daily-report-v1`
+- Current branch at the Task Management V1 implementation baseline: `main`
 - AI Daily Report V1 builds on the completed Authentication, Authorization, User Management, Work Report, Dashboard, HR User Management, and Profile/Account baseline.
 - No TailAdmin upstream remote is configured; only `origin` exists, and the cleanup did not alter remotes.
 - `docs/KPS_PROJECT_CONTEXT.md` was created during the project handoff and remains the main technical/business context document.
@@ -71,7 +71,7 @@ The Laravel API foundation lives in `backend/` and is intentionally independent 
 | Application/session database | MySQL `8.4.11` locally; SQLite in-memory for tests |
 | Automated tests | PHPUnit; SQLite in-memory test configuration |
 
-Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 reuses the existing user identity fields and does not add profile-media schema. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. AI Daily Report V1 adds only `ai_daily_report_runs`; it reads scoped Work Report data without mutating it. No CRM persistence has been implemented.
+Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 reuses the existing user identity fields and does not add profile-media schema. Authorization V1 adds organizations, departments, locations, organization memberships, roles, permissions, and the two role-assignment pivot tables. User Management V1 uses that existing schema to manage internal accounts, KPS memberships, one primary role, department/location references, and membership access status. Work Report V1 adds daily reports/items, append-only comments, and normalized user notifications. AI Daily Report V1 adds only `ai_daily_report_runs`; it reads scoped Work Report data without mutating it. Task Management V1 adds independent task records, scoped assignment/management, derived overdue status, and assignment notifications. No CRM persistence has been implemented.
 
 ## 4. Current application architecture
 
@@ -84,12 +84,14 @@ Authentication V1 reuses the default `users` and `sessions` tables. Profile V1 r
 - KPS domain UI is currently split into focused files under:
   - `src/pages/Dashboard/Overview.tsx`
   - `src/pages/Reports/`
+  - `src/pages/Tasks/`
   - `src/pages/AI/AiDailyInsights.tsx`
   - `src/components/dashboard/`
   - `src/components/reports/`
+  - `src/components/tasks/`
   - `src/types/`
   - `src/services/`
-- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior. Focused auth, navigation, user-management, report, notification, and AI Daily Report services use it.
+- `src/services/apiClient.ts` owns the shared credentialed native-fetch behavior. Focused auth, navigation, user-management, report, task, notification, and AI Daily Report services use it.
 - The Laravel API under `backend/` implements Authentication V1, Authorization V1, User Management V1, Work Report V1, Dashboard V1, and mock-first AI Daily Report V1. The overview, daily report, report history/detail/comments, recent reports, header notifications, and AI insights page consume real backend APIs.
 - Dashboard prototype KPI/category/AI mocks and report-domain mocks have been removed.
 
@@ -211,7 +213,9 @@ The Phase 1 cleanup removed the unused TailAdmin demo areas for auth, calendar, 
 | `/reports/new` | `Reports/NewReport` | Work Report V1 create/edit/locked/exempt states implemented |
 | `/reports` | `Reports/ReportHistory` | Work Report V1 scoped history implemented |
 | `/reports/:id` | `Reports/ReportDetail` | Work Report V1 detail/comments implemented |
-| `/tasks` | `ModulePlaceholder` | Placeholder only |
+| `/tasks` | `Tasks/TaskList` | Task Management V1 scoped list/filter/summary implemented |
+| `/tasks/new` | `Tasks/TaskCreate` | Task Management V1 manager create/assign flow implemented |
+| `/tasks/:id` | `Tasks/TaskDetail` | Scoped detail, manager edit, and assignee status update implemented |
 | `/customers` | `ModulePlaceholder` | Placeholder only |
 | `/customers/:id` | `ModulePlaceholder` | Placeholder only |
 | `/products` | `ModulePlaceholder` | Placeholder only |
@@ -349,7 +353,7 @@ HỆ THỐNG
 - Cài đặt                  -> /settings
 ```
 
-Tổng quan, the two report pages, Phân tích điều hành, AI Insights, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `ai.dashboard.view` to `ai.dashboard`, `ai.insights.view` to `ai.insights`, and `users.view` to `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
+Tổng quan, the report pages, Task Management, Phân tích điều hành, AI Insights, and User Management now have KPS-specific functional implementations. The other sidebar destinations remain placeholders. The backend maps `tasks.view` to `tasks`, `ai.dashboard.view` to `ai.dashboard`, `ai.insights.view` to `ai.insights`, and `users.view` to `employees`; permission codes and data scopes remain backend-only. Frontend menu filtering is UX only and is not a security boundary.
 
 ## 8. Phase 1 implementation status
 
@@ -434,7 +438,7 @@ Implemented in `src/pages/Reports/NewReport.tsx`, `src/components/reports/`, `sr
 | Daily work report | Work Report V1 create/edit/locked/read-only frontend and backend implemented |
 | Report history | Work Report V1 scoped, filtered, paginated frontend and backend implemented |
 | Report detail | Work Report V1 detail, comments, unread state, and notifications implemented |
-| Tasks | Placeholder only |
+| Tasks | Task Management V1 implemented with scoped list/create/detail/edit/status APIs and UI |
 | Customers / CRM | List and detail routes are placeholders only |
 | Products | Placeholder only |
 | Orders | Placeholder only |
@@ -594,12 +598,22 @@ The preferred flow is Pancake → KPS backend/integration → KPS database → C
 
 Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchronization without a separate design and approval.
 
-## 17. Known technical debt and audit findings
+## 17. Weekly Work Planning V1
+
+- Weekly Planning uses `/weekly-plans`, private OOXML import, structured preview/editing, per-employee OWNER review, explicit final approval, and a separate publication action.
+- Weekly Planning is presented as the permission-controlled `Kế hoạch tuần` tab inside the Công việc module. Its `weekly-plans` navigation key and direct routes remain independently guarded, but it is not a standalone sidebar item.
+- Plans cover the next Monday–Saturday period in `Asia/Ho_Chi_Minh`. API dates remain date-only `YYYY-MM-DD`; the frontend uses `KpsDatePicker` and displays `DD/MM/YYYY`.
+- Imported rows, validation results, review decisions, comments, rule-based suggestions, and audit events are persisted separately from Task Management. No external AI provider is called.
+- Tasks are created only from an `APPROVED` plan during the transactional publish step. `tasks.weekly_plan_entry_id` provides a unique source link and repeated publication is idempotent.
+- Weekly permissions are isolated from the main authorization seeder. HR_MANAGER receives organization-wide draft/submit grants; OWNER receives view/review/approve/publish grants; ADMIN receives only an `ALL`-scoped read grant and all write actions remain unavailable.
+- The original file uses a private Laravel Storage disk. Render local storage is not durable; production activation requires an approved persistent private object-storage adapter and configuration. See `docs/WEEKLY_PLANNING_V1_API.md`.
+
+## 18. Known technical debt and audit findings
 
 1. `npm run build` passes. The main KPS application chunk is roughly 581 KB (roughly 161 KB gzip). ApexCharts remains removed; the Executive Dashboard trend uses lightweight HTML/CSS without adding a chart dependency. Route-level code splitting remains a future performance improvement.
 2. `npm run lint` passes with three Fast Refresh warnings across the three context files. The warnings are intentionally retained because removing them would require reorganizing context exports.
 3. The frontend has lightweight Node contract tests for navigation, Profile/Account route separation, and locale migration. The backend PHPUnit suite covers health, Authentication V1, active-membership enforcement, authorization resolution/scopes, Profile V1, User Management CRUD/filtering/safeguards and HR authorization, Work Report cutoff/scope/transaction/notification behavior, Dashboard mode/aggregate/snapshot behavior, AI owner/admin access, department scope, queue dispatch, revocation rechecks, history/source isolation, navigation output, safe payloads, and idempotent RBAC/department seeding.
-4. The primary Dashboard V1 remains today-only. Phân tích điều hành provides current-period 7/30-day Work Report trends and excludes Sunday from the reporting-rate denominator, but previous-period comparisons, historical membership effective dates, public holidays, attendance/leave history, tasks, CRM metrics, and work categories remain deferred.
+4. The primary Dashboard V1 remains today-only. Phân tích điều hành provides current-period 7/30-day Work Report trends and excludes Sunday from the reporting-rate denominator, but previous-period comparisons, historical membership effective dates, public holidays, attendance/leave history, Task Management-derived analytics, CRM metrics, and work categories remain deferred.
 5. CRM routes remain placeholders. The `/employees` routes manage internal accounts rather than a separate HR employee-profile domain.
 6. Existing users are deliberately not assigned memberships or roles automatically. Department/location CRUD, HR profiles, multiple-role UI, password reset, email verification, 2FA, audit history, and lower-scope User Management semantics remain absent by design.
 7. Vietnamese is the only supported locale; adding other languages remains a separate product/localization decision.
@@ -610,7 +624,7 @@ Prefer one-way Pancake-to-KPS synchronization first. Do not begin two-way synchr
 
 The Phase 1 cleanup removed verified-unused demo routes, pages, components, assets, styles, translations, and dependencies without changing KPS business behavior.
 
-## 18. Recommended next steps
+## 19. Recommended next steps
 
 1. Confirm the first CRM slice and answer only the business questions needed for that slice. A sensible first candidate is a read-only/mock customer list plus customer profile information architecture, but the owner model, customer-type model, status semantics, and permission visibility must be agreed first.
 2. Before API work, define a narrow customer service interface and mock implementation so components do not import CRM mocks directly.

@@ -17,6 +17,13 @@ import Profile from "./pages/Profile/Profile";
 import NewReport from "./pages/Reports/NewReport";
 import ReportDetail from "./pages/Reports/ReportDetail";
 import ReportHistory from "./pages/Reports/ReportHistory";
+import TaskCreate from "./pages/Tasks/TaskCreate";
+import TaskDetail from "./pages/Tasks/TaskDetail";
+import TaskList from "./pages/Tasks/TaskList";
+import WeeklyPlanDetail from "./pages/WeeklyPlans/WeeklyPlanDetail";
+import WeeklyPlanImport from "./pages/WeeklyPlans/WeeklyPlanImport";
+import WeeklyPlanList from "./pages/WeeklyPlans/WeeklyPlanList";
+import WeeklyPlanReview from "./pages/WeeklyPlans/WeeklyPlanReview";
 
 export default function App() {
   return (
@@ -45,9 +52,17 @@ export default function App() {
                 <Route path="/reports/:id" element={<ReportDetail />} />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="tasks" />}>
+                <Route path="/tasks" element={<TaskList />} />
+                <Route path="/tasks/new" element={<TaskCreate />} />
+                <Route path="/tasks/:id" element={<TaskDetail />} />
+              </Route>
+              <Route element={<AuthorizationRoute navigationKey="weekly-plans" />}>
+                <Route path="/weekly-plans" element={<WeeklyPlanList />} />
+                <Route path="/weekly-plans/new" element={<WeeklyPlanImport />} />
+                <Route path="/weekly-plans/:id" element={<WeeklyPlanDetail />} />
                 <Route
-                  path="/tasks"
-                  element={<ModulePlaceholder titleKey="modules.tasks" />}
+                  path="/weekly-plans/:id/review"
+                  element={<WeeklyPlanReview />}
                 />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="customers" />}>

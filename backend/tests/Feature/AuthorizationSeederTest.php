@@ -25,8 +25,8 @@ class AuthorizationSeederTest extends TestCase
             'is_active' => true,
         ]);
         $this->assertDatabaseCount('roles', 9);
-        $this->assertDatabaseCount('permissions', 40);
-        $this->assertDatabaseCount('role_permissions', 147);
+        $this->assertDatabaseCount('permissions', 41);
+        $this->assertDatabaseCount('role_permissions', 156);
 
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('departments', 0);
@@ -40,15 +40,15 @@ class AuthorizationSeederTest extends TestCase
         $this->seed(AuthorizationSeeder::class);
 
         $expectedGrantCounts = [
-            'OWNER' => 39,
-            'ADMIN' => 40,
-            'HR_MANAGER' => 9,
-            'DEPARTMENT_MANAGER' => 8,
-            'OFFICE_STAFF' => 4,
-            'SALES_MANAGER' => 15,
-            'SALES_STAFF' => 11,
-            'KPS_SPA_MANAGER' => 13,
-            'KPS_SPA_STAFF' => 8,
+            'OWNER' => 40,
+            'ADMIN' => 41,
+            'HR_MANAGER' => 10,
+            'DEPARTMENT_MANAGER' => 9,
+            'OFFICE_STAFF' => 5,
+            'SALES_MANAGER' => 16,
+            'SALES_STAFF' => 12,
+            'KPS_SPA_MANAGER' => 14,
+            'KPS_SPA_STAFF' => 9,
         ];
 
         foreach ($expectedGrantCounts as $roleCode => $count) {
@@ -83,7 +83,9 @@ class AuthorizationSeederTest extends TestCase
         $this->assertSeededScope('HR_MANAGER', 'users.assign_role', DataScope::ORGANIZATION);
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('DEPARTMENT_MANAGER', 'reports.comment', DataScope::DEPARTMENT);
+        $this->assertSeededScope('DEPARTMENT_MANAGER', 'tasks.status.update', DataScope::DEPARTMENT);
         $this->assertSeededScope('OFFICE_STAFF', 'reports.view', DataScope::OWN);
+        $this->assertSeededScope('OFFICE_STAFF', 'tasks.status.update', DataScope::OWN);
         $this->assertSeededScope('SALES_MANAGER', 'dashboard.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('SALES_MANAGER', 'reports.view', DataScope::DEPARTMENT);
         $this->assertSeededScope('SALES_MANAGER', 'reports.comment', DataScope::DEPARTMENT);

@@ -12,8 +12,10 @@ use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
 use App\Http\Controllers\Reports\TodayReportController;
+use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
+use App\Http\Controllers\WeeklyPlanning\WeeklyPlanController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -67,6 +69,75 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::patch('/notifications/read-all', [NotificationController::class, 'readAll']);
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'read'])
         ->whereNumber('id');
+
+    Route::get('/tasks/references', [TaskController::class, 'references'])
+        ->middleware('permission:tasks.view');
+    Route::get('/tasks', [TaskController::class, 'index'])
+        ->middleware('permission:tasks.view');
+    Route::post('/tasks', [TaskController::class, 'store'])
+        ->middleware('permission:tasks.manage');
+    Route::patch('/tasks/{id}/status', [TaskController::class, 'updateStatus'])
+        ->whereNumber('id')
+        ->middleware('permission:tasks.view');
+    Route::get('/tasks/{id}', [TaskController::class, 'show'])
+        ->whereNumber('id')
+        ->middleware('permission:tasks.view');
+    Route::patch('/tasks/{id}', [TaskController::class, 'update'])
+        ->whereNumber('id')
+        ->middleware('permission:tasks.manage');
+
+    Route::prefix('weekly-plans')->group(function (): void {
+        Route::get('/references', [WeeklyPlanController::class, 'references'])
+            ->middleware('permission:weekly_plans.view,organization');
+        Route::get('/template', [WeeklyPlanController::class, 'template'])
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::get('/', [WeeklyPlanController::class, 'index'])
+            ->middleware('permission:weekly_plans.view,organization');
+        Route::post('/import', [WeeklyPlanController::class, 'import'])
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::get('/{id}', [WeeklyPlanController::class, 'show'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.view,organization');
+        Route::post('/{id}/reparse', [WeeklyPlanController::class, 'reparse'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/entries', [WeeklyPlanController::class, 'storeEntry'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::patch('/{id}/entries/{entryId}', [WeeklyPlanController::class, 'updateEntry'])
+            ->whereNumber('id')->whereNumber('entryId')
+            ->middleware('permission:weekly_plans.view,organization');
+        Route::delete('/{id}/entries/{entryId}', [WeeklyPlanController::class, 'destroyEntry'])
+            ->whereNumber('id')->whereNumber('entryId')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/submit', [WeeklyPlanController::class, 'submit'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.submit,organization');
+        Route::post('/{id}/analyze', [WeeklyPlanController::class, 'analyze'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/employee-reviews', [WeeklyPlanController::class, 'reviewEmployee'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.review,organization');
+        Route::post('/{id}/approve', [WeeklyPlanController::class, 'approve'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.approve,organization');
+        Route::post('/{id}/publish', [WeeklyPlanController::class, 'publish'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.publish,organization');
+        Route::post('/{id}/approve-and-publish', [WeeklyPlanController::class, 'approveAndPublish'])
+            ->whereNumber('id')
+            ->middleware([
+                'permission:weekly_plans.approve,organization',
+                'permission:weekly_plans.publish,organization',
+            ]);
+        Route::post('/{id}/comments', [WeeklyPlanController::class, 'comment'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.view,organization');
+        Route::patch('/{id}/suggestions/{suggestionId}', [WeeklyPlanController::class, 'decideSuggestion'])
+            ->whereNumber('id')->whereNumber('suggestionId')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+    });
 
     Route::get('/ai/executive-dashboard', AiExecutiveDashboardController::class)
         ->middleware([
