@@ -29,10 +29,7 @@
         <env name="DB_DATABASE" value=":memory:" force="true"/>
         <env name="DB_URL" value="" force="true"/>
         <env name="FILESYSTEM_DISK" value="local" force="true"/>
-        <env name="KPS_ALLOW_REMOTE_DATABASE" value="false" force="true"/>
         <env name="KPS_DATABASE_ENVIRONMENT" value="testing" force="true"/>
-        <env name="KPS_EXPECTED_DATABASE_HOST" value="" force="true"/>
-        <env name="KPS_EXPECTED_DATABASE_NAME" value="" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>

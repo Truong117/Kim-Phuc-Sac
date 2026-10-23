@@ -19,11 +19,14 @@ From the repository root:
 ```bash
 cd backend
 composer install
-cp .env.example .env
-php artisan key:generate
+# Fresh clone only, after confirming .env does not exist:
+if [ ! -e .env ]; then
+  cp .env.example .env
+  php artisan key:generate
+fi
 ```
 
-On Windows Command Prompt, use `copy .env.example .env` instead of `cp`. Never commit `.env` or real credentials.
+On PowerShell, use `if (-not (Test-Path .env)) { Copy-Item .env.example .env; php artisan key:generate }`. If `.env` already exists, do not copy over it or regenerate `APP_KEY`; back it up outside the repository and follow the one-time conversion procedure in [Environment and Deployment Safety](../docs/ENVIRONMENT_DEPLOYMENT_SAFETY.md). Never commit `.env` or real credentials.
 
 The example configuration uses a local SQLite database. Create `database/database.sqlite`, then verify that `.env` contains `APP_ENV=local`, `KPS_DATABASE_ENVIRONMENT=development`, `DB_CONNECTION=sqlite`, and a local `DB_DATABASE` path. Only after confirming that target may you initialize the local schema and start the API:
 
@@ -39,7 +42,7 @@ Use this hostname convention consistently during development:
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8000`
 
-The example environment config allows only that frontend origin, identifies `localhost:5173` as a Sanctum stateful domain, and enables credentialed CORS. The runtime environment guard is mandatory and refuses missing/mismatched environment markers or an unacknowledged remote development database. Approved remote development additionally requires an exact `KPS_EXPECTED_DATABASE_HOST` and `KPS_EXPECTED_DATABASE_NAME`; this is a tripwire, not permission to use production. Production must provide environment-specific values for `FRONTEND_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, and `SESSION_SECURE_COOKIE`; do not hard-code production domains or secrets in source.
+The example environment config allows only that frontend origin, identifies `localhost:5173` as a Sanctum stateful domain, and enables credentialed CORS. The runtime environment guard is mandatory: local/development accepts only SQLite or MySQL on an explicit loopback host and rejects every non-empty `DB_URL`. It is not possible to opt a local process into a remote database through an environment flag. Production must provide environment-specific values for `FRONTEND_URL`, `SANCTUM_STATEFUL_DOMAINS`, `SESSION_DOMAIN`, and `SESSION_SECURE_COOKIE`; do not hard-code production domains or secrets in source.
 
 For the default Vercel/Render vendor domains, the supported flow is a same-origin Vercel proxy for `/api` and `/sanctum`; direct cookie authentication between unrelated `vercel.app` and `onrender.com` sites is unsupported. A custom-domain alternative is valid only when frontend and API are sibling subdomains with a deliberately shared cookie domain. See the deployment runbook before changing this topology.
 

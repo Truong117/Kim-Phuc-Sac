@@ -17,9 +17,10 @@ Các quy tắc bắt buộc:
 
 - Kiểm tra `EnvironmentSafety` luôn được thực thi khi ứng dụng/web worker/Artisan runtime khởi động; không có biến opt-out. `php artisan test` cô lập ngay bootstrap ban đầu sang SQLite `:memory:` trước khi PHPUnit tiếp tục ép cấu hình test. Chỉ `package:discover` được hoãn kiểm tra vì lệnh build-time này không được truy cập dữ liệu ứng dụng.
 - `APP_ENV` và `KPS_DATABASE_ENVIRONMENT` phải cùng chỉ một môi trường. Không dùng `APP_ENV=local` với database production.
-- `KPS_ALLOW_REMOTE_DATABASE=false` là mặc định. Chỉ đặt `true` khi development thực sự cần database từ xa; khi đó bắt buộc khai báo `KPS_EXPECTED_DATABASE_HOST` và `KPS_EXPECTED_DATABASE_NAME` đúng target đã duyệt. Guard đối chiếu cả target lấy từ `DB_URL`, vì vậy đổi connection name thành `sqlite` không thể che một URL remote. Các marker này là tripwire, không thay thế việc dùng account/service tách biệt và review target bởi con người.
+- Local/development chỉ chấp nhận SQLite hoặc MySQL với `DB_HOST` loopback (`127.0.0.1`, `localhost`, `::1`) và luôn từ chối `DB_URL` không rỗng. Không có cờ opt-in cho remote database. Guard là lớp phòng vệ bổ sung; không dùng production credential hoặc tunnel production qua loopback trên máy lập trình.
 - Automated tests luôn dùng `APP_ENV=testing`, `DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:` và `DB_URL` rỗng. Không truyền secret TiDB vào job CI.
 - Staging phải có database, tài khoản database, bucket/prefix và credentials riêng. Không dùng staging để thử nghiệm trên tài nguyên production.
+- Marker `KPS_DATABASE_ENVIRONMENT` không thể tự chứng thực database phía sau một hostname/`DB_URL`. Quản trị viên phải đối chiếu Render environment, TiDB project/cluster/database/user và fingerprint target trước migration; guard không thay thế việc kiểm tra này.
 
 ## Thiết lập development local an toàn
 
@@ -27,9 +28,12 @@ Các quy tắc bắt buộc:
 
 ```bash
 npm install
-cp .env.example .env.local
+# Chỉ trên clone mới, sau khi xác nhận .env.local chưa tồn tại:
+test ! -e .env.local && cp .env.example .env.local
 npm run dev
 ```
+
+Trên PowerShell, dùng `if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }`. Nếu file đã tồn tại, không chạy lệnh copy; chuyển thẳng tới mục “Chuyển đổi local một lần” bên dưới và sao lưu an toàn trước khi sửa.
 
 Đặt `VITE_API_BASE_URL=http://localhost:8000`. Chỉ các biến có tiền tố `VITE_` mới được bundle vào frontend, vì vậy tuyệt đối không đặt database password, AWS secret, API key hoặc token vào biến `VITE_*`.
 
@@ -38,9 +42,14 @@ npm run dev
 ```bash
 cd backend
 composer install
-cp .env.example .env
-php artisan key:generate
+# Chỉ trên clone mới, sau khi xác nhận .env chưa tồn tại:
+if [ ! -e .env ]; then
+  cp .env.example .env
+  php artisan key:generate
+fi
 ```
+
+Trên PowerShell, dùng `if (-not (Test-Path .env)) { Copy-Item .env.example .env; php artisan key:generate }`. Nếu `backend/.env` đã tồn tại, không chạy `cp`, `Copy-Item` hoặc `php artisan key:generate` trước khi có bản sao lưu ngoài repository; làm theo quy trình chuyển đổi một lần ở dưới.
 
 Tạo file SQLite local (chỉ cần thực hiện một lần):
 
@@ -57,9 +66,6 @@ Trước mọi lệnh có thể ghi dữ liệu, mở `backend/.env` và xác nh
 ```dotenv
 APP_ENV=local
 KPS_DATABASE_ENVIRONMENT=development
-KPS_ALLOW_REMOTE_DATABASE=false
-KPS_EXPECTED_DATABASE_HOST=
-KPS_EXPECTED_DATABASE_NAME=
 DB_CONNECTION=sqlite
 DB_DATABASE=database/database.sqlite
 DB_URL=
@@ -83,22 +89,106 @@ Không sao chép `DB_URL` hoặc `DB_*` từ Render/TiDB vào `.env` local để
 php artisan test
 ```
 
+### Chuyển đổi local một lần và giữ ổn định khi đổi branch
+
+`/.env.local` và `/backend/.env` là cấu hình của máy lập trình, đã bị Git bỏ qua và không đại diện cho branch. Vì vậy không tạo `.env.feature`, không checkout một file `.env` theo branch và không dùng script tự động chép `.env.staging.example` hoặc `.env.production.example` vào cấu hình local.
+
+Nếu máy đang có `.env` kết nối database từ xa, thực hiện một lần theo thứ tự sau:
+
+1. Dừng Vite, Laravel, queue worker và scheduler local.
+2. Sao lưu `backend/.env` và `.env.local` vào kho bí mật hoặc vị trí mã hóa **ngoài repository**. Không in nội dung file ra terminal/log và không thêm bản sao lưu vào Git.
+3. Giữ nguyên bản sao lưu cho tới khi đã xác nhận local hoạt động; không ghi đè file hiện tại trước bước này.
+4. Đối chiếu với `.env.example`, rồi thay riêng các giá trị database bằng SQLite file hoặc MySQL chạy trên máy. Xóa `DB_URL` remote và giữ storage local; không tạo SSH tunnel tới production dưới một địa chỉ loopback.
+5. Đặt frontend local cố định trong `.env.local` với `VITE_API_BASE_URL=http://localhost:8000` và không thêm secret vào bất kỳ biến `VITE_*` nào.
+6. Xóa config cache cũ, khởi động lại ứng dụng và xác nhận guard không báo remote database. Chỉ migration database local mới được phép sau khi kiểm tra target.
+
+Sau chuyển đổi, `git switch` không thay hai file ignored này. Nếu một branch cố thêm hoặc track `.env`, dừng merge và xử lý như sự cố secret; không dùng branch đó để “đổi môi trường”.
+
+## Quy trình Git và cổng phát hành
+
+Luồng chuẩn là:
+
+```text
+feature/* | fix/* | refactor/*
+                -> Pull Request -> staging -> Pull Request được phê duyệt -> main
+hotfix/* (từ main) -------------> main -----> đồng bộ ngược bằng PR -> staging
+```
+
+Khởi tạo branch `staging` chỉ một lần, từ đúng baseline `origin/main`, sau khi xác nhận working tree sạch:
+
+```bash
+git fetch origin
+git switch --create staging origin/main
+git push --set-upstream origin staging
+```
+
+Sau đó mọi chức năng thông thường bắt đầu từ `staging` mới nhất:
+
+```bash
+git switch staging
+git pull --ff-only origin staging
+git switch --create feature/<ten-chuc-nang>
+```
+
+Mở Pull Request từ feature branch vào `staging`. CI phải xanh và review phải hoàn tất trước merge. Không push trực tiếp vào `staging` hoặc `main`; cấu hình branch protection trên GitHub cho cả hai branch và yêu cầu các check `Branch policy`, `Frontend`, `Backend`, `Backend container build`. Tắt force-push và yêu cầu branch được cập nhật trước merge.
+
+Khi staging đã được nghiệm thu, mở Pull Request duy nhất từ `staging` vào `main`. CI chạy lại trên PR này. Merge PR là quyết định phát hành production và chỉ người được ủy quyền mới được merge; không tự động merge. Workflow CI không có quyền deploy và không biến một lần test xanh thành phê duyệt phát hành.
+
+### Bootstrap branch `staging` lần đầu
+
+Tại thời điểm runbook này được đưa vào hệ thống, workflow mới có thể chỉ tồn tại trên `feature/kps-environment-safety` và branch `staging` chưa tồn tại. Không merge thẳng feature này vào `main` để “cài CI”. Thực hiện một lần như sau:
+
+1. Tạo `staging` từ đúng `origin/main`, không từ working tree có thay đổi.
+2. Push branch feature sau khi được phép, rồi mở bootstrap PR `feature/kps-environment-safety -> staging`.
+3. Nếu GitHub chưa chạy workflow mới vì file workflow chưa có trên base branch, review diff và kết quả test local đã ghi nhận, merge duy nhất bootstrap PR này; push/merge commit trên `staging` sau đó phải kích hoạt workflow mới ngay.
+4. Chỉ tiếp tục khi cả bốn check trên commit `staging` đều xanh. Sau đó đặt chúng thành required checks và không dùng ngoại lệ bootstrap lần nữa.
+5. Cấu hình và nghiệm thu cloud staging trước; chỉ mở PR `staging -> main` sau khi staging chạy đúng commit đó.
+
+Bootstrap này không cấp quyền deploy production, không bỏ qua review và không cho phép branch khác đi thẳng vào `main`.
+
 ## Staging
 
-Staging là môi trường triển khai độc lập, không phải chế độ của production database. Trước khi dùng:
+Staging là môi trường triển khai độc lập, không phải chế độ của production database. Merge vào `staging` mới là tín hiệu triển khai staging; feature branch không được dùng backend production và mặc định không tạo authenticated Preview.
+
+Trước khi dùng:
 
 1. Tạo TiDB/MySQL database và database user dành riêng cho staging, với quyền tối thiểu cần thiết.
 2. Tạo bucket riêng hoặc prefix riêng được bảo vệ bằng policy, tuyệt đối không trùng namespace production.
-3. Cấu hình `APP_ENV=staging`, `KPS_DATABASE_ENVIRONMENT=staging` và `APP_DEBUG=false`; runtime guard là bắt buộc và không có cờ tắt.
-4. Cấu hình Vercel staging dùng `VITE_API_BASE_URL=/` và `KPS_BACKEND_ORIGIN` trỏ đúng backend staging riêng.
-5. Cấu hình các origin/cookie Sanctum cho domain staging; không dùng domain production.
-6. Chạy migration rehearsal có kiểm soát theo runbook bên dưới, sau đó chạy smoke test và acceptance test với dữ liệu giả.
+3. Tạo Render Staging service theo dõi riêng branch `staging`, bật auto-deploy sau CI nếu gói/tích hợp hỗ trợ, và không chia sẻ environment group chứa production credentials.
+4. Cấu hình `APP_ENV=staging`, `KPS_DATABASE_ENVIRONMENT=staging` và `APP_DEBUG=false`; runtime guard là bắt buộc và không có cờ tắt.
+5. Cấu hình Vercel staging dùng một hostname/alias ổn định. Scope Preview của riêng branch `staging` phải có `VITE_API_BASE_URL=/`, `VITE_KPS_ENVIRONMENT=staging`, `KPS_BACKEND_ENVIRONMENT=staging`, `KPS_BACKEND_ORIGIN` trỏ Render Staging và `KPS_PRODUCTION_BACKEND_ORIGIN` là origin production chỉ dùng để so sánh (không phải credential).
+6. Bật Vercel system environment variables để `VERCEL_ENV` và `VERCEL_GIT_COMMIT_REF` có mặt khi đọc `vercel.mjs`. Repository chỉ cho Git deployment từ `main` và `staging`; config còn fail-closed nếu một Preview khác vượt qua bộ lọc. Nếu project/gói không áp dụng được bộ lọc branch, dùng project staging riêng chỉ theo dõi `staging`. Không đặt production backend làm giá trị Preview mặc định.
+7. Cấu hình origin/cookie Sanctum bằng hostname staging chính xác; không dùng wildcard hoặc domain production.
+8. Chạy migration rehearsal có kiểm soát theo runbook bên dưới, sau đó chạy smoke test và acceptance test với dữ liệu giả.
 
 Không tạo staging bằng cách clone credentials production vào service mới. Nếu cần dữ liệu gần production, phải có quy trình sao chép và khử định danh được phê duyệt riêng.
+
+### Xác minh sau mỗi merge vào staging
+
+1. Ghi lại commit SHA đã merge và xác nhận cả Vercel Staging lẫn Render Staging triển khai đúng SHA đó.
+2. Xác nhận hostname frontend staging proxy tới hostname backend staging, không tới production.
+3. Kiểm tra health, CSRF cookie, login/logout, reload session và ít nhất một request ghi được phép.
+4. Chạy acceptance test cho các module bị ảnh hưởng bằng dữ liệu staging giả; không import dữ liệu nhân sự production.
+5. Kiểm tra queue worker, private storage và log; không chấp nhận filesystem local ephemeral cho file cần lưu lâu dài.
+6. Ghi kết quả, người kiểm tra và các migration đã rehearsal vào checklist phát hành trước khi mở PR `staging -> main`.
+
+## Production
+
+`main` là branch production duy nhất. Vercel Production và Render Production phải dùng project/service, database, storage và secret riêng với staging.
+
+- PR `staging -> main` cần required reviews, CI xanh và xác nhận staging ở đúng commit. Merge PR là phê duyệt phát hành; không cho bot tự merge.
+- Vercel Production chỉ nhận `KPS_BACKEND_ORIGIN` production, `KPS_BACKEND_ENVIRONMENT=production`, `VITE_KPS_ENVIRONMENT=production` và `VITE_API_BASE_URL=/` trong scope Production. Không đưa origin production vào Preview mặc định hoặc biến `VITE_*`.
+- Render Production theo dõi `main`, nhưng việc deploy phải tuân cổng phê duyệt. Nếu Render không thể đợi required checks hoặc không phối hợp an toàn với migration, tắt auto-deploy production và để release operator triển khai đúng commit SHA sau khi merge.
+- Start command không chạy migration. Release có schema change phải hoàn tất preflight/backup và bước migration được duyệt trước khi phiên bản phụ thuộc schema nhận traffic.
+- Ưu tiên migration tương thích ngược theo chiến lược expand/contract để frontend và backend không phụ thuộc vào việc hai nền tảng hoàn tất cùng một thời điểm.
+
+Không phát hành trực tiếp từ feature branch, không cấu hình staging service theo `main`, và không dùng chức năng “redeploy latest” khi chưa đối chiếu commit SHA.
 
 ## Render và migration có kiểm soát
 
 Container web chỉ khởi động ứng dụng. Start command/Docker `CMD` không được chứa `php artisan migrate`, seeder, `migrate:fresh`, `migrate:refresh`, `migrate:reset` hoặc `db:wipe`.
+
+Automated tests kiểm tra Dockerfile, package/composer scripts, GitHub workflows và các file Render/startup script được lưu trong repository. Chúng không thể đọc Start Command hoặc Pre-Deploy Command được nhập trực tiếp trên Render Dashboard; quản trị viên phải đối chiếu thủ công hai trường này trước mỗi thay đổi cấu hình service.
 
 Migration production phải là bước release riêng do người có thẩm quyền chủ động chạy, tốt nhất bằng Render Pre-Deploy Command hoặc one-off job chỉ chạy một lần. Không cho nhiều web instance đồng thời chạy migration khi restart/autoscale.
 
@@ -106,11 +196,23 @@ Migration production phải là bước release riêng do người có thẩm qu
 
 1. Xác nhận branch/commit/release cần triển khai và bộ migration đi kèm đã qua CI.
 2. Rehearse trên staging có cùng loại/version database và dữ liệu đại diện.
-3. Xác nhận backup/PITR, cửa sổ triển khai, người chịu trách nhiệm và phương án dừng.
+3. Xác nhận backup/PITR đang bật, thời điểm restore gần nhất, retention, cửa sổ triển khai, người chịu trách nhiệm và phương án dừng. Backup chưa từng kiểm tra restore không được coi là đủ.
 4. Tại Render, kiểm tra tên service và environment marker; không in credential ra log.
 5. Xác nhận `APP_ENV=production`, `KPS_DATABASE_ENVIRONMENT=production`, `APP_DEBUG=false`; nếu marker thiếu/sai, runtime phải từ chối khởi động.
 6. Chạy `php artisan migrate:status` để đối chiếu migration repository. Đây là bước đọc; nếu target không đúng hoặc trạng thái khác dự kiến, dừng lại.
 7. Review migration pending, foreign keys, index/unique constraints, dung lượng và khả năng partial DDL của TiDB. Không tiếp tục nếu migration không backward-compatible với phiên bản ứng dụng đang chạy.
+
+### Backup và điểm khôi phục
+
+Trước migration production, release operator phải ghi vào biên bản phát hành:
+
+- Commit SHA, danh sách migration pending và schema baseline.
+- Backup/PITR checkpoint hoặc timestamp có thể khôi phục, retention và tài khoản chịu trách nhiệm restore.
+- Kết quả restore rehearsal gần nhất trên môi trường biệt lập; không restore đè production để kiểm tra.
+- RPO/RTO được chấp thuận và tiêu chí quyết định dừng/rollback.
+- Snapshot hoặc versioning tương ứng cho private object storage nếu release thay đổi metadata file.
+
+Không sao chép database production sang máy cá nhân. Nếu nhà cung cấp không có backup/PITR đáp ứng yêu cầu, dừng release có migration và báo người quản trị; không dùng SQL dump chứa dữ liệu thật trong repository làm phương án thay thế.
 
 ### Thực thi được phê duyệt
 
@@ -133,6 +235,14 @@ Nếu pre-deploy bị bỏ qua hoặc thất bại, phải hủy rollout phiên 
 
 Nếu migration lỗi giữa chừng: dừng release, không chạy lại mù quáng và không sửa bảng `migrations` thủ công. Đối chiếu bảng `migrations` cùng `information_schema` ở chế độ read-only, xác định DDL nào đã áp dụng, rồi chuẩn bị forward-fix hoặc rollback được review. Không dùng `migrate:fresh`, `migrate:refresh`, `migrate:reset`, `db:wipe` hoặc xóa bảng/dữ liệu trên production. `migrate:rollback` cũng không được chạy nếu chưa chứng minh `down()` an toàn với dữ liệu hiện tại.
 
+### Chiến lược rollback
+
+1. Nếu ứng dụng lỗi nhưng schema vẫn tương thích ngược, rollback ứng dụng về commit trước; giữ schema và chuẩn bị forward-fix.
+2. Nếu migration đang chạy hoặc TiDB báo partial DDL, dừng rollout và mọi thao tác ghi liên quan; thu thập `migrate:status`, `information_schema` và DDL job ở chế độ read-only.
+3. Không chạy `migrate:rollback` chỉ vì deploy thất bại. Chỉ rollback schema khi `down()` đã được rehearsal trên staging, không làm mất dữ liệu và được DBA/người phê duyệt release chấp thuận.
+4. Với migration phá hủy hoặc DDL không thể đảo an toàn, restore/PITR hoặc forward-fix phải có kế hoạch riêng. Việc restore production là thao tác sự cố được phê duyệt, không nằm trong CI và không được tự động hóa trong container startup.
+5. Sau phục hồi, xác nhận schema ledger, health, authentication, queue và các luồng nghiệp vụ trước khi mở lại traffic. Ghi đầy đủ quyết định và khoảng dữ liệu có thể bị ảnh hưởng.
+
 ## Vercel, API và Sanctum
 
 Sanctum SPA hiện tại dùng session cookie và frontend đọc cookie `XSRF-TOKEN` để gửi header `X-XSRF-TOKEN`. Vì `vercel.app` và `onrender.com` là hai site không liên quan, browser không cho JavaScript trên Vercel đọc cookie do Render cấp; `SESSION_DOMAIN` cũng không thể chia sẻ cookie giữa hai public suffix này. Không cấu hình frontend gọi trực tiếp từ `*.vercel.app` tới `*.onrender.com`.
@@ -140,8 +250,8 @@ Sanctum SPA hiện tại dùng session cookie và frontend đọc cookie `XSRF-T
 Topology mặc định cho các domain nhà cung cấp là same-origin proxy:
 
 1. Vercel Production/Preview đặt `VITE_API_BASE_URL=/`.
-2. `vercel.mjs` lấy `KPS_BACKEND_ORIGIN` tại build time và rewrite `/api/:path*`, `/sanctum/:path*` tới đúng backend trước SPA fallback. Cả hai đường dẫn tắt rewrite caching để response theo session không bị CDN cache. Biến thiếu, URL có credential/path/query, hoặc HTTP không phải loopback sẽ làm cấu hình fail-closed.
-3. Production đặt `KPS_BACKEND_ORIGIN` tới Render production; Preview chỉ được đặt tới Render staging cô lập. Không dùng chung một giá trị production cho mọi deployment.
+2. `vercel.mjs` đối chiếu `VERCEL_ENV`, `VERCEL_GIT_COMMIT_REF`, các marker frontend/backend và lấy `KPS_BACKEND_ORIGIN` tại build time. Sau đó nó rewrite `/api/:path*`, `/sanctum/:path*` tới đúng backend trước SPA fallback. Cả hai đường dẫn tắt rewrite caching để response theo session không bị CDN cache. Branch/marker sai, biến thiếu, URL có credential/path/query, hoặc HTTP không phải loopback sẽ làm cấu hình fail-closed.
+3. Production đặt `KPS_BACKEND_ORIGIN` tới Render production. Preview của `staging` đặt origin Render staging và khai báo thêm `KPS_PRODUCTION_BACKEND_ORIGIN` để guard từ chối hai origin giống nhau. Giá trị so sánh này không chứng thực danh tính backend; quản trị viên vẫn phải kiểm tra service/commit/database target trên dashboard.
 4. Laravel đặt `FRONTEND_URL` là origin frontend ổn định, `SANCTUM_STATEFUL_DOMAINS` là hostname tương ứng (không có scheme), `SESSION_DOMAIN=` để cookie host-only tại proxy, `SESSION_SECURE_COOKIE=true`, `SESSION_HTTP_ONLY=true`, `SESSION_SAME_SITE=lax`, `SESSION_PARTITIONED_COOKIE=false`.
 5. CORS chỉ cho phép origin frontend chính xác và credentials; không dùng wildcard.
 
@@ -188,26 +298,46 @@ Frontend không nhận storage credentials hoặc filesystem path. API không tr
 
 Quy trình copy/verify/repoint này cần rehearsal staging và phê duyệt riêng vì có ghi dữ liệu; không được chạy tự động khi container khởi động.
 
+## Hotfix production và đồng bộ ngược
+
+Hotfix bắt đầu từ `origin/main`, không từ một feature branch hoặc từ staging đang có thay đổi chưa phát hành:
+
+```bash
+git fetch origin
+git switch --create hotfix/<ten-loi> origin/main
+```
+
+1. Giữ thay đổi tối thiểu, thêm regression test và mở PR `hotfix/* -> main`.
+2. CI và required review vẫn bắt buộc. Trường hợp khẩn cấp có thể rút ngắn số người duyệt theo chính sách công ty, nhưng không bỏ kiểm thử hoặc push thẳng vào `main`.
+3. Rehearse trên staging hoặc môi trường cô lập với đúng commit hotfix nếu thời gian cho phép. Nếu staging chứa thay đổi chưa phát hành, không coi việc test HEAD của staging là bằng chứng cho hotfix production.
+4. Sau khi merge/deploy main, mở PR đồng bộ cùng thay đổi từ `main` hoặc hotfix branch vào `staging`. Giải quyết conflict bằng review; không force-push, reset hoặc thay thế lịch sử staging.
+5. Nếu hotfix có migration, áp dụng đầy đủ preflight, backup và rollback ở trên; nhãn “hotfix” không cho phép migration chạy trong startup.
+
 ## CI
 
 GitHub Actions phải hoạt động mà không cần production secrets:
 
+- Workflow chạy trên Pull Request vào `staging` hoặc `main`, chạy lại sau push/merge vào hai branch này, và cho phép chạy thủ công. Push feature branch đơn thuần không deploy và không thay thế PR checks.
+- Job `Branch policy` chỉ chấp nhận `feature/*`, `fix/*`, `refactor/*`, `hotfix/*` vào `staging`; PR vào `main` phải đến từ `staging` hoặc một `hotfix/*` được phê duyệt.
 - Frontend: `npm ci`, `npm test`, `npm run lint`, `npm run build`.
 - Backend: `composer install`, `composer validate --strict`, `vendor/bin/pint --test`, `php artisan test`.
 - Container: build `backend/Dockerfile` không push và không chạy container; bước này xác minh PHP extensions cùng production dependencies.
 - Backend test sử dụng SQLite `:memory:`, array cache/session và sync queue.
-- Workflow không chạy migration/seeder trên TiDB, không upload dữ liệu nội bộ và không deploy.
+- Workflow dùng `contents: read`, không giữ Git credential sau checkout, không nhận production secret, không chạy migration/seeder trên TiDB, không upload dữ liệu nội bộ và không deploy.
 
 Nếu CI từng yêu cầu TiDB credentials để pass, coi đó là lỗi cấu hình test và dừng; không thêm production secret để chữa tạm.
+
+GitHub branch protection là cấu hình quản trị bắt buộc nhưng nằm ngoài repository. Bật required status checks và required reviews cho `staging`/`main`; CI YAML tự nó không ngăn quản trị viên push trực tiếp hoặc merge khi check chưa xanh.
 
 ## Checklist cấu hình thủ công
 
 ### Render staging/production
 
 - [ ] Database/bucket/service của staging và production tách biệt.
+- [ ] Render Staging theo dõi `staging`; Render Production theo dõi `main`. Không service nào theo dõi wildcard feature branch.
+- [ ] Auto-deploy staging chỉ chạy sau commit đã merge/qua CI. Production chỉ deploy sau cổng phê duyệt; tắt auto-deploy nếu không thể đảm bảo điều này.
 - [ ] `APP_ENV`, `KPS_DATABASE_ENVIRONMENT`, `APP_DEBUG` đúng môi trường.
-- [ ] `KPS_ALLOW_REMOTE_DATABASE=false`.
-- [ ] Development remote (nếu được phê duyệt riêng) phải khớp exact `KPS_EXPECTED_DATABASE_HOST` và `KPS_EXPECTED_DATABASE_NAME`; không dùng các biến này để hợp thức hóa production target.
+- [ ] Local/development không có `DB_URL`, chỉ dùng SQLite hoặc MySQL loopback; không dùng production credential hay tunnel production qua loopback.
 - [ ] `DB_*`/`DB_URL` và TLS CA trỏ đúng target, được lưu trong secret store.
 - [ ] `FILESYSTEM_DISK=s3`, `WEEKLY_PLAN_STORAGE_DISK=s3`; bucket private và prefix đúng môi trường.
 - [ ] Session/cache/queue driver và worker được cấu hình; không dùng local ephemeral cho dữ liệu cần bền vững.
@@ -217,12 +347,31 @@ Nếu CI từng yêu cầu TiDB credentials để pass, coi đó là lỗi cấu
 
 ### Vercel
 
-- [ ] Production/Preview đặt `VITE_API_BASE_URL=/`; Development Vite có thể dùng `http://localhost:8000`.
-- [ ] `KPS_BACKEND_ORIGIN` được khai báo riêng theo Vercel environment; Preview trỏ staging, không trỏ production.
+- [ ] Production branch là `main`; authenticated Preview chỉ dành cho `staging`. Bật Vercel system variables `VERCEL_ENV`/`VERCEL_GIT_COMMIT_REF`; feature Preview bị bỏ qua và không có production backend access.
+- [ ] Production/Preview staging đặt `VITE_API_BASE_URL=/`; Development Vite dùng `http://localhost:8000` từ `.env.local`.
+- [ ] Các marker `VITE_KPS_ENVIRONMENT` và `KPS_BACKEND_ENVIRONMENT` khớp `staging`/`production`; `KPS_BACKEND_ORIGIN` được khai báo riêng theo scope.
+- [ ] Preview branch `staging` có `KPS_PRODUCTION_BACKEND_ORIGIN` để đối chiếu và trỏ `KPS_BACKEND_ORIGIN` tới Render Staging. Không có production origin ở Preview mặc định ngoài biến so sánh không bí mật này.
 - [ ] `/api` và `/sanctum` được proxy trước SPA fallback; thiếu upstream phải làm build fail.
 - [ ] Authenticated staging/Preview dùng frontend hostname ổn định đã có trong `SANCTUM_STATEFUL_DOMAINS`.
 - [ ] Không có API/storage/database secret mang tiền tố `VITE_`.
 - [ ] Login/CSRF/cookie đã được kiểm tra trên domain triển khai thật.
+
+## Thứ tự đưa staging vào hoạt động
+
+Các bước dưới đây do quản trị viên nền tảng thực hiện thủ công; repository và CI không tạo tài nguyên cloud:
+
+1. Tạo TiDB/MySQL staging độc lập, user riêng và backup/PITR theo khả năng nhà cung cấp. Không clone credential production.
+2. Tạo private object storage staging, bucket hoặc prefix riêng, least-privilege credentials và lifecycle/retention phù hợp.
+3. Tạo branch `staging` từ đúng baseline `origin/main` sau khi review, rồi push branch này một lần để dashboard cloud có thể chọn đúng target.
+4. Bật branch protection/required checks cho `staging` và `main` trước khi nhận PR tính năng đầu tiên.
+5. Tạo Render Staging service từ repository, root `backend/`, branch `staging`; nhập biến từ `backend/.env.staging.example` qua secret store và đối chiếu marker staging.
+6. Tạo hoặc cấu hình Vercel Staging cho branch `staging`; đặt hostname ổn định, bật system environment variables, rồi cấu hình đầy đủ marker/origin theo `.env.staging.example` trong Preview scope chỉ dành cho `staging`.
+7. Cấu hình Render Staging `FRONTEND_URL`, CORS, Sanctum và cookie khớp đúng hostname Vercel Staging.
+8. Chạy migration staging bằng một pre-deploy/one-off operation được phê duyệt; không đưa lệnh vào Docker CMD hay GitHub Actions.
+9. Merge một PR không có dữ liệu thật vào staging, theo dõi deploy, rồi hoàn tất smoke test authentication, queue và private storage.
+10. Chỉ sau khi staging ổn định mới cho phép PR `staging -> main`; xác minh lại toàn bộ production target trước lần phát hành đầu tiên.
+
+Chi phí có thể phát sinh từ Render Staging service/worker, TiDB staging cluster hoặc database, object storage/request/egress, stable/custom domain và các tính năng Vercel như branch-specific environment hay deployment protection. Giá phụ thuộc nhà cung cấp và gói tại thời điểm tạo; quản trị viên phải duyệt ngân sách trước. Nếu gói hiện tại không hỗ trợ cô lập branch/environment, dùng project/service staging riêng hoặc dừng rollout—không chia sẻ production credentials để tiết kiệm cấu hình.
 
 ## Các thao tác tuyệt đối không thực hiện trên production
 

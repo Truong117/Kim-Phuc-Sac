@@ -13,13 +13,13 @@ Yêu cầu Node.js `>=20.19.0` hoặc `>=22.12.0`.
 
 ```bash
 npm install
-cp .env.example .env.local
+test ! -e .env.local && cp .env.example .env.local
 npm run dev
 ```
 
-`VITE_API_BASE_URL` trong `.env.local` phải trỏ tới Laravel backend; convention local được khuyến nghị là `http://localhost:8000`.
+Lệnh copy chỉ dành cho clone mới. Nếu `.env.local` đã tồn tại, không ghi đè; sao lưu an toàn và làm theo runbook chuyển đổi một lần. `VITE_API_BASE_URL` trong `.env.local` phải trỏ tới Laravel backend; convention local được khuyến nghị là `http://localhost:8000`.
 
-Trên Vercel, Production/Preview dùng `VITE_API_BASE_URL=/` và biến server-side `KPS_BACKEND_ORIGIN` để `vercel.mjs` proxy riêng `/api` và `/sanctum` tới đúng Render environment. Không cấu hình browser gọi trực tiếp từ `vercel.app` sang `onrender.com`, và không cho Preview trỏ tới backend production. Xem runbook [An toàn môi trường và triển khai KPS](docs/ENVIRONMENT_DEPLOYMENT_SAFETY.md).
+Trên Vercel, Production từ `main` và Preview duy nhất từ `staging` dùng `VITE_API_BASE_URL=/`; `vercel.mjs` kiểm tra branch/environment marker rồi proxy riêng `/api` và `/sanctum` tới đúng Render environment. Feature Preview bị vô hiệu hóa/fail-closed và staging không được trỏ backend production. Xem runbook [An toàn môi trường và triển khai KPS](docs/ENVIRONMENT_DEPLOYMENT_SAFETY.md).
 
 Kiểm tra frontend:
 
@@ -35,12 +35,14 @@ Yêu cầu PHP 8.2 trở lên và Composer 2.
 ```bash
 cd backend
 composer install
-cp .env.example .env
-php artisan key:generate
+if [ ! -e .env ]; then
+  cp .env.example .env
+  php artisan key:generate
+fi
 php artisan serve
 ```
 
-Backend local dùng SQLite theo cấu hình mẫu. Trước khi chạy migration, phải xác nhận `DB_CONNECTION=sqlite` và `DB_DATABASE` trỏ tới file local; không sao chép thông tin TiDB/production vào `.env` development.
+Nếu `backend/.env` đã tồn tại, không ghi đè hoặc tạo lại `APP_KEY`. Backend local dùng SQLite theo cấu hình mẫu. Trước khi chạy migration, phải xác nhận `DB_CONNECTION=sqlite` và `DB_DATABASE` trỏ tới file local; không sao chép thông tin TiDB/production vào `.env` development.
 
 Xem hướng dẫn backend trong [backend/README.md](backend/README.md) và runbook [An toàn môi trường và triển khai KPS](docs/ENVIRONMENT_DEPLOYMENT_SAFETY.md) trước khi cấu hình staging, production, migration hoặc object storage.
 

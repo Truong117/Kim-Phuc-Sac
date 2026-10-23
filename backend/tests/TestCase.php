@@ -26,12 +26,9 @@ abstract class TestCase extends BaseTestCase
             databaseName: $database['database'] ?? null,
             databaseUrl: $database['url'] ?? null,
             databaseHost: $database['host'] ?? null,
-            allowRemoteDatabase: $app['config']->get('environment_safety.allow_remote_database', false) === true,
             weeklyPlanStorageDisk: $app['config']->get('weekly_plans.storage_disk'),
             filesystemDisks: is_array($filesystemDisks) ? $filesystemDisks : [],
             publicStoragePath: storage_path('app/public'),
-            expectedDatabaseHost: $app['config']->get('environment_safety.expected_database_host'),
-            expectedDatabaseName: $app['config']->get('environment_safety.expected_database_name'),
         );
 
         return $app;

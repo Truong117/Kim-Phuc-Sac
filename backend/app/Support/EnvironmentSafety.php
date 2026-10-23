@@ -28,12 +28,9 @@ final class EnvironmentSafety
         mixed $databaseName,
         mixed $databaseUrl,
         mixed $databaseHost,
-        mixed $allowRemoteDatabase,
         mixed $weeklyPlanStorageDisk,
         array $filesystemDisks,
         string $publicStoragePath,
-        mixed $expectedDatabaseHost = null,
-        mixed $expectedDatabaseName = null,
     ): array {
         $violations = [];
         $appEnvironment = strtolower(trim($appEnvironment));
@@ -84,21 +81,17 @@ final class EnvironmentSafety
             $violations[] = 'Staging and production must use the configured MySQL/TiDB connection.';
         }
 
-        if (in_array($appEnvironment, ['local', 'development'], true)
-            && self::usesRemoteDatabaseConfiguration($databaseHost, $databaseUrl)) {
-            if ($allowRemoteDatabase !== true) {
-                $violations[] = 'Local use of a remote database requires explicit acknowledgement.';
-            } else {
-                array_push(
-                    $violations,
-                    ...self::approvedRemoteDatabaseViolations(
-                        $databaseHost,
-                        $databaseName,
-                        $databaseUrl,
-                        $expectedDatabaseHost,
-                        $expectedDatabaseName,
-                    ),
-                );
+        if (in_array($appEnvironment, ['local', 'development'], true)) {
+            if (! in_array($defaultConnection, ['sqlite', 'mysql'], true)) {
+                $violations[] = 'Local development must use SQLite or MySQL.';
+            }
+
+            if (is_string($databaseUrl) && trim($databaseUrl) !== '') {
+                $violations[] = 'Local development must not use DB_URL; configure a local database explicitly.';
+            }
+
+            if ($defaultConnection === 'mysql' && ! self::isLoopbackHost($databaseHost)) {
+                $violations[] = 'Local MySQL must use a loopback host.';
             }
         }
 
@@ -126,12 +119,9 @@ final class EnvironmentSafety
         mixed $databaseName,
         mixed $databaseUrl,
         mixed $databaseHost,
-        mixed $allowRemoteDatabase,
         mixed $weeklyPlanStorageDisk,
         array $filesystemDisks,
         string $publicStoragePath,
-        mixed $expectedDatabaseHost = null,
-        mixed $expectedDatabaseName = null,
     ): void {
         $violations = self::violations(
             $appEnvironment,
@@ -141,12 +131,9 @@ final class EnvironmentSafety
             $databaseName,
             $databaseUrl,
             $databaseHost,
-            $allowRemoteDatabase,
             $weeklyPlanStorageDisk,
             $filesystemDisks,
             $publicStoragePath,
-            $expectedDatabaseHost,
-            $expectedDatabaseName,
         );
 
         self::assertNoViolations($violations);
@@ -174,41 +161,13 @@ final class EnvironmentSafety
             return false;
         }
 
-        return ! in_array(strtolower(trim($databaseHost)), ['127.0.0.1', 'localhost', '::1'], true);
+        return ! self::isLoopbackHost($databaseHost);
     }
 
-    /** @return list<string> */
-    private static function approvedRemoteDatabaseViolations(
-        mixed $databaseHost,
-        mixed $databaseName,
-        mixed $databaseUrl,
-        mixed $expectedDatabaseHost,
-        mixed $expectedDatabaseName,
-    ): array {
-        if (! is_string($expectedDatabaseHost) || trim($expectedDatabaseHost) === ''
-            || ! is_string($expectedDatabaseName) || trim($expectedDatabaseName) === '') {
-            return ['Approved remote development databases require an expected host and database name.'];
-        }
-
-        $actualHost = is_string($databaseHost) ? trim($databaseHost) : '';
-        $actualName = is_string($databaseName) ? trim($databaseName) : '';
-
-        if (is_string($databaseUrl) && trim($databaseUrl) !== '') {
-            $parts = parse_url(trim($databaseUrl));
-            $actualHost = is_array($parts) && is_string($parts['host'] ?? null)
-                ? trim($parts['host'])
-                : '';
-            $actualName = is_array($parts) && is_string($parts['path'] ?? null)
-                ? rawurldecode(ltrim($parts['path'], '/'))
-                : '';
-        }
-
-        if (strtolower($actualHost) !== strtolower(trim($expectedDatabaseHost))
-            || $actualName !== trim($expectedDatabaseName)) {
-            return ['The configured remote database does not match the approved development target.'];
-        }
-
-        return [];
+    private static function isLoopbackHost(mixed $databaseHost): bool
+    {
+        return is_string($databaseHost)
+            && in_array(strtolower(trim($databaseHost)), ['127.0.0.1', 'localhost', '::1'], true);
     }
 
     /**

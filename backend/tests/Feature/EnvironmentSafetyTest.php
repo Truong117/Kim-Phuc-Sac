@@ -55,7 +55,7 @@ class EnvironmentSafetyTest extends TestCase
         ));
     }
 
-    public function test_local_remote_database_requires_explicit_acknowledgement(): void
+    public function test_local_development_rejects_every_remote_database(): void
     {
         $context = array_replace(
             $this->safeContext(),
@@ -69,20 +69,7 @@ class EnvironmentSafetyTest extends TestCase
         );
 
         $this->assertContains(
-            'Local use of a remote database requires explicit acknowledgement.',
-            EnvironmentSafety::violations(...$context),
-        );
-
-        $context['allowRemoteDatabase'] = true;
-        $context['expectedDatabaseHost'] = 'remote.example.test';
-        $context['expectedDatabaseName'] = 'development';
-
-        $this->assertSame([], EnvironmentSafety::violations(...$context));
-
-        $context['allowRemoteDatabase'] = 'flase';
-
-        $this->assertContains(
-            'Local use of a remote database requires explicit acknowledgement.',
+            'Local MySQL must use a loopback host.',
             EnvironmentSafety::violations(...$context),
         );
     }
@@ -101,40 +88,54 @@ class EnvironmentSafetyTest extends TestCase
         ));
 
         $this->assertContains(
-            'Local use of a remote database requires explicit acknowledgement.',
+            'Local development must not use DB_URL; configure a local database explicitly.',
             $violations,
         );
         $this->assertStringNotContainsString('sensitive-value', implode(' ', $violations));
     }
 
-    public function test_remote_development_url_must_match_the_approved_target(): void
+    public function test_local_development_accepts_sqlite_and_loopback_mysql_only(): void
     {
-        $context = array_replace(
+        $sqlite = array_replace($this->safeContext(), [
+            'appEnvironment' => 'local',
+            'databaseEnvironment' => 'development',
+            'defaultConnection' => 'sqlite',
+            'databaseName' => 'database/database.sqlite',
+        ]);
+        $this->assertSame([], EnvironmentSafety::violations(...$sqlite));
+
+        foreach (['127.0.0.1', 'localhost', '::1'] as $host) {
+            $mysql = array_replace($sqlite, [
+                'defaultConnection' => 'mysql',
+                'databaseName' => 'kps_internal_local',
+                'databaseHost' => $host,
+            ]);
+            $this->assertSame([], EnvironmentSafety::violations(...$mysql));
+        }
+
+        $unsupported = array_replace($sqlite, ['defaultConnection' => 'pgsql']);
+        $this->assertContains(
+            'Local development must use SQLite or MySQL.',
+            EnvironmentSafety::violations(...$unsupported),
+        );
+    }
+
+    public function test_local_application_rejects_a_production_database_marker(): void
+    {
+        $violations = EnvironmentSafety::violations(...array_replace(
             $this->safeContext(),
             [
                 'appEnvironment' => 'local',
-                'databaseEnvironment' => 'development',
+                'databaseEnvironment' => 'production',
                 'defaultConnection' => 'mysql',
-                'databaseName' => 'ignored_when_url_is_present',
-                'databaseUrl' => 'mysql://user:secret@unexpected.example.test/copied_production',
-                'databaseHost' => 'ignored.example.test',
-                'allowRemoteDatabase' => true,
-                'expectedDatabaseHost' => 'approved-development.example.test',
-                'expectedDatabaseName' => 'kps_development',
+                'databaseName' => 'production_database_name_is_not_reported',
+                'databaseHost' => 'production.example.test',
             ],
-        );
+        ));
 
-        $violations = EnvironmentSafety::violations(...$context);
-
-        $this->assertContains(
-            'The configured remote database does not match the approved development target.',
-            $violations,
-        );
-        $this->assertStringNotContainsString('secret', implode(' ', $violations));
-
-        $context['databaseUrl'] = 'mysql://user:secret@approved-development.example.test/kps_development';
-
-        $this->assertSame([], EnvironmentSafety::violations(...$context));
+        $this->assertContains('The application and database environment markers do not match.', $violations);
+        $this->assertContains('Local MySQL must use a loopback host.', $violations);
+        $this->assertStringNotContainsString('production_database_name_is_not_reported', implode(' ', $violations));
     }
 
     public function test_only_data_free_bootstrap_commands_can_defer_runtime_validation(): void
@@ -218,12 +219,9 @@ class EnvironmentSafetyTest extends TestCase
      *     databaseName: mixed,
      *     databaseUrl: mixed,
      *     databaseHost: mixed,
-     *     allowRemoteDatabase: mixed,
      *     weeklyPlanStorageDisk: mixed,
      *     filesystemDisks: array<string, array<string, mixed>>,
-     *     publicStoragePath: string,
-     *     expectedDatabaseHost: mixed,
-     *     expectedDatabaseName: mixed
+     *     publicStoragePath: string
      * }
      */
     private function safeContext(): array
@@ -236,7 +234,6 @@ class EnvironmentSafetyTest extends TestCase
             'databaseName' => ':memory:',
             'databaseUrl' => null,
             'databaseHost' => null,
-            'allowRemoteDatabase' => false,
             'weeklyPlanStorageDisk' => 'local',
             'filesystemDisks' => [
                 'local' => [
@@ -248,8 +245,6 @@ class EnvironmentSafetyTest extends TestCase
                 ],
             ],
             'publicStoragePath' => '/app/storage/app/public',
-            'expectedDatabaseHost' => null,
-            'expectedDatabaseName' => null,
         ];
     }
 }

@@ -81,12 +81,9 @@ class AppServiceProvider extends ServiceProvider
             databaseName: $database['database'] ?? null,
             databaseUrl: $database['url'] ?? null,
             databaseHost: $database['host'] ?? null,
-            allowRemoteDatabase: config('environment_safety.allow_remote_database', false) === true,
             weeklyPlanStorageDisk: config('weekly_plans.storage_disk'),
             filesystemDisks: is_array($filesystemDisks) ? $filesystemDisks : [],
             publicStoragePath: storage_path('app/public'),
-            expectedDatabaseHost: config('environment_safety.expected_database_host'),
-            expectedDatabaseName: config('environment_safety.expected_database_name'),
         );
 
         // Throw only after sensitive connection values have left the call stack.
@@ -102,9 +99,6 @@ class AppServiceProvider extends ServiceProvider
             'database.connections.sqlite.url' => null,
             'database.connections.sqlite.database' => ':memory:',
             'environment_safety.database_environment' => 'testing',
-            'environment_safety.allow_remote_database' => false,
-            'environment_safety.expected_database_host' => null,
-            'environment_safety.expected_database_name' => null,
             'cache.default' => 'array',
             'session.driver' => 'array',
             'queue.default' => 'sync',

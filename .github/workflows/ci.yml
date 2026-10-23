@@ -1,8 +1,14 @@
 name: CI
 
 on:
-  push:
   pull_request:
+    branches:
+      - staging
+      - main
+  push:
+    branches:
+      - staging
+      - main
   workflow_dispatch:
 
 permissions:
@@ -13,13 +19,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  branch-policy:
+    name: Branch policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate pull request flow
+        shell: bash
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          case "$BASE_BRANCH" in
+            staging)
+              case "$HEAD_BRANCH" in
+                feature/*|fix/*|refactor/*|hotfix/*) ;;
+                *)
+                  echo "Pull requests into staging must come from feature/*, fix/*, refactor/*, or hotfix/*."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            main)
+              case "$HEAD_BRANCH" in
+                staging|hotfix/*) ;;
+                *)
+                  echo "Pull requests into main must come from staging or an approved hotfix/* branch."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "Unsupported pull request base branch: $BASE_BRANCH"
+              exit 1
+              ;;
+          esac
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -44,6 +93,7 @@ jobs:
   backend:
     name: Backend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: backend
@@ -55,9 +105,6 @@ jobs:
       DB_DATABASE: ":memory:"
       DB_URL: ""
       KPS_DATABASE_ENVIRONMENT: testing
-      KPS_ALLOW_REMOTE_DATABASE: "false"
-      KPS_EXPECTED_DATABASE_HOST: ""
-      KPS_EXPECTED_DATABASE_NAME: ""
       CACHE_STORE: array
       SESSION_DRIVER: array
       QUEUE_CONNECTION: sync
@@ -70,6 +117,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -93,10 +142,13 @@ jobs:
   backend-container:
     name: Backend container build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Build backend image without publishing
         run: docker build --file backend/Dockerfile --tag kps-backend-ci backend

@@ -8,12 +8,8 @@ class DeploymentConfigurationTest extends TestCase
 {
     public function test_container_startup_and_composer_hooks_do_not_run_migrations(): void
     {
+        $repositoryRoot = dirname(__DIR__, 3);
         $dockerfile = $this->readBackendFile('Dockerfile');
-        $composer = json_decode(
-            $this->readBackendFile('composer.json'),
-            true,
-            flags: JSON_THROW_ON_ERROR,
-        );
 
         $forbiddenDatabaseCommand = '/(?:php\s+)?artisan\s+(?:migrate(?::[\w-]+)?|db:(?:seed|wipe))\b/i';
         $executableDockerfile = implode("\n", array_filter(
@@ -23,29 +19,52 @@ class DeploymentConfigurationTest extends TestCase
 
         $this->assertDoesNotMatchRegularExpression($forbiddenDatabaseCommand, $executableDockerfile);
 
-        $composerCommands = [];
-        $composerScripts = $composer['scripts'] ?? [];
-        array_walk_recursive(
-            $composerScripts,
-            static function (mixed $command) use (&$composerCommands): void {
-                if (is_string($command)) {
-                    $composerCommands[] = $command;
-                }
-            },
-        );
+        $scriptCommands = [];
+        foreach ([
+            $this->readBackendFile('composer.json'),
+            $this->readBackendFile('package.json'),
+            $this->readRepositoryFile('package.json'),
+        ] as $manifestContents) {
+            $manifest = json_decode($manifestContents, true, flags: JSON_THROW_ON_ERROR);
+            $scripts = $manifest['scripts'] ?? [];
+            array_walk_recursive(
+                $scripts,
+                static function (mixed $command) use (&$scriptCommands): void {
+                    if (is_string($command)) {
+                        $scriptCommands[] = $command;
+                    }
+                },
+            );
+        }
         $this->assertDoesNotMatchRegularExpression(
             $forbiddenDatabaseCommand,
-            implode("\n", $composerCommands),
+            implode("\n", $scriptCommands),
         );
 
         $workflowFiles = array_merge(
-            glob(dirname(__DIR__, 3).'/.github/workflows/*.yml') ?: [],
-            glob(dirname(__DIR__, 3).'/.github/workflows/*.yaml') ?: [],
+            glob($repositoryRoot.'/.github/workflows/*.yml') ?: [],
+            glob($repositoryRoot.'/.github/workflows/*.yaml') ?: [],
         );
         $this->assertNotEmpty($workflowFiles);
 
         foreach ($workflowFiles as $workflowFile) {
             $contents = file_get_contents($workflowFile);
+            $this->assertIsString($contents);
+            $this->assertDoesNotMatchRegularExpression($forbiddenDatabaseCommand, $contents);
+        }
+
+        $deploymentFiles = array_unique(array_merge(
+            glob($repositoryRoot.'/render*.yml') ?: [],
+            glob($repositoryRoot.'/render*.yaml') ?: [],
+            glob($repositoryRoot.'/Procfile*') ?: [],
+            glob($repositoryRoot.'/deployment/*.sh') ?: [],
+            glob($repositoryRoot.'/deployment/*.ps1') ?: [],
+            glob($repositoryRoot.'/backend/*.sh') ?: [],
+            glob($repositoryRoot.'/backend/*.ps1') ?: [],
+        ));
+
+        foreach ($deploymentFiles as $deploymentFile) {
+            $contents = file_get_contents($deploymentFile);
             $this->assertIsString($contents);
             $this->assertDoesNotMatchRegularExpression($forbiddenDatabaseCommand, $contents);
         }
@@ -61,10 +80,10 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringContainsString('EnvironmentSafety::shouldSkipConsoleBootstrap(', $provider);
         $this->assertStringContainsString("\$consoleCommand === 'test'", $provider);
         $this->assertStringContainsString("'database.connections.sqlite.database' => ':memory:'", $provider);
-        $this->assertStringContainsString("allow_remote_database', false) === true", $provider);
         $this->assertStringNotContainsString('environment_safety.enforce', $provider);
         $this->assertStringNotContainsString('KPS_ENVIRONMENT_SAFETY_ENFORCE', $configuration);
-        $this->assertStringContainsString("env('KPS_ALLOW_REMOTE_DATABASE', false) === true", $configuration);
+        $this->assertStringNotContainsString('KPS_ALLOW_REMOTE_DATABASE', $configuration);
+        $this->assertStringContainsString('Local MySQL must use a loopback host.', $this->readBackendFile('app/Support/EnvironmentSafety.php'));
     }
 
     public function test_docker_build_context_excludes_local_secrets_and_private_files(): void
