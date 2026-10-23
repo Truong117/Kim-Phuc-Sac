@@ -87,4 +87,15 @@ class WeeklyPlan extends Model
             ->orderBy('created_at')
             ->orderBy('id');
     }
+
+    public function sourcePassages(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanSourcePassage::class)
+            ->orderBy('sequence');
+    }
+
+    public function entryApplications(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanEntryApplication::class);
+    }
 }

@@ -39,6 +39,11 @@ Employee review status is `PENDING`, `CHANGES_REQUESTED`, or `ACCEPTED`. Editing
 | POST | `/api/weekly-plans/import` | Multipart import of one `.xlsx` or structured-table `.docx` |
 | GET | `/api/weekly-plans/{id}` | Entries, reviews, suggestions, comments, audit events and opaque actions |
 | POST | `/api/weekly-plans/{id}/reparse` | Reparse the private source with `column_mapping` |
+| POST | `/api/weekly-plans/{id}/source/extract` | Read ordered paragraphs, headings, lists and table rows from the current private DOCX |
+| POST | `/api/weekly-plans/{id}/source/replace` | Replace a missing DOCX source on the same draft plan, then extract its text |
+| PATCH | `/api/weekly-plans/{id}/source/group` | Assign one manual document-group label to a contiguous passage range |
+| POST | `/api/weekly-plans/{id}/source/apply` | Atomically append HR-confirmed draft entries linked to selected source passages |
+| POST | `/api/weekly-plans/{id}/source/ai-extract` | Provider boundary for structured task extraction; returns `409` while no real provider is configured |
 | POST | `/api/weekly-plans/{id}/entries` | Add a draft entry |
 | PATCH | `/api/weekly-plans/{id}/entries/{entryId}` | Edit a draft or an OWNER-reviewable entry |
 | DELETE | `/api/weekly-plans/{id}/entries/{entryId}` | Remove a draft entry |
@@ -62,6 +67,48 @@ Dates are `YYYY-MM-DD` in the API. The business timezone is `Asia/Ho_Chi_Minh`; 
 KPS currently has no persisted employee-code field. Automatic identity matching is therefore exact, case-insensitive email only. A code, name-only match, inactive user, or cross-organization user remains an invalid row for manual HR resolution; no fuzzy-name assignment occurs and no row is silently discarded.
 
 The parser does not execute formulas. It rejects macro-enabled extensions, embedded VBA, external links, formulas, unsafe XML/DOCTYPE, path traversal, oversized archives, excessive compression ratios, excessive sheet counts, and excessive row counts.
+
+### DOCX document extraction
+
+The existing DOCX source can also be read as an ordered, reviewable set of passages. V1 preserves headings, ordinary paragraphs, numbered/bulleted list items and table rows with stable source keys and safe structural metadata. OOXML section boundaries are exposed only as neutral `source_context` values such as `docx-section:1`; a section, heading or person-like text is never inferred to be an employee group. Employee auto-matching remains exact email only.
+
+Only a draft manager can extract, replace a missing source, assign a manual group, select passages and apply entries. OWNER and ADMIN can inspect extracted passages and entry-to-source evidence through the normal scoped detail endpoint, but every extraction/write endpoint remains denied to them. The resource never exposes storage disk/path or provider credentials.
+
+Manual grouping uses `PATCH /api/weekly-plans/{id}/source/group`:
+
+```json
+{
+  "passage_ids": [31, 32, 33],
+  "group_title": "Nhân viên A"
+}
+```
+
+The IDs must form one contiguous range in the current source version. The persisted `source_group` contains a deterministic key, document order and passage-range evidence. Its `identity_verified` field is always `false`: a source label is not a KPS user identity and never assigns an employee automatically. Duplicate titles on separate ranges remain separate groups. Retrying an unchanged assignment is idempotent and does not duplicate the `SOURCE_GROUP_ASSIGNED` audit event.
+
+The metadata contract is intentionally provider-neutral. A future approved Google Docs connector can request `includeTabsContent=true`, walk `tabs`/`childTabs`, and map `tabId`, `title` and `documentTab.body` into ordered source contexts with an explicit `GOOGLE_DOCS_TAB` origin. V1.2 does not implement Google OAuth, store provider credentials, or treat a tab title as a verified KPS account.
+
+Applying passages requires a UUID `request_id`. Repeating the same request and payload is idempotent; reusing the UUID with different content returns `409`. Once passages have manual group metadata, all passages selected for one entry must belong to the same group; entirely ungrouped legacy passages retain their previous behavior. HR must still provide an independently validated `assignee_id`. The complete batch is validated before any entry is appended, and the batch, passage links, reviews, suggestion invalidation and audit event share one transaction. Existing entries are never overwritten or deleted.
+
+```json
+{
+  "request_id": "22fcd23e-4fdc-46b7-a8c6-a71b9f4e22b1",
+  "entries": [
+    {
+      "source_passage_ids": [31, 32],
+      "assignee_id": 24,
+      "title": "Chuẩn bị lịch nội dung tuần",
+      "content": "Nội dung HR đã kiểm tra từ tài liệu nguồn",
+      "expected_result": "Lịch nội dung hoàn chỉnh",
+      "start_date": "2026-10-26",
+      "due_date": "2026-10-31",
+      "priority": "HIGH",
+      "note": null
+    }
+  ]
+}
+```
+
+Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. The structured task extractor is behind `WeeklyPlanTaskExtractor`; V1 binds the unavailable implementation and exposes “Chưa kết nối AI”. No external AI request or fabricated suggestion occurs. `WEEKLY_PLAN_DOCUMENT_AI_DRIVER=none` is the safe default.
 
 ### Explicit rule-based analysis
 
@@ -126,7 +173,7 @@ Do not log provider secrets, expose a public source URL, or run the general auth
 1. Back up and inspect the target TiDB schema.
 2. Build a staging artifact with PHP `zip` enabled (the Dockerfile now installs it).
 3. Install/configure the approved private object-storage adapter and verify private read/write/delete with a non-production bucket.
-4. Review the two new Weekly Planning migrations and the Task source-link migration with `php artisan migrate --pretend` against a schema-compatible non-production database.
+4. Review the Weekly Planning migrations, Task source-link migration and `2026_10_22_020000_create_weekly_plan_document_extraction_tables.php` with `php artisan migrate --pretend` against a schema-compatible non-production database.
 5. Apply migrations during a controlled window. Do not use `migrate:fresh`.
 6. Run only `WeeklyPlanningPermissionSeeder` after verifying OWNER, ADMIN and HR_MANAGER role records. Do not run the general authorization seeder.
 7. Smoke-test import, review, approval, publication, Task linkage and assignment notification with isolated test users.

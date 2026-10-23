@@ -24,6 +24,9 @@ class WeeklyPlanningMigrationTest extends TestCase
         'weekly_plan_comments',
         'weekly_plan_suggestions',
         'weekly_plan_events',
+        'weekly_plan_source_passages',
+        'weekly_plan_entry_source_passage',
+        'weekly_plan_entry_applications',
     ];
 
     public function test_fresh_schema_contains_weekly_planning_tables_indexes_and_foreign_keys(): void
@@ -59,6 +62,9 @@ class WeeklyPlanningMigrationTest extends TestCase
 
         $this->assertUniqueIndex('weekly_plans', 'weekly_plans_org_week_unique');
         $this->assertUniqueIndex('weekly_plan_employee_reviews', 'weekly_reviews_plan_assignee_unique');
+        $this->assertUniqueIndex('weekly_plan_source_passages', 'weekly_passages_plan_source_key_unique');
+        $this->assertUniqueIndex('weekly_plan_source_passages', 'weekly_passages_plan_source_sequence_unique');
+        $this->assertUniqueIndex('weekly_plan_entry_applications', 'weekly_applications_plan_key_unique');
         $this->assertUniqueIndex('tasks', 'tasks_weekly_plan_entry_unique');
 
         $this->assertForeignKey('weekly_plans', 'organization_id', 'organizations', 'id', 'RESTRICT');
@@ -85,7 +91,28 @@ class WeeklyPlanningMigrationTest extends TestCase
 
         $this->assertForeignKey('weekly_plan_events', 'weekly_plan_id', 'weekly_plans', 'id', 'CASCADE');
         $this->assertForeignKey('weekly_plan_events', 'actor_id', 'users', 'id', 'SET NULL');
+        $this->assertForeignKey('weekly_plan_source_passages', 'weekly_plan_id', 'weekly_plans', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_entry_source_passage', 'weekly_plan_entry_id', 'weekly_plan_entries', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_entry_source_passage', 'weekly_plan_source_passage_id', 'weekly_plan_source_passages', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_entry_applications', 'weekly_plan_id', 'weekly_plans', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_entry_applications', 'created_by', 'users', 'id', 'RESTRICT');
         $this->assertForeignKey('tasks', 'weekly_plan_entry_id', 'weekly_plan_entries', 'id', 'RESTRICT');
+    }
+
+    public function test_document_extraction_foreign_key_names_fit_tidb_identifier_limits(): void
+    {
+        $migration = file_get_contents(database_path(
+            'migrations/2026_10_22_020000_create_weekly_plan_document_extraction_tables.php',
+        ));
+        $this->assertIsString($migration);
+
+        foreach ([
+            'weekly_entry_passage_entry_foreign',
+            'weekly_entry_passage_passage_foreign',
+        ] as $constraint) {
+            $this->assertLessThanOrEqual(64, strlen($constraint));
+            $this->assertStringContainsString("'{$constraint}'", $migration);
+        }
     }
 
     public function test_source_constraint_preserves_existing_tasks_and_enforces_unique_and_restrict(): void
@@ -134,8 +161,10 @@ class WeeklyPlanningMigrationTest extends TestCase
         $taskId = $this->insertTask($organizationId, $user->id, 'Published task', $entryId);
 
         $sourceMigration = $this->migration('2026_10_22_010001_add_weekly_plan_source_to_tasks_table.php');
+        $documentMigration = $this->migration('2026_10_22_020000_create_weekly_plan_document_extraction_tables.php');
         $weeklyMigration = $this->migration('2026_10_22_010000_create_weekly_planning_tables.php');
 
+        $documentMigration->down();
         $sourceMigration->down();
 
         $this->assertTrue(Schema::hasTable('tasks'));
@@ -152,6 +181,7 @@ class WeeklyPlanningMigrationTest extends TestCase
 
         $weeklyMigration->up();
         $sourceMigration->up();
+        $documentMigration->up();
 
         foreach (self::WEEKLY_TABLES as $table) {
             $this->assertTrue(Schema::hasTable($table), "Weekly planning table was not recreated: {$table}");

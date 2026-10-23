@@ -38,6 +38,34 @@ export type WeeklyPlanEntry = {
   sort_order: number;
   validation_status: "VALID" | "INVALID";
   validation_errors: string[];
+  source_passages: Array<
+    Pick<WeeklyPlanSourcePassage, "id" | "source_key" | "kind" | "text">
+  >;
+};
+
+export type WeeklyPlanSourcePassage = {
+  id: number;
+  source_key: string;
+  sequence: number;
+  kind: "heading" | "paragraph" | "list_item" | "table_row";
+  text: string;
+  metadata: Record<string, unknown>;
+  source_context: {
+    version: number;
+    key: string;
+    origin: "DOCX_SECTION";
+    order: number;
+    evidence: Record<string, unknown>;
+  } | null;
+  source_group: {
+    version: number;
+    key: string;
+    title: string;
+    origin: "MANUAL" | "GOOGLE_DOCS_TAB";
+    order: number;
+    identity_verified: false;
+    evidence: Record<string, unknown>;
+  } | null;
 };
 
 export type WeeklyPlanReview = {
@@ -85,6 +113,11 @@ export type WeeklyPlanActions = {
   can_publish: boolean;
   can_approve_and_publish: boolean;
   can_comment: boolean;
+  can_extract_source: boolean;
+  can_replace_source: boolean;
+  can_apply_source: boolean;
+  can_group_source: boolean;
+  can_ai_extract_source: boolean;
 };
 
 export type WeeklyPlan = {
@@ -106,6 +139,24 @@ export type WeeklyPlan = {
     size: number;
     sha256: string;
     uploaded_at: string | null;
+  };
+  source_document: {
+    status:
+      | "NOT_EXTRACTED"
+      | "EXTRACTED"
+      | "EMPTY"
+      | "MISSING"
+      | "UNSUPPORTED"
+      | "UNAVAILABLE";
+    ai: {
+      configured: boolean;
+      provider: string;
+    };
+    limits: {
+      max_passages_per_entry: number;
+      max_entries_per_request: number;
+    };
+    passages: WeeklyPlanSourcePassage[];
   };
   creator: { id: number; name: string };
   entries_count: number | null;
@@ -164,4 +215,8 @@ export type WeeklyPlanEntryInput = {
   due_date: string;
   priority: TaskPriority;
   note: string | null;
+};
+
+export type WeeklyPlanSourceEntryInput = WeeklyPlanEntryInput & {
+  source_passage_ids: number[];
 };

@@ -6,6 +6,7 @@ use App\Enums\DataScope;
 use App\Models\Task;
 use App\Models\User;
 use App\Models\WeeklyPlan;
+use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Database\Seeders\WeeklyPlanningPermissionSeeder;
@@ -14,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use PDOException;
 use RuntimeException;
 use Tests\AuthorizationFixtures;
@@ -246,6 +248,553 @@ class WeeklyPlanningTest extends TestCase
             ->assertJsonMissing(['message' => 'Tổ chức đã có kế hoạch cho tuần này.']);
         $this->assertDatabaseCount('weekly_plans', 0);
         $this->assertSame([], Storage::disk('local')->allFiles());
+    }
+
+    public function test_hr_extracts_ordered_docx_passages_and_applies_an_idempotent_draft_entry(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        [$viewer] = $this->userWithPermissions(['weekly_plans.view']);
+
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated()
+            ->assertJsonPath('data.parse_status', 'NEEDS_MAPPING')
+            ->assertJsonPath('data.entries_count', 0)
+            ->assertJsonPath('data.source_document.status', 'NOT_EXTRACTED');
+        $planId = (int) $imported->json('data.id');
+
+        $this->actingAs($viewer)->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertForbidden();
+
+        $extracted = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonPath('data.source_document.ai.configured', false)
+            ->assertJsonPath('data.source_document.passages.0.kind', 'heading')
+            ->assertJsonPath('data.source_document.passages.0.text', 'Kế hoạch Marketing')
+            ->assertJsonPath('data.source_document.passages.1.kind', 'paragraph')
+            ->assertJsonPath('data.source_document.passages.2.kind', 'list_item')
+            ->assertJsonPath('data.source_document.passages.2.metadata.list_type', 'bullet')
+            ->assertJsonPath('data.source_document.passages.3.metadata.list_type', 'numbered')
+            ->assertJsonPath('data.source_document.passages.4.kind', 'table_row')
+            ->assertJsonCount(6, 'data.source_document.passages')
+            ->assertJsonMissingPath('data.source_path');
+
+        $this->actingAs($viewer)->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonCount(6, 'data.source_document.passages')
+            ->assertJsonPath('data.actions.can_apply_source', false)
+            ->assertJsonPath('data.actions.can_group_source', false);
+
+        $passageIds = [
+            (int) $extracted->json('data.source_document.passages.1.id'),
+            (int) $extracted->json('data.source_document.passages.2.id'),
+        ];
+        $payload = [
+            'request_id' => '11111111-1111-4111-8111-111111111111',
+            'entries' => [[
+                'source_passage_ids' => $passageIds,
+                'assignee_id' => $assignee->id,
+                'title' => 'Chuẩn bị chiến dịch tuần',
+                'content' => 'Chuẩn bị nội dung chiến dịch tuần. Viết nội dung fanpage.',
+                'expected_result' => 'Bản nội dung hoàn chỉnh',
+                'start_date' => '2026-10-26',
+                'due_date' => '2026-10-31',
+                'priority' => 'HIGH',
+                'note' => null,
+            ]],
+        ];
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", $payload)
+            ->assertOk()
+            ->assertJsonPath('data.entries.0.title', 'Chuẩn bị chiến dịch tuần')
+            ->assertJsonCount(2, 'data.entries.0.source_passages');
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", $payload)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.entries');
+
+        $changedPayload = $payload;
+        $changedPayload['entries'][0]['title'] = 'Nội dung khác';
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", $changedPayload)
+            ->assertConflict();
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/ai-extract")
+            ->assertConflict()
+            ->assertJsonPath('message', 'Chưa kết nối AI.');
+        $this->assertDatabaseCount('weekly_plan_entry_applications', 1);
+        $this->assertDatabaseCount('weekly_plan_entry_source_passage', 2);
+        $this->assertDatabaseCount('weekly_plan_entries', 1);
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseHas('weekly_plan_events', [
+            'weekly_plan_id' => $planId,
+            'event_type' => 'SOURCE_TEXT_EXTRACTED',
+        ]);
+        $this->assertDatabaseHas('weekly_plan_events', [
+            'weekly_plan_id' => $planId,
+            'event_type' => 'SOURCE_ENTRIES_APPLIED',
+        ]);
+    }
+
+    public function test_docx_sections_are_neutral_source_contexts_and_never_inferred_as_employee_groups(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->sectionedNarrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+
+        $response = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk()
+            ->assertJsonCount(6, 'data.source_document.passages')
+            ->assertJsonPath('data.actions.can_group_source', true)
+            ->assertJsonPath('data.source_document.passages.0.text', 'Nhân viên A')
+            ->assertJsonPath('data.source_document.passages.0.source_context.key', 'docx-section:1')
+            ->assertJsonPath('data.source_document.passages.1.source_context.key', 'docx-section:1')
+            ->assertJsonPath('data.source_document.passages.2.text', 'Nhân viên B')
+            ->assertJsonPath('data.source_document.passages.2.source_context.key', 'docx-section:2')
+            ->assertJsonPath('data.source_document.passages.3.source_context.evidence.section', 2)
+            ->assertJsonPath('data.source_document.passages.4.text', 'Kim Phục Sắc')
+            ->assertJsonPath('data.source_document.passages.4.source_context.key', 'docx-section:3')
+            ->assertJsonPath('data.source_document.passages.5.source_context.key', 'docx-section:3');
+
+        foreach ($response->json('data.source_document.passages') as $passage) {
+            $this->assertSame('DOCX_SECTION', $passage['source_context']['origin']);
+            $this->assertSame('OOXML_SECTION', $passage['source_context']['evidence']['type']);
+            $this->assertNull($passage['source_group']);
+            $this->assertArrayNotHasKey('source_group', $passage['metadata']);
+        }
+
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_hr_assigns_manual_groups_idempotently_and_applies_only_same_group_with_verified_assignee(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $extracted = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk();
+        $passageIds = collect($extracted->json('data.source_document.passages'))
+            ->pluck('id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->all();
+
+        $first = $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0], $passageIds[1]],
+            'group_title' => '  Nhân viên A  ',
+        ])->assertOk()
+            ->assertJsonPath('data.source_document.passages.0.source_group.title', 'Nhân viên A')
+            ->assertJsonPath('data.source_document.passages.0.source_group.origin', 'MANUAL')
+            ->assertJsonPath('data.source_document.passages.0.source_group.identity_verified', false)
+            ->assertJsonPath('data.source_document.passages.0.source_group.evidence.start_sequence', 1)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.end_sequence', 2)
+            ->assertJsonPath('data.source_document.passages.0.source_context.key', 'docx-section:1');
+        $firstGroupKey = $first->json('data.source_document.passages.0.source_group.key');
+        $this->assertSame(
+            $firstGroupKey,
+            $first->json('data.source_document.passages.1.source_group.key'),
+        );
+
+        $second = $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[2], $passageIds[3]],
+            'group_title' => 'Nhân viên A',
+        ])->assertOk();
+        $secondGroupKey = $second->json('data.source_document.passages.2.source_group.key');
+        $this->assertNotSame($firstGroupKey, $secondGroupKey);
+        $this->assertSame(
+            $secondGroupKey,
+            $second->json('data.source_document.passages.3.source_group.key'),
+        );
+
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[4]],
+            'group_title' => 'Kim Phục Sắc',
+        ])->assertOk();
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[5]],
+            'group_title' => 'Nhân viên chưa xác định',
+        ])->assertOk();
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+
+        // Exact retry is a no-op and does not duplicate the audit event.
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0], $passageIds[1]],
+            'group_title' => 'Nhân viên A',
+        ])->assertOk();
+        $this->assertSame(4, DB::table('weekly_plan_events')
+            ->where('weekly_plan_id', $planId)
+            ->where('event_type', 'SOURCE_GROUP_ASSIGNED')
+            ->count());
+
+        $entry = [
+            'source_passage_ids' => [$passageIds[0], $passageIds[1]],
+            'assignee_id' => $assignee->id,
+            'title' => 'Đầu việc được HR xác nhận',
+            'content' => null,
+            'expected_result' => null,
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'priority' => 'MEDIUM',
+            'note' => null,
+        ];
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", [
+            'request_id' => '33333333-3333-4333-8333-333333333333',
+            'entries' => [$entry],
+        ])->assertOk()
+            ->assertJsonPath('data.entries.0.assignee.id', $assignee->id)
+            ->assertJsonCount(2, 'data.entries.0.source_passages');
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", [
+            'request_id' => '44444444-4444-4444-8444-444444444444',
+            'entries' => [array_merge($entry, ['title' => 'Đầu việc thứ hai cùng nhóm'])],
+        ])->assertOk()
+            ->assertJsonCount(2, 'data.entries');
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", [
+            'request_id' => '55555555-5555-4555-8555-555555555555',
+            'entries' => [array_merge($entry, [
+                'source_passage_ids' => [$passageIds[0], $passageIds[2]],
+                'title' => 'Không được trộn hai nhóm',
+            ])],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['entries.0.source_passage_ids']);
+        $this->assertDatabaseCount('weekly_plan_entries', 2);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_reassigning_a_subrange_keeps_every_manual_group_segment_contiguous(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $extracted = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk();
+        $passageIds = collect($extracted->json('data.source_document.passages'))
+            ->pluck('id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->all();
+
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0], $passageIds[1], $passageIds[2]],
+            'group_title' => 'Nhóm ban đầu',
+        ])->assertOk();
+        $response = $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[1]],
+            'group_title' => 'Nhóm được tách',
+        ])->assertOk()
+            ->assertJsonPath('data.source_document.passages.0.source_group.evidence.start_sequence', 1)
+            ->assertJsonPath('data.source_document.passages.0.source_group.evidence.end_sequence', 1)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.start_sequence', 2)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.end_sequence', 2)
+            ->assertJsonPath('data.source_document.passages.2.source_group.evidence.start_sequence', 3)
+            ->assertJsonPath('data.source_document.passages.2.source_group.evidence.end_sequence', 3);
+
+        $keys = collect($response->json('data.source_document.passages'))
+            ->take(3)
+            ->pluck('source_group.key');
+        $this->assertCount(3, $keys->unique());
+        $this->assertSame('Nhóm ban đầu', $response->json('data.source_document.passages.0.source_group.title'));
+        $this->assertSame('Nhóm được tách', $response->json('data.source_document.passages.1.source_group.title'));
+        $this->assertSame('Nhóm ban đầu', $response->json('data.source_document.passages.2.source_group.title'));
+        $this->assertSame(2, DB::table('weekly_plan_events')
+            ->where('weekly_plan_id', $planId)
+            ->where('event_type', 'SOURCE_GROUP_ASSIGNED')
+            ->count());
+    }
+
+    public function test_manual_source_group_assignment_fails_closed_for_invalid_scope_permission_and_status(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$viewer] = $this->userWithPermissions(['weekly_plans.view']);
+        [$inactive] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ], false);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $extracted = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk();
+        $passageIds = collect($extracted->json('data.source_document.passages'))
+            ->pluck('id')
+            ->map(fn (mixed $id): int => (int) $id)
+            ->all();
+        $payload = [
+            'passage_ids' => [$passageIds[0], $passageIds[2]],
+            'group_title' => 'Dải không liên tiếp',
+        ];
+
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.passage_ids.0',
+                'Chỉ có thể gán nhãn cho một dải đoạn nguồn liên tiếp.',
+            );
+        $this->actingAs($viewer)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0]],
+            'group_title' => 'Không đủ quyền',
+        ])->assertForbidden();
+        $this->actingAs($inactive)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0]],
+            'group_title' => 'Membership không hoạt động',
+        ])->assertUnauthorized();
+
+        $otherOrganization = DB::table('organizations')->insertGetId([
+            'code' => 'SOURCE-GROUP-OTHER',
+            'name' => 'Other source group organization',
+            'type' => 'internal',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $foreignPlan = WeeklyPlan::query()->create([
+            'organization_id' => $otherOrganization,
+            'created_by' => $hr->id,
+            'week_start' => '2026-10-26',
+            'week_end' => '2026-10-31',
+            'status' => 'DRAFT',
+            'original_filename' => 'foreign.docx',
+            'source_extension' => 'docx',
+            'source_mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'source_size' => 1,
+            'source_sha256' => str_repeat('f', 64),
+            'parse_status' => 'NEEDS_MAPPING',
+            'uploaded_at' => now(),
+        ]);
+        $foreignPassage = $foreignPlan->sourcePassages()->create([
+            'source_sha256' => $foreignPlan->source_sha256,
+            'source_key' => 'paragraph:1',
+            'sequence' => 1,
+            'kind' => 'paragraph',
+            'text' => 'Dữ liệu tổ chức khác',
+            'metadata' => [],
+            'content_sha256' => hash('sha256', 'Dữ liệu tổ chức khác'),
+        ]);
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$foreignPassage->id],
+            'group_title' => 'Không được vượt tổ chức',
+        ])->assertUnprocessable();
+
+        WeeklyPlan::query()->whereKey($planId)->update(['status' => 'SUBMITTED']);
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0]],
+            'group_title' => 'Kế hoạch đã gửi',
+        ])->assertConflict();
+
+        WeeklyPlan::query()->whereKey($planId)->update([
+            'status' => 'DRAFT',
+            'source_sha256' => str_repeat('e', 64),
+        ]);
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/source/group", [
+            'passage_ids' => [$passageIds[0]],
+            'group_title' => 'Đoạn nguồn phiên bản cũ',
+        ])->assertConflict();
+
+        $this->assertSame(0, DB::table('weekly_plan_events')
+            ->where('weekly_plan_id', $planId)
+            ->where('event_type', 'SOURCE_GROUP_ASSIGNED')
+            ->count());
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_source_application_is_atomic_and_rejects_untrusted_assignment(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $extracted = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk();
+        $passageId = (int) $extracted->json('data.source_document.passages.1.id');
+
+        $base = [
+            'source_passage_ids' => [$passageId],
+            'title' => 'Đầu việc từ văn bản',
+            'content' => null,
+            'expected_result' => null,
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'priority' => 'MEDIUM',
+            'note' => null,
+        ];
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/apply", [
+            'request_id' => '22222222-2222-4222-8222-222222222222',
+            'entries' => [
+                $base + ['assignee_id' => $assignee->id],
+                $base + ['assignee_id' => 999999, 'title' => 'Người ngoài phạm vi'],
+            ],
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_applications', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_source_passage', 0);
+    }
+
+    public function test_ai_extraction_boundary_rejects_untrusted_source_references(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk();
+
+        $this->app->bind(
+            WeeklyPlanTaskExtractor::class,
+            fn () => new class implements WeeklyPlanTaskExtractor
+            {
+                public function isConfigured(): bool
+                {
+                    return true;
+                }
+
+                public function name(): string
+                {
+                    return 'test-provider';
+                }
+
+                public function extract(array $context): array
+                {
+                    return [[
+                        'source_keys' => ['invented:source'],
+                        'title' => 'Dữ liệu không đáng tin cậy',
+                        'content' => null,
+                        'expected_result' => null,
+                        'employee_identifier' => null,
+                        'start_date' => '2026-10-26',
+                        'due_date' => '2026-10-31',
+                        'priority' => 'MEDIUM',
+                        'note' => null,
+                        'verification_fields' => ['assignee_id'],
+                        'evidence' => 'Không có bằng chứng hợp lệ.',
+                        'provenance' => ['title' => 'INFERRED'],
+                    ]];
+                }
+            },
+        );
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'Kết quả trích xuất tham chiếu đoạn nguồn không tồn tại.',
+            );
+
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_applications', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_empty_and_unsafe_docx_are_explicit_and_a_missing_source_can_be_replaced_on_the_same_plan(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->emptyDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.status', 'EMPTY')
+            ->assertJsonCount(0, 'data.source_document.passages');
+
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.status', 'MISSING')
+            ->assertJsonPath('data.actions.can_replace_source', true);
+
+        $this->actingAs($hr)->post("/api/weekly-plans/{$planId}/source/replace", [
+            'file' => $this->narrativeDocx(),
+        ])->assertOk()
+            ->assertJsonPath('data.id', $planId)
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonCount(6, 'data.source_document.passages');
+        $this->assertDatabaseCount('weekly_plans', 1);
+
+        $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->unsafeExternalDocx(),
+        ])->assertUnprocessable();
+        $this->assertDatabaseCount('weekly_plans', 1);
+    }
+
+    public function test_reuploading_the_same_missing_source_reuses_existing_passages(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->narrativeDocx(),
+        ])->assertCreated();
+        $planId = (int) $imported->json('data.id');
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/source/extract")
+            ->assertOk()
+            ->assertJsonCount(6, 'data.source_document.passages');
+
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        $disk = Storage::disk((string) $plan->source_disk);
+        $contents = $disk->get((string) $plan->source_path);
+        $disk->delete((string) $plan->source_path);
+
+        $this->actingAs($hr)->post("/api/weekly-plans/{$planId}/source/replace", [
+            'file' => UploadedFile::fake()->createWithContent('replacement.docx', $contents),
+        ])->assertOk()
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonCount(6, 'data.source_document.passages');
+
+        $this->assertDatabaseCount('weekly_plan_source_passages', 6);
+        $this->assertSame(1, DB::table('weekly_plan_events')
+            ->where('weekly_plan_id', $planId)
+            ->where('event_type', 'SOURCE_TEXT_EXTRACTED')
+            ->count());
     }
 
     public function test_import_keeps_unresolved_and_invalid_rows_instead_of_guessing_or_skipping(): void
@@ -733,6 +1282,11 @@ class WeeklyPlanningTest extends TestCase
             ->assertJsonPath('data.actions.can_publish', false)
             ->assertJsonPath('data.actions.can_approve_and_publish', false)
             ->assertJsonPath('data.actions.can_comment', false)
+            ->assertJsonPath('data.actions.can_extract_source', false)
+            ->assertJsonPath('data.actions.can_replace_source', false)
+            ->assertJsonPath('data.actions.can_apply_source', false)
+            ->assertJsonPath('data.actions.can_group_source', false)
+            ->assertJsonPath('data.actions.can_ai_extract_source', false)
             ->assertJsonMissingPath('data.source_path');
 
         $entryPayload = [
@@ -753,6 +1307,31 @@ class WeeklyPlanningTest extends TestCase
         $this->actingAs($admin)->postJson("/api/weekly-plans/{$planId}/reparse", [
             'column_mapping' => [],
         ])->assertForbidden();
+        foreach ([$owner, $admin] as $readOnlyUser) {
+            $this->actingAs($readOnlyUser)
+                ->postJson("/api/weekly-plans/{$planId}/source/extract")
+                ->assertForbidden();
+            $this->actingAs($readOnlyUser)
+                ->post("/api/weekly-plans/{$planId}/source/replace", [
+                    'file' => UploadedFile::fake()->create('replacement.docx', 10),
+                ])
+                ->assertForbidden();
+            $this->actingAs($readOnlyUser)
+                ->postJson("/api/weekly-plans/{$planId}/source/apply", [
+                    'request_id' => (string) Str::uuid(),
+                    'entries' => [],
+                ])
+                ->assertForbidden();
+            $this->actingAs($readOnlyUser)
+                ->patchJson("/api/weekly-plans/{$planId}/source/group", [
+                    'passage_ids' => [1],
+                    'group_title' => 'Không được phân nhóm',
+                ])
+                ->assertForbidden();
+            $this->actingAs($readOnlyUser)
+                ->postJson("/api/weekly-plans/{$planId}/source/ai-extract")
+                ->assertForbidden();
+        }
         $this->actingAs($admin)->postJson("/api/weekly-plans/{$planId}/entries", $entryPayload)
             ->assertForbidden();
         $this->actingAs($admin)->patchJson(
@@ -898,6 +1477,91 @@ class WeeklyPlanningTest extends TestCase
         return new UploadedFile(
             $path,
             'ke-hoach.docx',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            null,
+            true,
+        );
+    }
+
+    private function narrativeDocx(): UploadedFile
+    {
+        $body = <<<'XML'
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Kế hoạch Marketing</w:t></w:r></w:p>
+<w:p><w:r><w:t>Chuẩn bị nội dung chiến dịch tuần.</w:t></w:r></w:p>
+<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr><w:r><w:t>Viết nội dung fanpage.</w:t></w:r></w:p>
+<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr><w:r><w:t>Duyệt lịch đăng bài.</w:t></w:r></w:p>
+<w:tbl>
+  <w:tr><w:tc><w:p><w:r><w:t>Mốc</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Nội dung</w:t></w:r></w:p></w:tc></w:tr>
+  <w:tr><w:tc><w:p><w:r><w:t>Thứ Sáu</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Hoàn tất bản duyệt</w:t></w:r></w:p></w:tc></w:tr>
+</w:tbl>
+XML;
+        $numbering = <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl></w:abstractNum>
+  <w:abstractNum w:abstractNumId="2"><w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum>
+  <w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num>
+  <w:num w:numId="2"><w:abstractNumId w:val="2"/></w:num>
+</w:numbering>
+XML;
+
+        return $this->wordPackage($body, $numbering);
+    }
+
+    private function sectionedNarrativeDocx(): UploadedFile
+    {
+        $body = <<<'XML'
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Nhân viên A</w:t></w:r></w:p>
+<w:p><w:pPr><w:sectPr/></w:pPr><w:r><w:t>Chuẩn bị nội dung tuần.</w:t></w:r></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Nhân viên B</w:t></w:r></w:p>
+<w:p><w:r><w:t>Đối chiếu kết quả tuần trước.</w:t></w:r></w:p>
+<w:p><w:pPr><w:sectPr/></w:pPr></w:p>
+<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Kim Phục Sắc</w:t></w:r></w:p>
+<w:p><w:r><w:t>Tên thương hiệu không phải danh tính nhân viên đã xác minh.</w:t></w:r></w:p>
+XML;
+
+        return $this->wordPackage($body);
+    }
+
+    private function emptyDocx(): UploadedFile
+    {
+        return $this->wordPackage('');
+    }
+
+    private function unsafeExternalDocx(): UploadedFile
+    {
+        return $this->wordPackage(
+            '<w:p><w:r><w:t>Nội dung không an toàn</w:t></w:r></w:p>',
+            null,
+            [
+                'word/_rels/document.xml.rels' => '<?xml version="1.0"?><Relationships><Relationship Target="https://example.test" TargetMode="External"/></Relationships>',
+            ],
+        );
+    }
+
+    /** @param array<string, string> $extraParts */
+    private function wordPackage(string $body, ?string $numbering = null, array $extraParts = []): UploadedFile
+    {
+        $path = tempnam(sys_get_temp_dir(), 'weekly-word-');
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>');
+        $zip->addFromString(
+            'word/document.xml',
+            '<?xml version="1.0" encoding="UTF-8"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+            .$body.'</w:body></w:document>',
+        );
+        if ($numbering !== null) {
+            $zip->addFromString('word/numbering.xml', $numbering);
+        }
+        foreach ($extraParts as $name => $contents) {
+            $zip->addFromString($name, $contents);
+        }
+        $zip->close();
+
+        return new UploadedFile(
+            $path,
+            'ke-hoach-van-ban.docx',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             null,
             true,

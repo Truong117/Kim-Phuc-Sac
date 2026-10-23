@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\TaskPriority;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class WeeklyPlanEntry extends Model
@@ -53,5 +54,15 @@ class WeeklyPlanEntry extends Model
     public function task(): HasOne
     {
         return $this->hasOne(Task::class);
+    }
+
+    public function sourcePassages(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            WeeklyPlanSourcePassage::class,
+            'weekly_plan_entry_source_passage',
+            'weekly_plan_entry_id',
+            'weekly_plan_source_passage_id',
+        )->orderBy('sequence');
     }
 }

@@ -9,4 +9,10 @@ return [
     'max_compression_ratio' => (int) env('WEEKLY_PLAN_MAX_COMPRESSION_RATIO', 100),
     'max_rows' => (int) env('WEEKLY_PLAN_MAX_ROWS', 1000),
     'max_sheets' => (int) env('WEEKLY_PLAN_MAX_SHEETS', 10),
+    'max_source_passages' => (int) env('WEEKLY_PLAN_MAX_SOURCE_PASSAGES', 500),
+    'max_source_characters' => (int) env('WEEKLY_PLAN_MAX_SOURCE_CHARACTERS', 200000),
+    'max_source_passage_characters' => (int) env('WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS', 10000),
+    'max_source_passages_per_entry' => (int) env('WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY', 20),
+    'max_source_entries_per_request' => (int) env('WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST', 20),
+    'document_ai_driver' => env('WEEKLY_PLAN_DOCUMENT_AI_DRIVER', 'none'),
 ];

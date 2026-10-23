@@ -101,6 +101,21 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/{id}/reparse', [WeeklyPlanController::class, 'reparse'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/source/extract', [WeeklyPlanController::class, 'extractSource'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/source/replace', [WeeklyPlanController::class, 'replaceSource'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::patch('/{id}/source/group', [WeeklyPlanController::class, 'assignSourceGroup'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/source/apply', [WeeklyPlanController::class, 'applySourceEntries'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/source/ai-extract', [WeeklyPlanController::class, 'extractSourceWithAi'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/entries', [WeeklyPlanController::class, 'storeEntry'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');

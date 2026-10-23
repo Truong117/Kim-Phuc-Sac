@@ -5,6 +5,7 @@ import type {
   WeeklyPlanListResponse,
   WeeklyPlanReferences,
   WeeklyPlanReviewStatus,
+  WeeklyPlanSourceEntryInput,
 } from "@/types/weeklyPlanning";
 
 type WeeklyPlanResponse = { data: WeeklyPlan };
@@ -63,6 +64,68 @@ export const reparseWeeklyPlan = async (
   );
   return response.data;
 };
+
+export const extractWeeklyPlanSource = async (
+  id: number,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/source/extract",
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return response.data;
+};
+
+export const replaceWeeklyPlanSource = async (
+  id: number,
+  file: File,
+): Promise<WeeklyPlan> => {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/source/replace",
+    { method: "POST", body },
+  );
+  return response.data;
+};
+
+export const applyWeeklyPlanSourceEntries = async (
+  id: number,
+  requestId: string,
+  entries: WeeklyPlanSourceEntryInput[],
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/source/apply",
+    {
+      method: "POST",
+      body: JSON.stringify({ request_id: requestId, entries }),
+    },
+  );
+  return response.data;
+};
+
+export const assignWeeklyPlanSourceGroup = async (
+  id: number,
+  passageIds: number[],
+  groupTitle: string,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    "/api/weekly-plans/" + id + "/source/group",
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        passage_ids: passageIds,
+        group_title: groupTitle,
+      }),
+    },
+  );
+  return response.data;
+};
+
+export const extractWeeklyPlanSourceWithAi = (id: number) =>
+  apiRequest<{ data: { suggestions: unknown[] } }>(
+    "/api/weekly-plans/" + id + "/source/ai-extract",
+    { method: "POST", body: JSON.stringify({}) },
+  );
 
 export const downloadWeeklyPlanTemplate = () =>
   apiDownload("/api/weekly-plans/template");
