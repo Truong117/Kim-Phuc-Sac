@@ -25,6 +25,29 @@ class WeeklyPlanResource extends JsonResource
                 'sha256' => $this->source_sha256,
                 'uploaded_at' => $this->uploaded_at?->toISOString(),
             ],
+            'source_document' => [
+                'status' => ($this->getAttribute('source_document') ?? [])['status'] ?? 'NOT_EXTRACTED',
+                'ai' => ($this->getAttribute('source_document') ?? [])['ai'] ?? [
+                    'configured' => false,
+                    'provider' => 'none',
+                ],
+                'limits' => ($this->getAttribute('source_document') ?? [])['limits'] ?? [
+                    'max_passages_per_entry' => 20,
+                    'max_entries_per_request' => 20,
+                ],
+                'passages' => $this->whenLoaded('sourcePassages', fn () => $this->sourcePassages->map(
+                    fn ($passage): array => [
+                        'id' => $passage->id,
+                        'source_key' => $passage->source_key,
+                        'sequence' => $passage->sequence,
+                        'kind' => $passage->kind,
+                        'text' => $passage->text,
+                        'metadata' => $passage->metadata ?? [],
+                        'source_context' => $this->sourceContext($passage->metadata),
+                        'source_group' => $this->sourceGroup($passage->metadata),
+                    ],
+                )),
+            ],
             'creator' => $this->whenLoaded('creator', fn (): array => [
                 'id' => $this->creator->id,
                 'name' => $this->creator->name,
@@ -87,6 +110,16 @@ class WeeklyPlanResource extends JsonResource
                     'sort_order' => $entry->sort_order,
                     'validation_status' => $entry->validation_status,
                     'validation_errors' => $entry->validation_errors ?? [],
+                    'source_passages' => $entry->relationLoaded('sourcePassages')
+                        ? $entry->sourcePassages->map(fn ($passage): array => [
+                            'id' => $passage->id,
+                            'source_key' => $passage->source_key,
+                            'kind' => $passage->kind,
+                            'text' => $passage->text,
+                            'source_context' => $this->sourceContext($passage->metadata),
+                            'source_group' => $this->sourceGroup($passage->metadata),
+                        ])
+                        : [],
                 ],
             )),
             'employee_reviews' => $this->whenLoaded('employeeReviews', fn () => $this->employeeReviews->map(
@@ -141,6 +174,68 @@ class WeeklyPlanResource extends JsonResource
             'approved_at' => $this->approved_at?->toISOString(),
             'published_at' => $this->published_at?->toISOString(),
             'actions' => $this->getAttribute('actions') ?? [],
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function sourceContext(mixed $metadata): ?array
+    {
+        $context = is_array($metadata) ? ($metadata['source_context'] ?? null) : null;
+        if (! is_array($context)
+            || ! is_string($context['key'] ?? null)
+            || ! is_string($context['origin'] ?? null)) {
+            return null;
+        }
+
+        $evidence = is_array($context['evidence'] ?? null) ? $context['evidence'] : [];
+
+        return [
+            'version' => (int) ($context['version'] ?? 1),
+            'key' => $context['key'],
+            'origin' => $context['origin'],
+            'order' => (int) ($context['order'] ?? 0),
+            'evidence' => [
+                'type' => is_string($evidence['type'] ?? null) ? $evidence['type'] : null,
+                'section' => isset($evidence['section']) ? (int) $evidence['section'] : null,
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function sourceGroup(mixed $metadata): ?array
+    {
+        $group = is_array($metadata) ? ($metadata['source_group'] ?? null) : null;
+        if (! is_array($group)
+            || ! is_string($group['key'] ?? null)
+            || ! is_string($group['title'] ?? null)
+            || ! is_string($group['origin'] ?? null)) {
+            return null;
+        }
+
+        $evidence = is_array($group['evidence'] ?? null) ? $group['evidence'] : [];
+
+        return [
+            'version' => (int) ($group['version'] ?? 1),
+            'key' => $group['key'],
+            'title' => $group['title'],
+            'origin' => $group['origin'],
+            'order' => (int) ($group['order'] ?? 0),
+            'identity_verified' => (bool) ($group['identity_verified'] ?? false),
+            'evidence' => [
+                'type' => is_string($evidence['type'] ?? null) ? $evidence['type'] : null,
+                'start_sequence' => isset($evidence['start_sequence'])
+                    ? (int) $evidence['start_sequence']
+                    : null,
+                'end_sequence' => isset($evidence['end_sequence'])
+                    ? (int) $evidence['end_sequence']
+                    : null,
+                'start_source_key' => is_string($evidence['start_source_key'] ?? null)
+                    ? $evidence['start_source_key']
+                    : null,
+                'end_source_key' => is_string($evidence['end_source_key'] ?? null)
+                    ? $evidence['end_source_key']
+                    : null,
+            ],
         ];
     }
 }

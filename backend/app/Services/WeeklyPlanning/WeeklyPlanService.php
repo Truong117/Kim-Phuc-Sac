@@ -12,7 +12,9 @@ use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanComment;
 use App\Models\WeeklyPlanEmployeeReview;
 use App\Models\WeeklyPlanEntry;
+use App\Models\WeeklyPlanEntryApplication;
 use App\Models\WeeklyPlanEvent;
+use App\Models\WeeklyPlanSourcePassage;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
@@ -39,6 +41,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanEntryValidator $validator,
         private readonly WeeklyPlanSuggestionGenerator $suggestions,
         private readonly WeeklyPlanPublisher $publisher,
+        private readonly WeeklyPlanTaskExtractionService $taskExtraction,
     ) {}
 
     /** @return LengthAwarePaginator<WeeklyPlan> */
@@ -190,6 +193,392 @@ class WeeklyPlanService
         }
 
         return $this->load($plan, $actor);
+    }
+
+    public function extractSourceText(User $actor, int $planId): WeeklyPlan
+    {
+        $plan = $this->editablePlan($actor, $planId);
+        if ($this->sourceWasExtracted($plan)) {
+            return $this->findVisible($actor, $planId);
+        }
+
+        $passages = $this->readSourcePassages($plan);
+
+        DB::transaction(function () use ($actor, $passages, $plan): void {
+            $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            $this->assertEditable($locked);
+            if ($locked->source_sha256 !== $plan->source_sha256) {
+                throw new ConflictHttpException('Tệp nguồn đã thay đổi. Vui lòng tải lại kế hoạch.');
+            }
+            if ($this->sourceWasExtracted($locked)) {
+                return;
+            }
+
+            $locked->sourcePassages()
+                ->where('source_sha256', $locked->source_sha256)
+                ->delete();
+            $this->persistSourcePassages($locked, $passages);
+            $this->record($locked, $actor, 'SOURCE_TEXT_EXTRACTED', [
+                'source_sha256' => $locked->source_sha256,
+                'passage_count' => count($passages),
+                'status' => $passages === [] ? 'EMPTY' : 'EXTRACTED',
+            ]);
+        });
+
+        return $this->findVisible($actor, $planId);
+    }
+
+    public function replaceMissingSource(User $actor, int $planId, UploadedFile $file): WeeklyPlan
+    {
+        $plan = $this->editablePlan($actor, $planId);
+        if ($this->sourceExists($plan)) {
+            throw new ConflictHttpException('Tệp nguồn hiện tại vẫn còn khả dụng.');
+        }
+
+        $extension = mb_strtolower($file->getClientOriginalExtension());
+        $mime = (string) $file->getMimeType();
+        $this->assertFileType($extension, $mime);
+        if ($extension !== 'docx') {
+            throw ValidationException::withMessages([
+                'file' => ['Chỉ hỗ trợ thay thế nguồn đọc văn bản bằng tệp DOCX.'],
+            ]);
+        }
+
+        $path = $file->getRealPath();
+        if (! is_string($path) || $path === '') {
+            throw ValidationException::withMessages(['file' => ['Không thể đọc tệp tải lên.']]);
+        }
+        try {
+            $passages = $this->parser->extractDocumentText($path, $extension);
+        } catch (RuntimeException $exception) {
+            throw ValidationException::withMessages(['file' => [$exception->getMessage()]]);
+        }
+
+        $disk = (string) config('weekly_plans.storage_disk', 'local');
+        $storedPath = sprintf('weekly-plans/%d/%s.%s', $plan->organization_id, Str::uuid(), $extension);
+        $contents = fopen($path, 'rb');
+        if ($contents === false || Storage::disk($disk)->put($storedPath, $contents, ['visibility' => 'private']) !== true) {
+            if (is_resource($contents)) {
+                fclose($contents);
+            }
+            throw new RuntimeException('Không thể lưu tệp nguồn vào kho lưu trữ riêng tư.');
+        }
+        if (is_resource($contents)) {
+            fclose($contents);
+        }
+
+        $oldDisk = $plan->source_disk;
+        $oldPath = $plan->source_path;
+
+        try {
+            DB::transaction(function () use (
+                $actor,
+                $disk,
+                $extension,
+                $file,
+                $mime,
+                $passages,
+                $path,
+                $plan,
+                $storedPath,
+            ): void {
+                $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+                $this->assertEditable($locked);
+                if ($this->sourceExists($locked)) {
+                    throw new ConflictHttpException('Tệp nguồn hiện tại vẫn còn khả dụng.');
+                }
+
+                $locked->forceFill([
+                    'source_disk' => $disk,
+                    'source_path' => $storedPath,
+                    'original_filename' => basename(str_replace('\\', '/', $file->getClientOriginalName())),
+                    'source_extension' => $extension,
+                    'source_mime' => $mime,
+                    'source_size' => $file->getSize() ?: filesize($path),
+                    'source_sha256' => hash_file('sha256', $path),
+                    'uploaded_at' => CarbonImmutable::now('UTC'),
+                ])->save();
+
+                $this->record($locked, $actor, 'SOURCE_FILE_REPLACED', [
+                    'source_sha256' => $locked->source_sha256,
+                    'passage_count' => count($passages),
+                ]);
+                if (! $this->sourceWasExtracted($locked)) {
+                    $this->persistSourcePassages($locked, $passages);
+                    $this->record($locked, $actor, 'SOURCE_TEXT_EXTRACTED', [
+                        'source_sha256' => $locked->source_sha256,
+                        'passage_count' => count($passages),
+                        'status' => $passages === [] ? 'EMPTY' : 'EXTRACTED',
+                    ]);
+                }
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk($disk)->delete($storedPath);
+            throw $exception;
+        }
+
+        if (is_string($oldDisk) && $oldDisk !== '' && is_string($oldPath) && $oldPath !== '') {
+            Storage::disk($oldDisk)->delete($oldPath);
+        }
+
+        return $this->findVisible($actor, $planId);
+    }
+
+    /** @param list<int> $passageIds */
+    public function assignSourceGroup(
+        User $actor,
+        int $planId,
+        array $passageIds,
+        string $groupTitle,
+    ): WeeklyPlan {
+        $plan = $this->editablePlan($actor, $planId);
+        $groupTitle = trim($groupTitle);
+
+        DB::transaction(function () use ($actor, $groupTitle, $passageIds, $plan): void {
+            $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            $this->assertEditable($locked);
+            if ($locked->source_sha256 !== $plan->source_sha256) {
+                throw new ConflictHttpException('Tệp nguồn đã thay đổi. Vui lòng tải lại kế hoạch.');
+            }
+            if (! $this->sourceExists($locked) || ! $this->sourceWasExtracted($locked)) {
+                throw new ConflictHttpException('Chưa có nội dung tài liệu nguồn để phân nhóm.');
+            }
+
+            $passages = WeeklyPlanSourcePassage::query()
+                ->where('weekly_plan_id', $locked->id)
+                ->where('source_sha256', $locked->source_sha256)
+                ->orderBy('sequence')
+                ->lockForUpdate()
+                ->get()
+                ->values();
+            $requestedIds = collect($passageIds)
+                ->map(fn (mixed $id): int => (int) $id)
+                ->unique()
+                ->values();
+            if ($requestedIds->isEmpty()
+                || $requestedIds->count() !== count($passageIds)
+                || $passages->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'passage_ids' => ['Các đoạn nguồn được chọn không hợp lệ.'],
+                ]);
+            }
+
+            $positionsById = $passages
+                ->mapWithKeys(fn (WeeklyPlanSourcePassage $passage, int $position): array => [
+                    $passage->id => $position,
+                ]);
+            $positions = $requestedIds
+                ->map(fn (int $id): mixed => $positionsById->get($id))
+                ->filter(fn (mixed $position): bool => is_int($position))
+                ->sort()
+                ->values();
+            if ($positions->count() !== $requestedIds->count()
+                || $positions->last() - $positions->first() + 1 !== $positions->count()) {
+                throw ValidationException::withMessages([
+                    'passage_ids' => ['Chỉ có thể gán nhãn cho một dải đoạn nguồn liên tiếp.'],
+                ]);
+            }
+
+            $startPosition = (int) $positions->first();
+            $endPosition = (int) $positions->last();
+            $selectedGroup = $this->manualSourceGroup(
+                $locked,
+                $groupTitle,
+                $passages[$startPosition],
+                $passages[$endPosition],
+            );
+            $groups = [];
+            $requestedLookup = $requestedIds->flip();
+            foreach ($passages as $position => $passage) {
+                $metadata = is_array($passage->metadata) ? $passage->metadata : [];
+                $groups[$position] = $requestedLookup->has($passage->id)
+                    ? $selectedGroup
+                    : ($metadata['source_group'] ?? null);
+            }
+
+            // Re-key every resulting contiguous manual segment. This keeps a
+            // stable invariant when a newly assigned range splits or merges a
+            // previously labelled range, instead of leaving one key attached
+            // to two disconnected passage ranges.
+            $position = 0;
+            while ($position < $passages->count()) {
+                $group = $groups[$position];
+                if (! $this->isManualSourceGroup($group)) {
+                    $position++;
+
+                    continue;
+                }
+
+                $end = $position;
+                while ($end + 1 < $passages->count()
+                    && $this->isManualSourceGroup($groups[$end + 1])
+                    && $groups[$end + 1]['key'] === $group['key']) {
+                    $end++;
+                }
+
+                $normalized = $this->manualSourceGroup(
+                    $locked,
+                    (string) $group['title'],
+                    $passages[$position],
+                    $passages[$end],
+                );
+                for ($index = $position; $index <= $end; $index++) {
+                    $groups[$index] = $normalized;
+                }
+                $position = $end + 1;
+            }
+
+            $changedPassageIds = [];
+            $previousGroupKeys = [];
+            foreach ($passages as $position => $passage) {
+                $metadata = is_array($passage->metadata) ? $passage->metadata : [];
+                $previousGroup = $metadata['source_group'] ?? null;
+                if ($previousGroup === $groups[$position]) {
+                    continue;
+                }
+                if (is_array($previousGroup) && is_string($previousGroup['key'] ?? null)) {
+                    $previousGroupKeys[] = $previousGroup['key'];
+                }
+
+                $metadata['source_group'] = $groups[$position];
+                $passage->forceFill(['metadata' => $metadata])->save();
+                $changedPassageIds[] = $passage->id;
+            }
+
+            if ($changedPassageIds !== []) {
+                $assignedGroup = $groups[$startPosition];
+                $this->record($locked, $actor, 'SOURCE_GROUP_ASSIGNED', [
+                    'source_sha256' => $locked->source_sha256,
+                    'group_key' => $assignedGroup['key'],
+                    'group_title' => $assignedGroup['title'],
+                    'start_sequence' => $passages[$startPosition]->sequence,
+                    'end_sequence' => $passages[$endPosition]->sequence,
+                    'passage_count' => $requestedIds->count(),
+                    'normalized_passage_count' => count($changedPassageIds),
+                    'previous_group_keys' => array_values(array_unique($previousGroupKeys)),
+                ]);
+            }
+        });
+
+        return $this->findVisible($actor, $planId);
+    }
+
+    /** @param list<array<string, mixed>> $entries */
+    public function applySourceEntries(
+        User $actor,
+        int $planId,
+        string $requestId,
+        array $entries,
+    ): WeeklyPlan {
+        $plan = $this->editablePlan($actor, $planId);
+        $payloadHash = hash('sha256', json_encode([
+            'source_sha256' => $plan->source_sha256,
+            'entries' => $entries,
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
+
+        DB::transaction(function () use ($actor, $entries, $payloadHash, $plan, $requestId): void {
+            $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            $this->assertEditable($locked);
+            $existing = WeeklyPlanEntryApplication::query()
+                ->where('weekly_plan_id', $locked->id)
+                ->where('idempotency_key', $requestId)
+                ->first();
+            if ($existing !== null) {
+                if (! hash_equals($existing->payload_sha256, $payloadHash)) {
+                    throw new ConflictHttpException('Mã yêu cầu đã được dùng với nội dung khác.');
+                }
+
+                return;
+            }
+
+            $passageIds = collect($entries)
+                ->flatMap(fn (array $entry): array => $entry['source_passage_ids'])
+                ->map(fn (mixed $id): int => (int) $id)
+                ->unique()
+                ->values();
+            $passages = WeeklyPlanSourcePassage::query()
+                ->where('weekly_plan_id', $locked->id)
+                ->where('source_sha256', $locked->source_sha256)
+                ->whereIn('id', $passageIds)
+                ->get()
+                ->keyBy('id');
+            if ($passages->count() !== $passageIds->count()) {
+                throw ValidationException::withMessages([
+                    'entries' => ['Đoạn nguồn không còn thuộc phiên bản tài liệu hiện tại.'],
+                ]);
+            }
+
+            $preparedEntries = [];
+            $validationErrors = [];
+            foreach ($entries as $index => $attributes) {
+                $sourcePassageIds = array_values(array_map('intval', $attributes['source_passage_ids']));
+                $sourceGroupKeys = collect($sourcePassageIds)
+                    ->map(fn (int $passageId): ?string => $this->sourceGroupKey($passages->get($passageId)));
+                $groupedSourceKeys = $sourceGroupKeys
+                    ->filter(fn (?string $key): bool => $key !== null)
+                    ->values();
+                if ($groupedSourceKeys->isNotEmpty()
+                    && ($groupedSourceKeys->count() !== $sourceGroupKeys->count()
+                        || $groupedSourceKeys->unique()->count() !== 1)) {
+                    $validationErrors['entries.'.$index.'.source_passage_ids'] = [
+                        'Các đoạn nguồn của một đầu việc phải thuộc cùng một nhóm.',
+                    ];
+                }
+                unset($attributes['source_passage_ids']);
+                $attributes['source_origin'] = 'DOCUMENT_PASSAGES';
+                $attributes['source_passage_ids'] = $sourcePassageIds;
+                $prepared = $this->prepareEntry($locked, $attributes);
+                if ($prepared['validation_errors'] !== []) {
+                    $validationErrors['entries.'.$index] = $prepared['validation_errors'];
+                }
+                $preparedEntries[] = [$prepared, $sourcePassageIds];
+            }
+            if ($validationErrors !== []) {
+                throw ValidationException::withMessages($validationErrors);
+            }
+
+            $application = WeeklyPlanEntryApplication::query()->create([
+                'weekly_plan_id' => $locked->id,
+                'created_by' => $actor->id,
+                'idempotency_key' => $requestId,
+                'payload_sha256' => $payloadHash,
+                'entry_ids' => [],
+            ]);
+            $sortOrder = (int) $locked->entries()->max('sort_order');
+            $entryIds = [];
+            foreach ($preparedEntries as [$prepared, $sourcePassageIds]) {
+                $entry = $locked->entries()->create($prepared + ['sort_order' => ++$sortOrder]);
+                $entry->sourcePassages()->attach($sourcePassageIds);
+                $entryIds[] = $entry->id;
+            }
+            $application->forceFill(['entry_ids' => $entryIds])->save();
+
+            $this->syncReviews($locked);
+            $this->invalidateSuggestions($locked, $actor, 'SOURCE_ENTRIES_APPLIED');
+            $this->record($locked, $actor, 'SOURCE_ENTRIES_APPLIED', [
+                'application_id' => $application->id,
+                'entry_count' => count($entryIds),
+                'passage_count' => $passageIds->count(),
+            ]);
+        });
+
+        return $this->findVisible($actor, $planId);
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function previewAiSourceEntries(User $actor, int $planId): array
+    {
+        $plan = $this->editablePlan($actor, $planId);
+        $plan->load(['sourcePassages' => fn ($query) => $query
+            ->where('source_sha256', $plan->source_sha256)
+            ->orderBy('sequence')]);
+        if ($plan->sourcePassages->isEmpty()) {
+            throw ValidationException::withMessages([
+                'source' => ['Chưa có nội dung tài liệu nguồn để trích xuất.'],
+            ]);
+        }
+
+        return $this->taskExtraction->preview($plan);
     }
 
     /** @param array<string, string> $mapping */
@@ -695,6 +1084,137 @@ class WeeklyPlanService
             || str_contains($message, 'weekly_plans.organization_id, weekly_plans.week_start');
     }
 
+    /** @return list<array{source_key: string, sequence: int, kind: string, text: string, metadata: array<string, mixed>}> */
+    private function readSourcePassages(WeeklyPlan $plan): array
+    {
+        if ($plan->source_extension !== 'docx') {
+            throw ValidationException::withMessages([
+                'source' => ['Chỉ hỗ trợ đọc nội dung văn bản từ tệp DOCX.'],
+            ]);
+        }
+        if (! is_string($plan->source_disk) || $plan->source_disk === ''
+            || ! is_string($plan->source_path) || $plan->source_path === ''
+            || ! $this->sourceExists($plan)) {
+            throw new ConflictHttpException('Không tìm thấy tệp nguồn trong kho lưu trữ riêng tư.');
+        }
+
+        $temporaryPath = tempnam(sys_get_temp_dir(), 'kps-weekly-source-');
+        if ($temporaryPath === false) {
+            throw new RuntimeException('Không thể tạo tệp tạm.');
+        }
+
+        $stream = Storage::disk($plan->source_disk)->readStream($plan->source_path);
+        $target = fopen($temporaryPath, 'wb');
+        if (! is_resource($stream) || $target === false) {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+            if (is_resource($target)) {
+                fclose($target);
+            }
+            @unlink($temporaryPath);
+            throw new RuntimeException('Không thể đọc tệp nguồn từ kho lưu trữ.');
+        }
+
+        try {
+            stream_copy_to_stream($stream, $target);
+        } finally {
+            fclose($stream);
+            fclose($target);
+        }
+
+        try {
+            return $this->parser->extractDocumentText($temporaryPath, $plan->source_extension);
+        } catch (RuntimeException $exception) {
+            throw ValidationException::withMessages(['source' => [$exception->getMessage()]]);
+        } finally {
+            @unlink($temporaryPath);
+        }
+    }
+
+    /** @param list<array{source_key: string, sequence: int, kind: string, text: string, metadata: array<string, mixed>}> $passages */
+    private function persistSourcePassages(WeeklyPlan $plan, array $passages): void
+    {
+        foreach ($passages as $passage) {
+            $plan->sourcePassages()->create([
+                'source_sha256' => $plan->source_sha256,
+                'source_key' => $passage['source_key'],
+                'sequence' => $passage['sequence'],
+                'kind' => $passage['kind'],
+                'text' => $passage['text'],
+                'metadata' => $passage['metadata'],
+                'content_sha256' => hash('sha256', $passage['text']),
+            ]);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function manualSourceGroup(
+        WeeklyPlan $plan,
+        string $title,
+        WeeklyPlanSourcePassage $start,
+        WeeklyPlanSourcePassage $end,
+    ): array {
+        $identity = implode('|', [
+            (string) $plan->id,
+            (string) $plan->source_sha256,
+            (string) $start->sequence,
+            (string) $end->sequence,
+        ]);
+
+        return [
+            'version' => 1,
+            'key' => 'manual:'.hash('sha256', $identity),
+            'title' => $title,
+            'origin' => 'MANUAL',
+            'order' => (int) $start->sequence,
+            'identity_verified' => false,
+            'evidence' => [
+                'type' => 'PASSAGE_RANGE',
+                'start_sequence' => (int) $start->sequence,
+                'end_sequence' => (int) $end->sequence,
+                'start_source_key' => $start->source_key,
+                'end_source_key' => $end->source_key,
+            ],
+        ];
+    }
+
+    private function isManualSourceGroup(mixed $group): bool
+    {
+        return is_array($group)
+            && ($group['origin'] ?? null) === 'MANUAL'
+            && is_string($group['key'] ?? null)
+            && $group['key'] !== ''
+            && is_string($group['title'] ?? null)
+            && $group['title'] !== '';
+    }
+
+    private function sourceGroupKey(?WeeklyPlanSourcePassage $passage): ?string
+    {
+        $metadata = $passage?->metadata;
+        $group = is_array($metadata) ? ($metadata['source_group'] ?? null) : null;
+        $key = is_array($group) ? ($group['key'] ?? null) : null;
+
+        return is_string($key) && $key !== '' ? $key : null;
+    }
+
+    private function sourceExists(WeeklyPlan $plan): bool
+    {
+        return is_string($plan->source_disk)
+            && $plan->source_disk !== ''
+            && is_string($plan->source_path)
+            && $plan->source_path !== ''
+            && Storage::disk($plan->source_disk)->exists($plan->source_path);
+    }
+
+    private function sourceWasExtracted(WeeklyPlan $plan): bool
+    {
+        return $plan->events()
+            ->where('event_type', 'SOURCE_TEXT_EXTRACTED')
+            ->get()
+            ->contains(fn (WeeklyPlanEvent $event): bool => ($event->metadata['source_sha256'] ?? null) === $plan->source_sha256);
+    }
+
     private function resetEmployeeReview(WeeklyPlan $plan, ?int $assigneeId): void
     {
         if ($assigneeId === null) {
@@ -767,11 +1287,37 @@ class WeeklyPlanService
         $plan->load([
             'creator:id,name',
             'entries.assignee:id,name,email',
+            'entries.sourcePassages',
             'employeeReviews.assignee:id,name',
             'comments.author:id,name',
             'suggestions',
             'events.actor:id,name',
+            'sourcePassages' => fn ($query) => $query
+                ->where('source_sha256', $plan->source_sha256)
+                ->orderBy('sequence'),
         ])->loadCount('entries');
+
+        $sourceStatus = 'NOT_EXTRACTED';
+        try {
+            if ($plan->source_extension !== 'docx') {
+                $sourceStatus = 'UNSUPPORTED';
+            } elseif (! $this->sourceExists($plan)) {
+                $sourceStatus = 'MISSING';
+            } elseif ($this->sourceWasExtracted($plan)) {
+                $sourceStatus = $plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED';
+            }
+        } catch (\Throwable) {
+            $sourceStatus = 'UNAVAILABLE';
+        }
+        $aiStatus = $this->taskExtraction->status();
+        $plan->setAttribute('source_document', [
+            'status' => $sourceStatus,
+            'ai' => $aiStatus,
+            'limits' => [
+                'max_passages_per_entry' => (int) config('weekly_plans.max_source_passages_per_entry', 20),
+                'max_entries_per_request' => (int) config('weekly_plans.max_source_entries_per_request', 20),
+            ],
+        ]);
 
         $hasValidEntries = $plan->entries->isNotEmpty()
             && $plan->entries->every(
@@ -822,6 +1368,22 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.approve')
                 && $this->scope->allows($viewer, 'weekly_plans.publish'),
             'can_comment' => $this->commentPermissionFor($viewer) !== null,
+            'can_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $sourceStatus === 'NOT_EXTRACTED'
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_replace_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $sourceStatus === 'MISSING'
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_apply_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $sourceStatus === 'EXTRACTED'
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_group_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $sourceStatus === 'EXTRACTED'
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_ai_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $sourceStatus === 'EXTRACTED'
+                && $aiStatus['configured']
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
         ]);
 
         return $plan;
