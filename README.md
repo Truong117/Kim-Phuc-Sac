@@ -19,6 +19,8 @@ npm run dev
 
 `VITE_API_BASE_URL` trong `.env.local` phải trỏ tới Laravel backend; convention local được khuyến nghị là `http://localhost:8000`.
 
+Trên Vercel, Production/Preview dùng `VITE_API_BASE_URL=/` và biến server-side `KPS_BACKEND_ORIGIN` để `vercel.mjs` proxy riêng `/api` và `/sanctum` tới đúng Render environment. Không cấu hình browser gọi trực tiếp từ `vercel.app` sang `onrender.com`, và không cho Preview trỏ tới backend production. Xem runbook [An toàn môi trường và triển khai KPS](docs/ENVIRONMENT_DEPLOYMENT_SAFETY.md).
+
 Kiểm tra frontend:
 
 ```bash
@@ -38,7 +40,9 @@ php artisan key:generate
 php artisan serve
 ```
 
-Xem hướng dẫn cấu hình MySQL và health endpoint trong [backend/README.md](backend/README.md).
+Backend local dùng SQLite theo cấu hình mẫu. Trước khi chạy migration, phải xác nhận `DB_CONNECTION=sqlite` và `DB_DATABASE` trỏ tới file local; không sao chép thông tin TiDB/production vào `.env` development.
+
+Xem hướng dẫn backend trong [backend/README.md](backend/README.md) và runbook [An toàn môi trường và triển khai KPS](docs/ENVIRONMENT_DEPLOYMENT_SAFETY.md) trước khi cấu hình staging, production, migration hoặc object storage.
 
 Thông tin kiến trúc, trạng thái module và định hướng tiếp theo được duy trì tại [docs/KPS_PROJECT_CONTEXT.md](docs/KPS_PROJECT_CONTEXT.md).
 

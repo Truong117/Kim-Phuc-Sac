@@ -41,6 +41,33 @@ class WeeklyPlanningTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_import_uses_the_configured_disk_without_exposing_its_location(): void
+    {
+        Storage::fake('s3');
+        config()->set('weekly_plans.storage_disk', 's3');
+
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx([
+                ['Unmapped column'],
+                ['Private storage contract'],
+            ]),
+        ])->assertCreated()
+            ->assertJsonMissingPath('data.source_disk')
+            ->assertJsonMissingPath('data.source_path')
+            ->assertJsonMissingPath('data.source_file.url');
+
+        $plan = WeeklyPlan::query()->findOrFail((int) $response->json('data.id'));
+
+        $this->assertSame('s3', $plan->source_disk);
+        $this->assertIsString($plan->source_path);
+        Storage::disk('s3')->assertExists($plan->source_path);
+    }
+
     public function test_hr_imports_reviews_and_owner_publishes_tasks_only_after_final_approval(): void
     {
         [$hr] = $this->userWithPermissions([
