@@ -979,6 +979,50 @@
       "description": "Đọc các đoạn văn, danh sách và bảng trong file Word để HR kiểm tra trước khi tạo đầu việc.",
       "aiNotConnected": "Chưa kết nối AI",
       "extractWithAi": "Trích xuất bằng AI",
+      "aiExtracting": "AI đang phân tích...",
+      "aiFailed": "Không thể phân tích tài liệu bằng AI. Dữ liệu kế hoạch hiện tại không bị thay đổi.",
+      "aiPreview": {
+        "title": "Bản đề xuất từ AI",
+        "description": "AI chỉ tạo bản đề xuất từ nội dung đã lưu. HR phải kiểm tra, chọn đúng tài khoản KPS và xác nhận từng đầu việc trước khi áp dụng.",
+        "verificationWarning": "Nội dung này chưa phải Task và chưa được giao cho nhân viên. Các trường suy luận hoặc còn thiếu cần được HR xác minh.",
+        "empty": "AI không tìm thấy đầu việc có đủ căn cứ trong tài liệu này.",
+        "employeeHint": "Định danh trong tài liệu: {identifier}",
+        "employeeMissing": "Tài liệu không cung cấp định danh nhân viên rõ ràng.",
+        "review": "Kiểm tra và áp dụng",
+        "content": "Mô tả đề xuất",
+        "expectedResult": "Kết quả cần đạt",
+        "period": "Thời gian đề xuất",
+        "priority": "Mức độ ưu tiên",
+        "priorityValues": {
+          "LOW": "Thấp",
+          "MEDIUM": "Trung bình",
+          "HIGH": "Cao",
+          "URGENT": "Khẩn cấp"
+        },
+        "notProvided": "Chưa có căn cứ",
+        "evidence": "Bằng chứng nguồn",
+        "sources": "Đoạn nguồn: {sources}",
+        "sourceExcerpt": "Nội dung {sourceKey}",
+        "sourceUnavailable": "Không tìm thấy đoạn nguồn tương ứng.",
+        "verificationFields": "Cần xác minh: {fields}",
+        "provenance": "Nguồn gốc trường: {values}",
+        "fields": {
+          "title": "Tiêu đề",
+          "content": "Mô tả",
+          "expected_result": "Kết quả",
+          "employee_identifier": "Định danh nhân viên",
+          "start_date": "Ngày bắt đầu",
+          "due_date": "Hạn hoàn thành",
+          "priority": "Ưu tiên",
+          "note": "Ghi chú"
+        },
+        "origins": {
+          "VERBATIM": "Nguyên văn",
+          "INFERRED": "Suy luận",
+          "SUGGESTED": "Đề xuất"
+        },
+        "close": "Đóng"
+      },
       "extract": "Đọc nội dung file Word",
       "extracting": "Đang đọc nội dung...",
       "status": {

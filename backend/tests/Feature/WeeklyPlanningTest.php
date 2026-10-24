@@ -747,7 +747,16 @@ class WeeklyPlanningTest extends TestCase
                         'note' => null,
                         'verification_fields' => ['assignee_id'],
                         'evidence' => 'Không có bằng chứng hợp lệ.',
-                        'provenance' => ['title' => 'INFERRED'],
+                        'provenance' => [
+                            'title' => 'INFERRED',
+                            'content' => 'SUGGESTED',
+                            'expected_result' => 'SUGGESTED',
+                            'employee_identifier' => 'SUGGESTED',
+                            'start_date' => 'VERBATIM',
+                            'due_date' => 'VERBATIM',
+                            'priority' => 'SUGGESTED',
+                            'note' => 'SUGGESTED',
+                        ],
                     ]];
                 }
             },

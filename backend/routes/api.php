@@ -115,7 +115,10 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
             ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/source/ai-extract', [WeeklyPlanController::class, 'extractSourceWithAi'])
             ->whereNumber('id')
-            ->middleware('permission:weekly_plans.manage_draft,organization');
+            ->middleware([
+                'permission:weekly_plans.manage_draft,organization',
+                'throttle:2,1',
+            ]);
         Route::post('/{id}/entries', [WeeklyPlanController::class, 'storeEntry'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');

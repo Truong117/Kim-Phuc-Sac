@@ -22,6 +22,7 @@ import {
   approveAndPublishWeeklyPlan,
   decideWeeklyPlanSuggestion,
   deleteWeeklyPlanEntry,
+  extractWeeklyPlanSourceWithAi,
   getWeeklyPlan,
   getWeeklyPlanReferences,
   extractWeeklyPlanSource,
@@ -330,6 +331,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             onExtract={() =>
               void perform(() => extractWeeklyPlanSource(plan.id))
             }
+            onAiExtract={() => extractWeeklyPlanSourceWithAi(plan.id)}
             onApply={async (
               requestId: string,
               entries: WeeklyPlanSourceEntryInput[],
@@ -345,11 +347,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             }}
             onAssignGroup={async (passageIds, groupTitle) =>
               perform(() =>
-                assignWeeklyPlanSourceGroup(
-                  plan.id,
-                  passageIds,
-                  groupTitle,
-                ),
+                assignWeeklyPlanSourceGroup(plan.id, passageIds, groupTitle),
               )
             }
           />

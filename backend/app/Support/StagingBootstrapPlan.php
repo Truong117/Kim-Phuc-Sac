@@ -25,6 +25,7 @@ final class StagingBootstrapPlan
         '2026_10_22_010000_create_weekly_planning_tables',
         '2026_10_22_010001_add_weekly_plan_source_to_tasks_table',
         '2026_10_22_020000_create_weekly_plan_document_extraction_tables',
+        '2026_10_24_000000_create_ai_gateway_usage_tables',
     ];
 
     /** @var list<string> */
@@ -152,7 +153,7 @@ final class StagingBootstrapPlan
         );
 
         if ($ordered !== self::EXPECTED_MIGRATIONS) {
-            throw new RuntimeException('The migration set differs from the reviewed 13-file staging baseline.');
+            throw new RuntimeException('The migration set differs from the reviewed 14-file staging baseline.');
         }
 
         $hashes = [];

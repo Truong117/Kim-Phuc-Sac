@@ -5,9 +5,11 @@ import Select from "@/components/form/Select";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
 import WeeklyPlanEntryForm from "@/components/weekly-plans/WeeklyPlanEntryForm";
+import WeeklyPlanAiExtractionPreview from "@/components/weekly-plans/WeeklyPlanAiExtractionPreview";
 import { ChevronDownIcon } from "@/icons";
 import type {
   WeeklyPlan,
+  WeeklyPlanAiSuggestion,
   WeeklyPlanEmployee,
   WeeklyPlanEntryInput,
   WeeklyPlanSourceEntryInput,
@@ -21,6 +23,7 @@ type Props = {
   employees: WeeklyPlanEmployee[];
   busy: boolean;
   onExtract: () => void;
+  onAiExtract: () => Promise<WeeklyPlanAiSuggestion[]>;
   onApply: (
     requestId: string,
     entries: WeeklyPlanSourceEntryInput[],
@@ -138,6 +141,7 @@ function WeeklyPlanSourceDocument({
   employees,
   busy,
   onExtract,
+  onAiExtract,
   onApply,
   onAssignGroup,
 }: Props) {
@@ -159,7 +163,14 @@ function WeeklyPlanSourceDocument({
     passageIds: number[];
     initialInput: Partial<WeeklyPlanEntryInput>;
     assigneeId: number | null;
+    aiSuggestionIndex?: number;
   } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<WeeklyPlanAiSuggestion[]>(
+    [],
+  );
+  const [aiError, setAiError] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formErrorVersion, setFormErrorVersion] = useState(0);
@@ -322,6 +333,45 @@ function WeeklyPlanSourceDocument({
     });
   };
 
+  const runAiExtraction = async () => {
+    if (busy || aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const suggestions = await onAiExtract();
+      setAiSuggestions(suggestions);
+      setAiPreviewOpen(true);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t("aiFailed"));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const reviewAiSuggestion = (
+    suggestion: WeeklyPlanAiSuggestion,
+    passageIds: number[],
+    index: number,
+  ) => {
+    setFormErrors({});
+    setAiPreviewOpen(false);
+    setDraft({
+      requestId: createRequestId(),
+      passageIds,
+      initialInput: {
+        title: suggestion.title,
+        content: suggestion.content,
+        expected_result: suggestion.expected_result,
+        start_date: suggestion.start_date ?? plan.week_start,
+        due_date: suggestion.due_date ?? plan.week_end,
+        priority: suggestion.priority ?? "MEDIUM",
+        note: suggestion.note,
+      },
+      assigneeId: null,
+      aiSuggestionIndex: index,
+    });
+  };
+
   return (
     <>
       <ComponentCard title={t("title")} desc={t("description")} compact>
@@ -333,6 +383,11 @@ function WeeklyPlanSourceDocument({
             {!plan.source_document.ai.configured && (
               <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
                 {t("aiNotConnected")}
+              </p>
+            )}
+            {aiError && (
+              <p className="mt-1 text-theme-xs text-error-600 dark:text-error-400">
+                {aiError}
               </p>
             )}
           </div>
@@ -351,9 +406,12 @@ function WeeklyPlanSourceDocument({
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy || !plan.actions.can_ai_extract_source}
+                disabled={
+                  busy || aiLoading || !plan.actions.can_ai_extract_source
+                }
+                onClick={() => void runAiExtraction()}
               >
-                {t("extractWithAi")}
+                {aiLoading ? t("aiExtracting") : t("extractWithAi")}
               </Button>
             )}
           </div>
@@ -566,6 +624,15 @@ function WeeklyPlanSourceDocument({
         )}
       </ComponentCard>
 
+      <WeeklyPlanAiExtractionPreview
+        isOpen={aiPreviewOpen}
+        suggestions={aiSuggestions}
+        passages={orderedPassages}
+        busy={busy}
+        onClose={() => setAiPreviewOpen(false)}
+        onReview={reviewAiSuggestion}
+      />
+
       <Modal
         isOpen={groupDraft !== null}
         onClose={() => {
@@ -639,7 +706,11 @@ function WeeklyPlanSourceDocument({
       <Modal
         isOpen={draft !== null}
         onClose={() => {
-          if (!busy) setDraft(null);
+          if (!busy) {
+            const returnToAiPreview = draft?.aiSuggestionIndex !== undefined;
+            setDraft(null);
+            if (returnToAiPreview) setAiPreviewOpen(true);
+          }
         }}
         className="max-h-[90vh] max-w-3xl overflow-y-auto p-6"
         ariaLabelledBy="weekly-source-entry-title"
@@ -683,7 +754,12 @@ function WeeklyPlanSourceDocument({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setDraft(null)}
+                onClick={() => {
+                  const returnToAiPreview =
+                    draft.aiSuggestionIndex !== undefined;
+                  setDraft(null);
+                  if (returnToAiPreview) setAiPreviewOpen(true);
+                }}
               >
                 {t("cancel")}
               </Button>
@@ -704,15 +780,26 @@ function WeeklyPlanSourceDocument({
             serverErrors={formErrors}
             serverErrorVersion={formErrorVersion}
             submitLabel={t("applyToDraft")}
-            onCancel={() => setDraft(null)}
+            onCancel={() => {
+              const returnToAiPreview = draft.aiSuggestionIndex !== undefined;
+              setDraft(null);
+              if (returnToAiPreview) setAiPreviewOpen(true);
+            }}
             onSave={(input) => {
               void onApply(draft.requestId, [
                 { ...input, source_passage_ids: draft.passageIds },
               ]).then((result) => {
                 if (result.succeeded) {
+                  const aiSuggestionIndex = draft.aiSuggestionIndex;
                   setDraft(null);
                   setSelectedIds([]);
                   setFormErrors({});
+                  if (aiSuggestionIndex !== undefined) {
+                    setAiSuggestions((current) =>
+                      current.filter((_, index) => index !== aiSuggestionIndex),
+                    );
+                    setAiPreviewOpen(true);
+                  }
                 } else if (result.validationErrors) {
                   setFormErrors(result.validationErrors);
                   setFormErrorVersion((current) => current + 1);

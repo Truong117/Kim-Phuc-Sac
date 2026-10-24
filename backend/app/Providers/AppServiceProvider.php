@@ -6,6 +6,7 @@ use App\Services\AI\DailyReportAiProvider;
 use App\Services\AI\FakeDailyReportProvider;
 use App\Services\AI\OpenAiDailyReportProvider;
 use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
+use App\Services\WeeklyPlanning\OpenAiWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\UnavailableWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\WeeklyPlanSuggestionGenerator;
 use App\Services\WeeklyPlanning\WeeklyPlanSuggestionService;
@@ -25,10 +26,13 @@ class AppServiceProvider extends ServiceProvider
             WeeklyPlanSuggestionService::class,
         );
 
-        $this->app->bind(
-            WeeklyPlanTaskExtractor::class,
-            UnavailableWeeklyPlanTaskExtractor::class,
-        );
+        $this->app->bind(WeeklyPlanTaskExtractor::class, function ($app): WeeklyPlanTaskExtractor {
+            return match (config('weekly_plans.document_ai_driver', 'none')) {
+                'none' => $app->make(UnavailableWeeklyPlanTaskExtractor::class),
+                'openai' => $app->make(OpenAiWeeklyPlanTaskExtractor::class),
+                default => throw new \LogicException('Unsupported WEEKLY_PLAN_DOCUMENT_AI_DRIVER.'),
+            };
+        });
 
         $this->app->bind(DailyReportAiProvider::class, function ($app): DailyReportAiProvider {
             return match (config('kps_ai.driver', 'fake')) {
@@ -106,6 +110,12 @@ class AppServiceProvider extends ServiceProvider
             'queue.default' => 'sync',
             'filesystems.default' => 'local',
             'weekly_plans.storage_disk' => 'local',
+            'weekly_plans.document_ai_driver' => 'none',
+            'kps_ai.driver' => 'fake',
+            'kps_ai.api_key' => null,
+            'kps_ai.monthly_budget_usd' => 0,
+            'kps_ai.input_usd_per_million_tokens' => 0,
+            'kps_ai.output_usd_per_million_tokens' => 0,
         ]);
     }
 }

@@ -36,7 +36,11 @@ class GenerateAiDailyReport implements ShouldQueue
         $reports->ensurePermission($viewer);
         $run->update(['status' => 'running', 'error_code' => null]);
         $context = $contextBuilder->build($viewer, $run->report_date->toDateString());
-        $analysis = $provider->analyze($context);
+        $analysis = $provider->analyze($context, [
+            'organization_id' => (int) $run->organization_id,
+            'requested_by_user_id' => (int) $run->requested_by_user_id,
+            'idempotency_key' => 'daily-report-run:'.$run->id,
+        ]);
         $this->validateAnalysis($analysis['result'], $context['source_report_ids']);
         $run->update([
             'source_report_ids' => $context['source_report_ids'],
@@ -54,16 +58,25 @@ class GenerateAiDailyReport implements ShouldQueue
     /** @param list<int> $sourceIds */
     private function validateAnalysis(array $result, array $sourceIds): void
     {
+        $resultFields = ['overview', 'highlights', 'attention', 'recommendations'];
+        if (array_diff(array_keys($result), $resultFields) !== []
+            || array_diff($resultFields, array_keys($result)) !== []) {
+            throw new RuntimeException('AI output schema invalid.');
+        }
         if (! isset($result['overview']) || ! is_string($result['overview']) || strlen($result['overview']) > 3000) {
             throw new RuntimeException('AI output schema invalid.');
         }
         foreach (['highlights', 'attention', 'recommendations'] as $field) {
-            if (! isset($result[$field]) || ! is_array($result[$field]) || count($result[$field]) > 12) {
+            if (! isset($result[$field]) || ! is_array($result[$field])
+                || ! array_is_list($result[$field]) || count($result[$field]) > 12) {
                 throw new RuntimeException('AI output schema invalid.');
             }
             foreach ($result[$field] as $item) {
                 if (! is_array($item) || ! is_string($item['text'] ?? null)
-                    || strlen($item['text']) > 1500 || ! is_array($item['report_ids'] ?? null)) {
+                    || array_diff(array_keys($item), ['text', 'report_ids']) !== []
+                    || array_diff(['text', 'report_ids'], array_keys($item)) !== []
+                    || strlen($item['text']) > 1500 || ! is_array($item['report_ids'] ?? null)
+                    || ! array_is_list($item['report_ids'])) {
                     throw new RuntimeException('AI output schema invalid.');
                 }
                 if ($item['report_ids'] === []) {
