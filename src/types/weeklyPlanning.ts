@@ -139,6 +139,7 @@ export type WeeklyPlan = {
     size: number;
     sha256: string;
     uploaded_at: string | null;
+    availability: "AVAILABLE" | "MISSING" | "UNAVAILABLE" | null;
   };
   source_document: {
     status:

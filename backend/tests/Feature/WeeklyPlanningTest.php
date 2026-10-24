@@ -59,7 +59,8 @@ class WeeklyPlanningTest extends TestCase
         ])->assertCreated()
             ->assertJsonMissingPath('data.source_disk')
             ->assertJsonMissingPath('data.source_path')
-            ->assertJsonMissingPath('data.source_file.url');
+            ->assertJsonMissingPath('data.source_file.url')
+            ->assertJsonPath('data.source_file.availability', 'AVAILABLE');
 
         $plan = WeeklyPlan::query()->findOrFail((int) $response->json('data.id'));
 
@@ -291,7 +292,8 @@ class WeeklyPlanningTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.parse_status', 'NEEDS_MAPPING')
             ->assertJsonPath('data.entries_count', 0)
-            ->assertJsonPath('data.source_document.status', 'NOT_EXTRACTED');
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonCount(6, 'data.source_document.passages');
         $planId = (int) $imported->json('data.id');
 
         $this->actingAs($viewer)->postJson("/api/weekly-plans/{$planId}/source/extract")
@@ -317,6 +319,16 @@ class WeeklyPlanningTest extends TestCase
             ->assertJsonCount(6, 'data.source_document.passages')
             ->assertJsonPath('data.actions.can_apply_source', false)
             ->assertJsonPath('data.actions.can_group_source', false);
+
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.source_file.availability', 'MISSING')
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonPath('data.actions.can_apply_source', true)
+            ->assertJsonPath('data.actions.can_group_source', true)
+            ->assertJsonCount(6, 'data.source_document.passages');
 
         $passageIds = [
             (int) $extracted->json('data.source_document.passages.1.id'),
@@ -774,7 +786,8 @@ class WeeklyPlanningTest extends TestCase
         Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
         $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
             ->assertOk()
-            ->assertJsonPath('data.source_document.status', 'MISSING')
+            ->assertJsonPath('data.source_file.availability', 'MISSING')
+            ->assertJsonPath('data.source_document.status', 'EMPTY')
             ->assertJsonPath('data.actions.can_replace_source', true);
 
         $this->actingAs($hr)->post("/api/weekly-plans/{$planId}/source/replace", [
@@ -822,6 +835,61 @@ class WeeklyPlanningTest extends TestCase
             ->where('weekly_plan_id', $planId)
             ->where('event_type', 'SOURCE_TEXT_EXTRACTED')
             ->count());
+    }
+
+    public function test_missing_xlsx_returns_a_safe_conflict_and_can_be_reuploaded_without_losing_saved_entries(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $upload = $this->xlsx([
+            ['Email', 'Nội dung công việc', 'Ngày bắt đầu', 'Hạn hoàn thành', 'Mức độ ưu tiên'],
+            [$assignee->email, 'Dữ liệu đã chuẩn hóa', '2026-10-26', '2026-10-31', 'Cao'],
+        ]);
+        $contents = file_get_contents((string) $upload->getRealPath());
+        $this->assertIsString($contents);
+
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $upload,
+        ])->assertCreated()
+            ->assertJsonPath('data.entries.0.title', 'Dữ liệu đã chuẩn hóa')
+            ->assertJsonPath('data.source_file.availability', 'AVAILABLE');
+        $planId = (int) $imported->json('data.id');
+
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
+
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.source_file.availability', 'MISSING')
+            ->assertJsonPath('data.entries.0.title', 'Dữ liệu đã chuẩn hóa')
+            ->assertJsonPath('data.actions.can_replace_source', true);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/reparse", [
+            'column_mapping' => [
+                'employee_identifier' => 'Email',
+                'title' => 'Nội dung công việc',
+                'start_date' => 'Ngày bắt đầu',
+                'due_date' => 'Hạn hoàn thành',
+            ],
+        ])->assertConflict()
+            ->assertJsonPath('message', 'File nguồn không còn khả dụng. Vui lòng tải lại file để đọc lại dữ liệu.');
+
+        $this->assertDatabaseHas('weekly_plan_entries', [
+            'weekly_plan_id' => $planId,
+            'title' => 'Dữ liệu đã chuẩn hóa',
+        ]);
+
+        $this->actingAs($hr)->post("/api/weekly-plans/{$planId}/source/replace", [
+            'file' => UploadedFile::fake()->createWithContent('replacement.xlsx', $contents),
+        ])->assertOk()
+            ->assertJsonPath('data.source_file.availability', 'AVAILABLE')
+            ->assertJsonPath('data.entries.0.title', 'Dữ liệu đã chuẩn hóa');
+
+        $this->assertDatabaseCount('weekly_plans', 1);
+        $this->assertDatabaseCount('weekly_plan_entries', 1);
     }
 
     public function test_import_keeps_unresolved_and_invalid_rows_instead_of_guessing_or_skipping(): void

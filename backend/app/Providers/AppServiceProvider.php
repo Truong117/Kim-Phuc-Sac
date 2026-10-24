@@ -82,6 +82,7 @@ class AppServiceProvider extends ServiceProvider
             databaseUrl: $database['url'] ?? null,
             databaseHost: $database['host'] ?? null,
             weeklyPlanStorageDisk: config('weekly_plans.storage_disk'),
+            stagingEphemeralFiles: (bool) config('environment_safety.staging_ephemeral_files'),
             filesystemDisks: is_array($filesystemDisks) ? $filesystemDisks : [],
             publicStoragePath: storage_path('app/public'),
         );
@@ -99,6 +100,7 @@ class AppServiceProvider extends ServiceProvider
             'database.connections.sqlite.url' => null,
             'database.connections.sqlite.database' => ':memory:',
             'environment_safety.database_environment' => 'testing',
+            'environment_safety.staging_ephemeral_files' => false,
             'cache.default' => 'array',
             'session.driver' => 'array',
             'queue.default' => 'sync',

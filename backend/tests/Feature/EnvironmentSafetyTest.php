@@ -180,9 +180,58 @@ class EnvironmentSafetyTest extends TestCase
             $violations,
         );
         $this->assertContains(
-            'Staging and production Weekly Planning files require durable object storage.',
+            'Production Weekly Planning files require durable object storage.',
             $violations,
         );
+    }
+
+    public function test_staging_accepts_private_local_storage_only_with_the_ephemeral_flag(): void
+    {
+        $staging = array_replace($this->safeContext(), [
+            'appEnvironment' => 'staging',
+            'databaseEnvironment' => 'staging',
+            'defaultConnection' => 'mysql',
+            'databaseName' => 'application',
+            'databaseHost' => 'staging.example.test',
+        ]);
+
+        $this->assertContains(
+            'Staging local Weekly Planning storage requires KPS_STAGING_EPHEMERAL_FILES=true.',
+            EnvironmentSafety::violations(...$staging),
+        );
+
+        $this->assertSame([], EnvironmentSafety::violations(...array_replace(
+            $staging,
+            ['stagingEphemeralFiles' => true],
+        )));
+    }
+
+    public function test_ephemeral_storage_exception_is_rejected_outside_staging(): void
+    {
+        foreach (['local', 'production', 'testing'] as $environment) {
+            $context = array_replace($this->safeContext(), [
+                'appEnvironment' => $environment,
+                'databaseEnvironment' => $environment === 'local' ? 'development' : $environment,
+                'stagingEphemeralFiles' => true,
+            ]);
+
+            $this->assertContains(
+                'KPS_STAGING_EPHEMERAL_FILES may only be enabled in staging.',
+                EnvironmentSafety::violations(...$context),
+            );
+        }
+
+        $production = array_replace($this->safeContext(), [
+            'appEnvironment' => 'production',
+            'databaseEnvironment' => 'production',
+            'defaultConnection' => 'mysql',
+            'databaseName' => 'application',
+            'databaseHost' => 'production.example.test',
+            'stagingEphemeralFiles' => true,
+        ]);
+        $productionViolations = EnvironmentSafety::violations(...$production);
+        $this->assertContains('KPS_STAGING_EPHEMERAL_FILES may only be enabled in staging.', $productionViolations);
+        $this->assertContains('Production Weekly Planning files require durable object storage.', $productionViolations);
     }
 
     public function test_production_accepts_private_s3_compatible_storage_without_static_credentials(): void
@@ -220,6 +269,7 @@ class EnvironmentSafetyTest extends TestCase
      *     databaseUrl: mixed,
      *     databaseHost: mixed,
      *     weeklyPlanStorageDisk: mixed,
+     *     stagingEphemeralFiles: bool,
      *     filesystemDisks: array<string, array<string, mixed>>,
      *     publicStoragePath: string
      * }
@@ -235,6 +285,7 @@ class EnvironmentSafetyTest extends TestCase
             'databaseUrl' => null,
             'databaseHost' => null,
             'weeklyPlanStorageDisk' => 'local',
+            'stagingEphemeralFiles' => false,
             'filesystemDisks' => [
                 'local' => [
                     'driver' => 'local',

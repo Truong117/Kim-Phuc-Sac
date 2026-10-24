@@ -981,9 +981,6 @@
       "extractWithAi": "Trích xuất bằng AI",
       "extract": "Đọc nội dung file Word",
       "extracting": "Đang đọc nội dung...",
-      "missingHelp": "File nguồn không còn khả dụng. Chọn lại file DOCX để khôi phục nội dung trên chính bản kế hoạch này.",
-      "replace": "Thay file nguồn",
-      "uploading": "Đang tải lên...",
       "status": {
         "NOT_EXTRACTED": "Chưa đọc nội dung tài liệu",
         "EXTRACTED": "Đã đọc nội dung tài liệu",
@@ -1111,6 +1108,15 @@
         "HIGH": "Cao",
         "URGENT": "Khẩn cấp"
       }
+    },
+    "sourceRecovery": {
+      "missingTitle": "File nguồn không còn khả dụng",
+      "missingHelp": "Dữ liệu kế hoạch đã lưu vẫn được giữ nguyên. Hãy tải lại file .{extension} để tiếp tục các thao tác cần đọc file gốc.",
+      "unavailableTitle": "Tạm thời chưa thể kiểm tra file nguồn",
+      "unavailableHelp": "Kho lưu trữ đang không phản hồi. Vui lòng thử lại sau; dữ liệu kế hoạch đã lưu không bị ảnh hưởng.",
+      "fileLabel": "Chọn lại file .{extension}",
+      "replace": "Tải lại file nguồn",
+      "uploading": "Đang tải lên..."
     },
     "mapping": {
       "title": "Ánh xạ cột dữ liệu",

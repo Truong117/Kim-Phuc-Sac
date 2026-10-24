@@ -159,12 +159,18 @@ The combined endpoint locks the plan row, requires every employee review to be `
 
 ## Private storage and deployment
 
-Normalized rows are durable database records. The original file is stored through a configurable private Laravel Storage disk and its disk/path are never returned by the public resource.
+Normalized rows and DOCX source passages are durable database records. Import parses the uploaded file immediately; the original file is stored through a configurable private Laravel Storage disk and its disk/path are never returned by the public resource.
 
 - Local development/tests: `WEEKLY_PLAN_STORAGE_DISK=local`.
+- Staging may temporarily use private local ephemeral storage only with `APP_ENV=staging` and `KPS_STAGING_EPHEMERAL_FILES=true`. This exception is rejected in production.
 - Production: configure a private persistent object-storage disk (for example `s3`) plus provider credentials, bucket, endpoint, and path-style setting as applicable.
-- Render's local filesystem is ephemeral and must not be used as the production source-file guarantee.
+- Render's local filesystem is ephemeral. If a staging restart removes the source, the API exposes only `source_file.availability`, keeps saved plan data intact and asks an authorized HR user to upload the same file type again instead of returning a 500.
 - The Composer lock includes `league/flysystem-aws-s3-v3`. Before selecting the `s3` disk, configure a private non-production bucket first and validate provider-specific endpoint, region, credentials/IAM and prefix settings.
+
+Dependency after import:
+
+- Works without the original file: view/edit saved entries, rule-based analysis, review/approval/publication, view/group/apply persisted DOCX passages, and future AI extraction that consumes persisted passages.
+- Still needs the original file: reparse with a new column mapping and first-time extraction for legacy DOCX plans imported before immediate passage persistence. Re-upload restores only the source object/metadata; it does not silently rewrite existing entries.
 
 Do not log provider secrets, expose a public source URL, or run the general authorization seeder merely to enable this module.
 
