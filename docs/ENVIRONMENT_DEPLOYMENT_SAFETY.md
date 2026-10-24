@@ -163,6 +163,77 @@ Trước khi dùng:
 
 Không tạo staging bằng cách clone credentials production vào service mới. Nếu cần dữ liệu gần production, phải có quy trình sao chép và khử định danh được phê duyệt riêng.
 
+### Audit TiDB staging chỉ đọc
+
+Repository có công cụ audit fail-closed cho hai target tách biệt: branch cũ `kps-weekly-planning-staging` và instance độc lập `KPS-Staging`. Công cụ không bootstrap Laravel, không đọc hoặc thay đổi `backend/.env`, không nhận SQL tùy ý và chỉ chạy các truy vấn nhận diện server, metadata schema, migration ledger, quyền tài khoản và `COUNT(*)`.
+
+Instance độc lập phải được cấu hình bằng profile riêng sau khi chọn đúng instance **KPS-Staging** trong hộp thoại **Connect** của TiDB Cloud:
+
+```powershell
+.\deployment\Invoke-KpsStagingDatabaseAudit.ps1 -Target IndependentInstance -Configure
+.\deployment\Invoke-KpsStagingDatabaseAudit.ps1 -Target IndependentInstance
+```
+
+Profile này luôn kết nối database hệ thống `sys` cho preflight và kiểm tra toàn bộ user schema qua `information_schema`; nó không tạo `kps_internal`. Mật khẩu được Windows DPAPI mã hóa cho Windows account hiện tại và lưu tại `%LOCALAPPDATA%\KPS\independent-staging-db-audit.json`, bên ngoài Git. Cấu hình branch cũ vẫn nằm riêng tại `%LOCALAPPDATA%\KPS\staging-db-audit.json` và không bị đọc hoặc ghi đè bởi profile mới. Script từ chối ghi đè cả hai file cấu hình.
+
+TiDB Cloud Starter có thể dùng chung gateway HOST/PORT cho nhiều instance. Mỗi instance có username prefix riêng và username đầy đủ phải có dạng `<instance-prefix>.<account>`. Khi cấu hình, phải mở riêng hộp thoại **Connect** của `KPS-Staging` và `KPS-Internal`, xác nhận đúng hai instance name, rồi nhập full username và prefix hiển thị ở từng nơi. Hai prefix/full username phải hợp lệ, khớp nhau và khác nhau; production password không được yêu cầu hoặc lưu.
+
+Shared gateway được phép và vẫn được fingerprint để phát hiện thay đổi cấu hình. Ranh giới instance không dựa riêng vào username khác nhau: audit còn khóa nguồn metadata là TiDB Cloud Connect dialog, kiểm tra integrity của connection metadata đã lưu, bắt buộc TLS hostname/certificate verification, xác minh `CURRENT_USER()` thực tế trùng full staging username và prefix, kiểm tra TiDB/server fingerprint, đồng thời xác nhận `KPS-Staging` không có user schema hoặc dữ liệu ứng dụng. Ngoại lệ duy nhất là schema mặc định `test` do TiDB cung cấp: audit chỉ cho phép schema này khi nó thực sự có 0 bảng và 0 dòng, trả PASS kèm cảnh báo `empty_default_test_schema_present`, đồng thời vẫn liệt kê tên schema trong evidence.
+
+TiDB SQL không cung cấp nhãn display name `KPS-Staging` của TiDB Cloud Console. Vì vậy instance name được người vận hành đối chiếu tại nguồn Connect; kết nối sau đó được chứng thực bằng TLS, authenticated identity và trạng thái schema/data. Nếu prefix production/staging trùng, metadata thiếu/sai mẫu/không khớp, authenticated identity khác cấu hình, audit thấy user schema khác `test`, hoặc schema `test` có bất kỳ bảng/dòng nào trước bootstrap, kết quả phải FAIL và không được chạy bước ghi. Evidence định danh và evidence schema được báo cáo riêng để không mô tả sai một kết nối FAIL là “empty schema”.
+
+Profile branch cũ vẫn dùng được bằng các lệnh sau, nhưng không phải target triển khai staging mới:
+
+```powershell
+.\deployment\Invoke-KpsStagingDatabaseAudit.ps1 -Target LegacyBranch -Configure
+.\deployment\Invoke-KpsStagingDatabaseAudit.ps1 -Target LegacyBranch
+```
+
+TiDB Cloud branch bắt đầu từ một bản sao dữ liệu của parent tại thời điểm tạo. Không dùng branch cũ làm target staging mới và không sao chép dữ liệu production vào instance độc lập.
+
+### Kế hoạch bootstrap database KPS-Staging sau phê duyệt
+
+Bootstrap được điều khiển bởi script sau; mặc định luôn là `Plan` và không ghi database:
+
+```powershell
+# Read-only: chạy lại identity/TLS/empty-state audit và in đủ 13 migration theo thứ tự.
+.\deployment\Invoke-KpsStagingDatabaseBootstrap.ps1 -Mode Plan
+
+# Chỉ lưu ba secret mới bằng Windows DPAPI ngoài Git; chưa ghi database.
+.\deployment\Invoke-KpsStagingDatabaseBootstrap.ps1 -Mode Plan -ConfigureSecrets
+
+# Chỉ dùng sau một lần phê duyệt riêng. Fingerprint phải lấy từ Plan mới nhất
+# và người vận hành còn phải nhập lại confirmation phrase tương tác.
+.\deployment\Invoke-KpsStagingDatabaseBootstrap.ps1 -Mode Execute -ApprovalFingerprint <64-hex-plan-fingerprint>
+
+# Read-only hậu kiểm database đã bootstrap; không yêu cầu database còn rỗng.
+.\deployment\Invoke-KpsStagingDatabaseBootstrap.ps1 -Mode Status
+```
+
+`Plan` tái dùng profile `%LOCALAPPDATA%\KPS\independent-staging-db-audit.json`, bắt buộc live audit PASS, rồi tự kết nối read-only qua đúng đường `bootstrapConnectAndVerify()` mà `Execute` sử dụng. TLS/identity phải đúng, username prefix staging phải khác production, `kps_internal` chưa tồn tại và schema mặc định `test` chỉ được chấp nhận khi không có object. Approval fingerprint v2 khóa các input ổn định gồm connection identity đã xác minh, username prefix, database đích, hash của đúng 13 migration, seeders và fixtures giả. Server hostname vẫn được xác minh và ghi nhận làm evidence nhưng không tham gia approval hash vì node phía sau shared gateway có thể thay đổi. Thay đổi migration hoặc kế hoạch làm fingerprint đổi và bắt buộc review/phê duyệt lại.
+
+`-ConfigureSecrets` tạo file `%LOCALAPPDATA%\KPS\independent-staging-bootstrap-secrets.json`, không ghi đè file có sẵn. File chứa mật khẩu DPAPI của migration operator, Laravel runtime và các tài khoản test giả. Người vận hành phải giữ bản gốc của các mật khẩu này trong secret manager được duyệt; script không có chức năng in/reveal secret.
+
+Hai SQL account được suy ra từ prefix đã xác minh của KPS-Staging:
+
+- `<staging-prefix>.kps_migrator`: chỉ có `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`, `DROP`, `INDEX`, `REFERENCES` trên `kps_internal.*`; không có quyền toàn instance, `CREATE DATABASE`, `CREATE USER` hoặc `GRANT`.
+- `<staging-prefix>.kps_runtime`: chỉ có `SELECT`, `INSERT`, `UPDATE`, `DELETE` trên `kps_internal.*`; không có DDL hoặc quyền toàn instance.
+
+Cả hai account bắt buộc TLS. Credential root/audit từ profile DPAPI chỉ dùng cho preflight và bước tạo database/account có phê duyệt; migration và seed chạy bằng migration operator. Render Staging phải dùng runtime account lấy từ secret manager, không dùng root hoặc migration operator.
+
+Seeder chuyên biệt `Database\\Seeders\\StagingSeeder` gọi tuần tự authorization nền, cấu trúc tổ chức, quyền Task Management, AI Dashboard, Weekly Planning và cuối cùng mới tạo năm tài khoản giả dưới reserved domain `kps-staging.example.test`. Seeder bị khóa vào `APP_ENV=staging`, marker database `staging`, driver MySQL/TiDB, database `kps_internal` và cờ one-off do bootstrap cung cấp. Không gọi `DatabaseSeeder` chung để thay thế và không nhập dữ liệu production.
+
+Baseline repository hiện có đúng 13 migration. Quy trình Execute đã chuẩn bị nhưng chỉ được chạy sau phê duyệt riêng và phải giữ các gate sau:
+
+1. Khóa target bằng cùng endpoint/connection/server fingerprints đã PASS; chạy lại preflight ngay trước thao tác và dừng nếu `kps_internal`, user schema khác `test`, hoặc bất kỳ object/dữ liệu nào trong schema `test` đã xuất hiện.
+2. Dùng credential provisioning được giữ ngoài repository để tạo duy nhất database `kps_internal` với charset/collation đã review. Không `DROP`, reset hoặc dùng `migrate:fresh`.
+3. Tạo hai account tách biệt: migration operator tạm thời có quyền DDL cần thiết và Render Staging runtime account không có `CREATE`, `ALTER`, `DROP`, `GRANT` hoặc quyền toàn instance. Mật khẩu do secret manager sinh và không in vào log.
+4. Chạy `php artisan migrate:status` với cấu hình staging tạm thời; chỉ khi thấy đúng 13 migration pending mới chạy `php artisan migrate --force --no-interaction` bằng one-off operation. Sau đó đối chiếu đúng 13 migration applied và schema constraints.
+5. Không chạy `DatabaseSeeder` mù quáng. Chỉ chạy `Database\\Seeders\\StagingSeeder` đã được khóa fail-closed vào `APP_ENV=staging`, `KPS_DATABASE_ENVIRONMENT=staging`, driver MySQL/TiDB, database `kps_internal` và cờ one-off. Seeder nhận mật khẩu test từ secret store, chỉ dùng email/dữ liệu giả và gọi tường minh các permission seeders cần thiết.
+6. Chỉ chuyển Render Staging sang runtime account sau khi migration/seeding được duyệt hoàn tất. Chạy smoke test authentication, RBAC, Task, Work Report và Weekly Planning với dữ liệu giả; không mở quyền truy cập nếu audit hậu kiểm phát hiện dữ liệu không thuộc fixture staging.
+
+Script mặc định plan-only, yêu cầu fingerprint cùng confirmation phrase tương tác cho chế độ ghi, từ chối nếu empty-state thay đổi và không nằm trong Docker startup, CI hoặc auto-deploy. Do TiDB DDL không thể coi là một transaction nguyên tử, lỗi sau khi bắt đầu `CREATE DATABASE` có thể để lại trạng thái partial; script không tự xóa/rollback. Khi đó phải chạy `-Mode Status`, dừng mọi retry và review trạng thái trước một phương án tiếp tục riêng. Không dùng lại initial empty-state audit để đánh giá database đã bootstrap.
+
 ### Xác minh sau mỗi merge vào staging
 
 1. Ghi lại commit SHA đã merge và xác nhận cả Vercel Staging lẫn Render Staging triển khai đúng SHA đó.

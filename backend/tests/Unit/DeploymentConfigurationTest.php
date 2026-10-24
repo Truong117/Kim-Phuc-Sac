@@ -64,6 +64,10 @@ class DeploymentConfigurationTest extends TestCase
         ));
 
         foreach ($deploymentFiles as $deploymentFile) {
+            if (basename($deploymentFile) === 'Invoke-KpsStagingDatabaseBootstrap.ps1') {
+                continue;
+            }
+
             $contents = file_get_contents($deploymentFile);
             $this->assertIsString($contents);
             $this->assertDoesNotMatchRegularExpression($forbiddenDatabaseCommand, $contents);
@@ -137,6 +141,139 @@ class DeploymentConfigurationTest extends TestCase
             $entrypoint.$factory,
         );
         $this->assertFileDoesNotExist(dirname(__DIR__, 3).'/vercel.json');
+    }
+
+    public function test_staging_database_audit_is_read_only_and_keeps_secrets_outside_repository(): void
+    {
+        $audit = $this->readBackendFile('scripts/audit-staging-database.php');
+        $wrapper = $this->readRepositoryFile('deployment/Invoke-KpsStagingDatabaseAudit.ps1');
+
+        $this->assertStringContainsString(
+            "const EXPECTED_LEGACY_BRANCH = 'kps-weekly-planning-staging';",
+            $audit,
+        );
+        $this->assertStringContainsString("const EXPECTED_INDEPENDENT_INSTANCE = 'KPS-Staging';", $audit);
+        $this->assertStringContainsString("const EXPECTED_INDEPENDENT_AUDIT_DATABASE = 'sys';", $audit);
+        $this->assertStringContainsString("const EXPECTED_APPLICATION_DATABASE = 'kps_internal';", $audit);
+        $this->assertStringContainsString('KPS_STAGING_EXPECTED_FINGERPRINT', $audit);
+        $this->assertStringContainsString('KPS_STAGING_EXPECTED_ENDPOINT_FINGERPRINT', $audit);
+        $this->assertStringContainsString('KPS_STAGING_CONFIRMED_USERNAME_PREFIX', $audit);
+        $this->assertStringContainsString('KPS_PRODUCTION_CONFIRMED_USERNAME_PREFIX', $audit);
+        $this->assertStringContainsString('KPS_PRODUCTION_USERNAME_PREFIX_FINGERPRINT', $audit);
+        $this->assertStringContainsString('KPS_PRODUCTION_ENDPOINT_FINGERPRINT', $audit);
+        $this->assertStringContainsString('KPS_PRODUCTION_CONNECTION_FINGERPRINT', $audit);
+        $this->assertStringContainsString('PDO::MYSQL_ATTR_SSL_CA', $audit);
+        $this->assertStringContainsString('INFORMATION_SCHEMA.TABLES', $audit);
+        $this->assertStringContainsString('INFORMATION_SCHEMA.SCHEMATA', $audit);
+        $this->assertStringContainsString('SELECT COUNT(*)', $audit);
+        $this->assertStringContainsString('TidbStagingSchemaAssessment::assess(', $audit);
+        $this->assertStringContainsString("'user_schema_names'", $audit);
+        $this->assertStringContainsString("'allowed_empty_default_schema_names'", $audit);
+        $this->assertStringContainsString("'unexpected_user_schema_names'", $audit);
+        $this->assertStringContainsString("'user_schema_object_count'", $audit);
+        $this->assertStringContainsString('connect_dialog_metadata_tls_and_authenticated_identity', $audit);
+        $this->assertStringNotContainsString(
+            'connect_dialog_metadata_tls_authenticated_identity_and_empty_schema',
+            $audit,
+        );
+        $this->assertStringContainsString('SHOW GRANTS FOR CURRENT_USER', $audit);
+        $this->assertStringContainsString('audit_account_lacks_instance_visibility', $audit);
+        $this->assertStringContainsString('server_hostname_verified', $audit);
+        $this->assertStringNotContainsString('bootstrap/app.php', $audit);
+        $this->assertStringNotContainsString('Dotenv', $audit);
+        $this->assertStringNotContainsString('->exec(', $audit);
+
+        foreach ([
+            'INSERT INTO',
+            'UPDATE `',
+            'DELETE FROM',
+            'CREATE TABLE',
+            'DROP TABLE',
+            'ALTER TABLE',
+            'TRUNCATE TABLE',
+            'REPLACE INTO',
+        ] as $writeStatement) {
+            $this->assertStringNotContainsString($writeStatement, $audit);
+        }
+
+        $this->assertStringContainsString('$env:LOCALAPPDATA', $wrapper);
+        $this->assertStringContainsString("[ValidateSet('LegacyBranch', 'IndependentInstance')]", $wrapper);
+        $this->assertStringContainsString("ConfigFileName = 'staging-db-audit.json'", $wrapper);
+        $this->assertStringContainsString("ConfigFileName = 'independent-staging-db-audit.json'", $wrapper);
+        $this->assertStringContainsString('Configuration already exists and was not overwritten', $wrapper);
+        $this->assertStringContainsString('version = 3', $wrapper);
+        $this->assertStringContainsString('Get-StarterUsernamePrefix', $wrapper);
+        $this->assertStringContainsString('The staging and production username prefixes match', $wrapper);
+        $this->assertStringNotContainsString(
+            'The staging endpoint matches KPS-Internal production',
+            $wrapper,
+        );
+        $this->assertStringContainsString('ConvertFrom-SecureString', $wrapper);
+        $this->assertStringContainsString('ConvertTo-SecureString', $wrapper);
+        $this->assertStringContainsString('outside the Git repository', $wrapper);
+        $this->assertStringNotContainsString('tidbcloud.com', $audit.$wrapper);
+    }
+
+    public function test_staging_bootstrap_is_manual_fail_closed_and_separates_runtime_credentials(): void
+    {
+        $wrapper = $this->readRepositoryFile('deployment/Invoke-KpsStagingDatabaseBootstrap.ps1');
+        $helper = $this->readBackendFile('scripts/bootstrap-staging-database.php');
+        $stagingEnvironment = $this->readBackendFile('.env.staging.example');
+
+        $this->assertStringContainsString("[ValidateSet('Plan', 'Execute', 'Status')]", $wrapper);
+        $this->assertStringContainsString("[string]\$Mode = 'Plan'", $wrapper);
+        $this->assertStringContainsString('Get-VerifiedEmptyAudit', $wrapper);
+        $this->assertStringContainsString('ApprovalFingerprint', $wrapper);
+        $this->assertStringContainsString("Get-CommonDatabaseEnvironment \$Config \$Password 'plan'", $wrapper);
+        $this->assertStringNotContainsString('KPS_STAGING_SERVER_HOSTNAME_FINGERPRINT', $wrapper.$helper);
+        $this->assertStringContainsString('Read-Host', $wrapper);
+        $this->assertStringContainsString('BOOTSTRAP KPS-STAGING', $wrapper);
+        $this->assertStringContainsString('ConvertFrom-SecureString', $wrapper);
+        $this->assertStringContainsString('ConvertTo-SecureString', $wrapper);
+        $this->assertStringContainsString('independent-staging-bootstrap-secrets.json', $wrapper);
+        $this->assertStringContainsString("@('migrate', '--force', '--no-interaction')", $wrapper);
+        $this->assertStringContainsString('--class=Database\\Seeders\\StagingSeeder', $wrapper);
+        $this->assertStringNotContainsString('backend/.env', $wrapper);
+        $this->assertStringNotContainsString('Set-Content -LiteralPath', str_replace(
+            'Set-Content -LiteralPath $ResolvedSecretsPath',
+            '',
+            $wrapper,
+        ));
+
+        $this->assertStringContainsString("const APPLICATION_DATABASE = 'kps_internal';", $this->readBackendFile(
+            'app/Support/StagingBootstrapPlan.php',
+        ));
+        $this->assertStringContainsString("'writes_executed' => false", $helper);
+        $this->assertStringContainsString("'empty_database_required' => false", $helper);
+        $this->assertStringContainsString('CREATE DATABASE {$database}', $helper);
+        $this->assertStringContainsString('CREATE USER {$migrationAccount}', $helper);
+        $this->assertStringContainsString('CREATE USER {$runtimeAccount}', $helper);
+        $this->assertStringContainsString('KPS_STAGING_BOOTSTRAP_CONFIRMATION', $helper);
+        $this->assertStringContainsString('KPS_STAGING_TARGET_TYPE', $helper);
+        $this->assertStringContainsString('KPS_STAGING_METADATA_SOURCE', $helper);
+        $this->assertStringContainsString('KPS_PRODUCTION_USERNAME_PREFIX_FINGERPRINT', $helper);
+        $this->assertStringContainsString('unverified_target_metadata', $helper);
+        $this->assertStringContainsString('initial_empty_state_changed', $helper);
+        $this->assertStringContainsString('provisioning_failed_with_possible_partial_ddl', $helper);
+        $this->assertStringContainsString('StagingBootstrapGuard::approvalFingerprintMatches', $helper);
+        $this->assertStringContainsString('CURRENT_USER() AS authenticated_user', $helper);
+        $this->assertStringContainsString("\$identity['authenticated_user']", $helper);
+        $this->assertStringNotContainsString('CURRENT_USER() AS current_user', $helper);
+        $this->assertStringContainsString('identity_preflight_query_failed', $helper);
+        $this->assertStringContainsString('provisioning_preflight_query_failed', $helper);
+        $this->assertStringContainsString("'phase' => 'preflight'", $helper);
+        $this->assertStringContainsString("'writes_executed' => false", $helper);
+
+        $identityQueryPosition = strpos($helper, 'CURRENT_USER() AS authenticated_user');
+        $firstWritePosition = strpos($helper, 'CREATE DATABASE {$database}');
+
+        $this->assertIsInt($identityQueryPosition);
+        $this->assertIsInt($firstWritePosition);
+        $this->assertLessThan($firstWritePosition, $identityQueryPosition);
+        $this->assertStringContainsString('Execution stopped before any later bootstrap stage.', $wrapper);
+        $this->assertStringNotContainsString('DROP DATABASE', $helper);
+        $this->assertStringNotContainsString('DROP USER', $helper);
+        $this->assertStringContainsString('DB_DATABASE=kps_internal', $stagingEnvironment);
     }
 
     private function readBackendFile(string $path): string
