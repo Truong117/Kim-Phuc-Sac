@@ -21,7 +21,6 @@ type Props = {
   employees: WeeklyPlanEmployee[];
   busy: boolean;
   onExtract: () => void;
-  onReplace: (file: File) => void;
   onApply: (
     requestId: string,
     entries: WeeklyPlanSourceEntryInput[],
@@ -139,7 +138,6 @@ function WeeklyPlanSourceDocument({
   employees,
   busy,
   onExtract,
-  onReplace,
   onApply,
   onAssignGroup,
 }: Props) {
@@ -150,7 +148,6 @@ function WeeklyPlanSourceDocument({
   const [expandedBlockKeys, setExpandedBlockKeys] = useState<Set<string>>(
     new Set(),
   );
-  const [replacement, setReplacement] = useState<File | null>(null);
   const [groupDraft, setGroupDraft] = useState<{
     passageIds: number[];
     title: string;
@@ -361,35 +358,6 @@ function WeeklyPlanSourceDocument({
             )}
           </div>
         </div>
-
-        {plan.actions.can_replace_source && (
-          <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 dark:border-warning-800 dark:bg-warning-500/10">
-            <p className="text-theme-sm text-warning-700 dark:text-warning-400">
-              {t("missingHelp")}
-            </p>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                type="file"
-                accept=".docx"
-                onChange={(event) => {
-                  setReplacement(event.target.files?.[0] ?? null);
-                  setLocalError(null);
-                }}
-                className="block min-w-0 flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-theme-sm text-gray-700 file:me-3 file:rounded-lg file:border-0 file:bg-kps-primary/10 file:px-3 file:py-2 file:font-semibold file:text-kps-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-              />
-              <Button
-                type="button"
-                disabled={busy || !replacement}
-                className="bg-kps-primary hover:bg-kps-primary-hover"
-                onClick={() => {
-                  if (replacement) onReplace(replacement);
-                }}
-              >
-                {busy ? t("uploading") : t("replace")}
-              </Button>
-            </div>
-          </div>
-        )}
 
         {localError && (
           <p

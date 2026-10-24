@@ -8,6 +8,7 @@ import WeeklyPlanEntries from "@/components/weekly-plans/WeeklyPlanEntries";
 import WeeklyPlanEntryForm from "@/components/weekly-plans/WeeklyPlanEntryForm";
 import WeeklyPlanMappingPanel from "@/components/weekly-plans/WeeklyPlanMappingPanel";
 import WeeklyPlanSourceDocument from "@/components/weekly-plans/WeeklyPlanSourceDocument";
+import WeeklyPlanSourceRecovery from "@/components/weekly-plans/WeeklyPlanSourceRecovery";
 import WeeklyPlanStatusBadge from "@/components/weekly-plans/WeeklyPlanStatusBadge";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
@@ -311,6 +312,14 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
               {message}
             </p>
           ))}
+          <WeeklyPlanSourceRecovery
+            key={`${plan.source_file.sha256}:${plan.source_file.availability}`}
+            plan={plan}
+            busy={busy}
+            onReplace={(file) =>
+              void perform(() => replaceWeeklyPlanSource(plan.id, file))
+            }
+          />
         </ComponentCard>
 
         {plan.source_file.extension === "docx" && (
@@ -320,9 +329,6 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             busy={busy}
             onExtract={() =>
               void perform(() => extractWeeklyPlanSource(plan.id))
-            }
-            onReplace={(file) =>
-              void perform(() => replaceWeeklyPlanSource(plan.id, file))
             }
             onApply={async (
               requestId: string,

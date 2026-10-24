@@ -27,6 +27,7 @@ abstract class TestCase extends BaseTestCase
             databaseUrl: $database['url'] ?? null,
             databaseHost: $database['host'] ?? null,
             weeklyPlanStorageDisk: $app['config']->get('weekly_plans.storage_disk'),
+            stagingEphemeralFiles: (bool) $app['config']->get('environment_safety.staging_ephemeral_files'),
             filesystemDisks: is_array($filesystemDisks) ? $filesystemDisks : [],
             publicStoragePath: storage_path('app/public'),
         );

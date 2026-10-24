@@ -26,6 +26,7 @@ use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
+use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class WeeklyPlanService
 {
@@ -109,6 +110,9 @@ class WeeklyPlanService
 
         try {
             $parsed = $this->parser->parse($path, $extension, $mapping);
+            $passages = $extension === 'docx'
+                ? $this->parser->extractDocumentText($path, $extension)
+                : [];
         } catch (RuntimeException $exception) {
             throw ValidationException::withMessages(['file' => [$exception->getMessage()]]);
         }
@@ -148,6 +152,7 @@ class WeeklyPlanService
                 $membership,
                 $mime,
                 $parsed,
+                $passages,
                 $path,
                 $storedPath,
                 $week,
@@ -181,6 +186,14 @@ class WeeklyPlanService
                     'row_count' => count($parsed['rows']),
                     'sha256' => $plan->source_sha256,
                 ]);
+                if ($extension === 'docx') {
+                    $this->persistSourcePassages($plan, $passages);
+                    $this->record($plan, $actor, 'SOURCE_TEXT_EXTRACTED', [
+                        'source_sha256' => $plan->source_sha256,
+                        'passage_count' => count($passages),
+                        'status' => $passages === [] ? 'EMPTY' : 'EXTRACTED',
+                    ]);
+                }
 
                 return $plan;
             });
@@ -231,16 +244,20 @@ class WeeklyPlanService
     public function replaceMissingSource(User $actor, int $planId, UploadedFile $file): WeeklyPlan
     {
         $plan = $this->editablePlan($actor, $planId);
-        if ($this->sourceExists($plan)) {
+        $sourceAvailability = $this->sourceAvailability($plan);
+        if ($sourceAvailability === 'AVAILABLE') {
             throw new ConflictHttpException('Tệp nguồn hiện tại vẫn còn khả dụng.');
+        }
+        if ($sourceAvailability === 'UNAVAILABLE') {
+            throw new ServiceUnavailableHttpException(null, 'Chưa thể kiểm tra kho lưu trữ tệp nguồn. Vui lòng thử lại sau.');
         }
 
         $extension = mb_strtolower($file->getClientOriginalExtension());
         $mime = (string) $file->getMimeType();
         $this->assertFileType($extension, $mime);
-        if ($extension !== 'docx') {
+        if ($extension !== $plan->source_extension) {
             throw ValidationException::withMessages([
-                'file' => ['Chỉ hỗ trợ thay thế nguồn đọc văn bản bằng tệp DOCX.'],
+                'file' => [sprintf('Vui lòng tải lại tệp .%s đúng định dạng ban đầu.', $plan->source_extension)],
             ]);
         }
 
@@ -249,7 +266,14 @@ class WeeklyPlanService
             throw ValidationException::withMessages(['file' => ['Không thể đọc tệp tải lên.']]);
         }
         try {
-            $passages = $this->parser->extractDocumentText($path, $extension);
+            if ($extension === 'docx') {
+                $passages = $this->parser->extractDocumentText($path, $extension);
+            } else {
+                $metadata = is_array($plan->parse_metadata) ? $plan->parse_metadata : [];
+                $mapping = is_array($metadata['mapping'] ?? null) ? $metadata['mapping'] : [];
+                $this->parser->parse($path, $extension, $mapping);
+                $passages = [];
+            }
         } catch (RuntimeException $exception) {
             throw ValidationException::withMessages(['file' => [$exception->getMessage()]]);
         }
@@ -284,8 +308,12 @@ class WeeklyPlanService
             ): void {
                 $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
                 $this->assertEditable($locked);
-                if ($this->sourceExists($locked)) {
+                $lockedAvailability = $this->sourceAvailability($locked);
+                if ($lockedAvailability === 'AVAILABLE') {
                     throw new ConflictHttpException('Tệp nguồn hiện tại vẫn còn khả dụng.');
+                }
+                if ($lockedAvailability === 'UNAVAILABLE') {
+                    throw new ServiceUnavailableHttpException(null, 'Chưa thể kiểm tra kho lưu trữ tệp nguồn. Vui lòng thử lại sau.');
                 }
 
                 $locked->forceFill([
@@ -340,7 +368,7 @@ class WeeklyPlanService
             if ($locked->source_sha256 !== $plan->source_sha256) {
                 throw new ConflictHttpException('Tệp nguồn đã thay đổi. Vui lòng tải lại kế hoạch.');
             }
-            if (! $this->sourceExists($locked) || ! $this->sourceWasExtracted($locked)) {
+            if (! $this->sourceWasExtracted($locked)) {
                 throw new ConflictHttpException('Chưa có nội dung tài liệu nguồn để phân nhóm.');
             }
 
@@ -586,17 +614,29 @@ class WeeklyPlanService
     {
         $plan = $this->editablePlan($actor, $planId);
         if (! $plan->source_disk || ! $plan->source_path) {
-            throw new ConflictHttpException('Kế hoạch không còn tệp nguồn để đọc lại.');
+            throw new ConflictHttpException('File nguồn không còn khả dụng. Vui lòng tải lại file để đọc lại dữ liệu.');
+        }
+        $sourceAvailability = $this->sourceAvailability($plan);
+        if ($sourceAvailability === 'MISSING') {
+            throw new ConflictHttpException('File nguồn không còn khả dụng. Vui lòng tải lại file để đọc lại dữ liệu.');
+        }
+        if ($sourceAvailability === 'UNAVAILABLE') {
+            throw new ServiceUnavailableHttpException(null, 'Chưa thể truy cập kho lưu trữ tệp nguồn. Vui lòng thử lại sau.');
         }
 
         $temporaryPath = tempnam(sys_get_temp_dir(), 'kps-weekly-reparse-');
         if ($temporaryPath === false) {
             throw new RuntimeException('Không thể tạo tệp tạm.');
         }
-        $stream = Storage::disk($plan->source_disk)->readStream($plan->source_path);
+        try {
+            $stream = Storage::disk($plan->source_disk)->readStream($plan->source_path);
+        } catch (\Throwable $exception) {
+            @unlink($temporaryPath);
+            throw new ServiceUnavailableHttpException(null, 'Chưa thể truy cập kho lưu trữ tệp nguồn. Vui lòng thử lại sau.', $exception);
+        }
         if (! is_resource($stream)) {
             @unlink($temporaryPath);
-            throw new RuntimeException('Không thể đọc tệp nguồn từ kho lưu trữ.');
+            throw new ConflictHttpException('File nguồn không còn khả dụng. Vui lòng tải lại file để đọc lại dữ liệu.');
         }
         $target = fopen($temporaryPath, 'wb');
         if ($target === false) {
@@ -1093,9 +1133,15 @@ class WeeklyPlanService
             ]);
         }
         if (! is_string($plan->source_disk) || $plan->source_disk === ''
-            || ! is_string($plan->source_path) || $plan->source_path === ''
-            || ! $this->sourceExists($plan)) {
-            throw new ConflictHttpException('Không tìm thấy tệp nguồn trong kho lưu trữ riêng tư.');
+            || ! is_string($plan->source_path) || $plan->source_path === '') {
+            throw new ConflictHttpException('File nguồn không còn khả dụng. Vui lòng tải lại file để tiếp tục.');
+        }
+        $sourceAvailability = $this->sourceAvailability($plan);
+        if ($sourceAvailability === 'MISSING') {
+            throw new ConflictHttpException('File nguồn không còn khả dụng. Vui lòng tải lại file để tiếp tục.');
+        }
+        if ($sourceAvailability === 'UNAVAILABLE') {
+            throw new ServiceUnavailableHttpException(null, 'Chưa thể truy cập kho lưu trữ tệp nguồn. Vui lòng thử lại sau.');
         }
 
         $temporaryPath = tempnam(sys_get_temp_dir(), 'kps-weekly-source-');
@@ -1103,7 +1149,12 @@ class WeeklyPlanService
             throw new RuntimeException('Không thể tạo tệp tạm.');
         }
 
-        $stream = Storage::disk($plan->source_disk)->readStream($plan->source_path);
+        try {
+            $stream = Storage::disk($plan->source_disk)->readStream($plan->source_path);
+        } catch (\Throwable $exception) {
+            @unlink($temporaryPath);
+            throw new ServiceUnavailableHttpException(null, 'Chưa thể truy cập kho lưu trữ tệp nguồn. Vui lòng thử lại sau.', $exception);
+        }
         $target = fopen($temporaryPath, 'wb');
         if (! is_resource($stream) || $target === false) {
             if (is_resource($stream)) {
@@ -1113,7 +1164,7 @@ class WeeklyPlanService
                 fclose($target);
             }
             @unlink($temporaryPath);
-            throw new RuntimeException('Không thể đọc tệp nguồn từ kho lưu trữ.');
+            throw new ConflictHttpException('File nguồn không còn khả dụng. Vui lòng tải lại file để tiếp tục.');
         }
 
         try {
@@ -1198,13 +1249,20 @@ class WeeklyPlanService
         return is_string($key) && $key !== '' ? $key : null;
     }
 
-    private function sourceExists(WeeklyPlan $plan): bool
+    private function sourceAvailability(WeeklyPlan $plan): string
     {
-        return is_string($plan->source_disk)
-            && $plan->source_disk !== ''
-            && is_string($plan->source_path)
-            && $plan->source_path !== ''
-            && Storage::disk($plan->source_disk)->exists($plan->source_path);
+        if (! is_string($plan->source_disk) || $plan->source_disk === ''
+            || ! is_string($plan->source_path) || $plan->source_path === '') {
+            return 'MISSING';
+        }
+
+        try {
+            return Storage::disk($plan->source_disk)->exists($plan->source_path)
+                ? 'AVAILABLE'
+                : 'MISSING';
+        } catch (\Throwable) {
+            return 'UNAVAILABLE';
+        }
     }
 
     private function sourceWasExtracted(WeeklyPlan $plan): bool
@@ -1297,18 +1355,13 @@ class WeeklyPlanService
                 ->orderBy('sequence'),
         ])->loadCount('entries');
 
-        $sourceStatus = 'NOT_EXTRACTED';
-        try {
-            if ($plan->source_extension !== 'docx') {
-                $sourceStatus = 'UNSUPPORTED';
-            } elseif (! $this->sourceExists($plan)) {
-                $sourceStatus = 'MISSING';
-            } elseif ($this->sourceWasExtracted($plan)) {
-                $sourceStatus = $plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED';
-            }
-        } catch (\Throwable) {
-            $sourceStatus = 'UNAVAILABLE';
-        }
+        $sourceAvailability = $this->sourceAvailability($plan);
+        $plan->setAttribute('source_file_availability', $sourceAvailability);
+        $sourceStatus = $plan->source_extension !== 'docx'
+            ? 'UNSUPPORTED'
+            : ($this->sourceWasExtracted($plan)
+                ? ($plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED')
+                : 'NOT_EXTRACTED');
         $aiStatus = $this->taskExtraction->status();
         $plan->setAttribute('source_document', [
             'status' => $sourceStatus,
@@ -1370,9 +1423,10 @@ class WeeklyPlanService
             'can_comment' => $this->commentPermissionFor($viewer) !== null,
             'can_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'NOT_EXTRACTED'
+                && $sourceAvailability === 'AVAILABLE'
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_replace_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
-                && $sourceStatus === 'MISSING'
+                && $sourceAvailability === 'MISSING'
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_apply_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'

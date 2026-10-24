@@ -54,15 +54,16 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/ai-extract/);
 });
 
-test("DOCX source extraction is HR-confirmed, traceable, and driven by opaque actions", async () => {
-  const [sourceDocument, detail, entries] = await Promise.all([
+test("DOCX source extraction and missing-file recovery are driven by opaque actions", async () => {
+  const [sourceDocument, sourceRecovery, detail, entries, types] = await Promise.all([
     readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanSourceRecovery.tsx"),
     readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
     readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
+    readSource("src/types/weeklyPlanning.ts"),
   ]);
 
   assert.match(sourceDocument, /plan\.actions\.can_extract_source/);
-  assert.match(sourceDocument, /plan\.actions\.can_replace_source/);
   assert.match(sourceDocument, /plan\.actions\.can_apply_source/);
   assert.match(sourceDocument, /plan\.actions\.can_ai_extract_source/);
   assert.match(
@@ -72,11 +73,20 @@ test("DOCX source extraction is HR-confirmed, traceable, and driven by opaque ac
   assert.match(sourceDocument, /crypto\.randomUUID\(\)/);
   assert.match(sourceDocument, /source_passage_ids: draft\.passageIds/);
   assert.match(sourceDocument, /<WeeklyPlanEntryForm/);
+  assert.match(sourceRecovery, /plan\.source_file\.availability/);
+  assert.match(sourceRecovery, /plan\.actions\.can_replace_source/);
+  assert.match(sourceRecovery, /accept=\{`\.\$\{extension\}`\}/);
+  assert.match(sourceRecovery, /onReplace\(replacement\)/);
+  assert.match(
+    types,
+    /availability: "AVAILABLE" \| "MISSING" \| "UNAVAILABLE" \| null/,
+  );
   assert.doesNotMatch(
-    sourceDocument + detail,
+    sourceDocument + sourceRecovery + detail,
     /role\s*===|HR_MANAGER|OWNER|ADMIN/,
   );
   assert.match(detail, /<WeeklyPlanSourceDocument/);
+  assert.match(detail, /<WeeklyPlanSourceRecovery/);
   assert.match(detail, /applyWeeklyPlanSourceEntries/);
   assert.match(entries, /entry\.source_passages\.map/);
 });
@@ -260,6 +270,12 @@ test("Vietnamese weekly translations interpolate actual values with single brace
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.selectedCount", { count: 2 }),
     "Đã chọn 2 đoạn nguồn",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceRecovery.missingHelp", {
+      extension: "xlsx",
+    }),
+    "Dữ liệu kế hoạch đã lưu vẫn được giữ nguyên. Hãy tải lại file .xlsx để tiếp tục các thao tác cần đọc file gốc.",
   );
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.aiNotConnected"),

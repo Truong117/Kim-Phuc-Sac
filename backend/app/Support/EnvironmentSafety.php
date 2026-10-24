@@ -29,6 +29,7 @@ final class EnvironmentSafety
         mixed $databaseUrl,
         mixed $databaseHost,
         mixed $weeklyPlanStorageDisk,
+        bool $stagingEphemeralFiles,
         array $filesystemDisks,
         string $publicStoragePath,
     ): array {
@@ -100,6 +101,7 @@ final class EnvironmentSafety
             ...self::storageViolations(
                 $appEnvironment,
                 $weeklyPlanStorageDisk,
+                $stagingEphemeralFiles,
                 $filesystemDisks,
                 $publicStoragePath,
             ),
@@ -120,6 +122,7 @@ final class EnvironmentSafety
         mixed $databaseUrl,
         mixed $databaseHost,
         mixed $weeklyPlanStorageDisk,
+        bool $stagingEphemeralFiles,
         array $filesystemDisks,
         string $publicStoragePath,
     ): void {
@@ -132,6 +135,7 @@ final class EnvironmentSafety
             $databaseUrl,
             $databaseHost,
             $weeklyPlanStorageDisk,
+            $stagingEphemeralFiles,
             $filesystemDisks,
             $publicStoragePath,
         );
@@ -177,24 +181,35 @@ final class EnvironmentSafety
     private static function storageViolations(
         string $appEnvironment,
         mixed $weeklyPlanStorageDisk,
+        bool $stagingEphemeralFiles,
         array $filesystemDisks,
         string $publicStoragePath,
     ): array {
+        $violations = [];
+        if ($stagingEphemeralFiles && $appEnvironment !== 'staging') {
+            $violations[] = 'KPS_STAGING_EPHEMERAL_FILES may only be enabled in staging.';
+        }
+
         if (! is_string($weeklyPlanStorageDisk) || trim($weeklyPlanStorageDisk) === '') {
-            return ['The Weekly Planning storage disk must be configured explicitly.'];
+            $violations[] = 'The Weekly Planning storage disk must be configured explicitly.';
+
+            return $violations;
         }
 
         $diskName = trim($weeklyPlanStorageDisk);
         if ($diskName === 'public') {
-            return ['Weekly Planning source documents cannot use a public storage disk.'];
+            $violations[] = 'Weekly Planning source documents cannot use a public storage disk.';
+
+            return $violations;
         }
 
         $disk = $filesystemDisks[$diskName] ?? null;
         if (! is_array($disk)) {
-            return ['The Weekly Planning storage disk is not defined.'];
+            $violations[] = 'The Weekly Planning storage disk is not defined.';
+
+            return $violations;
         }
 
-        $violations = [];
         $driver = $disk['driver'] ?? null;
 
         if (! is_string($driver) || ! in_array($driver, ['local', 's3'], true)) {
@@ -217,8 +232,10 @@ final class EnvironmentSafety
                 $violations[] = 'The private local storage root must not be inside public storage.';
             }
 
-            if (in_array($appEnvironment, ['staging', 'production'], true)) {
-                $violations[] = 'Staging and production Weekly Planning files require durable object storage.';
+            if ($appEnvironment === 'production') {
+                $violations[] = 'Production Weekly Planning files require durable object storage.';
+            } elseif ($appEnvironment === 'staging' && ! $stagingEphemeralFiles) {
+                $violations[] = 'Staging local Weekly Planning storage requires KPS_STAGING_EPHEMERAL_FILES=true.';
             }
         }
 

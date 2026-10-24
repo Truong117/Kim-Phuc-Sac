@@ -114,6 +114,22 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringContainsString('composer check-platform-reqs --no-dev', $dockerfile);
     }
 
+    public function test_ephemeral_weekly_plan_storage_is_explicitly_limited_to_staging(): void
+    {
+        $staging = $this->readBackendFile('.env.staging.example');
+        $production = $this->readBackendFile('.env.production.example');
+        $guard = $this->readBackendFile('app/Support/EnvironmentSafety.php');
+
+        $this->assertStringContainsString('FILESYSTEM_DISK=local', $staging);
+        $this->assertStringContainsString('WEEKLY_PLAN_STORAGE_DISK=local', $staging);
+        $this->assertStringContainsString('KPS_STAGING_EPHEMERAL_FILES=true', $staging);
+        $this->assertStringContainsString('FILESYSTEM_DISK=s3', $production);
+        $this->assertStringContainsString('WEEKLY_PLAN_STORAGE_DISK=s3', $production);
+        $this->assertStringContainsString('KPS_STAGING_EPHEMERAL_FILES=false', $production);
+        $this->assertStringContainsString("\$appEnvironment === 'production'", $guard);
+        $this->assertStringContainsString("\$appEnvironment === 'staging' && ! \$stagingEphemeralFiles", $guard);
+    }
+
     public function test_git_ignores_real_environment_files_but_keeps_templates(): void
     {
         foreach ([

@@ -24,6 +24,7 @@ class WeeklyPlanResource extends JsonResource
                 'size' => $this->source_size,
                 'sha256' => $this->source_sha256,
                 'uploaded_at' => $this->uploaded_at?->toISOString(),
+                'availability' => $this->getAttribute('source_file_availability'),
             ],
             'source_document' => [
                 'status' => ($this->getAttribute('source_document') ?? [])['status'] ?? 'NOT_EXTRACTED',
