@@ -164,7 +164,7 @@ Normalized rows are durable database records. The original file is stored throug
 - Local development/tests: `WEEKLY_PLAN_STORAGE_DISK=local`.
 - Production: configure a private persistent object-storage disk (for example `s3`) plus provider credentials, bucket, endpoint, and path-style setting as applicable.
 - Render's local filesystem is ephemeral and must not be used as the production source-file guarantee.
-- The current Composer lock does not install the optional S3 Flysystem adapter. Add and validate `league/flysystem-aws-s3-v3` in a separately approved dependency/deployment step before selecting the `s3` disk.
+- The Composer lock includes `league/flysystem-aws-s3-v3`. Before selecting the `s3` disk, configure a private non-production bucket first and validate provider-specific endpoint, region, credentials/IAM and prefix settings.
 
 Do not log provider secrets, expose a public source URL, or run the general authorization seeder merely to enable this module.
 
@@ -179,4 +179,4 @@ Do not log provider secrets, expose a public source URL, or run the general auth
 7. Smoke-test import, review, approval, publication, Task linkage and assignment notification with isolated test users.
 8. Roll out the frontend only after backend routes, storage and permissions are ready.
 
-The current Docker entry point runs `php artisan migrate --force` on startup. Do not deploy the image until this automatic migration behavior is explicitly accepted for the target environment or separated into a controlled release command.
+The Docker entry point does not run migrations. Keep schema changes in a separately approved Render pre-deploy/one-off operation and follow [`ENVIRONMENT_DEPLOYMENT_SAFETY.md`](ENVIRONMENT_DEPLOYMENT_SAFETY.md); never add migrations back to container startup.

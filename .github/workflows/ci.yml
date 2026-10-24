@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - main
+  push:
+    branches:
+      - staging
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  branch-policy:
+    name: Branch policy
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Validate pull request flow
+        shell: bash
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          case "$BASE_BRANCH" in
+            staging)
+              case "$HEAD_BRANCH" in
+                feature/*|fix/*|refactor/*|hotfix/*) ;;
+                *)
+                  echo "Pull requests into staging must come from feature/*, fix/*, refactor/*, or hotfix/*."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            main)
+              case "$HEAD_BRANCH" in
+                staging|hotfix/*) ;;
+                *)
+                  echo "Pull requests into main must come from staging or an approved hotfix/* branch."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "Unsupported pull request base branch: $BASE_BRANCH"
+              exit 1
+              ;;
+          esac
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: http://localhost:8000
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_DEBUG: "false"
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      DB_URL: ""
+      KPS_DATABASE_ENVIRONMENT: testing
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      FILESYSTEM_DISK: local
+      WEEKLY_PLAN_STORAGE_DISK: local
+      KPS_AI_DRIVER: fake
+      WEEKLY_PLAN_DOCUMENT_AI_DRIVER: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, bcmath, pdo_sqlite, sqlite3, zip, xml
+          coverage: none
+
+      - name: Validate Composer configuration
+        run: composer validate --strict
+
+      - name: Install backend dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Check backend formatting
+        run: vendor/bin/pint --test
+
+      - name: Run backend tests
+        run: php artisan test
+
+  backend-container:
+    name: Backend container build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build backend image without publishing
+        run: docker build --file backend/Dockerfile --tag kps-backend-ci backend

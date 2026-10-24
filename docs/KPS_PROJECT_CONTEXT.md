@@ -568,7 +568,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 ### Verified
 
 - The application is configured as a Vercel SPA.
-- `vercel.json` currently rewrites `/(.*)` to `/index.html`.
+- `vercel.mjs` builds environment-specific rewrites: `/api` and `/sanctum` are proxied to the validated `KPS_BACKEND_ORIGIN` before the SPA fallback. Production/Preview browser requests use `VITE_API_BASE_URL=/`; missing or unsafe upstream configuration fails closed.
 - Demo URL from the project handoff: `https://kimphucsac.vercel.app/`.
 - Authentication V1 is implemented with Sanctum first-party SPA authentication, Laravel's `web` session guard, CSRF protection, credentialed CORS, and `auth:sanctum` on protected endpoints.
 - Authorization V1 remains backend-owned. It now resolves the active/default membership specifically for organization code `KPS`, aggregates all assigned roles, and exposes a `permission:<code>` middleware for protected backend actions.
@@ -587,7 +587,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 - Every future protected business endpoint must apply backend permission enforcement; frontend checks must never be treated as sufficient.
 - Data-scope-aware CRM query filtering is future work and must be implemented with the business repositories/queries rather than trusted frontend filters.
 - External dealer and external spa tenancy remain future work; Authorization V1 models only the internal `KPS` organization.
-- Revisit the catch-all Vercel rewrite if `/api` is later served on the same domain.
+- Keep Vercel and Render authentication first-party through the same-origin proxy unless approved sibling custom domains are configured and browser-tested. Direct `vercel.app` → `onrender.com` Sanctum cookie authentication is not supported.
 - Use mock data only until real customer-data handling has been approved. Production CRM data will require authentication, backend authorization, secure APIs/secrets, access controls, and appropriate auditability.
 
 ## 16. Pancake integration direction

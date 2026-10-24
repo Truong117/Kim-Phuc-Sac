@@ -49,6 +49,10 @@ const getApiBaseUrl = () => {
     throw new ApiServiceError(0);
   }
 
+  if (configuredApiBaseUrl === "/") {
+    return "";
+  }
+
   return configuredApiBaseUrl.replace(/\/+$/, "");
 };
 
