@@ -212,12 +212,18 @@ class OpenAiGateway
             }
 
             try {
+                $structuredResult = json_decode(
+                    $outputText,
+                    associative: false,
+                    flags: JSON_THROW_ON_ERROR,
+                );
                 $result = json_decode($outputText, true, flags: JSON_THROW_ON_ERROR);
             } catch (JsonException $exception) {
                 $this->fail($record, 'AI_INVALID_JSON', $durationMs, $reservationVersion, $providerAttempts, $inputTokens, $outputTokens, true);
                 throw new AiGatewayException('AI_INVALID_JSON', 'OpenAI returned invalid JSON.', false, $exception);
             }
-            if (! is_array($result)) {
+            if (! $this->jsonContainerTypesMatchSchema($structuredResult, $request->schema)
+                || ! is_array($result)) {
                 $this->fail($record, 'AI_INVALID_SCHEMA', $durationMs, $reservationVersion, $providerAttempts, $inputTokens, $outputTokens, true);
                 throw new AiGatewayException('AI_INVALID_SCHEMA', 'OpenAI returned an invalid result.');
             }
@@ -651,6 +657,78 @@ class OpenAiGateway
         $value = $response->json("usage.{$key}");
 
         return is_int($value) && $value >= 0 ? $value : null;
+    }
+
+    /**
+     * Preserve the JSON object/array distinction before associative decoding.
+     * Primitive and business-rule validation remains with each feature.
+     *
+     * @param  array<string, mixed>  $schema
+     */
+    private function jsonContainerTypesMatchSchema(mixed $value, array $schema): bool
+    {
+        $anyOf = $schema['anyOf'] ?? null;
+        if (is_array($anyOf)) {
+            foreach ($anyOf as $candidate) {
+                if (is_array($candidate)
+                    && $this->jsonContainerTypesMatchSchema($value, $candidate)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        $type = $schema['type'] ?? null;
+        if (is_array($type)) {
+            foreach ($type as $candidate) {
+                if (is_string($candidate)
+                    && $this->jsonContainerTypesMatchSchema($value, ['type' => $candidate])) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($type === 'array') {
+            if ($value instanceof \stdClass) {
+                return false;
+            }
+            if (! is_array($value) || ! is_array($schema['items'] ?? null)) {
+                return true;
+            }
+            foreach ($value as $item) {
+                if (! $this->jsonContainerTypesMatchSchema($item, $schema['items'])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if ($type === 'object') {
+            if (is_array($value)) {
+                return false;
+            }
+            if (! $value instanceof \stdClass || ! is_array($schema['properties'] ?? null)) {
+                return true;
+            }
+            foreach (get_object_vars($value) as $key => $propertyValue) {
+                $propertySchema = $schema['properties'][$key] ?? null;
+                if (is_array($propertySchema)
+                    && ! $this->jsonContainerTypesMatchSchema($propertyValue, $propertySchema)) {
+                    return false;
+                }
+            }
+        }
+
+        if (in_array($type, ['string', 'integer', 'number', 'boolean', 'null'], true)
+            && (is_array($value) || $value instanceof \stdClass)) {
+            return false;
+        }
+
+        return true;
     }
 
     private function reasoningEffort(AiGatewayRequest $request, string $model): ?string

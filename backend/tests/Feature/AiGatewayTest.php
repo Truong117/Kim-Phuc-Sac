@@ -232,6 +232,61 @@ class AiGatewayTest extends TestCase
             ->once();
     }
 
+    public function test_json_object_is_rejected_when_the_schema_requires_an_array(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response([
+                'status' => 'completed',
+                'output' => [[
+                    'type' => 'message',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => '{"items":{}}',
+                    ]],
+                ]],
+                'usage' => ['input_tokens' => 10, 'output_tokens' => 5],
+            ]),
+        ]);
+        $request = new AiGatewayRequest(
+            organizationId: $organizationId,
+            requestedByUserId: $user->id,
+            feature: 'gateway_container_type_test',
+            idempotencyKey: 'json-object-for-array',
+            instructions: 'Return JSON matching the schema.',
+            input: ['text' => 'untrusted input'],
+            schemaName: 'gateway_container_type_v1',
+            schema: [
+                'type' => 'object',
+                'properties' => [
+                    'items' => [
+                        'type' => 'array',
+                        'items' => ['type' => 'string'],
+                    ],
+                ],
+                'required' => ['items'],
+                'additionalProperties' => false,
+            ],
+            maxOutputTokens: 100,
+        );
+
+        try {
+            app(OpenAiGateway::class)->respond($request);
+            $this->fail('Expected an object returned for an array schema to fail closed.');
+        } catch (AiGatewayException $exception) {
+            $this->assertSame('AI_INVALID_SCHEMA', $exception->errorCode);
+        }
+
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'gateway_container_type_test',
+            'status' => 'failed',
+            'error_code' => 'AI_INVALID_SCHEMA',
+            'response_payload' => null,
+        ]);
+    }
+
     public function test_budget_and_configuration_fail_closed_before_any_http_request(): void
     {
         [$user, $organizationId] = $this->userContext();

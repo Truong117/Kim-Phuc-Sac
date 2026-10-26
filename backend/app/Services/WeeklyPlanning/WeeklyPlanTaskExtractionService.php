@@ -145,7 +145,7 @@ class WeeklyPlanTaskExtractionService
             }
         }
         $rules = [
-            'tasks' => ['required', 'array', 'max:'.config('weekly_plans.max_source_entries_per_request', 20)],
+            'tasks' => ['present', 'array', 'max:'.config('weekly_plans.max_source_entries_per_request', 20)],
             'tasks.*.source_keys' => ['required', 'array', 'min:1', 'max:'.config('weekly_plans.max_source_passages_per_entry', 20)],
             'tasks.*.source_keys.*' => ['required', 'string', 'distinct', 'max:128'],
             'tasks.*.title' => ['required', 'string', 'max:255'],
