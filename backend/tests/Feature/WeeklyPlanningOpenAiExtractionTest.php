@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Mockery;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -230,6 +231,43 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
+    public function test_empty_tasks_array_is_a_successful_preview_without_mutating_the_plan(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Không có đầu việc đủ căn cứ.');
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => []]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertExactJson(['data' => ['suggestions' => []]]);
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertExactJson(['data' => ['suggestions' => []]]);
+
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'completed',
+            'error_code' => null,
+        ]);
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $plan->id,
+            'status' => 'DRAFT',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
     public function test_ai_preview_maps_a_missing_tasks_contract_to_safe_validation_feedback(): void
     {
         [$hr, $organizationId] = $this->userWithPermissions([
@@ -251,6 +289,122 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
                 'AI chưa trả về bản đề xuất có thể kiểm chứng. Dữ liệu kế hoạch hiện tại không bị thay đổi.',
             );
 
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_INVALID_SCHEMA',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    #[DataProvider('invalidTasksPayloadProvider')]
+    public function test_ai_preview_rejects_null_or_non_array_tasks(mixed $tasks): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => $tasks]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'AI chưa trả về bản đề xuất có thể kiểm chứng. Dữ liệu kế hoạch hiện tại không bị thay đổi.',
+            );
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_INVALID_SCHEMA',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_ai_preview_rejects_an_empty_json_object_instead_of_an_array(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response([
+                'status' => 'completed',
+                'output' => [[
+                    'type' => 'message',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => '{"tasks":{}}',
+                    ]],
+                ]],
+                'usage' => ['input_tokens' => 300, 'output_tokens' => 18],
+            ]),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'AI chưa trả về bản đề xuất có thể kiểm chứng. Dữ liệu kế hoạch hiện tại không bị thay đổi.',
+            );
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'failed',
+            'error_code' => 'AI_INVALID_SCHEMA',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_ai_preview_rejects_an_empty_task_object_missing_required_fields(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response([
+                'status' => 'completed',
+                'output' => [[
+                    'type' => 'message',
+                    'content' => [[
+                        'type' => 'output_text',
+                        'text' => '{"tasks":[{}]}',
+                    ]],
+                ]],
+                'usage' => ['input_tokens' => 300, 'output_tokens' => 18],
+            ]),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'Kết quả trích xuất không đáp ứng hợp đồng dữ liệu an toàn.',
+            );
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_RESULT_REJECTED',
+        ]);
         $this->assertDatabaseCount('weekly_plan_entries', 0);
         $this->assertDatabaseCount('tasks', 0);
     }
@@ -402,6 +556,15 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         }
 
         return [$user, $membership['organization_id']];
+    }
+
+    /** @return array<string, array{mixed}> */
+    public static function invalidTasksPayloadProvider(): array
+    {
+        return [
+            'null' => [null],
+            'string' => ['not-an-array'],
+        ];
     }
 
     private function planWithPassage(

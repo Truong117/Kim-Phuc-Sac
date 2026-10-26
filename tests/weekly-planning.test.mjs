@@ -54,6 +54,25 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/ai-extract/);
 });
 
+test("weekly AI preview treats an empty suggestion list as a successful empty state", async () => {
+  const [sourceDocument, aiPreview, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanAiExtractionPreview.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const translations = JSON.parse(translationsSource);
+
+  assert.match(sourceDocument, /const suggestions = await onAiExtract\(\)/);
+  assert.match(sourceDocument, /setAiSuggestions\(suggestions\)/);
+  assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
+  assert.match(aiPreview, /suggestions\.length === 0/);
+  assert.match(aiPreview, /\{t\("empty"\)\}/);
+  assert.equal(
+    translations.weeklyPlanning.sourceDocument.aiPreview.empty,
+    "AI không tìm thấy đầu việc có đủ căn cứ trong tài liệu này.",
+  );
+});
+
 test("DOCX source extraction and missing-file recovery are driven by opaque actions", async () => {
   const [sourceDocument, sourceRecovery, detail, entries, types] =
     await Promise.all([
