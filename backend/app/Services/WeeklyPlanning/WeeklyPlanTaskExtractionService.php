@@ -8,6 +8,7 @@ use App\Models\WeeklyPlan;
 use App\Services\AI\AiGatewayException;
 use App\Services\WeeklyPlanning\Contracts\RejectableWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -131,14 +132,27 @@ class WeeklyPlanTaskExtractionService
             'evidence',
             'provenance',
         ];
-        foreach ($raw as $task) {
-            if (! is_array($task)
-                || array_diff(array_keys($task), $taskFields) !== []
-                || array_diff($taskFields, array_keys($task)) !== []
-                || ! is_array($task['source_keys'] ?? null)
-                || ! array_is_list($task['source_keys'])
-                || ! is_array($task['verification_fields'] ?? null)
-                || ! array_is_list($task['verification_fields'])) {
+        foreach ($raw as $taskIndex => $task) {
+            $structuralFailure = null;
+            if (! is_array($task)) {
+                $structuralFailure = ['field' => 'tasks', 'rule' => 'object'];
+            } else {
+                $missingFields = array_values(array_diff($taskFields, array_keys($task)));
+                if ($missingFields !== []) {
+                    $structuralFailure = ['field' => $missingFields[0], 'rule' => 'present'];
+                } elseif (array_diff(array_keys($task), $taskFields) !== []) {
+                    $structuralFailure = ['field' => 'tasks', 'rule' => 'allowed_fields'];
+                } elseif (! is_array($task['source_keys']) || ! array_is_list($task['source_keys'])) {
+                    $structuralFailure = ['field' => 'source_keys', 'rule' => 'list'];
+                } elseif (! is_array($task['verification_fields']) || ! array_is_list($task['verification_fields'])) {
+                    $structuralFailure = ['field' => 'verification_fields', 'rule' => 'list'];
+                }
+            }
+            if ($structuralFailure !== null) {
+                $this->logValidationFailure('structure', [[
+                    'task_index' => $taskIndex,
+                    ...$structuralFailure,
+                ]]);
                 throw ValidationException::withMessages([
                     'extraction' => ['Kết quả trích xuất không đáp ứng hợp đồng dữ liệu an toàn.'],
                 ]);
@@ -156,7 +170,7 @@ class WeeklyPlanTaskExtractionService
             'tasks.*.due_date' => ['nullable', 'date_format:Y-m-d'],
             'tasks.*.priority' => ['nullable', Rule::enum(TaskPriority::class)],
             'tasks.*.note' => ['nullable', 'string', 'max:5000'],
-            'tasks.*.verification_fields' => ['required', 'array'],
+            'tasks.*.verification_fields' => ['present', 'array'],
             'tasks.*.verification_fields.*' => [
                 'string',
                 'distinct',
@@ -177,6 +191,25 @@ class WeeklyPlanTaskExtractionService
         $validator = Validator::make(['tasks' => $raw], $rules);
 
         if ($validator->fails()) {
+            $failures = [];
+            foreach ($validator->failed() as $attribute => $failedRules) {
+                $segments = explode('.', $attribute);
+                $taskIndex = isset($segments[1]) && ctype_digit($segments[1])
+                    ? (int) $segments[1]
+                    : null;
+                $field = $segments[2] ?? 'tasks';
+                if (! in_array($field, $taskFields, true)) {
+                    $field = 'tasks';
+                }
+                foreach (array_keys($failedRules) as $rule) {
+                    $failures[] = [
+                        'task_index' => $taskIndex,
+                        'field' => $field,
+                        'rule' => strtolower($rule),
+                    ];
+                }
+            }
+            $this->logValidationFailure('laravel_validator', array_slice($failures, 0, 20));
             throw ValidationException::withMessages([
                 'extraction' => ['Kết quả trích xuất không đáp ứng hợp đồng dữ liệu an toàn.'],
             ]);
@@ -211,6 +244,21 @@ class WeeklyPlanTaskExtractionService
         }
 
         return $tasks;
+    }
+
+    /** @param list<array{task_index: int|null, field: string, rule: string}> $failures */
+    private function logValidationFailure(string $type, array $failures): void
+    {
+        $usageRecordId = $this->extractor instanceof RejectableWeeklyPlanTaskExtractor
+            ? $this->extractor->latestUsageRecordId()
+            : null;
+
+        Log::warning('weekly_plan_ai_result_validation_failed', [
+            'usage_record_id' => $usageRecordId,
+            'feature' => 'weekly_plan_task_extraction',
+            'validation_type' => $type,
+            'failures' => $failures,
+        ]);
     }
 
     private function throwSafeGatewayException(AiGatewayException $exception): never
