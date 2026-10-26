@@ -71,6 +71,11 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
         $this->latestUsageRecordId = null;
     }
 
+    public function latestUsageRecordId(): ?int
+    {
+        return $this->latestUsageRecordId;
+    }
+
     private function reasoningEffort(): ?string
     {
         $effort = trim((string) config('weekly_plans.ai_reasoning_effort'));

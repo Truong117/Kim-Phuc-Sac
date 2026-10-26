@@ -268,6 +268,160 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
+    public function test_ai_preview_accepts_a_valid_task_with_empty_verification_fields(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc có đủ thông tin để xác minh.');
+        $suggestion = $this->validSuggestion($plan->sourcePassages()->firstOrFail()->source_key);
+        $suggestion['verification_fields'] = [];
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.verification_fields', []);
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'completed',
+            'error_code' => null,
+        ]);
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $plan->id,
+            'status' => 'DRAFT',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_ai_preview_accepts_a_valid_task_with_a_whitelisted_verification_field(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc cần HR xác minh người phụ trách.');
+        $suggestion = $this->validSuggestion($plan->sourcePassages()->firstOrFail()->source_key);
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.verification_fields', ['assignee_id']);
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'completed',
+            'error_code' => null,
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    #[DataProvider('invalidVerificationFieldsProvider')]
+    public function test_ai_preview_rejects_invalid_verification_fields(
+        bool $includeField,
+        mixed $verificationFields,
+        string $expectedUsageStatus,
+        string $expectedErrorCode,
+    ): void {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        $suggestion = $this->validSuggestion($plan->sourcePassages()->firstOrFail()->source_key);
+        if ($includeField) {
+            $suggestion['verification_fields'] = $verificationFields;
+        } else {
+            unset($suggestion['verification_fields']);
+        }
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable();
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => $expectedUsageStatus,
+            'error_code' => $expectedErrorCode,
+        ]);
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $plan->id,
+            'status' => 'DRAFT',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_semantic_validation_logs_only_safe_failure_metadata(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $sensitiveMarker = 'private-document-content-must-not-be-logged';
+        $plan = $this->planWithPassage($hr, $organizationId, $sensitiveMarker);
+        $suggestion = $this->validSuggestion($plan->sourcePassages()->firstOrFail()->source_key);
+        $suggestion['content'] = $sensitiveMarker;
+        $suggestion['evidence'] = $sensitiveMarker;
+        $suggestion['verification_fields'] = ['not_allowed'];
+        Log::spy();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable();
+
+        Log::shouldHaveReceived('warning')
+            ->with('weekly_plan_ai_result_validation_failed', Mockery::on(function (array $context) use ($sensitiveMarker): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                return is_int($context['usage_record_id'] ?? null)
+                    && ($context['feature'] ?? null) === 'weekly_plan_task_extraction'
+                    && ($context['validation_type'] ?? null) === 'laravel_validator'
+                    && ($context['failures'] ?? null) === [[
+                        'task_index' => 0,
+                        'field' => 'verification_fields',
+                        'rule' => 'in',
+                    ]]
+                    && ! str_contains($serialized, $sensitiveMarker)
+                    && ! str_contains($serialized, 'not_allowed');
+            }))
+            ->once();
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_RESULT_REJECTED',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
     public function test_ai_preview_maps_a_missing_tasks_contract_to_safe_validation_feedback(): void
     {
         [$hr, $organizationId] = $this->userWithPermissions([
@@ -564,6 +718,19 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         return [
             'null' => [null],
             'string' => ['not-an-array'],
+        ];
+    }
+
+    /** @return array<string, array{bool, mixed, string, string}> */
+    public static function invalidVerificationFieldsProvider(): array
+    {
+        return [
+            'missing' => [false, null, 'rejected', 'AI_RESULT_REJECTED'],
+            'null' => [true, null, 'rejected', 'AI_RESULT_REJECTED'],
+            'object' => [true, new \stdClass, 'failed', 'AI_INVALID_SCHEMA'],
+            'scalar' => [true, 'assignee_id', 'rejected', 'AI_RESULT_REJECTED'],
+            'unknown value' => [true, ['not_allowed'], 'rejected', 'AI_RESULT_REJECTED'],
+            'duplicate value' => [true, ['assignee_id', 'assignee_id'], 'rejected', 'AI_RESULT_REJECTED'],
         ];
     }
 
