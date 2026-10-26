@@ -18,7 +18,8 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
 
     public function isConfigured(): bool
     {
-        return $this->gateway->isConfigured();
+        return $this->gateway->isConfigured()
+            && $this->reasoningEffort() === 'low';
     }
 
     public function name(): string
@@ -44,6 +45,7 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             schemaName: 'kps_weekly_plan_tasks_v1',
             schema: $this->schema(),
             maxOutputTokens: (int) config('weekly_plans.ai_max_output_tokens', 3000),
+            reasoningEffort: $this->reasoningEffort(),
         ));
         $this->latestUsageRecordId = $result->usageRecordId;
         $payload = $result->result;
@@ -67,6 +69,13 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
 
         $this->gateway->rejectCompletedResult($this->latestUsageRecordId, $errorCode);
         $this->latestUsageRecordId = null;
+    }
+
+    private function reasoningEffort(): ?string
+    {
+        $effort = trim((string) config('weekly_plans.ai_reasoning_effort'));
+
+        return $effort === '' ? null : strtolower($effort);
     }
 
     private function instructions(): string

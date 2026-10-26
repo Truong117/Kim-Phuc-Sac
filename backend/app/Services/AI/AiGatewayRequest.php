@@ -18,5 +18,6 @@ final readonly class AiGatewayRequest
         public string $schemaName,
         public array $schema,
         public int $maxOutputTokens,
+        public ?string $reasoningEffort = null,
     ) {}
 }

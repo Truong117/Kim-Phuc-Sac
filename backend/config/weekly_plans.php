@@ -18,4 +18,5 @@ return [
     'ai_max_passages' => (int) env('WEEKLY_PLAN_AI_MAX_PASSAGES', 200),
     'ai_max_context_bytes' => (int) env('WEEKLY_PLAN_AI_MAX_CONTEXT_BYTES', 60000),
     'ai_max_output_tokens' => (int) env('WEEKLY_PLAN_AI_MAX_OUTPUT_TOKENS', 3000),
+    'ai_reasoning_effort' => env('WEEKLY_PLAN_AI_REASONING_EFFORT'),
 ];
