@@ -55,21 +55,26 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
 });
 
 test("DOCX source extraction and missing-file recovery are driven by opaque actions", async () => {
-  const [sourceDocument, sourceRecovery, detail, entries, types] = await Promise.all([
-    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
-    readSource("src/components/weekly-plans/WeeklyPlanSourceRecovery.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
-    readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
-    readSource("src/types/weeklyPlanning.ts"),
-  ]);
+  const [sourceDocument, sourceRecovery, detail, entries, types] =
+    await Promise.all([
+      readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanSourceRecovery.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
+      readSource("src/types/weeklyPlanning.ts"),
+    ]);
 
   assert.match(sourceDocument, /plan\.actions\.can_extract_source/);
   assert.match(sourceDocument, /plan\.actions\.can_apply_source/);
   assert.match(sourceDocument, /plan\.actions\.can_ai_extract_source/);
   assert.match(
     sourceDocument,
-    /disabled=\{busy \|\| !plan\.actions\.can_ai_extract_source\}/,
+    /busy \|\| aiLoading \|\| !plan\.actions\.can_ai_extract_source/,
   );
+  assert.match(sourceDocument, /const runAiExtraction = async/);
+  assert.match(sourceDocument, /const suggestions = await onAiExtract\(\)/);
+  assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
+  assert.match(sourceDocument, /<WeeklyPlanAiExtractionPreview/);
   assert.match(sourceDocument, /crypto\.randomUUID\(\)/);
   assert.match(sourceDocument, /source_passage_ids: draft\.passageIds/);
   assert.match(sourceDocument, /<WeeklyPlanEntryForm/);
@@ -152,10 +157,11 @@ test("weekly entries are grouped by stable user identity with an unresolved fall
 });
 
 test("weekly entry filters preserve the external edit modal and actions stay opaque", async () => {
-  const [entries, detail, sourceDocument] = await Promise.all([
+  const [entries, detail, sourceDocument, aiPreview] = await Promise.all([
     readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
     readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
     readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanAiExtractionPreview.tsx"),
   ]);
 
   assert.match(entries, /setQuery/);
@@ -172,6 +178,16 @@ test("weekly entry filters preserve the external edit modal and actions stay opa
   assert.match(sourceDocument, /assignee_id: draft\.assigneeId/);
   assert.match(sourceDocument, /source_passage_ids: draft\.passageIds/);
   assert.match(sourceDocument, /key=\{draft\.requestId\}/);
+  assert.match(sourceDocument, /assigneeId: null/);
+  assert.match(sourceDocument, /aiSuggestionIndex: index/);
+  assert.match(aiPreview, /suggestion\.source_keys/);
+  assert.match(aiPreview, /suggestion\.evidence/);
+  assert.match(aiPreview, /suggestion\.verification_fields/);
+  assert.match(aiPreview, /passage\?\.text \?\? t\("sourceUnavailable"\)/);
+  assert.doesNotMatch(
+    sourceDocument + aiPreview,
+    /role\s*===|HR_MANAGER|OWNER|ADMIN/,
+  );
 });
 
 test("weekly entry form uses date-only picker and interaction-gated validation", async () => {
@@ -280,6 +296,24 @@ test("Vietnamese weekly translations interpolate actual values with single brace
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.aiNotConnected"),
     "Chưa kết nối AI",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceDocument.aiPreview.employeeHint", {
+      identifier: "Nhân viên A",
+    }),
+    "Định danh trong tài liệu: Nhân viên A",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceDocument.aiPreview.sources", {
+      sources: "docx-paragraph:1",
+    }),
+    "Đoạn nguồn: docx-paragraph:1",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceDocument.aiPreview.provenance", {
+      values: "Tiêu đề: Nguyên văn",
+    }),
+    "Nguồn gốc trường: Tiêu đề: Nguyên văn",
   );
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.groupModalDescription", {

@@ -4,7 +4,7 @@ namespace App\Services\AI;
 
 class FakeDailyReportProvider implements DailyReportAiProvider
 {
-    public function analyze(array $context): array
+    public function analyze(array $context, array $requestMetadata = []): array
     {
         $counts = $context['work_counts'];
         $attention = [];

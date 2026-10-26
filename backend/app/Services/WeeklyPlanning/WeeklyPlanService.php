@@ -606,7 +606,7 @@ class WeeklyPlanService
             ]);
         }
 
-        return $this->taskExtraction->preview($plan);
+        return $this->taskExtraction->preview($plan, $actor);
     }
 
     /** @param array<string, string> $mapping */

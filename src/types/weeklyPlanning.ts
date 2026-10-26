@@ -9,9 +9,7 @@ export type WeeklyPlanStatus =
   | "PUBLISHED";
 
 export type WeeklyPlanReviewStatus =
-  | "PENDING"
-  | "CHANGES_REQUESTED"
-  | "ACCEPTED";
+  "PENDING" | "CHANGES_REQUESTED" | "ACCEPTED";
 
 export type WeeklyPlanEmployee = {
   id: number;
@@ -220,4 +218,29 @@ export type WeeklyPlanEntryInput = {
 
 export type WeeklyPlanSourceEntryInput = WeeklyPlanEntryInput & {
   source_passage_ids: number[];
+};
+
+export type WeeklyPlanAiSuggestion = {
+  source_keys: string[];
+  title: string;
+  content: string | null;
+  expected_result: string | null;
+  employee_identifier: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  priority: TaskPriority | null;
+  note: string | null;
+  verification_fields: string[];
+  evidence: string;
+  provenance: Record<
+    | "title"
+    | "content"
+    | "expected_result"
+    | "employee_identifier"
+    | "start_date"
+    | "due_date"
+    | "priority"
+    | "note",
+    "VERBATIM" | "INFERRED" | "SUGGESTED"
+  >;
 };

@@ -15,4 +15,7 @@ return [
     'max_source_passages_per_entry' => (int) env('WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY', 20),
     'max_source_entries_per_request' => (int) env('WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST', 20),
     'document_ai_driver' => env('WEEKLY_PLAN_DOCUMENT_AI_DRIVER', 'none'),
+    'ai_max_passages' => (int) env('WEEKLY_PLAN_AI_MAX_PASSAGES', 200),
+    'ai_max_context_bytes' => (int) env('WEEKLY_PLAN_AI_MAX_CONTEXT_BYTES', 60000),
+    'ai_max_output_tokens' => (int) env('WEEKLY_PLAN_AI_MAX_OUTPUT_TOKENS', 3000),
 ];

@@ -1,6 +1,7 @@
 import { apiDownload, apiRequest } from "@/services/apiClient";
 import type {
   WeeklyPlan,
+  WeeklyPlanAiSuggestion,
   WeeklyPlanEntryInput,
   WeeklyPlanListResponse,
   WeeklyPlanReferences,
@@ -121,11 +122,17 @@ export const assignWeeklyPlanSourceGroup = async (
   return response.data;
 };
 
-export const extractWeeklyPlanSourceWithAi = (id: number) =>
-  apiRequest<{ data: { suggestions: unknown[] } }>(
-    "/api/weekly-plans/" + id + "/source/ai-extract",
-    { method: "POST", body: JSON.stringify({}) },
-  );
+export const extractWeeklyPlanSourceWithAi = async (
+  id: number,
+): Promise<WeeklyPlanAiSuggestion[]> => {
+  const response = await apiRequest<{
+    data: { suggestions: WeeklyPlanAiSuggestion[] };
+  }>("/api/weekly-plans/" + id + "/source/ai-extract", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return response.data.suggestions;
+};
 
 export const downloadWeeklyPlanTemplate = () =>
   apiDownload("/api/weekly-plans/template");

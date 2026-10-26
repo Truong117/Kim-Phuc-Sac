@@ -43,7 +43,7 @@ Employee review status is `PENDING`, `CHANGES_REQUESTED`, or `ACCEPTED`. Editing
 | POST | `/api/weekly-plans/{id}/source/replace` | Replace a missing DOCX source on the same draft plan, then extract its text |
 | PATCH | `/api/weekly-plans/{id}/source/group` | Assign one manual document-group label to a contiguous passage range |
 | POST | `/api/weekly-plans/{id}/source/apply` | Atomically append HR-confirmed draft entries linked to selected source passages |
-| POST | `/api/weekly-plans/{id}/source/ai-extract` | Provider boundary for structured task extraction; returns `409` while no real provider is configured |
+| POST | `/api/weekly-plans/{id}/source/ai-extract` | Scoped, throttled Structured Output preview from persisted passages; returns `409` while no approved provider is configured |
 | POST | `/api/weekly-plans/{id}/entries` | Add a draft entry |
 | PATCH | `/api/weekly-plans/{id}/entries/{entryId}` | Edit a draft or an OWNER-reviewable entry |
 | DELETE | `/api/weekly-plans/{id}/entries/{entryId}` | Remove a draft entry |
@@ -108,7 +108,7 @@ Applying passages requires a UUID `request_id`. Repeating the same request and p
 }
 ```
 
-Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. The structured task extractor is behind `WeeklyPlanTaskExtractor`; V1 binds the unavailable implementation and exposes “Chưa kết nối AI”. No external AI request or fabricated suggestion occurs. `WEEKLY_PLAN_DOCUMENT_AI_DRIVER=none` is the safe default.
+Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. AI preview adds explicit passage, context and output limits. The structured task extractor remains behind `WeeklyPlanTaskExtractor`: `none` is the safe default and `openai` uses the shared budgeted AI Gateway only after its key, model, prices and positive budget are configured. It reads persisted passages instead of the original DOCX, returns proposals with source keys/evidence/provenance, and never creates entries or Tasks. HR must choose an active scoped assignee and submit through the existing idempotent `source/apply` flow. See `docs/AI_GATEWAY_V1.md`.
 
 ### Explicit rule-based analysis
 
