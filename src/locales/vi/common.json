@@ -871,6 +871,42 @@
       "processing": "Đang đọc file...",
       "submit": "Tải lên và kiểm tra"
     },
+    "googleDocsPreview": {
+      "title": "Đọc kế hoạch từ Google Docs",
+      "description": "Xem trước cấu trúc tài liệu trong thư mục đã được KPS phê duyệt. Thao tác này không tạo kế hoạch hoặc công việc.",
+      "urlLabel": "Đường dẫn Google Docs",
+      "urlPlaceholder": "https://docs.google.com/document/d/...",
+      "urlHint": "Dán liên kết Google Docs nằm trực tiếp trong thư mục đã được phê duyệt.",
+      "urlRequired": "Vui lòng nhập đường dẫn Google Docs.",
+      "submit": "Đọc tài liệu",
+      "loading": "Đang đọc tài liệu...",
+      "documentTitle": "Tài liệu",
+      "identityUnverified": "Tên tab chỉ phản ánh cấu trúc tài liệu, chưa được xác minh với tài khoản nhân viên KPS.",
+      "metrics": {
+        "tabs": "Số tab",
+        "passages": "Đoạn nội dung",
+        "characters": "Ký tự"
+      },
+      "tabsTitle": "Cấu trúc tab",
+      "tabPassages": "{count} đoạn",
+      "tabCharacters": "{count} ký tự",
+      "emptyTabs": "Tài liệu không có tab có thể hiển thị.",
+      "previewOnly": "Đây là bản xem trước chỉ đọc. Hệ thống không tự nhận diện nhân viên, tạo đầu việc hoặc chạy AI.",
+      "errors": {
+        "invalidUrl": "Đường dẫn Google Docs không hợp lệ.",
+        "network": "Không thể kết nối đến máy chủ KPS. Vui lòng kiểm tra mạng và thử lại.",
+        "timeout": "Yêu cầu đọc tài liệu đã hết thời gian chờ. Vui lòng thử lại.",
+        "sessionExpired": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+        "forbidden": "Bạn không có quyền đọc tài liệu Google Docs cho kế hoạch tuần.",
+        "notFound": "Không tìm thấy tài liệu trong thư mục được phê duyệt hoặc tài liệu không thể truy cập.",
+        "changed": "Quyền hoặc vị trí tài liệu đã thay đổi trong lúc đọc. Vui lòng thử lại.",
+        "validation": "Yêu cầu không hợp lệ hoặc tài liệu vượt quá giới hạn cho phép để xem trước.",
+        "rateLimited": "Đang có quá nhiều yêu cầu đọc tài liệu. Vui lòng thử lại sau.",
+        "providerResponse": "Google không cho phép đọc tài liệu hoặc trả về dữ liệu không hợp lệ.",
+        "unavailable": "Tích hợp Google Docs chưa được cấu hình hoặc dịch vụ đang tạm thời không khả dụng trên môi trường này.",
+        "unknown": "Không thể đọc tài liệu. Vui lòng thử lại."
+      }
+    },
     "detail": {
       "metaTitle": "Chi tiết kế hoạch tuần | KIM PHỤC SẮC",
       "metaDescription": "Chi tiết và trạng thái xét duyệt kế hoạch tuần",

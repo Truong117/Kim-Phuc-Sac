@@ -1,8 +1,10 @@
 import { apiDownload, apiRequest } from "@/services/apiClient";
+import { requestGoogleDocsPreview } from "@/services/googleDocsPreviewRequest";
 import type {
   WeeklyPlan,
   WeeklyPlanAiSuggestion,
   WeeklyPlanEntryInput,
+  WeeklyPlanGoogleDocsPreview,
   WeeklyPlanListResponse,
   WeeklyPlanReferences,
   WeeklyPlanReviewStatus,
@@ -38,6 +40,12 @@ export const getWeeklyPlan = async (
   );
   return response.data;
 };
+
+export const previewWeeklyPlanGoogleDocs = (
+  documentUrl: string,
+  signal?: AbortSignal,
+): Promise<WeeklyPlanGoogleDocsPreview> =>
+  requestGoogleDocsPreview(apiRequest, documentUrl, signal);
 
 export const importWeeklyPlan = async (
   file: File,

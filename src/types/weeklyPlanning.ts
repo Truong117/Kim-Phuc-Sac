@@ -205,6 +205,44 @@ export type WeeklyPlanReferences = {
   actions: { can_import: boolean };
 };
 
+export type WeeklyPlanGoogleDocsSourceGroup = {
+  version: number;
+  key: string;
+  title: string;
+  origin: "GOOGLE_DOCS_TAB";
+  order: number;
+  identity_verified: false;
+  evidence: {
+    type: "GOOGLE_DOCS_TAB";
+    tab_id: string | null;
+    parent_tab_id: string | null;
+    nesting_level: number;
+    index: number;
+  };
+};
+
+export type WeeklyPlanGoogleDocsPreviewTab = {
+  tab_id: string;
+  title: string;
+  parent_tab_id: string | null;
+  nesting_level: number;
+  order: number;
+  passage_count: number;
+  character_count: number;
+  source_group: WeeklyPlanGoogleDocsSourceGroup;
+};
+
+export type WeeklyPlanGoogleDocsPreview = {
+  title: string;
+  revision_id: string | null;
+  snapshot_sha256: string;
+  identity_verified: false;
+  tab_count: number;
+  passage_count: number;
+  character_count: number;
+  tabs: WeeklyPlanGoogleDocsPreviewTab[];
+};
+
 export type WeeklyPlanEntryInput = {
   assignee_id: number;
   title: string;
