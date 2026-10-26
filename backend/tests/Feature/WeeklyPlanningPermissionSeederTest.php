@@ -15,7 +15,7 @@ class WeeklyPlanningPermissionSeederTest extends TestCase
     use AuthorizationFixtures;
     use RefreshDatabase;
 
-    public function test_seeder_is_idempotent_additive_and_grants_admin_view_only(): void
+    public function test_seeder_is_idempotent_additive_and_grants_admin_view_and_folder_configuration(): void
     {
         $owner = Role::query()->create(['code' => 'OWNER', 'name' => 'Owner', 'is_system' => true]);
         $hr = Role::query()->create(['code' => 'HR_MANAGER', 'name' => 'HR', 'is_system' => true]);
@@ -34,13 +34,18 @@ class WeeklyPlanningPermissionSeederTest extends TestCase
         $this->assertTrue($hr->fresh()->permissions()->where('code', 'weekly_plans.manage_draft')->exists());
         $this->assertTrue($hr->fresh()->permissions()->where('code', 'unrelated.keep')->exists());
         $adminWeeklyPermissions = $admin->fresh()->permissions()->where('code', 'like', 'weekly_plans.%')->get();
-        $this->assertCount(1, $adminWeeklyPermissions);
-        $this->assertSame('weekly_plans.view', $adminWeeklyPermissions->sole()->code);
-        $this->assertDatabaseHas('role_permissions', [
-            'role_id' => $admin->id,
-            'permission_id' => $adminWeeklyPermissions->sole()->id,
-            'data_scope' => DataScope::ALL->value,
-        ]);
-        $this->assertSame(6, Permission::query()->where('code', 'like', 'weekly_plans.%')->count());
+        $this->assertCount(2, $adminWeeklyPermissions);
+        foreach (['weekly_plans.view', 'weekly_plans.google_docs.configure'] as $code) {
+            $permission = $adminWeeklyPermissions->firstWhere('code', $code);
+            $this->assertNotNull($permission);
+            $this->assertDatabaseHas('role_permissions', [
+                'role_id' => $admin->id,
+                'permission_id' => $permission->id,
+                'data_scope' => DataScope::ALL->value,
+            ]);
+        }
+        $this->assertFalse($hr->fresh()->permissions()->where('code', 'weekly_plans.google_docs.configure')->exists());
+        $this->assertFalse($owner->fresh()->permissions()->where('code', 'weekly_plans.google_docs.configure')->exists());
+        $this->assertSame(7, Permission::query()->where('code', 'like', 'weekly_plans.%')->count());
     }
 }
