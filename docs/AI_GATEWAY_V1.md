@@ -23,6 +23,7 @@ Gateway không tự tạo Task, không tự gán nhân viên, không thay đổi
 - `OPENAI_API_KEY` chỉ tồn tại ở backend secret store; không dùng tên `VITE_*`, không trả về frontend và không ghi log.
 - Ngoài môi trường automated test, gateway chỉ chấp nhận origin HTTPS chính xác `api.openai.com`; cấu hình sai origin fail-closed trước khi gửi API key.
 - Request luôn gửi `store=false` và Structured Outputs với JSON Schema `strict`.
+- Weekly Planning trên model `gpt-6-luna` chỉ được coi là đã cấu hình khi `WEEKLY_PLAN_AI_REASONING_EFFORT=low`; gateway gửi `reasoning.effort=low` và đưa effort vào fingerprint để cache của cấu hình khác không bị tái sử dụng.
 - Instructions coi toàn bộ nội dung tài liệu/báo cáo là untrusted input và cấm thực thi chỉ dẫn nằm trong nguồn.
 - Weekly Planning chỉ gửi kỳ kế hoạch và passages cần phân tích; không gửi email, permission, role, membership hay credential.
 - Endpoint yêu cầu `weekly_plans.manage_draft`, organization scope hợp lệ, active KPS membership và bị throttle hai request/phút/người dùng.
@@ -31,6 +32,7 @@ Gateway không tự tạo Task, không tự gán nhân viên, không thay đổi
 - Retry chỉ áp dụng có giới hạn cho HTTP 429 và 5xx. Timeout/mất kết nối là kết quả không xác định và không được tự retry vì provider có thể đã nhận request; reservation của attempt đó được tính bảo thủ. Các attempt trước response thành công cũng được tính theo mức tối đa để application budget không đánh giá thấp chi phí có thể đã phát sinh.
 - Mỗi HTTP attempt gửi một `X-Client-Request-Id` không chứa dữ liệu nguồn để hỗ trợ đối chiếu với provider. Đây là correlation ID, không được coi là provider idempotency guarantee.
 - Refusal, incomplete response, invalid JSON, schema/source/date sai đều không được áp dụng vào kế hoạch. Kết quả sai hợp đồng nghiệp vụ bị đánh dấu `rejected`, xóa encrypted cache và chỉ được thử lại bằng một hành động rõ ràng của người dùng.
+- `reasoning_tokens` và `incomplete_details.reason` (nếu provider trả về) chỉ được ghi dưới dạng metadata vận hành đã allowlist. Prompt, passages, API key và toàn bộ provider response không được ghi log. `AI_INCOMPLETE` không tự retry.
 - Automated tests chỉ dùng Laravel HTTP fake và SQLite in-memory; không có paid call.
 
 Hai bảng mới:
@@ -58,7 +60,10 @@ Sau khi migration staging đã được duyệt và OpenAI project đã có hard
 ```dotenv
 KPS_AI_DRIVER=fake
 WEEKLY_PLAN_DOCUMENT_AI_DRIVER=openai
-KPS_AI_MODEL=<approved-model-id>
+WEEKLY_PLAN_AI_REASONING_EFFORT=low
+WEEKLY_PLAN_AI_MAX_OUTPUT_TOKENS=6000
+KPS_AI_MODEL=gpt-6-luna
+KPS_AI_MAX_OUTPUT_TOKENS=6000
 KPS_AI_MONTHLY_BUDGET_USD=10.00
 KPS_AI_INPUT_USD_PER_MILLION_TOKENS=<current-input-price>
 KPS_AI_OUTPUT_USD_PER_MILLION_TOKENS=<current-output-price>
@@ -77,8 +82,8 @@ Các giới hạn kỹ thuật được mô tả trong `.env.staging.example`: t
 3. Xác nhận hai bảng ledger, FK/index và trạng thái 14/14; Render runtime vẫn chỉ có DML.
 4. Tạo OpenAI project/key riêng cho staging, đặt provider-side hard usage limit không quá ngân sách đã duyệt.
 5. Đặt secret và giá hiện hành trên Render Staging; giữ `KPS_AI_DRIVER=fake`, chỉ chuyển `WEEKLY_PLAN_DOCUMENT_AI_DRIVER=openai`.
-6. Restart staging backend/queue nếu cần để nạp config. Kiểm tra detail plan trả `source_document.ai.configured=true` và action opaque `can_ai_extract_source=true` cho HR hợp lệ.
-7. Với tài liệu giả không chứa dữ liệu doanh nghiệp thật, thực hiện đúng một preview có phê duyệt chi phí. Kiểm tra output, evidence, ledger, log an toàn và HR confirmation trước source/apply.
+6. Đặt `WEEKLY_PLAN_AI_REASONING_EFFORT=low` và giữ cả giới hạn output của feature/gateway ở `6000`; restart staging backend/queue nếu cần để nạp config. Kiểm tra detail plan trả `source_document.ai.configured=true` và action opaque `can_ai_extract_source=true` cho HR hợp lệ.
+7. Với tài liệu giả không chứa dữ liệu doanh nghiệp thật, thực hiện đúng một preview có phê duyệt chi phí. Kiểm tra output, evidence, ledger, `reasoning_tokens`, `incomplete_reason`, log an toàn và HR confirmation trước source/apply.
 8. Khi có lỗi hoặc chi phí bất thường, chuyển driver Weekly Planning về `none`; không xóa ledger hay passages.
 
 Không bật trên production chỉ vì staging pass. Production cần review riêng về retention, DPA/data residency, model, ngân sách, migration và secret rotation.

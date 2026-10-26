@@ -31,6 +31,16 @@ class OpenAiGateway
 
     private const HARD_MAX_OUTPUT_TOKENS = 10_000;
 
+    /**
+     * Reasoning efforts supported by the approved model integration.
+     * Unknown models fail closed instead of receiving an unverified parameter.
+     *
+     * @var array<string, list<string>>
+     */
+    private const REASONING_EFFORTS_BY_MODEL = [
+        'gpt-6-luna' => ['low', 'medium', 'high', 'xhigh', 'max'],
+    ];
+
     public function isConfigured(): bool
     {
         return trim((string) config('kps_ai.api_key')) !== ''
@@ -61,6 +71,7 @@ class OpenAiGateway
         }
 
         $model = trim((string) config('kps_ai.model'));
+        $reasoningEffort = $this->reasoningEffort($request, $model);
         $maxOutputTokens = min(
             $request->maxOutputTokens,
             (int) config('kps_ai.max_output_tokens', 3000),
@@ -92,7 +103,7 @@ class OpenAiGateway
             throw new AiGatewayException('AI_INPUT_LIMIT_EXCEEDED', 'AI input limit exceeded.');
         }
 
-        $fingerprint = hash('sha256', implode('|', [
+        $fingerprintParts = [
             'openai-responses-v1',
             $model,
             $request->feature,
@@ -101,7 +112,11 @@ class OpenAiGateway
             hash('sha256', $inputJson),
             hash('sha256', $schemaJson),
             (string) $maxOutputTokens,
-        ]));
+        ];
+        if ($reasoningEffort !== null) {
+            $fingerprintParts[] = "reasoning_effort:{$reasoningEffort}";
+        }
+        $fingerprint = hash('sha256', implode('|', $fingerprintParts));
         $reservation = $this->reserve($request, $fingerprint, $model, $maxOutputTokens);
         /** @var AiUsageRecord $record */
         $record = $reservation['record'];
@@ -139,6 +154,9 @@ class OpenAiGateway
                 'schema' => $request->schema,
             ]],
         ];
+        if ($reasoningEffort !== null) {
+            $payload['reasoning'] = ['effort' => $reasoningEffort];
+        }
         $startedAt = microtime(true);
         $providerAttempts = 0;
         $inputTokens = null;
@@ -151,6 +169,7 @@ class OpenAiGateway
             $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
             $inputTokens = $this->usageValue($response, 'input_tokens');
             $outputTokens = $this->usageValue($response, 'output_tokens');
+            $this->logProviderMetadata($record, $response, $reasoningEffort);
 
             if (! $response->successful()) {
                 $code = match (true) {
@@ -632,6 +651,58 @@ class OpenAiGateway
         $value = $response->json("usage.{$key}");
 
         return is_int($value) && $value >= 0 ? $value : null;
+    }
+
+    private function reasoningEffort(AiGatewayRequest $request, string $model): ?string
+    {
+        if ($request->reasoningEffort === null || trim($request->reasoningEffort) === '') {
+            return null;
+        }
+
+        $effort = strtolower(trim($request->reasoningEffort));
+        if (! in_array($effort, self::REASONING_EFFORTS_BY_MODEL[$model] ?? [], true)) {
+            throw new AiGatewayException(
+                'AI_UNSUPPORTED_REASONING_EFFORT',
+                'The configured reasoning effort is not supported by the selected model.',
+            );
+        }
+
+        return $effort;
+    }
+
+    private function safeProviderMetadataValue(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return preg_match('/^[a-zA-Z0-9._-]{1,64}$/', $value) === 1 ? $value : null;
+    }
+
+    private function logProviderMetadata(
+        AiUsageRecord $record,
+        Response $response,
+        ?string $reasoningEffort,
+    ): void {
+        Log::info('ai_gateway_provider_metadata', [
+            'usage_record_id' => $record->id,
+            'organization_id' => $record->organization_id,
+            'feature' => $record->feature,
+            'provider' => self::PROVIDER,
+            'model' => $record->model,
+            'http_status' => $response->status(),
+            'response_status' => $this->safeProviderMetadataValue($response->json('status')),
+            'reasoning_effort' => $reasoningEffort,
+            'reasoning_tokens' => $this->usageValue(
+                $response,
+                'output_tokens_details.reasoning_tokens',
+            ),
+            'incomplete_reason' => $this->safeProviderMetadataValue(
+                $response->json('incomplete_details.reason'),
+            ),
+        ]);
     }
 
     private function retryDelay(Response $response, int $attempt): ?int

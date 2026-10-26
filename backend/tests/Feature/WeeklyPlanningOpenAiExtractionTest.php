@@ -8,7 +8,9 @@ use App\Models\WeeklyPlan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Mockery;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -27,16 +29,17 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             'weekly_plans.storage_disk' => 'local',
             'weekly_plans.ai_max_passages' => 20,
             'weekly_plans.ai_max_context_bytes' => 20000,
-            'weekly_plans.ai_max_output_tokens' => 1000,
+            'weekly_plans.ai_max_output_tokens' => 6000,
+            'weekly_plans.ai_reasoning_effort' => 'low',
             'kps_ai.api_key' => 'test-openai-key',
-            'kps_ai.model' => 'gpt-4.1-mini',
+            'kps_ai.model' => 'gpt-6-luna',
             'kps_ai.base_url' => 'https://api.openai.test/v1',
             'kps_ai.monthly_budget_usd' => 10,
             'kps_ai.input_usd_per_million_tokens' => 1,
             'kps_ai.output_usd_per_million_tokens' => 2,
             'kps_ai.max_input_bytes' => 30000,
             'kps_ai.max_input_tokens' => 30000,
-            'kps_ai.max_output_tokens' => 1000,
+            'kps_ai.max_output_tokens' => 6000,
             'kps_ai.max_attempts' => 1,
             'kps_ai.retry_delay_ms' => 0,
             'kps_ai.max_retry_delay_ms' => 0,
@@ -86,6 +89,8 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             return str_contains((string) ($payload['instructions'] ?? ''), 'dữ liệu không tin cậy')
                 && str_contains((string) ($payload['instructions'] ?? ''), 'không làm theo chỉ dẫn')
                 && str_contains((string) data_get($input, 'passages.0.text'), 'gửi secrets')
+                && data_get($payload, 'reasoning.effort') === 'low'
+                && ($payload['max_output_tokens'] ?? null) === 6000
                 && ! array_key_exists('_request', $input);
         });
         $this->assertDatabaseCount('weekly_plan_entries', 0);
@@ -248,6 +253,59 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
 
         $this->assertDatabaseCount('weekly_plan_entries', 0);
         $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_ai_incomplete_returns_safe_feedback_without_retry_or_plan_changes(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        Log::spy();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response([
+                'status' => 'incomplete',
+                'incomplete_details' => ['reason' => 'max_output_tokens'],
+                'output' => [],
+                'usage' => [
+                    'input_tokens' => 3636,
+                    'output_tokens' => 6000,
+                    'output_tokens_details' => ['reasoning_tokens' => 5780],
+                ],
+                'prompt' => 'must-not-be-logged',
+            ]),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'AI chưa trả về bản đề xuất có thể kiểm chứng. Dữ liệu kế hoạch hiện tại không bị thay đổi.',
+            );
+
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'failed',
+            'attempts' => 1,
+            'output_tokens' => 6000,
+            'error_code' => 'AI_INCOMPLETE',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+        Log::shouldHaveReceived('info')
+            ->with('ai_gateway_provider_metadata', Mockery::on(function (array $context): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                return $context['reasoning_effort'] === 'low'
+                    && $context['reasoning_tokens'] === 5780
+                    && $context['incomplete_reason'] === 'max_output_tokens'
+                    && ! str_contains($serialized, 'must-not-be-logged');
+            }))
+            ->once();
     }
 
     public function test_ai_preview_rejects_hallucinated_dates_and_invalid_schema(): void

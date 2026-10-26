@@ -13,6 +13,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Mockery;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -125,10 +127,109 @@ class AiGatewayTest extends TestCase
             'feature' => 'daily_report_analysis',
             'status' => 'completed',
         ]);
+        Http::assertSent(function (Request $request): bool {
+            $payload = $request->data();
+
+            return data_get($payload, 'text.format.name') === 'kps_daily_report_analysis'
+                && ! array_key_exists('reasoning', $payload);
+        });
+    }
+
+    public function test_reasoning_effort_is_validated_and_sent_for_the_supported_model(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        config()->set('kps_ai.model', 'gpt-6-luna');
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['summary' => 'Reasoned result']),
+            ),
+        ]);
+
+        app(OpenAiGateway::class)->respond(
+            $this->request($organizationId, $user->id, 'reasoning-low', 'low'),
+        );
+
         Http::assertSent(fn (Request $request): bool => data_get(
             $request->data(),
-            'text.format.name',
-        ) === 'kps_daily_report_analysis');
+            'reasoning.effort',
+        ) === 'low');
+    }
+
+    public function test_unsupported_reasoning_effort_fails_closed_before_provider_or_ledger_access(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        config()->set('kps_ai.model', 'gpt-6-luna');
+        Http::fake();
+
+        try {
+            app(OpenAiGateway::class)->respond(
+                $this->request($organizationId, $user->id, 'reasoning-unsupported', 'none'),
+            );
+            $this->fail('Expected an unsupported reasoning effort to fail closed.');
+        } catch (AiGatewayException $exception) {
+            $this->assertSame('AI_UNSUPPORTED_REASONING_EFFORT', $exception->errorCode);
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_usage_records', 0);
+    }
+
+    public function test_reasoning_effort_is_part_of_the_cache_fingerprint(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        config()->set('kps_ai.model', 'gpt-6-luna');
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::sequence()
+                ->push($this->completedResponse(['summary' => 'Low']))
+                ->push($this->completedResponse(['summary' => 'Medium'])),
+        ]);
+        $gateway = app(OpenAiGateway::class);
+
+        $low = $gateway->respond(
+            $this->request($organizationId, $user->id, 'same-reasoning-input', 'low'),
+        );
+        $medium = $gateway->respond(
+            $this->request($organizationId, $user->id, 'same-reasoning-input', 'medium'),
+        );
+        $cachedLow = $gateway->respond(
+            $this->request($organizationId, $user->id, 'same-reasoning-input', 'low'),
+        );
+
+        $this->assertSame(['summary' => 'Low'], $low->result);
+        $this->assertSame(['summary' => 'Medium'], $medium->result);
+        $this->assertTrue($cachedLow->cached);
+        Http::assertSentCount(2);
+        $this->assertDatabaseCount('ai_usage_records', 2);
+    }
+
+    public function test_provider_log_contains_only_allowlisted_reasoning_metadata(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        config()->set('kps_ai.model', 'gpt-6-luna');
+        Log::spy();
+        $response = $this->completedResponse(['summary' => 'Safe result']);
+        $response['provider_secret'] = 'must-not-be-logged';
+        $response['prompt'] = 'private passages';
+        $response['usage']['output_tokens_details'] = ['reasoning_tokens' => 17];
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response($response),
+        ]);
+
+        app(OpenAiGateway::class)->respond(
+            $this->request($organizationId, $user->id, 'safe-reasoning-log', 'low'),
+        );
+
+        Log::shouldHaveReceived('info')
+            ->with('ai_gateway_provider_metadata', Mockery::on(function (array $context): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                return $context['reasoning_effort'] === 'low'
+                    && $context['reasoning_tokens'] === 17
+                    && $context['incomplete_reason'] === null
+                    && ! str_contains($serialized, 'must-not-be-logged')
+                    && ! str_contains($serialized, 'private passages');
+            }))
+            ->once();
     }
 
     public function test_budget_and_configuration_fail_closed_before_any_http_request(): void
@@ -489,8 +590,12 @@ class AiGatewayTest extends TestCase
         return [$user, $membership['organization_id']];
     }
 
-    private function request(int $organizationId, int $userId, string $idempotencyKey): AiGatewayRequest
-    {
+    private function request(
+        int $organizationId,
+        int $userId,
+        string $idempotencyKey,
+        ?string $reasoningEffort = null,
+    ): AiGatewayRequest {
         return new AiGatewayRequest(
             organizationId: $organizationId,
             requestedByUserId: $userId,
@@ -506,6 +611,7 @@ class AiGatewayTest extends TestCase
                 'additionalProperties' => false,
             ],
             maxOutputTokens: 100,
+            reasoningEffort: $reasoningEffort,
         );
     }
 
