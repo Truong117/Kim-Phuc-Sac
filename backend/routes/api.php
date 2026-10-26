@@ -15,6 +15,8 @@ use App\Http\Controllers\Reports\TodayReportController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsFolderRegistryController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsPreviewController;
 use App\Http\Controllers\WeeklyPlanning\WeeklyPlanController;
 use Illuminate\Support\Facades\Route;
 
@@ -87,6 +89,15 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         ->middleware('permission:tasks.manage');
 
     Route::prefix('weekly-plans')->group(function (): void {
+        Route::post('/google-docs/preview', GoogleDocsPreviewController::class)
+            ->middleware([
+                'permission:weekly_plans.manage_draft,organization',
+                'throttle:google-docs-preview',
+            ]);
+        Route::put('/google-docs/folder', [GoogleDocsFolderRegistryController::class, 'update'])
+            ->middleware('permission:weekly_plans.google_docs.configure,organization');
+        Route::delete('/google-docs/folder', [GoogleDocsFolderRegistryController::class, 'destroy'])
+            ->middleware('permission:weekly_plans.google_docs.configure,organization');
         Route::get('/references', [WeeklyPlanController::class, 'references'])
             ->middleware('permission:weekly_plans.view,organization');
         Route::get('/template', [WeeklyPlanController::class, 'template'])

@@ -19,6 +19,7 @@ class WeeklyPlanningPermissionSeeder extends Seeder
         'weekly_plans.review' => 'Xét duyệt kế hoạch theo nhân viên',
         'weekly_plans.approve' => 'Phê duyệt cuối kế hoạch tuần',
         'weekly_plans.publish' => 'Phát hành kế hoạch tuần thành công việc',
+        'weekly_plans.google_docs.configure' => 'Cấu hình thư mục Google Docs được phê duyệt',
     ];
 
     public function run(): void
@@ -53,9 +54,11 @@ class WeeklyPlanningPermissionSeeder extends Seeder
                 ]);
             }
 
-            $admin->permissions()->syncWithoutDetaching([
-                $permissions['weekly_plans.view']->id => ['data_scope' => DataScope::ALL->value],
-            ]);
+            foreach (['weekly_plans.view', 'weekly_plans.google_docs.configure'] as $code) {
+                $admin->permissions()->syncWithoutDetaching([
+                    $permissions[$code]->id => ['data_scope' => DataScope::ALL->value],
+                ]);
+            }
         });
     }
 }

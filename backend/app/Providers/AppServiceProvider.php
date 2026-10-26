@@ -2,16 +2,28 @@
 
 namespace App\Providers;
 
+use App\Http\Middleware\EnsureActiveKpsMembership;
 use App\Services\AI\DailyReportAiProvider;
 use App\Services\AI\FakeDailyReportProvider;
 use App\Services\AI\OpenAiDailyReportProvider;
 use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
+use App\Services\WeeklyPlanning\GoogleDocs\Contracts\ApprovedGoogleDriveFolderRegistry;
+use App\Services\WeeklyPlanning\GoogleDocs\Contracts\GoogleAuthorizedHttpClientFactory;
+use App\Services\WeeklyPlanning\GoogleDocs\Contracts\GoogleDocsApiClient;
+use App\Services\WeeklyPlanning\GoogleDocs\Contracts\GoogleDriveFileMetadataClient;
+use App\Services\WeeklyPlanning\GoogleDocs\DatabaseApprovedGoogleDriveFolderRegistry;
+use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsApiTransport;
+use App\Services\WeeklyPlanning\GoogleDocs\GoogleDriveFileMetadataTransport;
+use App\Services\WeeklyPlanning\GoogleDocs\GoogleServiceAccountHttpClientFactory;
 use App\Services\WeeklyPlanning\OpenAiWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\UnavailableWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\WeeklyPlanSuggestionGenerator;
 use App\Services\WeeklyPlanning\WeeklyPlanSuggestionService;
 use App\Support\EnvironmentSafety;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -24,6 +36,20 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             WeeklyPlanSuggestionGenerator::class,
             WeeklyPlanSuggestionService::class,
+        );
+
+        $this->app->bind(
+            GoogleAuthorizedHttpClientFactory::class,
+            GoogleServiceAccountHttpClientFactory::class,
+        );
+        $this->app->bind(GoogleDocsApiClient::class, GoogleDocsApiTransport::class);
+        $this->app->bind(
+            GoogleDriveFileMetadataClient::class,
+            GoogleDriveFileMetadataTransport::class,
+        );
+        $this->app->bind(
+            ApprovedGoogleDriveFolderRegistry::class,
+            DatabaseApprovedGoogleDriveFolderRegistry::class,
         );
 
         $this->app->bind(WeeklyPlanTaskExtractor::class, function ($app): WeeklyPlanTaskExtractor {
@@ -48,6 +74,19 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('google-docs-preview', function (Request $request): Limit {
+            $membership = $request->attributes->get(EnsureActiveKpsMembership::REQUEST_ATTRIBUTE);
+            $organizationId = is_object($membership) ? ($membership->organization_id ?? 'none') : 'none';
+            $userId = $request->user()?->getAuthIdentifier() ?? 'guest';
+
+            return Limit::perMinute(max(1, (int) config('google_docs.preview_per_minute', 4)))
+                ->by("google-docs-preview:{$organizationId}:{$userId}")
+                ->response(fn (Request $request, array $headers) => response()->json([
+                    'message' => 'Bạn đã gửi quá nhiều yêu cầu xem trước. Vui lòng thử lại sau.',
+                    'code' => 'GOOGLE_DOCS_PREVIEW_RATE_LIMITED',
+                ], 429, $headers));
+        });
+
         $runningInConsole = $this->app->runningInConsole();
         $consoleCommand = $runningInConsole ? ($_SERVER['argv'][1] ?? null) : null;
         $consoleCommand = is_string($consoleCommand) ? $consoleCommand : null;
