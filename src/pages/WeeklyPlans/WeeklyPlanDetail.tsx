@@ -6,6 +6,7 @@ import Select from "@/components/form/Select";
 import TextArea from "@/components/form/input/TextArea";
 import WeeklyPlanEntries from "@/components/weekly-plans/WeeklyPlanEntries";
 import WeeklyPlanEntryForm from "@/components/weekly-plans/WeeklyPlanEntryForm";
+import GoogleDocsEmployeeMappingPanel from "@/components/weekly-plans/GoogleDocsEmployeeMappingPanel";
 import WeeklyPlanMappingPanel from "@/components/weekly-plans/WeeklyPlanMappingPanel";
 import WeeklyPlanSourceDocument from "@/components/weekly-plans/WeeklyPlanSourceDocument";
 import WeeklyPlanSourceRecovery from "@/components/weekly-plans/WeeklyPlanSourceRecovery";
@@ -356,6 +357,11 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             }
           />
         )}
+
+        {plan.source_type === "GOOGLE_DOCS" &&
+          plan.actions.can_manage_google_docs_mappings && (
+            <GoogleDocsEmployeeMappingPanel key={plan.id} planId={plan.id} />
+          )}
 
         {plan.parse_status === "NEEDS_MAPPING" &&
           (plan.parse_metadata?.headers?.length ?? 0) > 0 &&
