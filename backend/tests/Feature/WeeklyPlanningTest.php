@@ -417,6 +417,96 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
+    public function test_resource_allowlists_google_tab_evidence_without_merging_duplicate_titles_or_verifying_identity(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->sectionedNarrativeDocx(),
+        ])->assertCreated();
+        $plan = WeeklyPlan::query()->findOrFail((int) $imported->json('data.id'));
+        $passages = $plan->sourcePassages()->orderBy('sequence')->take(3)->get();
+
+        foreach ([
+            [
+                'passage' => $passages[0],
+                'key' => 'google-docs-tab:first',
+                'tab_id' => 'tab-first',
+                'parent_tab_id' => null,
+                'nesting_level' => 0,
+                'index' => 0,
+                'order' => 1,
+            ],
+            [
+                'passage' => $passages[1],
+                'key' => 'google-docs-tab:second',
+                'tab_id' => 'tab-second',
+                'parent_tab_id' => 'tab-first',
+                'nesting_level' => 1,
+                'index' => 0,
+                'order' => 2,
+            ],
+        ] as $tab) {
+            $evidence = [
+                'type' => 'GOOGLE_DOCS_TAB',
+                'tab_id' => $tab['tab_id'],
+                'parent_tab_id' => $tab['parent_tab_id'],
+                'nesting_level' => $tab['nesting_level'],
+                'index' => $tab['index'],
+                'internal_document_id' => 'must-not-be-exposed',
+            ];
+            $tab['passage']->forceFill(['metadata' => [
+                'tab_id' => $tab['tab_id'],
+                'tab_title' => 'Tên trùng nhau',
+                'raw_google_url' => 'https://docs.google.com/document/d/must-not-be-exposed',
+                'provider_payload' => ['credential' => 'must-not-be-exposed'],
+                'source_context' => [
+                    'version' => 1,
+                    'key' => $tab['key'],
+                    'origin' => 'GOOGLE_DOCS_TAB',
+                    'order' => $tab['order'],
+                    'evidence' => $evidence,
+                ],
+                'source_group' => [
+                    'version' => 1,
+                    'key' => $tab['key'],
+                    'title' => 'Tên trùng nhau',
+                    'origin' => 'GOOGLE_DOCS_TAB',
+                    'order' => $tab['order'],
+                    'identity_verified' => true,
+                    'evidence' => $evidence,
+                ],
+            ]])->save();
+        }
+
+        $response = $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.passages.0.metadata', [])
+            ->assertJsonPath('data.source_document.passages.0.source_context.origin', 'GOOGLE_DOCS_TAB')
+            ->assertJsonPath('data.source_document.passages.0.source_context.order', 1)
+            ->assertJsonPath('data.source_document.passages.0.source_context.evidence.tab_id', 'tab-first')
+            ->assertJsonPath('data.source_document.passages.1.source_group.title', 'Tên trùng nhau')
+            ->assertJsonPath('data.source_document.passages.1.source_group.order', 2)
+            ->assertJsonPath('data.source_document.passages.1.source_group.identity_verified', false)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.tab_id', 'tab-second')
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.parent_tab_id', 'tab-first')
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.nesting_level', 1)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.index', 0)
+            ->assertJsonPath('data.source_document.passages.2.source_context.origin', 'DOCX_SECTION')
+            ->assertJsonPath('data.source_document.passages.2.source_context.evidence.type', 'OOXML_SECTION');
+
+        $this->assertNotSame(
+            $response->json('data.source_document.passages.0.source_group.key'),
+            $response->json('data.source_document.passages.1.source_group.key'),
+        );
+        $serialized = json_encode($response->json('data'), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('must-not-be-exposed', $serialized);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
     public function test_hr_assigns_manual_groups_idempotently_and_applies_only_same_group_with_verified_assignee(): void
     {
         [$hr] = $this->userWithPermissions([

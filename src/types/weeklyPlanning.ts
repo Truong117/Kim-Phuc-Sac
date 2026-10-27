@@ -19,6 +19,25 @@ export type WeeklyPlanEmployee = {
   location: { id: number; name: string } | null;
 };
 
+export type WeeklyPlanGoogleDocsTabEvidence = {
+  type: "GOOGLE_DOCS_TAB";
+  tab_id: string | null;
+  parent_tab_id: string | null;
+  nesting_level: number | null;
+  index: number | null;
+};
+
+export type WeeklyPlanSourceEvidence =
+  | WeeklyPlanGoogleDocsTabEvidence
+  | {
+      type: string | null;
+      section?: number | null;
+      start_sequence?: number | null;
+      end_sequence?: number | null;
+      start_source_key?: string | null;
+      end_source_key?: string | null;
+    };
+
 export type WeeklyPlanEntry = {
   id: number;
   source_row: number | null;
@@ -51,9 +70,9 @@ export type WeeklyPlanSourcePassage = {
   source_context: {
     version: number;
     key: string;
-    origin: "DOCX_SECTION";
+    origin: "DOCX_SECTION" | "GOOGLE_DOCS_TAB";
     order: number;
-    evidence: Record<string, unknown>;
+    evidence: WeeklyPlanSourceEvidence;
   } | null;
   source_group: {
     version: number;
@@ -62,7 +81,7 @@ export type WeeklyPlanSourcePassage = {
     origin: "MANUAL" | "GOOGLE_DOCS_TAB";
     order: number;
     identity_verified: false;
-    evidence: Record<string, unknown>;
+    evidence: WeeklyPlanSourceEvidence;
   } | null;
 };
 
@@ -212,13 +231,7 @@ export type WeeklyPlanGoogleDocsSourceGroup = {
   origin: "GOOGLE_DOCS_TAB";
   order: number;
   identity_verified: false;
-  evidence: {
-    type: "GOOGLE_DOCS_TAB";
-    tab_id: string | null;
-    parent_tab_id: string | null;
-    nesting_level: number;
-    index: number;
-  };
+  evidence: WeeklyPlanGoogleDocsTabEvidence;
 };
 
 export type WeeklyPlanGoogleDocsPreviewTab = {
