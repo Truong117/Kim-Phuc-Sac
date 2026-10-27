@@ -241,7 +241,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
                 {t("detail.fileName")}
               </dt>
               <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                {plan.source_file.name}
+                {plan.source_document.google_docs?.title ?? plan.source_file.name}
               </dd>
             </div>
             <div>
@@ -262,10 +262,14 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             </div>
             <div>
               <dt className="text-gray-500 dark:text-gray-400">
-                {t("detail.fileSize")}
+                {plan.source_type === "GOOGLE_DOCS"
+                  ? t("detail.characterCount")
+                  : t("detail.fileSize")}
               </dt>
               <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                {Math.ceil(plan.source_file.size / 1024)} KB
+                {plan.source_type === "GOOGLE_DOCS"
+                  ? plan.source_document.google_docs?.character_count
+                  : `${Math.ceil(plan.source_file.size / 1024)} KB`}
               </dd>
             </div>
           </dl>
@@ -323,7 +327,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
           />
         </ComponentCard>
 
-        {plan.source_file.extension === "docx" && (
+        {["docx", "gdoc"].includes(plan.source_file.extension) && (
           <WeeklyPlanSourceDocument
             plan={plan}
             employees={references.employees}

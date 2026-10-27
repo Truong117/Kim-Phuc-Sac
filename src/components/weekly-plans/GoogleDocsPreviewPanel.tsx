@@ -2,8 +2,18 @@ import Input from "@/components/form/input/InputField";
 import Button from "@/components/ui/button/Button";
 import { DocsIcon } from "@/icons";
 import { ApiServiceError } from "@/services/apiClient";
-import { previewWeeklyPlanGoogleDocs } from "@/services/weeklyPlanningService";
-import type { WeeklyPlanGoogleDocsPreview } from "@/types/weeklyPlanning";
+import {
+  claimGoogleDocsSourceRequest,
+  releaseGoogleDocsSourceRequest,
+} from "@/services/googleDocsSourceRequest";
+import {
+  importWeeklyPlanGoogleDocs,
+  previewWeeklyPlanGoogleDocs,
+} from "@/services/weeklyPlanningService";
+import type {
+  WeeklyPlan,
+  WeeklyPlanGoogleDocsPreview,
+} from "@/types/weeklyPlanning";
 import {
   buildGoogleDocsTabTree,
   getGoogleDocsPreviewErrorKey,
@@ -52,7 +62,11 @@ function TabTree({ nodes, passagesLabel, charactersLabel }: TabTreeProps) {
   );
 }
 
-export default function GoogleDocsPreviewPanel() {
+type Props = {
+  onImported: (plan: WeeklyPlan) => void;
+};
+
+export default function GoogleDocsPreviewPanel({ onImported }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.googleDocsPreview",
   });
@@ -63,6 +77,10 @@ export default function GoogleDocsPreviewPanel() {
   const [preview, setPreview] = useState<WeeklyPlanGoogleDocsPreview | null>(
     null,
   );
+  const [requestId, setRequestId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importingRef = useRef(false);
+  const importController = useRef<AbortController | null>(null);
   const requestLifecycle =
     useRef<GoogleDocsPreviewRequestLifecycle<WeeklyPlanGoogleDocsPreview> | null>(
       null,
@@ -76,6 +94,9 @@ export default function GoogleDocsPreviewPanel() {
   useEffect(
     () => () => {
       requestLifecycle.current?.cancel();
+      importController.current?.abort();
+      importController.current = null;
+      releaseGoogleDocsSourceRequest(importingRef);
     },
     [],
   );
@@ -108,7 +129,10 @@ export default function GoogleDocsPreviewPanel() {
           setPreview(null);
           setLoading(true);
         },
-        onSuccess: setPreview,
+        onSuccess: (nextPreview) => {
+          setPreview(nextPreview);
+          setRequestId(crypto.randomUUID());
+        },
         onError: (nextError) => {
           setError(
             nextError instanceof ApiServiceError
@@ -123,6 +147,56 @@ export default function GoogleDocsPreviewPanel() {
   };
 
   const tabTree = preview ? buildGoogleDocsTabTree(preview.tabs) : [];
+
+  const confirmSource = async () => {
+    if (
+      !preview ||
+      !requestId ||
+      !claimGoogleDocsSourceRequest(importingRef)
+    )
+      return;
+
+    const controller = new AbortController();
+    importController.current?.abort();
+    importController.current = controller;
+    setImporting(true);
+    setError(null);
+    try {
+      const plan = await importWeeklyPlanGoogleDocs(
+        trimmedUrl,
+        preview.snapshot_sha256,
+        requestId,
+        controller.signal,
+      );
+      if (
+        importController.current === controller &&
+        !controller.signal.aborted
+      )
+        onImported(plan);
+    } catch (nextError) {
+      if (importController.current !== controller) return;
+      if (nextError instanceof DOMException && nextError.name === "AbortError") {
+        return;
+      }
+      if (nextError instanceof ApiServiceError) {
+        if (nextError.status === 409) {
+          setPreview(null);
+          setRequestId(null);
+          setError(nextError.message || t("errors.changed"));
+        } else {
+          setError(t(`errors.${getGoogleDocsPreviewErrorKey(nextError.status)}`));
+        }
+      } else {
+        setError(t("errors.confirm"));
+      }
+    } finally {
+      if (importController.current === controller) {
+        importController.current = null;
+        releaseGoogleDocsSourceRequest(importingRef);
+        setImporting(false);
+      }
+    }
+  };
 
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
@@ -169,16 +243,21 @@ export default function GoogleDocsPreviewPanel() {
               onBlur={() => setTouched(true)}
               onChange={(event) => {
                 requestLifecycle.current?.cancel();
+                importController.current?.abort();
+                importController.current = null;
+                releaseGoogleDocsSourceRequest(importingRef);
                 setDocumentUrl(event.target.value);
                 setError(null);
                 setPreview(null);
+                setRequestId(null);
                 setLoading(false);
+                setImporting(false);
               }}
             />
           </div>
           <Button
             type="submit"
-            disabled={loading}
+            disabled={loading || importing}
             className="bg-kps-primary hover:bg-kps-primary-hover sm:min-w-36"
             startIcon={
               loading ? (
@@ -275,6 +354,19 @@ export default function GoogleDocsPreviewPanel() {
           <p className="text-theme-xs text-gray-500 dark:text-gray-400">
             {t("previewOnly")}
           </p>
+          <div className="flex flex-col gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+              {t("confirmHint")}
+            </p>
+            <Button
+              type="button"
+              disabled={importing || !requestId}
+              className="bg-kps-primary hover:bg-kps-primary-hover sm:min-w-44"
+              onClick={() => void confirmSource()}
+            >
+              {importing ? t("confirming") : t("confirm")}
+            </Button>
+          </div>
         </div>
       )}
     </section>

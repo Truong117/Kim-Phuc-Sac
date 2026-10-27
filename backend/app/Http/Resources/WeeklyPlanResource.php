@@ -15,6 +15,7 @@ class WeeklyPlanResource extends JsonResource
             'week_start' => $this->week_start->toDateString(),
             'week_end' => $this->week_end->toDateString(),
             'status' => $this->status->value,
+            'source_type' => $this->source_type->value,
             'parse_status' => $this->parse_status->value,
             'parse_metadata' => $this->parse_metadata,
             'source_file' => [
@@ -36,6 +37,7 @@ class WeeklyPlanResource extends JsonResource
                     'max_passages_per_entry' => 20,
                     'max_entries_per_request' => 20,
                 ],
+                'google_docs' => $this->googleDocsSourcePayload(),
                 'passages' => $this->whenLoaded('sourcePassages', fn () => $this->sourcePassages->map(
                     fn ($passage): array => [
                         'id' => $passage->id,
@@ -176,6 +178,68 @@ class WeeklyPlanResource extends JsonResource
             'published_at' => $this->published_at?->toISOString(),
             'actions' => $this->getAttribute('actions') ?? [],
         ];
+    }
+
+    /** @return array<string, mixed>|null */
+    private function googleDocsSourcePayload(): ?array
+    {
+        if (! $this->relationLoaded('googleDocsSource') || $this->googleDocsSource === null) {
+            return null;
+        }
+
+        return [
+            'title' => $this->googleDocsSource->document_title,
+            'snapshot_sha256' => $this->googleDocsSource->snapshot_sha256,
+            'identity_verified' => false,
+            'tab_count' => count($this->googleDocsTabManifest()),
+            'passage_count' => $this->googleDocsSource->passage_count,
+            'character_count' => $this->googleDocsSource->character_count,
+            'tabs' => $this->googleDocsTabManifest(),
+            'captured_at' => $this->googleDocsSource->captured_at?->toISOString(),
+            'last_verified_at' => $this->googleDocsSource->last_verified_at?->toISOString(),
+            'stale_at' => $this->googleDocsSource->stale_at?->toISOString(),
+        ];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function googleDocsTabManifest(): array
+    {
+        if (! $this->relationLoaded('googleDocsSource') || $this->googleDocsSource === null) {
+            return [];
+        }
+
+        $manifest = $this->googleDocsSource->tab_manifest;
+        if (! is_array($manifest) || ! array_is_list($manifest)) {
+            return [];
+        }
+
+        return collect($manifest)
+            ->filter(fn (mixed $tab): bool => is_array($tab))
+            ->map(function (array $tab): array {
+                $group = $this->sourceGroup(['source_group' => $tab['source_group'] ?? null]);
+
+                return [
+                    'tab_id' => is_string($tab['tab_id'] ?? null) ? $tab['tab_id'] : null,
+                    'title' => is_string($tab['title'] ?? null) ? $tab['title'] : '',
+                    'parent_tab_id' => is_string($tab['parent_tab_id'] ?? null)
+                        ? $tab['parent_tab_id']
+                        : null,
+                    'nesting_level' => is_int($tab['nesting_level'] ?? null)
+                        ? $tab['nesting_level']
+                        : 0,
+                    'index' => is_int($tab['index'] ?? null) ? $tab['index'] : 0,
+                    'order' => is_int($tab['order'] ?? null) ? $tab['order'] : 0,
+                    'passage_count' => is_int($tab['passage_count'] ?? null)
+                        ? $tab['passage_count']
+                        : 0,
+                    'character_count' => is_int($tab['character_count'] ?? null)
+                        ? $tab['character_count']
+                        : 0,
+                    'source_group' => $group,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     /** @return array<string, mixed>|null */

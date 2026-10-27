@@ -1,5 +1,6 @@
 import { apiDownload, apiRequest } from "@/services/apiClient";
 import { requestGoogleDocsPreview } from "@/services/googleDocsPreviewRequest";
+import { requestGoogleDocsSource } from "@/services/googleDocsSourceRequest";
 import type {
   WeeklyPlan,
   WeeklyPlanAiSuggestion,
@@ -46,6 +47,21 @@ export const previewWeeklyPlanGoogleDocs = (
   signal?: AbortSignal,
 ): Promise<WeeklyPlanGoogleDocsPreview> =>
   requestGoogleDocsPreview(apiRequest, documentUrl, signal);
+
+export const importWeeklyPlanGoogleDocs = async (
+  documentUrl: string,
+  expectedSnapshotSha256: string,
+  requestId: string,
+  signal?: AbortSignal,
+): Promise<WeeklyPlan> => {
+  return requestGoogleDocsSource(
+    apiRequest,
+    documentUrl,
+    expectedSnapshotSha256,
+    requestId,
+    signal,
+  );
+};
 
 export const importWeeklyPlan = async (
   file: File,

@@ -234,6 +234,7 @@ class GoogleDocsDocumentReaderTest extends TestCase
         $this->assertSame([
             'api/weekly-plans/google-docs/folder',
             'api/weekly-plans/google-docs/folder',
+            'api/weekly-plans/google-docs/import',
             'api/weekly-plans/google-docs/preview',
         ], $googleDocsRoutes->sort()->values()->all());
     }

@@ -20,7 +20,12 @@ export default function WeeklyPlanSourceRecovery({
   const [replacement, setReplacement] = useState<File | null>(null);
   const availability = plan.source_file.availability;
 
-  if (!availability || availability === "AVAILABLE") return null;
+  if (
+    !availability ||
+    availability === "AVAILABLE" ||
+    availability === "NOT_APPLICABLE"
+  )
+    return null;
 
   const extension = plan.source_file.extension.toLowerCase();
 

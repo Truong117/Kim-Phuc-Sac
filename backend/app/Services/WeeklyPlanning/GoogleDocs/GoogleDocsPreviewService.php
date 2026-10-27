@@ -17,6 +17,43 @@ final class GoogleDocsPreviewService
     /** @return array<string, mixed> */
     public function preview(User $actor, string $documentUrl): array
     {
+        $authorized = $this->readAuthorized($actor, $documentUrl);
+        $snapshot = $authorized['snapshot'];
+
+        $tabs = array_map(fn (array $tab): array => [
+            'tab_id' => $tab['tab_id'],
+            'title' => $tab['title'],
+            'parent_tab_id' => $tab['parent_tab_id'],
+            'nesting_level' => $tab['nesting_level'],
+            'order' => $tab['order'],
+            'passage_count' => $tab['passage_count'],
+            'character_count' => $tab['character_count'],
+            'source_group' => $this->safeSourceGroup($tab['source_group']),
+        ], $snapshot['tabs']);
+
+        return [
+            'title' => $snapshot['title'],
+            'revision_id' => $snapshot['revision_id'],
+            'snapshot_sha256' => $snapshot['snapshot_sha256'],
+            'identity_verified' => false,
+            'tab_count' => count($tabs),
+            'passage_count' => array_sum(array_column($tabs, 'passage_count')),
+            'character_count' => array_sum(array_column($tabs, 'character_count')),
+            'tabs' => $tabs,
+        ];
+    }
+
+    /**
+     * Performs the shared preview/confirmation authorization contract.
+     *
+     * @return array{
+     *     organization_id: int,
+     *     authorization: array{document_id: string, approved_folder_id: string, mime_type: string, parents: list<string>},
+     *     snapshot: array<string, mixed>
+     * }
+     */
+    public function readAuthorized(User $actor, string $documentUrl): array
+    {
         $membership = $this->scope->membership($actor);
         if ($membership === null
             || ! $this->scope->allows($actor, 'weekly_plans.manage_draft')) {
@@ -57,26 +94,10 @@ final class GoogleDocsPreviewService
             throw $this->authorizationChanged();
         }
 
-        $tabs = array_map(fn (array $tab): array => [
-            'tab_id' => $tab['tab_id'],
-            'title' => $tab['title'],
-            'parent_tab_id' => $tab['parent_tab_id'],
-            'nesting_level' => $tab['nesting_level'],
-            'order' => $tab['order'],
-            'passage_count' => $tab['passage_count'],
-            'character_count' => $tab['character_count'],
-            'source_group' => $this->safeSourceGroup($tab['source_group']),
-        ], $snapshot['tabs']);
-
         return [
-            'title' => $snapshot['title'],
-            'revision_id' => $snapshot['revision_id'],
-            'snapshot_sha256' => $snapshot['snapshot_sha256'],
-            'identity_verified' => false,
-            'tab_count' => count($tabs),
-            'passage_count' => array_sum(array_column($tabs, 'passage_count')),
-            'character_count' => array_sum(array_column($tabs, 'character_count')),
-            'tabs' => $tabs,
+            'organization_id' => (int) $membership->organization_id,
+            'authorization' => $after,
+            'snapshot' => $snapshot,
         ];
     }
 

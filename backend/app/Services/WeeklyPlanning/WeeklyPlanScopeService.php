@@ -48,4 +48,38 @@ class WeeklyPlanScopeService
 
         return false;
     }
+
+    /**
+     * Resolve membership and permission from the database without reusing the
+     * request-local cache in AuthorizationService. This is intended for the
+     * final authorization check immediately before a long-running workflow
+     * starts writing data.
+     */
+    public function freshAuthorizedMembership(
+        User $viewer,
+        string $permission,
+    ): ?OrganizationMembership {
+        $membership = $this->memberships->activeMembershipFor(
+            $viewer,
+            ['roles.permissions'],
+        );
+        if ($membership === null) {
+            return null;
+        }
+
+        foreach ($membership->roles as $role) {
+            foreach ($role->permissions as $grantedPermission) {
+                if ($grantedPermission->code !== $permission) {
+                    continue;
+                }
+
+                $scope = $grantedPermission->pivot?->getAttribute('data_scope');
+                if (in_array($scope, [DataScope::ORGANIZATION, DataScope::ALL], true)) {
+                    return $membership;
+                }
+            }
+        }
+
+        return null;
+    }
 }
