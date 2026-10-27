@@ -6,6 +6,8 @@ import type {
   WeeklyPlanAiSuggestion,
   WeeklyPlanEntryInput,
   WeeklyPlanGoogleDocsPreview,
+  WeeklyPlanGoogleDocsEmployeeMappings,
+  WeeklyPlanGoogleDocsMappingStatus,
   WeeklyPlanListResponse,
   WeeklyPlanReferences,
   WeeklyPlanReviewStatus,
@@ -61,6 +63,38 @@ export const importWeeklyPlanGoogleDocs = async (
     requestId,
     signal,
   );
+};
+
+export const getWeeklyPlanGoogleDocsEmployeeMappings = async (
+  id: number,
+  signal?: AbortSignal,
+): Promise<WeeklyPlanGoogleDocsEmployeeMappings> => {
+  const response = await apiRequest<{
+    data: WeeklyPlanGoogleDocsEmployeeMappings;
+  }>(`/api/weekly-plans/${id}/google-docs/employee-mappings`, { signal });
+
+  return response.data;
+};
+
+export const updateWeeklyPlanGoogleDocsEmployeeMapping = async (
+  id: number,
+  input: {
+    tab_id: string;
+    status: Exclude<WeeklyPlanGoogleDocsMappingStatus, "UNVERIFIED">;
+    employee_id: number | null;
+    expected_version: number;
+  },
+  signal?: AbortSignal,
+): Promise<WeeklyPlanGoogleDocsEmployeeMappings> => {
+  const response = await apiRequest<{
+    data: WeeklyPlanGoogleDocsEmployeeMappings;
+  }>(`/api/weekly-plans/${id}/google-docs/employee-mappings`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+    signal,
+  });
+
+  return response.data;
 };
 
 export const importWeeklyPlan = async (

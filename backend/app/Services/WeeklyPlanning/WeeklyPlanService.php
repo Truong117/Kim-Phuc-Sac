@@ -1459,6 +1459,9 @@ class WeeklyPlanService
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_manage_google_docs_mappings' => $isGoogleDocs
+                && $plan->status === WeeklyPlanStatus::DRAFT
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
         ]);
 
         return $plan;

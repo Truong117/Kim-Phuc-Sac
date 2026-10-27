@@ -135,6 +135,36 @@ export type WeeklyPlanActions = {
   can_apply_source: boolean;
   can_group_source: boolean;
   can_ai_extract_source: boolean;
+  can_manage_google_docs_mappings: boolean;
+};
+
+export type WeeklyPlanGoogleDocsMappingStatus =
+  | "UNVERIFIED"
+  | "VERIFIED"
+  | "NEEDS_REVIEW"
+  | "NOT_APPLICABLE";
+
+export type WeeklyPlanGoogleDocsEmployeeMappingTab = {
+  tab_id: string;
+  title: string;
+  parent_tab_id: string | null;
+  nesting_level: number;
+  order: number;
+  status: WeeklyPlanGoogleDocsMappingStatus;
+  employee: WeeklyPlanEmployee | null;
+  suggestion: {
+    employee: WeeklyPlanEmployee;
+    basis: "CONFIRMED_EXACT" | "CONFIRMED_ALIAS";
+  } | null;
+  version: number;
+  verified_at: string | null;
+  reason: "EMPLOYEE_INELIGIBLE" | null;
+};
+
+export type WeeklyPlanGoogleDocsEmployeeMappings = {
+  tabs: WeeklyPlanGoogleDocsEmployeeMappingTab[];
+  employees: WeeklyPlanEmployee[];
+  actions: { can_update: boolean };
 };
 
 export type WeeklyPlan = {

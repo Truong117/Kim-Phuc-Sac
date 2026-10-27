@@ -15,6 +15,7 @@ use App\Http\Controllers\Reports\TodayReportController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsEmployeeMappingController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsFolderRegistryController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsPreviewController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsSourceController;
@@ -111,6 +112,12 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::get('/', [WeeklyPlanController::class, 'index'])
             ->middleware('permission:weekly_plans.view,organization');
         Route::post('/import', [WeeklyPlanController::class, 'import'])
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::get('/{id}/google-docs/employee-mappings', [GoogleDocsEmployeeMappingController::class, 'index'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::put('/{id}/google-docs/employee-mappings', [GoogleDocsEmployeeMappingController::class, 'update'])
+            ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::get('/{id}', [WeeklyPlanController::class, 'show'])
             ->whereNumber('id')

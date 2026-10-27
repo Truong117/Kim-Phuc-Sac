@@ -911,6 +911,46 @@
         "confirm": "Không thể xác nhận tài liệu làm nguồn kế hoạch. Vui lòng thử lại."
       }
     },
+    "googleDocsEmployeeMapping": {
+      "title": "Xác minh nhân viên theo tab",
+      "description": "Đối chiếu từng tab Google Docs với nhân viên đang hoạt động trong tổ chức. Hệ thống không tự tạo đầu việc hoặc giao việc từ mapping này.",
+      "empty": "Tài liệu không có tab để xác minh.",
+      "untitledTab": "Tab chưa có tên",
+      "tabPosition": "Thứ tự {order} · Cấp lồng {level}",
+      "statusLabel": "Trạng thái xác minh",
+      "employeeLabel": "Nhân viên KPS",
+      "employeePlaceholder": "Chọn nhân viên",
+      "employeeIneligible": "Nhân viên đã xác minh trước đây không còn đủ điều kiện nhận công việc. Vui lòng chọn lại.",
+      "suggestion": "Gợi ý từ bí danh đã xác nhận trước đây: {name}",
+      "useSuggestion": "Dùng gợi ý",
+      "save": "Lưu xác minh",
+      "saving": "Đang lưu...",
+      "unsaved": "Có thay đổi chưa lưu",
+      "conflict": {
+        "description": "Mapping này đã được cập nhật ở nơi khác. Lựa chọn của bạn vẫn được giữ lại. Hãy dùng dữ liệu máy chủ hoặc xác nhận lại lựa chọn hiện tại trước khi lưu.",
+        "refreshPending": "Đã phát hiện xung đột nhưng chưa tải được dữ liệu mới nhất. Lựa chọn của bạn vẫn được giữ và chưa thể lưu cho đến khi tải lại thành công.",
+        "retryRefresh": "Thử tải lại dữ liệu",
+        "refreshing": "Đang tải lại...",
+        "useServer": "Dùng dữ liệu máy chủ",
+        "keepDraft": "Giữ lựa chọn của tôi"
+      },
+      "privacyNotice": "Tên tab chỉ là dữ liệu nguồn. Danh tính chỉ được xác minh sau khi HR chủ động lưu lựa chọn.",
+      "statuses": {
+        "UNVERIFIED": "Chưa xác minh",
+        "VERIFIED": "Đã xác minh",
+        "NEEDS_REVIEW": "Cần kiểm tra",
+        "NOT_APPLICABLE": "Không áp dụng"
+      },
+      "errors": {
+        "load": "Không thể tải dữ liệu xác minh nhân viên.",
+        "save": "Không thể lưu xác minh nhân viên. Vui lòng thử lại.",
+        "conflictRefresh": "Chưa thể tải dữ liệu mapping mới nhất. Lựa chọn của bạn vẫn được giữ; vui lòng thử tải lại.",
+        "conflictSnapshotStale": "Máy chủ chưa trả về phiên bản mapping mới hơn yêu cầu bị xung đột. Lựa chọn của bạn vẫn được giữ; vui lòng thử tải lại.",
+        "staleResponse": "Phản hồi mapping cũ đã bị bỏ qua. Vui lòng tải lại dữ liệu trước khi tiếp tục.",
+        "forbidden": "Bạn không còn quyền quản lý mapping nhân viên của kế hoạch này.",
+        "employeeRequired": "Vui lòng chọn nhân viên trước khi xác nhận."
+      }
+    },
     "detail": {
       "metaTitle": "Chi tiết kế hoạch tuần | KIM PHỤC SẮC",
       "metaDescription": "Chi tiết và trạng thái xét duyệt kế hoạch tuần",
