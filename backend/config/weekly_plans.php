@@ -17,6 +17,9 @@ return [
     'document_ai_driver' => env('WEEKLY_PLAN_DOCUMENT_AI_DRIVER', 'none'),
     'ai_max_passages' => (int) env('WEEKLY_PLAN_AI_MAX_PASSAGES', 200),
     'ai_max_context_bytes' => (int) env('WEEKLY_PLAN_AI_MAX_CONTEXT_BYTES', 60000),
+    // AI response safety boundary. This is intentionally independent from
+    // max_source_entries_per_request, which only limits one source/apply write.
+    'ai_max_tasks_per_response' => (int) env('WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE', 20),
     'ai_max_output_tokens' => (int) env('WEEKLY_PLAN_AI_MAX_OUTPUT_TOKENS', 3000),
     'ai_reasoning_effort' => env('WEEKLY_PLAN_AI_REASONING_EFFORT'),
 ];

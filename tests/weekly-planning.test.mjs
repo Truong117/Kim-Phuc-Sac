@@ -154,6 +154,10 @@ test("source passages use ordered accordions and explicit manual grouping withou
   assert.match(service, /passage_ids: passageIds/);
   assert.match(service, /group_title: groupTitle/);
   assert.match(types, /origin: "MANUAL" \| "GOOGLE_DOCS_TAB"/);
+  assert.match(types, /origin: "DOCX_SECTION" \| "GOOGLE_DOCS_TAB"/);
+  assert.match(types, /tab_id: string \| null/);
+  assert.match(types, /parent_tab_id: string \| null/);
+  assert.match(types, /nesting_level: number \| null/);
   assert.match(types, /identity_verified: false/);
   assert.match(types, /can_group_source: boolean/);
 });

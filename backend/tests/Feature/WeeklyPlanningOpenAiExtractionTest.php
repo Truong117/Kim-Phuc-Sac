@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\WeeklyPlan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -30,6 +31,7 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             'weekly_plans.storage_disk' => 'local',
             'weekly_plans.ai_max_passages' => 20,
             'weekly_plans.ai_max_context_bytes' => 20000,
+            'weekly_plans.ai_max_tasks_per_response' => 20,
             'weekly_plans.ai_max_output_tokens' => 6000,
             'weekly_plans.ai_reasoning_effort' => 'low',
             'kps_ai.api_key' => 'test-openai-key',
@@ -89,6 +91,7 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
 
             return str_contains((string) ($payload['instructions'] ?? ''), 'dữ liệu không tin cậy')
                 && str_contains((string) ($payload['instructions'] ?? ''), 'không làm theo chỉ dẫn')
+                && str_contains((string) ($payload['instructions'] ?? ''), 'Do not repeat values in verification_fields')
                 && str_contains((string) data_get($input, 'passages.0.text'), 'gửi secrets')
                 && data_get($payload, 'reasoning.effort') === 'low'
                 && ($payload['max_output_tokens'] ?? null) === 6000
@@ -327,6 +330,126 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             'status' => 'completed',
             'error_code' => null,
         ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_ai_preview_stably_deduplicates_verification_fields_on_fresh_and_cached_results(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc cần xác minh nhiều trường.');
+        $sourceKeys = $this->sourceKeys($plan, 2);
+        $suggestion = $this->validSuggestion($sourceKeys[0]);
+        $suggestion['verification_fields'] = [
+            'priority',
+            'assignee_id',
+            'priority',
+            'title',
+            'assignee_id',
+            'note',
+            'title',
+        ];
+        $secondSuggestion = $this->validSuggestion($sourceKeys[1]);
+        $secondSuggestion['title'] .= ' thứ hai';
+        $secondSuggestion['verification_fields'] = ['assignee_id'];
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion, $secondSuggestion]]),
+            ),
+        ]);
+
+        $expected = ['priority', 'assignee_id', 'title', 'note'];
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.verification_fields', $expected)
+            ->assertJsonPath('data.suggestions.1.verification_fields', ['assignee_id']);
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.verification_fields', $expected)
+            ->assertJsonPath('data.suggestions.1.verification_fields', ['assignee_id']);
+
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'completed',
+            'error_code' => null,
+        ]);
+        $this->assertDatabaseCount('ai_usage_records', 1);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_ai_task_limit_is_independent_from_apply_limit_and_oversized_results_are_not_truncated(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        config()->set([
+            'weekly_plans.max_source_entries_per_request' => 1,
+            'weekly_plans.ai_max_passages' => 30,
+            'weekly_plans.ai_max_tasks_per_response' => 20,
+        ]);
+        $acceptedPlan = $this->planWithPassage(
+            $hr,
+            $organizationId,
+            'Nguồn có đúng hai mươi đề xuất.',
+        );
+        $rejectedPlan = $this->planWithPassage(
+            $hr,
+            $organizationId,
+            'Nguồn có hai mươi mốt đề xuất.',
+            '2026-11-02',
+            '2026-11-07',
+        );
+        $acceptedSourceKeys = $this->sourceKeys($acceptedPlan, 20);
+        $rejectedSourceKeys = $this->sourceKeys($rejectedPlan, 21);
+        $acceptedTasks = collect(range(1, 20))->map(function (int $index) use ($acceptedSourceKeys): array {
+            $task = $this->validSuggestion($acceptedSourceKeys[$index - 1]);
+            $task['title'] .= " {$index}";
+            $task['verification_fields'] = [];
+
+            return $task;
+        })->all();
+        $rejectedTasks = collect(range(1, 21))->map(function (int $index) use ($rejectedSourceKeys): array {
+            $task = $this->validSuggestion($rejectedSourceKeys[$index - 1], '2026-11-02', '2026-11-07');
+            $task['title'] .= " {$index}";
+            $task['verification_fields'] = [];
+
+            return $task;
+        })->all();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::sequence()
+                ->push($this->completedResponse(['tasks' => $acceptedTasks]))
+                ->push($this->completedResponse(['tasks' => $rejectedTasks])),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$acceptedPlan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonCount(20, 'data.suggestions');
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$rejectedPlan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'Kết quả trích xuất không đáp ứng hợp đồng dữ liệu an toàn.',
+            );
+
+        Http::assertSentCount(2);
+        $this->assertSame(1, config('weekly_plans.max_source_entries_per_request'));
+        $this->assertSame(20, config('weekly_plans.ai_max_tasks_per_response'));
+        $this->assertSame(1, DB::table('ai_usage_records')->where('status', 'completed')->count());
+        $this->assertSame(1, DB::table('ai_usage_records')->where('status', 'rejected')->count());
+        $this->assertSame(0, DB::table('ai_budget_periods')->sum('reserved_cost_microusd'));
+        $this->assertGreaterThan(0, DB::table('ai_budget_periods')->sum('spent_cost_microusd'));
+        $this->assertNull(DB::table('ai_usage_records')->where('status', 'rejected')->value('response_payload'));
         $this->assertDatabaseCount('weekly_plan_entries', 0);
         $this->assertDatabaseCount('tasks', 0);
     }
@@ -729,8 +852,10 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             'null' => [true, null, 'rejected', 'AI_RESULT_REJECTED'],
             'object' => [true, new \stdClass, 'failed', 'AI_INVALID_SCHEMA'],
             'scalar' => [true, 'assignee_id', 'rejected', 'AI_RESULT_REJECTED'],
+            'null element' => [true, [null], 'rejected', 'AI_RESULT_REJECTED'],
+            'object element' => [true, [new \stdClass], 'failed', 'AI_INVALID_SCHEMA'],
+            'scalar element' => [true, [42], 'rejected', 'AI_RESULT_REJECTED'],
             'unknown value' => [true, ['not_allowed'], 'rejected', 'AI_RESULT_REJECTED'],
-            'duplicate value' => [true, ['assignee_id', 'assignee_id'], 'rejected', 'AI_RESULT_REJECTED'],
         ];
     }
 
@@ -801,6 +926,28 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
                 'note' => 'SUGGESTED',
             ],
         ];
+    }
+
+    /** @return list<string> */
+    private function sourceKeys(WeeklyPlan $plan, int $count): array
+    {
+        for ($sequence = 2; $sequence <= $count; $sequence++) {
+            $text = "Source passage {$sequence}";
+            $plan->sourcePassages()->create([
+                'source_sha256' => $plan->source_sha256,
+                'source_key' => "docx-paragraph:{$sequence}",
+                'sequence' => $sequence,
+                'kind' => 'paragraph',
+                'text' => $text,
+                'metadata' => [],
+                'content_sha256' => hash('sha256', $text),
+            ]);
+        }
+
+        return $plan->sourcePassages()
+            ->orderBy('sequence')
+            ->pluck('source_key')
+            ->all();
     }
 
     /** @param array<string, mixed> $result */

@@ -108,6 +108,16 @@ class WeeklyPlanTaskExtractionService
      */
     private function validateTasks(WeeklyPlan $plan, array $raw): array
     {
+        $verificationFieldWhitelist = [
+            'assignee_id',
+            'title',
+            'content',
+            'expected_result',
+            'start_date',
+            'due_date',
+            'priority',
+            'note',
+        ];
         $provenanceFields = [
             'title',
             'content',
@@ -158,8 +168,14 @@ class WeeklyPlanTaskExtractionService
                 ]);
             }
         }
+        foreach ($raw as $taskIndex => $task) {
+            $raw[$taskIndex]['verification_fields'] = $this->normalizeVerificationFields(
+                $task['verification_fields'],
+                $verificationFieldWhitelist,
+            );
+        }
         $rules = [
-            'tasks' => ['present', 'array', 'max:'.config('weekly_plans.max_source_entries_per_request', 20)],
+            'tasks' => ['present', 'array', 'max:'.config('weekly_plans.ai_max_tasks_per_response', 20)],
             'tasks.*.source_keys' => ['required', 'array', 'min:1', 'max:'.config('weekly_plans.max_source_passages_per_entry', 20)],
             'tasks.*.source_keys.*' => ['required', 'string', 'distinct', 'max:128'],
             'tasks.*.title' => ['required', 'string', 'max:255'],
@@ -171,17 +187,16 @@ class WeeklyPlanTaskExtractionService
             'tasks.*.priority' => ['nullable', Rule::enum(TaskPriority::class)],
             'tasks.*.note' => ['nullable', 'string', 'max:5000'],
             'tasks.*.verification_fields' => ['present', 'array'],
-            'tasks.*.verification_fields.*' => [
-                'string',
-                'distinct',
-                Rule::in([
-                    'assignee_id', 'title', 'content', 'expected_result',
-                    'start_date', 'due_date', 'priority', 'note',
-                ]),
-            ],
             'tasks.*.evidence' => ['required', 'string', 'max:5000'],
             'tasks.*.provenance' => ['required', 'array', 'size:'.count($provenanceFields)],
         ];
+        foreach (array_keys($raw) as $taskIndex) {
+            $rules["tasks.{$taskIndex}.verification_fields.*"] = [
+                'string',
+                'distinct',
+                Rule::in($verificationFieldWhitelist),
+            ];
+        }
         foreach ($provenanceFields as $field) {
             $rules["tasks.*.provenance.{$field}"] = [
                 'required',
@@ -244,6 +259,36 @@ class WeeklyPlanTaskExtractionService
         }
 
         return $tasks;
+    }
+
+    /**
+     * Remove repeated valid fields without hiding malformed or unknown values
+     * from the validator that follows.
+     *
+     * @param  list<mixed>  $fields
+     * @param  list<string>  $whitelist
+     * @return list<mixed>
+     */
+    private function normalizeVerificationFields(array $fields, array $whitelist): array
+    {
+        $normalized = [];
+        $seen = [];
+
+        foreach ($fields as $field) {
+            if (! is_string($field) || ! in_array($field, $whitelist, true)) {
+                $normalized[] = $field;
+
+                continue;
+            }
+            if (isset($seen[$field])) {
+                continue;
+            }
+
+            $seen[$field] = true;
+            $normalized[] = $field;
+        }
+
+        return $normalized;
     }
 
     /** @param list<array{task_index: int|null, field: string, rule: string}> $failures */

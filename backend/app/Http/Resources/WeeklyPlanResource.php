@@ -43,7 +43,7 @@ class WeeklyPlanResource extends JsonResource
                         'sequence' => $passage->sequence,
                         'kind' => $passage->kind,
                         'text' => $passage->text,
-                        'metadata' => $passage->metadata ?? [],
+                        'metadata' => $this->passageMetadata($passage->metadata),
                         'source_context' => $this->sourceContext($passage->metadata),
                         'source_group' => $this->sourceGroup($passage->metadata),
                     ],
@@ -195,10 +195,12 @@ class WeeklyPlanResource extends JsonResource
             'key' => $context['key'],
             'origin' => $context['origin'],
             'order' => (int) ($context['order'] ?? 0),
-            'evidence' => [
-                'type' => is_string($evidence['type'] ?? null) ? $evidence['type'] : null,
-                'section' => isset($evidence['section']) ? (int) $evidence['section'] : null,
-            ],
+            'evidence' => $context['origin'] === 'GOOGLE_DOCS_TAB'
+                ? $this->googleDocsTabEvidence($evidence)
+                : [
+                    'type' => is_string($evidence['type'] ?? null) ? $evidence['type'] : null,
+                    'section' => isset($evidence['section']) ? (int) $evidence['section'] : null,
+                ],
         ];
     }
 
@@ -221,22 +223,68 @@ class WeeklyPlanResource extends JsonResource
             'title' => $group['title'],
             'origin' => $group['origin'],
             'order' => (int) ($group['order'] ?? 0),
-            'identity_verified' => (bool) ($group['identity_verified'] ?? false),
-            'evidence' => [
-                'type' => is_string($evidence['type'] ?? null) ? $evidence['type'] : null,
-                'start_sequence' => isset($evidence['start_sequence'])
-                    ? (int) $evidence['start_sequence']
-                    : null,
-                'end_sequence' => isset($evidence['end_sequence'])
-                    ? (int) $evidence['end_sequence']
-                    : null,
-                'start_source_key' => is_string($evidence['start_source_key'] ?? null)
-                    ? $evidence['start_source_key']
-                    : null,
-                'end_source_key' => is_string($evidence['end_source_key'] ?? null)
-                    ? $evidence['end_source_key']
-                    : null,
-            ],
+            'identity_verified' => $group['origin'] === 'GOOGLE_DOCS_TAB'
+                ? false
+                : (bool) ($group['identity_verified'] ?? false),
+            'evidence' => $group['origin'] === 'GOOGLE_DOCS_TAB'
+                ? $this->googleDocsTabEvidence($evidence)
+                : [
+                    'type' => is_string($evidence['type'] ?? null) ? $evidence['type'] : null,
+                    'start_sequence' => isset($evidence['start_sequence'])
+                        ? (int) $evidence['start_sequence']
+                        : null,
+                    'end_sequence' => isset($evidence['end_sequence'])
+                        ? (int) $evidence['end_sequence']
+                        : null,
+                    'start_source_key' => is_string($evidence['start_source_key'] ?? null)
+                        ? $evidence['start_source_key']
+                        : null,
+                    'end_source_key' => is_string($evidence['end_source_key'] ?? null)
+                        ? $evidence['end_source_key']
+                        : null,
+                ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function passageMetadata(mixed $metadata): array
+    {
+        if (! is_array($metadata)) {
+            return [];
+        }
+
+        $contextOrigin = data_get($metadata, 'source_context.origin');
+        $groupOrigin = data_get($metadata, 'source_group.origin');
+        if ($contextOrigin === 'GOOGLE_DOCS_TAB' || $groupOrigin === 'GOOGLE_DOCS_TAB') {
+            // Google tab identity is exposed only through the explicitly
+            // allowlisted source_context and source_group fields below.
+            return [];
+        }
+
+        return $metadata;
+    }
+
+    /** @param array<string, mixed> $evidence
+     *  @return array{
+     *      type: string,
+     *      tab_id: string|null,
+     *      parent_tab_id: string|null,
+     *      nesting_level: int|null,
+     *      index: int|null
+     *  }
+     */
+    private function googleDocsTabEvidence(array $evidence): array
+    {
+        return [
+            'type' => 'GOOGLE_DOCS_TAB',
+            'tab_id' => is_string($evidence['tab_id'] ?? null) ? $evidence['tab_id'] : null,
+            'parent_tab_id' => is_string($evidence['parent_tab_id'] ?? null)
+                ? $evidence['parent_tab_id']
+                : null,
+            'nesting_level' => is_int($evidence['nesting_level'] ?? null)
+                ? $evidence['nesting_level']
+                : null,
+            'index' => is_int($evidence['index'] ?? null) ? $evidence['index'] : null,
         ];
     }
 }
