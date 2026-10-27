@@ -186,3 +186,8 @@ Do not log provider secrets, expose a public source URL, or run the general auth
 8. Roll out the frontend only after backend routes, storage and permissions are ready.
 
 The Docker entry point does not run migrations. Keep schema changes in a separately approved Render pre-deploy/one-off operation and follow [`ENVIRONMENT_DEPLOYMENT_SAFETY.md`](ENVIRONMENT_DEPLOYMENT_SAFETY.md); never add migrations back to container startup.
+# Durable Google Docs source (V1)
+
+`POST /api/weekly-plans/google-docs/import` xác nhận snapshot đã xem trước và tạo Weekly Plan draft mới. Payload chỉ gồm `document_url`, `expected_snapshot_sha256`, `request_id`; organization, Google document ID, passages và assignee không được nhận từ client. Chi tiết authorization, persistence, idempotency và migration xem tại [GOOGLE_DOCS_DURABLE_SOURCE_V1.md](./GOOGLE_DOCS_DURABLE_SOURCE_V1.md).
+
+Replay cùng organization/request/payload chỉ trả plan durable đã có khi active membership và `weekly_plans.manage_draft` vẫn hợp lệ; folder bị disable/replace không làm replay gọi Google hoặc ghi thêm dữ liệu. Google source có passages ở trạng thái `EXTRACTED` nhưng `can_ai_extract_source=false`; direct AI extraction trả `422 GOOGLE_DOCS_AI_EXTRACTION_NOT_SUPPORTED`. AI extraction của DOCX giữ nguyên.

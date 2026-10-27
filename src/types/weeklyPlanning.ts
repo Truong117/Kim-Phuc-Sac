@@ -142,6 +142,7 @@ export type WeeklyPlan = {
   week_start: string;
   week_end: string;
   status: WeeklyPlanStatus;
+  source_type: "UPLOADED_FILE" | "GOOGLE_DOCS";
   parse_status: "PARSED" | "NEEDS_MAPPING" | "FAILED";
   parse_metadata: {
     headers?: string[];
@@ -156,7 +157,12 @@ export type WeeklyPlan = {
     size: number;
     sha256: string;
     uploaded_at: string | null;
-    availability: "AVAILABLE" | "MISSING" | "UNAVAILABLE" | null;
+    availability:
+      | "AVAILABLE"
+      | "MISSING"
+      | "UNAVAILABLE"
+      | "NOT_APPLICABLE"
+      | null;
   };
   source_document: {
     status:
@@ -174,6 +180,11 @@ export type WeeklyPlan = {
       max_passages_per_entry: number;
       max_entries_per_request: number;
     };
+    google_docs: (Omit<WeeklyPlanGoogleDocsPreview, "revision_id"> & {
+      captured_at: string;
+      last_verified_at: string;
+      stale_at: string | null;
+    }) | null;
     passages: WeeklyPlanSourcePassage[];
   };
   creator: { id: number; name: string };

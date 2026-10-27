@@ -402,13 +402,11 @@ function WeeklyPlanSourceDocument({
                 {busy ? t("extracting") : t("extract")}
               </Button>
             )}
-            {plan.actions.can_apply_source && (
+            {plan.actions.can_ai_extract_source && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={
-                  busy || aiLoading || !plan.actions.can_ai_extract_source
-                }
+                disabled={busy || aiLoading}
                 onClick={() => void runAiExtraction()}
               >
                 {aiLoading ? t("aiExtracting") : t("extractWithAi")}

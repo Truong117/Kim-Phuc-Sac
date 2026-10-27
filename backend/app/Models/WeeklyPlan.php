@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Enums\WeeklyPlanParseStatus;
+use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class WeeklyPlan extends Model
 {
@@ -16,6 +18,7 @@ class WeeklyPlan extends Model
         'week_start',
         'week_end',
         'status',
+        'source_type',
         'source_disk',
         'source_path',
         'original_filename',
@@ -40,6 +43,7 @@ class WeeklyPlan extends Model
             'week_start' => 'immutable_date:Y-m-d',
             'week_end' => 'immutable_date:Y-m-d',
             'status' => WeeklyPlanStatus::class,
+            'source_type' => WeeklyPlanSourceType::class,
             'parse_status' => WeeklyPlanParseStatus::class,
             'parse_metadata' => 'array',
             'uploaded_at' => 'immutable_datetime',
@@ -92,6 +96,11 @@ class WeeklyPlan extends Model
     {
         return $this->hasMany(WeeklyPlanSourcePassage::class)
             ->orderBy('sequence');
+    }
+
+    public function googleDocsSource(): HasOne
+    {
+        return $this->hasOne(WeeklyPlanGoogleDocsSource::class);
     }
 
     public function entryApplications(): HasMany

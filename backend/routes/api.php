@@ -17,6 +17,7 @@ use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsFolderRegistryController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsPreviewController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsSourceController;
 use App\Http\Controllers\WeeklyPlanning\WeeklyPlanController;
 use Illuminate\Support\Facades\Route;
 
@@ -90,6 +91,11 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
 
     Route::prefix('weekly-plans')->group(function (): void {
         Route::post('/google-docs/preview', GoogleDocsPreviewController::class)
+            ->middleware([
+                'permission:weekly_plans.manage_draft,organization',
+                'throttle:google-docs-preview',
+            ]);
+        Route::post('/google-docs/import', GoogleDocsSourceController::class)
             ->middleware([
                 'permission:weekly_plans.manage_draft,organization',
                 'throttle:google-docs-preview',

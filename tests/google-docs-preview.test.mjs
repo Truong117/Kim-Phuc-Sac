@@ -176,6 +176,87 @@ test("preview request uses only document_url and returns the mocked safe API pay
   assert.equal("document_id" in JSON.parse(calls[0].init.body), false);
 });
 
+test("source confirmation sends only URL, expected snapshot and idempotency key", async () => {
+  const { requestGoogleDocsSource } = await importTypeScriptModule(
+    "src/services/googleDocsSourceRequest.ts",
+  );
+  const calls = [];
+  const plan = { id: 81, source_type: "GOOGLE_DOCS" };
+  const mockRequest = async (path, init) => {
+    calls.push({ path, init });
+    return { data: plan };
+  };
+
+  const result = await requestGoogleDocsSource(
+    mockRequest,
+    `  ${validUrl}  `,
+    "a".repeat(64),
+    "06c958ed-49df-4bb5-a3fe-a64380321466",
+  );
+
+  assert.deepEqual(result, plan);
+  assert.equal(calls[0].path, "/api/weekly-plans/google-docs/import");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {
+    document_url: validUrl,
+    expected_snapshot_sha256: "a".repeat(64),
+    request_id: "06c958ed-49df-4bb5-a3fe-a64380321466",
+  });
+  assert.equal("organization_id" in JSON.parse(calls[0].init.body), false);
+  assert.equal("document_id" in JSON.parse(calls[0].init.body), false);
+  assert.equal("passages" in JSON.parse(calls[0].init.body), false);
+  assert.equal("assignee_id" in JSON.parse(calls[0].init.body), false);
+});
+
+test("source confirmation synchronously blocks double clicks and keeps the retry request id", async () => {
+  const {
+    claimGoogleDocsSourceRequest,
+    releaseGoogleDocsSourceRequest,
+    requestGoogleDocsSource,
+  } = await importTypeScriptModule("src/services/googleDocsSourceRequest.ts");
+  const guard = { current: false };
+  const firstResponse = deferred();
+  const requestId = "06c958ed-49df-4bb5-a3fe-a64380321466";
+  const calls = [];
+  let pending = firstResponse.promise;
+  const request = async (path, init) => {
+    calls.push({ path, init });
+    return pending;
+  };
+  const confirm = async () => {
+    if (!claimGoogleDocsSourceRequest(guard)) return undefined;
+
+    try {
+      return await requestGoogleDocsSource(
+        request,
+        validUrl,
+        "a".repeat(64),
+        requestId,
+      );
+    } finally {
+      releaseGoogleDocsSourceRequest(guard);
+    }
+  };
+
+  const first = confirm();
+  const duplicate = confirm();
+  assert.equal(calls.length, 1);
+  assert.equal(await duplicate, undefined);
+  firstResponse.resolve({ data: { id: 91, source_type: "GOOGLE_DOCS" } });
+  await first;
+
+  pending = Promise.resolve({
+    data: { id: 91, source_type: "GOOGLE_DOCS" },
+  });
+  await confirm();
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(
+    calls.map(({ init }) => JSON.parse(init.body).request_id),
+    [requestId, requestId],
+  );
+});
+
 test("tab tree keeps API order, nested tabs, duplicate titles and empty data", async () => {
   const { buildGoogleDocsTabTree } = await importTypeScriptModule(
     "src/utils/googleDocsPreview.ts",
@@ -418,44 +499,54 @@ test("mocked authorization, validation, rate-limit and unavailable failures stay
   }
 });
 
-test("preview UI clears stale data, exposes loading and never mutates weekly plans", async () => {
-  const [panel, importPage, service, request, translationsSource] =
+test("preview UI confirms the exact snapshot without creating entries, tasks or AI runs", async () => {
+  const [panel, importPage, service, previewRequest, sourceRequest, translationsSource] =
     await Promise.all([
       readSource("src/components/weekly-plans/GoogleDocsPreviewPanel.tsx"),
       readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
       readSource("src/services/weeklyPlanningService.ts"),
       readSource("src/services/googleDocsPreviewRequest.ts"),
+      readSource("src/services/googleDocsSourceRequest.ts"),
       readSource("src/locales/vi/common.json"),
     ]);
   const translations = JSON.parse(translationsSource);
 
   assert.match(
     importPage,
-    /references\?\.actions\.can_import && <GoogleDocsPreviewPanel/,
+    /references\?\.actions\.can_import && \(/,
   );
   assert.match(panel, /setLoading\(true\)/);
   assert.match(panel, /setLoading\(false\)/);
   assert.match(panel, /setPreview\(null\)/);
   assert.match(panel, /previewWeeklyPlanGoogleDocs/);
+  assert.match(panel, /importWeeklyPlanGoogleDocs/);
+  assert.match(panel, /preview\.snapshot_sha256/);
+  assert.match(panel, /crypto\.randomUUID\(\)/);
+  assert.match(panel, /onImported\(plan\)/);
   assert.match(panel, /buildGoogleDocsTabTree/);
   assert.match(panel, /node\.children/);
   assert.match(panel, /preview\.identity_verified/);
   assert.match(panel, /errors\.timeout/);
   assert.match(panel, /const REQUEST_TIMEOUT_MS = 60_000/);
   assert.match(panel, /requestLifecycle\.current\?\.cancel\(\)/);
+  assert.match(panel, /const importingRef = useRef\(false\)/);
+  assert.match(panel, /claimGoogleDocsSourceRequest\(importingRef\)/);
   assert.match(
     service,
     /requestGoogleDocsPreview\(apiRequest, documentUrl, signal\)/,
   );
   assert.doesNotMatch(
-    panel + request,
+    panel + previewRequest + sourceRequest,
     /localStorage|sessionStorage|dangerouslySetInnerHTML|console\./,
   );
   assert.doesNotMatch(panel, /role\s*===|HR_MANAGER|OWNER|ADMIN|employee_id/);
   assert.doesNotMatch(
-    request,
-    /organization_id|document_id|\/tasks|\/entries|ai-extract/,
+    sourceRequest,
+    /organization_id|document_id|passages|assignee_id|\/tasks|\/entries|ai-extract/,
   );
+  assert.match(sourceRequest, /expected_snapshot_sha256/);
+  assert.match(sourceRequest, /request_id/);
+  assert.match(translations.weeklyPlanning.googleDocsPreview.confirm, /nguồn/);
   assert.match(
     translations.weeklyPlanning.googleDocsPreview.errors.unavailable,
     /chưa được cấu hình/,

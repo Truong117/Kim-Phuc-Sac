@@ -93,7 +93,11 @@ export default function WeeklyPlanImport() {
         <div className="h-80 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
       ) : (
         <div className="space-y-6">
-          {references?.actions.can_import && <GoogleDocsPreviewPanel />}
+          {references?.actions.can_import && (
+            <GoogleDocsPreviewPanel
+              onImported={(plan) => navigate("/weekly-plans/" + plan.id)}
+            />
+          )}
           <ComponentCard title={t("import.cardTitle")} desc={t("import.cardDescription")} compact>
             {references && (
               <p className="rounded-xl bg-kps-primary/8 px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">

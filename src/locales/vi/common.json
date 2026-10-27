@@ -892,6 +892,9 @@
       "tabCharacters": "{count} ký tự",
       "emptyTabs": "Tài liệu không có tab có thể hiển thị.",
       "previewOnly": "Đây là bản xem trước chỉ đọc. Hệ thống không tự nhận diện nhân viên, tạo đầu việc hoặc chạy AI.",
+      "confirmHint": "Khi xác nhận, hệ thống sẽ đọc lại và chỉ lưu đúng snapshot này làm nguồn cho bản nháp tuần kế tiếp.",
+      "confirm": "Xác nhận làm nguồn",
+      "confirming": "Đang xác nhận nguồn...",
       "errors": {
         "invalidUrl": "Đường dẫn Google Docs không hợp lệ.",
         "network": "Không thể kết nối đến máy chủ KPS. Vui lòng kiểm tra mạng và thử lại.",
@@ -904,7 +907,8 @@
         "rateLimited": "Đang có quá nhiều yêu cầu đọc tài liệu. Vui lòng thử lại sau.",
         "providerResponse": "Google không cho phép đọc tài liệu hoặc trả về dữ liệu không hợp lệ.",
         "unavailable": "Tích hợp Google Docs chưa được cấu hình hoặc dịch vụ đang tạm thời không khả dụng trên môi trường này.",
-        "unknown": "Không thể đọc tài liệu. Vui lòng thử lại."
+        "unknown": "Không thể đọc tài liệu. Vui lòng thử lại.",
+        "confirm": "Không thể xác nhận tài liệu làm nguồn kế hoạch. Vui lòng thử lại."
       }
     },
     "detail": {
@@ -924,6 +928,7 @@
       "departments": "Phòng ban trong kế hoạch",
       "noDepartment": "Chưa có thông tin phòng ban",
       "fileSize": "Dung lượng",
+      "characterCount": "Ký tự nguồn",
       "entriesTitle": "Kế hoạch theo nhân viên",
       "entriesDescription": "Mỗi đầu việc phải được đối chiếu với một tài khoản KPS đang hoạt động.",
       "addEntry": "Thêm đầu việc",

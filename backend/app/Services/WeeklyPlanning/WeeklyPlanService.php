@@ -4,6 +4,7 @@ namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanParseStatus;
 use App\Enums\WeeklyPlanReviewStatus;
+use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
 use App\Enums\WeeklyPlanSuggestionStatus;
 use App\Models\OrganizationMembership;
@@ -15,6 +16,7 @@ use App\Models\WeeklyPlanEntry;
 use App\Models\WeeklyPlanEntryApplication;
 use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanSourcePassage;
+use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsSourceException;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
@@ -86,10 +88,13 @@ class WeeklyPlanService
         ];
     }
 
-    public function findVisible(User $viewer, int $planId): WeeklyPlan
-    {
+    public function findVisible(
+        User $viewer,
+        int $planId,
+        string $permission = 'weekly_plans.view',
+    ): WeeklyPlan {
         return $this->load(
-            $this->scope->queryFor($viewer)->findOrFail($planId),
+            $this->scope->queryFor($viewer, $permission)->findOrFail($planId),
             $viewer,
         );
     }
@@ -163,6 +168,7 @@ class WeeklyPlanService
                     'week_start' => $week['start'],
                     'week_end' => $week['end'],
                     'status' => WeeklyPlanStatus::DRAFT,
+                    'source_type' => WeeklyPlanSourceType::UPLOADED_FILE,
                     'source_disk' => $disk,
                     'source_path' => $storedPath,
                     'original_filename' => basename(str_replace('\\', '/', $file->getClientOriginalName())),
@@ -597,6 +603,14 @@ class WeeklyPlanService
     public function previewAiSourceEntries(User $actor, int $planId): array
     {
         $plan = $this->editablePlan($actor, $planId);
+        if ($plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS) {
+            throw new GoogleDocsSourceException(
+                'GOOGLE_DOCS_AI_EXTRACTION_NOT_SUPPORTED',
+                422,
+                'Nguồn Google Docs chưa hỗ trợ trích xuất công việc bằng AI.',
+            );
+        }
+
         $plan->load(['sourcePassages' => fn ($query) => $query
             ->where('source_sha256', $plan->source_sha256)
             ->orderBy('sequence')]);
@@ -1350,18 +1364,22 @@ class WeeklyPlanService
             'comments.author:id,name',
             'suggestions',
             'events.actor:id,name',
+            'googleDocsSource',
             'sourcePassages' => fn ($query) => $query
                 ->where('source_sha256', $plan->source_sha256)
                 ->orderBy('sequence'),
         ])->loadCount('entries');
 
-        $sourceAvailability = $this->sourceAvailability($plan);
+        $isGoogleDocs = $plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS;
+        $sourceAvailability = $isGoogleDocs ? 'NOT_APPLICABLE' : $this->sourceAvailability($plan);
         $plan->setAttribute('source_file_availability', $sourceAvailability);
-        $sourceStatus = $plan->source_extension !== 'docx'
-            ? 'UNSUPPORTED'
-            : ($this->sourceWasExtracted($plan)
-                ? ($plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED')
-                : 'NOT_EXTRACTED');
+        $sourceStatus = $isGoogleDocs
+            ? ($plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED')
+            : ($plan->source_extension !== 'docx'
+                ? 'UNSUPPORTED'
+                : ($this->sourceWasExtracted($plan)
+                    ? ($plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED')
+                    : 'NOT_EXTRACTED'));
         $aiStatus = $this->taskExtraction->status();
         $plan->setAttribute('source_document', [
             'status' => $sourceStatus,
@@ -1422,10 +1440,12 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.publish'),
             'can_comment' => $this->commentPermissionFor($viewer) !== null,
             'can_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && ! $isGoogleDocs
                 && $sourceStatus === 'NOT_EXTRACTED'
                 && $sourceAvailability === 'AVAILABLE'
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_replace_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && ! $isGoogleDocs
                 && $sourceAvailability === 'MISSING'
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_apply_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
@@ -1435,6 +1455,7 @@ class WeeklyPlanService
                 && $sourceStatus === 'EXTRACTED'
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_ai_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && ! $isGoogleDocs
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
