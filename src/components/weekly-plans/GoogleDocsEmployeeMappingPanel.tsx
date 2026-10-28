@@ -304,12 +304,25 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
     }
   };
 
-  const completedCount =
+  const persistedCount =
     mappings?.tabs.filter((tab) =>
       ["VERIFIED", "NOT_APPLICABLE"].includes(tab.status),
     ).length ?? 0;
   const totalCount = mappings?.tabs.length ?? 0;
-  const completed = totalCount > 0 && completedCount === totalCount;
+  const selectedCount =
+    mappings?.tabs.filter((tab) => {
+      const draft = drafts[tab.tab_id];
+
+      return Boolean(
+        draft &&
+        (draft.status === "NOT_APPLICABLE" ||
+          (draft.status === "VERIFIED" && draft.employeeId)),
+      );
+    }).length ?? 0;
+  const pendingConfirmationCount =
+    mappings?.tabs.filter((tab) => drafts[tab.tab_id]?.dirty).length ?? 0;
+  const unresolvedCount = Math.max(totalCount - selectedCount, 0);
+  const completed = totalCount > 0 && persistedCount === totalCount;
   const canSaveAll = Boolean(
     mappings &&
     mappings.actions.can_update &&
@@ -324,8 +337,29 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
       {mappings && (
         <div className="rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-800/60">
           <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
-            {t("progress", { completed: completedCount, total: totalCount })}
+            {t("selectionProgress", {
+              selected: selectedCount,
+              total: totalCount,
+            })}
           </p>
+          <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+            {t("persistedProgress", {
+              persisted: persistedCount,
+              total: totalCount,
+            })}
+          </p>
+          {pendingConfirmationCount > 0 && (
+            <p className="mt-2 text-theme-sm font-medium text-brand-600 dark:text-brand-400">
+              {t("pendingConfirmation", {
+                count: pendingConfirmationCount,
+              })}
+            </p>
+          )}
+          {unresolvedCount > 0 && (
+            <p className="mt-1 text-theme-xs text-warning-700 dark:text-warning-400">
+              {t("unresolved", { count: unresolvedCount })}
+            </p>
+          )}
           {completed && (
             <div className="mt-2 space-y-1 text-theme-sm text-success-700 dark:text-success-400">
               <p className="font-semibold">{t("completed")}</p>
@@ -388,7 +422,11 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
             return (
               <section
                 key={tab.tab_id}
-                className="rounded-xl border border-gray-200 p-4 dark:border-gray-800"
+                className={`rounded-xl border p-4 ${
+                  draft.prefillBasis === "CONFIRMED_ALIAS"
+                    ? "border-warning-300 bg-warning-50/50 dark:border-warning-900/60 dark:bg-warning-500/10"
+                    : "border-gray-200 dark:border-gray-800"
+                }`}
               >
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
@@ -416,12 +454,32 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                         {t("employeeIneligible")}
                       </p>
                     )}
-                    {tab.suggestion && (
+                    {draft.prefillBasis && (
+                      <div
+                        className={`mt-3 rounded-lg border px-3 py-2 text-theme-xs font-medium ${
+                          draft.prefillBasis === "CONFIRMED_ALIAS"
+                            ? "border-warning-300 bg-warning-50 text-warning-800 dark:border-warning-900/60 dark:bg-warning-500/10 dark:text-warning-300"
+                            : "border-brand-200 bg-brand-25 text-brand-700 dark:border-brand-900/50 dark:bg-brand-500/10 dark:text-brand-300"
+                        }`}
+                      >
+                        {t(
+                          draft.prefillBasis === "CONFIRMED_ALIAS"
+                            ? "prefill.alias"
+                            : "prefill.exact",
+                        )}
+                      </div>
+                    )}
+                    {tab.suggestion && !draft.prefillBasis && (
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <p className="text-theme-xs text-gray-600 dark:text-gray-300">
-                          {t("suggestion", {
-                            name: tab.suggestion.employee.name,
-                          })}
+                          {t(
+                            tab.suggestion.basis === "CONFIRMED_ALIAS"
+                              ? "suggestion.alias"
+                              : "suggestion.exact",
+                            {
+                              name: tab.suggestion.employee.name,
+                            },
+                          )}
                         </p>
                         <button
                           type="button"
@@ -462,7 +520,14 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                           draft.conflict
                         }
                         options={[
-                          { value: "VERIFIED", label: t("statuses.VERIFIED") },
+                          {
+                            value: "VERIFIED",
+                            label: t(
+                              draft.dirty
+                                ? "statuses.VERIFIED_PENDING"
+                                : "statuses.VERIFIED",
+                            ),
+                          },
                           {
                             value: "NEEDS_REVIEW",
                             label: t("statuses.NEEDS_REVIEW"),

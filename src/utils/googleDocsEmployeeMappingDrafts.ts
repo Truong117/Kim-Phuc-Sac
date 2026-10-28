@@ -1,11 +1,19 @@
 export type GoogleDocsMappingDraftStatus =
   "VERIFIED" | "NEEDS_REVIEW" | "NOT_APPLICABLE";
 
+export type GoogleDocsMappingSuggestionBasis =
+  "CONFIRMED_EXACT" | "CONFIRMED_ALIAS";
+
 export type GoogleDocsMappingServerTab = {
   tab_id: string;
   status: "UNVERIFIED" | "VERIFIED" | "NEEDS_REVIEW" | "NOT_APPLICABLE";
   employee: { id: number } | null;
+  suggestion?: {
+    employee: { id: number };
+    basis: GoogleDocsMappingSuggestionBasis;
+  } | null;
   version: number;
+  reason?: "EMPLOYEE_INELIGIBLE" | null;
 };
 
 export type GoogleDocsMappingDraft = {
@@ -18,26 +26,43 @@ export type GoogleDocsMappingDraft = {
   conflict: boolean;
   conflictExpectedVersion: number | null;
   conflictRefreshPending: boolean;
+  prefillBasis?: GoogleDocsMappingSuggestionBasis;
 };
 
 export type GoogleDocsMappingDrafts = Record<string, GoogleDocsMappingDraft>;
 
 const fromServer = (
   tab: GoogleDocsMappingServerTab,
+  prefillSuggestions = true,
 ): GoogleDocsMappingDraft => {
-  const status = tab.status === "UNVERIFIED" ? "NEEDS_REVIEW" : tab.status;
-  const employeeId = tab.employee ? String(tab.employee.id) : "";
+  const baseStatus = tab.status === "UNVERIFIED" ? "NEEDS_REVIEW" : tab.status;
+  const baseEmployeeId = tab.employee ? String(tab.employee.id) : "";
+  const hasPersistedMapping =
+    tab.version > 0 ||
+    tab.status === "VERIFIED" ||
+    tab.status === "NOT_APPLICABLE" ||
+    tab.employee !== null;
+  const shouldPrefill = Boolean(
+    prefillSuggestions &&
+    !hasPersistedMapping &&
+    tab.reason !== "EMPLOYEE_INELIGIBLE" &&
+    ["UNVERIFIED", "NEEDS_REVIEW"].includes(tab.status) &&
+    tab.suggestion,
+  );
 
   return {
-    status,
-    employeeId,
-    baseStatus: status,
-    baseEmployeeId: employeeId,
+    status: shouldPrefill ? "VERIFIED" : baseStatus,
+    employeeId: shouldPrefill
+      ? String(tab.suggestion?.employee.id)
+      : baseEmployeeId,
+    baseStatus,
+    baseEmployeeId,
     baseVersion: tab.version,
-    dirty: false,
+    dirty: shouldPrefill,
     conflict: false,
     conflictExpectedVersion: null,
     conflictRefreshPending: false,
+    ...(shouldPrefill ? { prefillBasis: tab.suggestion?.basis } : {}),
   };
 };
 
@@ -130,11 +155,13 @@ export const updateGoogleDocsMappingDraft = (
 
   const status = values.status ?? current.status;
   const employeeId = values.employeeId ?? current.employeeId;
+  const currentWithoutPrefill = { ...current };
+  delete currentWithoutPrefill.prefillBasis;
 
   return {
     ...drafts,
     [tabId]: {
-      ...current,
+      ...currentWithoutPrefill,
       status,
       employeeId,
       dirty:
@@ -202,7 +229,8 @@ export const canSaveGoogleDocsMappingBatch = (
 
 export const reconcileGoogleDocsMappingBatchSaveSuccess = (
   tabs: GoogleDocsMappingServerTab[],
-): GoogleDocsMappingDrafts => createGoogleDocsMappingDrafts(tabs);
+): GoogleDocsMappingDrafts =>
+  Object.fromEntries(tabs.map((tab) => [tab.tab_id, fromServer(tab, false)]));
 
 export const markGoogleDocsMappingBatchConflictPending = (
   drafts: GoogleDocsMappingDrafts,
@@ -321,7 +349,7 @@ export const resetGoogleDocsMappingDraftFromServer = (
   const current = drafts[tabId];
   if (!serverTab || current?.conflictRefreshPending) return drafts;
 
-  return { ...drafts, [tabId]: fromServer(serverTab) };
+  return { ...drafts, [tabId]: fromServer(serverTab, false) };
 };
 
 export const confirmGoogleDocsMappingDraft = (

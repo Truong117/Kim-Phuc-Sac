@@ -921,14 +921,24 @@
       "employeeLabel": "Nhân viên KPS",
       "employeePlaceholder": "Chọn nhân viên",
       "employeeIneligible": "Nhân viên đã xác minh trước đây không còn đủ điều kiện nhận công việc. Vui lòng chọn lại.",
-      "suggestion": "Gợi ý từ bí danh đã xác nhận trước đây: {name}",
+      "suggestion": {
+        "exact": "Gợi ý an toàn từ xác minh trước của tab này: {name}",
+        "alias": "Gợi ý an toàn từ tên tab đã xác minh trước đây: {name}"
+      },
+      "prefill": {
+        "exact": "Đã điền từ xác minh trước của tab này",
+        "alias": "Đã điền từ tên tab đã xác minh trước đây — vui lòng kiểm tra"
+      },
       "useSuggestion": "Dùng gợi ý",
       "save": "Lưu xác minh",
       "saving": "Đang lưu...",
       "saveAll": "Lưu tất cả xác minh",
       "savingAll": "Đang lưu tất cả...",
       "savedAll": "Đã lưu tất cả thay đổi xác minh.",
-      "progress": "Đã xác minh {completed} / {total} tab",
+      "selectionProgress": "Đã có lựa chọn: {selected}/{total}",
+      "persistedProgress": "Đã lưu xác minh: {persisted}/{total}",
+      "pendingConfirmation": "{count} mapping đang chờ xác nhận",
+      "unresolved": "{count} mapping chưa có lựa chọn",
       "completed": "Đã hoàn tất xác minh tab",
       "readyForAi": "Sẵn sàng phân tích công việc bằng AI",
       "unsaved": "Có thay đổi chưa lưu",
@@ -944,6 +954,7 @@
       "statuses": {
         "UNVERIFIED": "Chưa xác minh",
         "VERIFIED": "Đã xác minh",
+        "VERIFIED_PENDING": "Đã chọn, chờ lưu xác minh",
         "NEEDS_REVIEW": "Cần kiểm tra",
         "NOT_APPLICABLE": "Không áp dụng"
       },

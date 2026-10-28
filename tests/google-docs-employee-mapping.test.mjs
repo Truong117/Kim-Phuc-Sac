@@ -151,6 +151,210 @@ test("Save All request sends exactly one batch call with the supplied changed ro
   assert.strictEqual(calls[0].options.signal, controller.signal);
 });
 
+const suggestedServerTab = ({
+  tabId = "tab-a",
+  status = "UNVERIFIED",
+  currentEmployeeId = null,
+  suggestionEmployeeId = 101,
+  basis = "CONFIRMED_EXACT",
+  version = 0,
+  reason = null,
+} = {}) => ({
+  tab_id: tabId,
+  title: `Tab ${tabId}`,
+  status,
+  employee: currentEmployeeId === null ? null : { id: currentEmployeeId },
+  suggestion:
+    suggestionEmployeeId === null
+      ? null
+      : {
+          employee: { id: suggestionEmployeeId },
+          basis,
+        },
+  version,
+  reason,
+});
+
+test("safe exact historical suggestion prefills a dirty local draft without an API write", () => {
+  const apiWrites = [];
+  const tabs = [suggestedServerTab()];
+  const drafts = createGoogleDocsMappingDrafts(tabs);
+
+  assert.equal(drafts["tab-a"].status, "VERIFIED");
+  assert.equal(drafts["tab-a"].employeeId, "101");
+  assert.equal(drafts["tab-a"].baseStatus, "NEEDS_REVIEW");
+  assert.equal(drafts["tab-a"].baseEmployeeId, "");
+  assert.equal(drafts["tab-a"].dirty, true);
+  assert.equal(drafts["tab-a"].prefillBasis, "CONFIRMED_EXACT");
+  assert.equal(apiWrites.length, 0);
+});
+
+test("a safe non-persisted NEEDS_REVIEW tab also receives a local prefill", () => {
+  const draft = createGoogleDocsMappingDrafts([
+    suggestedServerTab({ status: "NEEDS_REVIEW" }),
+  ])["tab-a"];
+
+  assert.equal(draft.status, "VERIFIED");
+  assert.equal(draft.employeeId, "101");
+  assert.equal(draft.baseStatus, "NEEDS_REVIEW");
+  assert.equal(draft.baseVersion, 0);
+  assert.equal(draft.dirty, true);
+});
+
+test("safe alias suggestion prefills and the UI gives it stronger review attention", async () => {
+  const tabs = [suggestedServerTab({ basis: "CONFIRMED_ALIAS" })];
+  const drafts = createGoogleDocsMappingDrafts(tabs);
+  const [panel, translationsSource] = await Promise.all([
+    readSource(
+      "src/components/weekly-plans/GoogleDocsEmployeeMappingPanel.tsx",
+    ),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const mapping =
+    JSON.parse(translationsSource).weeklyPlanning.googleDocsEmployeeMapping;
+
+  assert.equal(drafts["tab-a"].status, "VERIFIED");
+  assert.equal(drafts["tab-a"].employeeId, "101");
+  assert.equal(drafts["tab-a"].prefillBasis, "CONFIRMED_ALIAS");
+  assert.match(
+    panel,
+    /draft\.prefillBasis === "CONFIRMED_ALIAS"[\s\S]*border-warning-300/,
+  );
+  assert.match(mapping.prefill.alias, /vui lòng kiểm tra/);
+});
+
+test("null suggestion and ineligible review state never prefill an employee", () => {
+  const tabs = [
+    suggestedServerTab({ suggestionEmployeeId: null }),
+    suggestedServerTab({
+      tabId: "tab-b",
+      status: "NEEDS_REVIEW",
+      suggestionEmployeeId: 101,
+      version: 1,
+      reason: "EMPLOYEE_INELIGIBLE",
+    }),
+  ];
+  const drafts = createGoogleDocsMappingDrafts(tabs);
+
+  for (const tabId of ["tab-a", "tab-b"]) {
+    assert.equal(drafts[tabId].status, "NEEDS_REVIEW");
+    assert.equal(drafts[tabId].employeeId, "");
+    assert.equal(drafts[tabId].dirty, false);
+    assert.equal(drafts[tabId].prefillBasis, undefined);
+  }
+});
+
+test("a persisted current-plan mapping always wins over a historical suggestion", () => {
+  const tabs = [
+    suggestedServerTab({
+      status: "VERIFIED",
+      currentEmployeeId: 202,
+      suggestionEmployeeId: 101,
+      version: 3,
+    }),
+  ];
+  const draft = createGoogleDocsMappingDrafts(tabs)["tab-a"];
+
+  assert.equal(draft.status, "VERIFIED");
+  assert.equal(draft.employeeId, "202");
+  assert.equal(draft.baseEmployeeId, "202");
+  assert.equal(draft.baseVersion, 3);
+  assert.equal(draft.dirty, false);
+  assert.equal(draft.prefillBasis, undefined);
+});
+
+test("four safe prefills remain local until one Save All batch request", async () => {
+  const tabs = [101, 202, 303, 404].map((employeeId, index) =>
+    suggestedServerTab({
+      tabId: `tab-${index + 1}`,
+      suggestionEmployeeId: employeeId,
+      basis: index === 3 ? "CONFIRMED_ALIAS" : "CONFIRMED_EXACT",
+    }),
+  );
+  const drafts = createGoogleDocsMappingDrafts(tabs);
+  const inputs = buildGoogleDocsMappingBatchUpdateInput(tabs, drafts);
+  const calls = [];
+
+  assert.equal(
+    Object.values(drafts).every((draft) => draft.dirty),
+    true,
+  );
+  assert.equal(inputs.length, 4);
+  assert.deepEqual(
+    inputs.map((input) => input.employee_id),
+    [101, 202, 303, 404],
+  );
+  assert.equal(calls.length, 0);
+
+  await requestGoogleDocsEmployeeMappingsBatch(
+    async (path, options) => {
+      calls.push({ path, options });
+      return { data: { tabs: [] } };
+    },
+    42,
+    inputs,
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.body, JSON.stringify({ mappings: inputs }));
+});
+
+test("an operator override replaces a prefilled employee in the final batch", () => {
+  const tabs = [suggestedServerTab()];
+  const drafts = updateGoogleDocsMappingDraft(
+    createGoogleDocsMappingDrafts(tabs),
+    "tab-a",
+    { employeeId: "909" },
+  );
+
+  assert.equal(drafts["tab-a"].prefillBasis, undefined);
+  assert.deepEqual(buildGoogleDocsMappingBatchUpdateInput(tabs, drafts), [
+    {
+      tab_id: "tab-a",
+      status: "VERIFIED",
+      employee_id: 909,
+      expected_version: 0,
+    },
+  ]);
+});
+
+test("reload recomputes an unsaved proposal without treating it as persisted", () => {
+  const tabs = [suggestedServerTab()];
+  const firstLoad = createGoogleDocsMappingDrafts(tabs);
+  const reloaded = createGoogleDocsMappingDrafts(tabs);
+
+  assert.equal(tabs[0].status, "UNVERIFIED");
+  assert.equal(tabs[0].employee, null);
+  assert.equal(tabs[0].version, 0);
+  assert.equal(firstLoad["tab-a"].dirty, true);
+  assert.equal(reloaded["tab-a"].dirty, true);
+  assert.equal(reloaded["tab-a"].baseStatus, "NEEDS_REVIEW");
+  assert.equal(reloaded["tab-a"].baseEmployeeId, "");
+});
+
+test("successful Save All replaces proposals with clean persisted mappings", () => {
+  const persistedTabs = [101, 202, 303, 404].map((employeeId, index) =>
+    suggestedServerTab({
+      tabId: `tab-${index + 1}`,
+      status: "VERIFIED",
+      currentEmployeeId: employeeId,
+      suggestionEmployeeId: null,
+      version: 1,
+    }),
+  );
+  const drafts = reconcileGoogleDocsMappingBatchSaveSuccess(persistedTabs);
+
+  assert.equal(
+    Object.values(drafts).every(
+      (draft) =>
+        draft.status === "VERIFIED" &&
+        !draft.dirty &&
+        draft.prefillBasis === undefined,
+    ),
+    true,
+  );
+});
+
 test("bulk success clears dirty state and bulk conflict identifies only changed server versions", () => {
   const initial = serverTabs();
   let drafts = createGoogleDocsMappingDrafts(initial);
@@ -984,6 +1188,7 @@ test("mapping translations include every persisted and derived status", async ()
 
   assert.equal(mapping.statuses.UNVERIFIED, "Chưa xác minh");
   assert.equal(mapping.statuses.VERIFIED, "Đã xác minh");
+  assert.equal(mapping.statuses.VERIFIED_PENDING, "Đã chọn, chờ lưu xác minh");
   assert.equal(mapping.statuses.NEEDS_REVIEW, "Cần kiểm tra");
   assert.equal(mapping.statuses.NOT_APPLICABLE, "Không áp dụng");
   assert.match(mapping.privacyNotice, /HR chủ động lưu lựa chọn/);
