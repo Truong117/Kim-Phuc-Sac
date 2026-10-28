@@ -1121,26 +1121,60 @@
           "SUGGESTED": "Đề xuất"
         },
         "googleDocs": {
-          "description": "Kiểm tra và chỉnh sửa toàn bộ đầu việc tại đây. Chưa có dữ liệu nào được ghi cho đến khi HR bấm Áp dụng tất cả.",
+          "title": "Kết quả phân tích bằng AI",
+          "description": "Xem nhanh công việc theo từng nhân viên, chỉnh sửa khi cần và chỉ áp dụng những công việc đã chọn.",
           "assignmentAuthority": "Người phụ trách được lấy từ mapping tab đã được HR xác minh, không phải do AI suy luận.",
           "tab": "Tab",
           "employee": "Nhân viên",
-          "verifiedBadge": "Nhân viên đã xác minh từ mapping",
+          "verifiedBadge": "Đã xác minh từ mapping",
           "assigneeLocked": "Nhân viên được lấy từ mapping tab đã được HR xác minh.",
-          "chooseDate": "Chọn ngày",
-          "priorityPlaceholder": "Chọn mức độ ưu tiên",
-          "completeRequired": "Vui lòng hoàn tất mọi trường bắt buộc trước khi áp dụng.",
-          "applyAll": "Áp dụng tất cả",
+          "jobCount": "{count} công việc",
+          "validCount": "{valid}/{total} ✓",
+          "untitledJob": "Công việc chưa có tiêu đề",
+          "include": "Chọn",
+          "toggleJob": "Mở hoặc thu gọn công việc {title}",
+          "priorityNone": "Không",
+          "priorityHigh": "Cao",
+          "dateStrategy": "Ngày bắt đầu và hạn hoàn thành được đặt theo toàn bộ kỳ kế hoạch khi áp dụng.",
+          "completeRequired": "Vui lòng hoàn tất các công việc đã chọn trước khi áp dụng.",
+          "selectAtLeastOne": "Vui lòng chọn ít nhất một công việc để áp dụng.",
+          "applyAll": "Áp dụng tất cả ({count} công việc)",
+          "applyPlacement": {
+            "top": "Nút áp dụng ở đầu kết quả",
+            "bottom": "Nút áp dụng ở cuối kết quả"
+          },
           "applying": "Đang áp dụng...",
           "applyConflict": "Mapping có thể đã thay đổi. Bản chỉnh sửa vẫn được giữ lại để HR kiểm tra.",
-          "applyFailed": "Không thể áp dụng các đầu việc. Bản chỉnh sửa vẫn được giữ lại.",
+          "applyFailed": "Không thể áp dụng các công việc. Bản chỉnh sửa vẫn được giữ lại.",
+          "summary": {
+            "employees": "Nhân viên",
+            "employeeCount": "{count} nhân viên",
+            "jobs": "Tổng công việc",
+            "highPriority": "Ưu tiên cao",
+            "highPriorityCount": "{count} ưu tiên cao",
+            "status": "Trạng thái",
+            "ready": "Sẵn sàng áp dụng",
+            "needsReview": "Cần kiểm tra"
+          },
+          "detailSuggestions": {
+            "title": "Gợi ý chi tiết từ AI",
+            "fields": {
+              "channel": "Kênh đăng",
+              "account": "Tài khoản / trang",
+              "frequency": "Tần suất",
+              "format": "Định dạng",
+              "content_direction": "Nội dung gợi ý",
+              "objective": "Mục tiêu / kết quả",
+              "notes": "Lưu ý"
+            },
+            "basis": {
+              "SOURCE_DERIVED": "Từ nguồn",
+              "AI_SUGGESTION": "Gợi ý AI"
+            }
+          },
           "validation": {
             "assigneeRequired": "Không còn nhân viên đã xác minh cho tab này.",
             "titleRequired": "Vui lòng nhập tiêu đề.",
-            "startRequired": "Vui lòng chọn ngày bắt đầu.",
-            "dueRequired": "Vui lòng chọn hạn hoàn thành.",
-            "dateOutsideWeek": "Ngày phải nằm trong tuần kế hoạch.",
-            "dateOrder": "Hạn hoàn thành không được trước ngày bắt đầu.",
             "priorityRequired": "Vui lòng chọn mức độ ưu tiên.",
             "sourceRequired": "Không tìm thấy đầy đủ đoạn nguồn đã tham chiếu.",
             "verifiedMappingRequired": "Mapping tab đã xác minh không còn hợp lệ."

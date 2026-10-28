@@ -130,6 +130,103 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
 
+    public function test_google_docs_detail_suggestions_are_strict_bounded_and_keep_assignment_server_trusted(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $passage = $plan->sourcePassages()->firstOrFail();
+        $suggestion = $this->validSuggestion($passage->source_key);
+        $suggestion['start_date'] = 'not-a-date';
+        $suggestion['due_date'] = '2099-12-31';
+        $suggestion['verification_fields'] = ['assignee_id', 'start_date', 'due_date'];
+        $suggestion['detail_suggestions'] = $this->detailSuggestions();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response($this->completedResponse([
+                'tasks' => [$suggestion],
+            ])),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.detail_suggestions.channel.value', 'TikTok')
+            ->assertJsonPath('data.suggestions.0.detail_suggestions.channel.basis', 'SOURCE_DERIVED')
+            ->assertJsonPath('data.suggestions.0.detail_suggestions.frequency.basis', 'AI_SUGGESTION')
+            ->assertJsonPath('data.suggestions.0.start_date', '2026-11-02')
+            ->assertJsonPath('data.suggestions.0.due_date', '2026-11-07')
+            ->assertJsonPath('data.suggestions.0.verification_fields', [])
+            ->assertJsonPath('data.suggestions.0.assignee.id', $employee->id)
+            ->assertJsonPath('data.suggestions.0.assignment_source', 'VERIFIED_GOOGLE_DOCS_TAB_MAPPING')
+            ->assertJsonPath('data.suggestions.0.evidence', 'Content can be verified.')
+            ->assertJsonPath('data.suggestions.0.provenance.title', 'VERBATIM');
+
+        Http::assertSent(function ($request): bool {
+            $payload = $request->data();
+            $schema = data_get($payload, 'text.format.schema.properties.tasks.items.properties.detail_suggestions');
+
+            $instructions = (string) ($payload['instructions'] ?? '');
+
+            return data_get($payload, 'text.format.name') === 'kps_weekly_plan_tasks_v2'
+                && data_get($payload, 'text.format.strict') === true
+                && data_get($schema, 'anyOf.0.additionalProperties') === false
+                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.minLength') === 1
+                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === 500
+                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.basis.enum')
+                    === ['SOURCE_DERIVED', 'AI_SUGGESTION']
+                && str_contains($instructions, 'you may use general operational reasoning')
+                && str_contains($instructions, 'Use SOURCE_DERIVED only when the exact detail is explicitly supported')
+                && str_contains($instructions, 'Every unsupported operational recommendation must use basis=AI_SUGGESTION')
+                && str_contains($instructions, 'must never be represented as a source or company fact')
+                && str_contains($instructions, 'must not invent employee identity, KPS account ownership')
+                && str_contains($instructions, 'credentials, identifiers, or dates outside week_start and week_end')
+                && ! str_contains($instructions, 'không dùng kiến thức bên ngoài và không tạo dữ kiện');
+        });
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+    }
+
+    public function test_missing_detail_suggestions_are_safe_and_malformed_detail_suggestions_are_rejected(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $validPlan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ], '2026-11-02');
+        $invalidPlan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-b', 'Tab B', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ], '2026-11-09');
+        $missing = $this->validSuggestion($validPlan->sourcePassages()->firstOrFail()->source_key);
+        $malformed = $this->validSuggestion($invalidPlan->sourcePassages()->firstOrFail()->source_key);
+        $malformed['start_date'] = '2026-11-09';
+        $malformed['due_date'] = '2026-11-14';
+        $malformed['detail_suggestions'] = $this->detailSuggestions();
+        $malformed['detail_suggestions']['channel']['basis'] = 'UNSUPPORTED_FACT';
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::sequence()
+                ->push($this->completedResponse(['tasks' => [$missing]]))
+                ->push($this->completedResponse(['tasks' => [$malformed]])),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$validPlan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.detail_suggestions', null);
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$invalidPlan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('extraction');
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_RESULT_REJECTED',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+    }
+
     public function test_apply_for_a_verified_selected_tab_does_not_require_unrelated_tabs_to_be_resolved(): void
     {
         [$hr, $organizationId] = $this->manager();
@@ -151,6 +248,9 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseHas('weekly_plan_entries', [
             'weekly_plan_id' => $plan->id,
             'assignee_id' => $employee->id,
+            'start_date' => $plan->week_start->toDateString(),
+            'due_date' => $plan->week_end->toDateString(),
+            'priority' => 'MEDIUM',
         ]);
     }
 
@@ -769,6 +869,20 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 'priority' => 'SUGGESTED',
                 'note' => 'SUGGESTED',
             ],
+        ];
+    }
+
+    /** @return array<string, array{value: string, basis: string}|null> */
+    private function detailSuggestions(): array
+    {
+        return [
+            'channel' => ['value' => 'TikTok', 'basis' => 'SOURCE_DERIVED'],
+            'account' => null,
+            'frequency' => ['value' => '1 video/day', 'basis' => 'AI_SUGGESTION'],
+            'format' => ['value' => 'Vertical 9:16', 'basis' => 'AI_SUGGESTION'],
+            'content_direction' => null,
+            'objective' => null,
+            'notes' => null,
         ];
     }
 
