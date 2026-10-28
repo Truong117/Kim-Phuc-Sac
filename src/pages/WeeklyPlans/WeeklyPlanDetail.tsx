@@ -25,6 +25,7 @@ import {
   deleteWeeklyPlanEntry,
   extractWeeklyPlanSourceWithAi,
   getWeeklyPlan,
+  getWeeklyPlanGoogleDocsEmployeeMappings,
   getWeeklyPlanReferences,
   extractWeeklyPlanSource,
   reparseWeeklyPlan,
@@ -37,6 +38,7 @@ import type {
   WeeklyPlan,
   WeeklyPlanEntry,
   WeeklyPlanEntryInput,
+  WeeklyPlanGoogleDocsEmployeeMappings,
   WeeklyPlanReferences,
   WeeklyPlanSourceEntryInput,
 } from "@/types/weeklyPlanning";
@@ -51,6 +53,8 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
   const { t } = useTranslation("common", { keyPrefix: "weeklyPlanning" });
   const { id } = useParams();
   const [plan, setPlan] = useState<WeeklyPlan | null>(null);
+  const [googleDocsMappings, setGoogleDocsMappings] =
+    useState<WeeklyPlanGoogleDocsEmployeeMappings | null>(null);
   const [references, setReferences] = useState<WeeklyPlanReferences | null>(
     null,
   );
@@ -72,9 +76,22 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
       getWeeklyPlan(id, controller.signal),
       getWeeklyPlanReferences(controller.signal),
     ])
-      .then(([nextPlan, nextReferences]) => {
+      .then(async ([nextPlan, nextReferences]) => {
+        let nextMappings: WeeklyPlanGoogleDocsEmployeeMappings | null = null;
+        if (
+          nextPlan.source_type === "GOOGLE_DOCS" &&
+          (nextPlan.actions.can_apply_source ||
+            nextPlan.actions.can_manage_google_docs_mappings)
+        ) {
+          nextMappings = await getWeeklyPlanGoogleDocsEmployeeMappings(
+            nextPlan.id,
+            controller.signal,
+          );
+        }
+        if (controller.signal.aborted) return;
         setPlan(nextPlan);
         setReferences(nextReferences);
+        setGoogleDocsMappings(nextMappings);
         setError(null);
       })
       .catch((nextError: unknown) => {
@@ -242,7 +259,8 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
                 {t("detail.fileName")}
               </dt>
               <dd className="mt-1 font-medium text-gray-900 dark:text-white">
-                {plan.source_document.google_docs?.title ?? plan.source_file.name}
+                {plan.source_document.google_docs?.title ??
+                  plan.source_file.name}
               </dd>
             </div>
             <div>
@@ -332,11 +350,14 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
           <WeeklyPlanSourceDocument
             plan={plan}
             employees={references.employees}
+            googleDocsMappings={googleDocsMappings}
             busy={busy}
             onExtract={() =>
               void perform(() => extractWeeklyPlanSource(plan.id))
             }
-            onAiExtract={() => extractWeeklyPlanSourceWithAi(plan.id)}
+            onAiExtract={(sourcePassageIds) =>
+              extractWeeklyPlanSourceWithAi(plan.id, sourcePassageIds)
+            }
             onApply={async (
               requestId: string,
               entries: WeeklyPlanSourceEntryInput[],
@@ -359,8 +380,14 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
         )}
 
         {plan.source_type === "GOOGLE_DOCS" &&
-          plan.actions.can_manage_google_docs_mappings && (
-            <GoogleDocsEmployeeMappingPanel key={plan.id} planId={plan.id} />
+          plan.actions.can_manage_google_docs_mappings &&
+          googleDocsMappings && (
+            <GoogleDocsEmployeeMappingPanel
+              key={plan.id}
+              planId={plan.id}
+              mappings={googleDocsMappings}
+              onMappingsChange={setGoogleDocsMappings}
+            />
           )}
 
         {plan.parse_status === "NEEDS_MAPPING" &&

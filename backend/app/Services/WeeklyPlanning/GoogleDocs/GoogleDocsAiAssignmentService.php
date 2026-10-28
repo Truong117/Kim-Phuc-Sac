@@ -19,13 +19,38 @@ class GoogleDocsAiAssignmentService
      */
     public function previewContext(WeeklyPlan $plan): array
     {
-        return $this->resolvedContext($plan, false);
+        return $this->resolvedContext($plan, false, null, true);
+    }
+
+    /**
+     * @param  list<string>  $tabIds
+     * @return array{
+     *   tabs: array<string, array{title: string, status: string, mapping_version: int, assignee: array{id: int, name: string, email: string}|null}>,
+     *   fingerprint: string
+     * }
+     */
+    public function previewContextForTabs(WeeklyPlan $plan, array $tabIds): array
+    {
+        $context = $this->resolvedContext($plan, false, $tabIds, false);
+        $hasUnverifiedTab = collect($context['tabs'])->contains(
+            fn (array $tab): bool => $tab['status'] !== WeeklyPlanGoogleDocsMappingStatus::VERIFIED->value
+                || ! is_array($tab['assignee']),
+        );
+        if ($hasUnverifiedTab) {
+            throw new GoogleDocsSourceException(
+                'GOOGLE_DOCS_SELECTED_TAB_NOT_VERIFIED',
+                409,
+                'Tất cả tab Google Docs đã chọn phải có mapping nhân viên đã xác minh.',
+            );
+        }
+
+        return $context;
     }
 
     public function isReady(WeeklyPlan $plan): bool
     {
         try {
-            $this->resolvedContext($plan, false);
+            $this->resolvedContext($plan, false, null, true);
 
             return true;
         } catch (GoogleDocsSourceException) {
@@ -40,13 +65,8 @@ class GoogleDocsAiAssignmentService
      */
     public function applyErrors(WeeklyPlan $plan, array $entries, Collection $passages): array
     {
-        try {
-            $context = $this->resolvedContext($plan, true);
-        } catch (GoogleDocsSourceException $exception) {
-            return ['entries' => [$exception->getMessage()]];
-        }
-
         $errors = [];
+        $entryTabIds = [];
         foreach ($entries as $index => $entry) {
             $tabIds = collect($entry['source_passage_ids'])
                 ->map(fn (mixed $id): ?string => $this->passageTabId($passages->get((int) $id)))
@@ -62,7 +82,28 @@ class GoogleDocsAiAssignmentService
                 continue;
             }
 
-            $tab = $context['tabs'][$tabIds->first()] ?? null;
+            $entryTabIds[$index] = (string) $tabIds->first();
+        }
+
+        if ($errors !== []) {
+            return $errors;
+        }
+
+        try {
+            $context = $this->resolvedContext(
+                $plan,
+                true,
+                array_values(array_unique($entryTabIds)),
+                false,
+            );
+        } catch (GoogleDocsSourceException $exception) {
+            return ['entries' => [$exception->getMessage()]];
+        }
+
+        foreach ($entries as $index => $entry) {
+            $tabId = $entryTabIds[$index];
+
+            $tab = $context['tabs'][$tabId] ?? null;
             if (! is_array($tab)
                 || $tab['status'] !== WeeklyPlanGoogleDocsMappingStatus::VERIFIED->value
                 || ! is_array($tab['assignee'])) {
@@ -103,8 +144,13 @@ class GoogleDocsAiAssignmentService
      *   fingerprint: string
      * }
      */
-    private function resolvedContext(WeeklyPlan $plan, bool $lockMappings): array
-    {
+    /** @param list<string>|null $selectedTabIds */
+    private function resolvedContext(
+        WeeklyPlan $plan,
+        bool $lockMappings,
+        ?array $selectedTabIds,
+        bool $requireResolvedManifest,
+    ): array {
         $plan->loadMissing('googleDocsSource');
         $source = $plan->googleDocsSource;
         $manifest = is_array($source?->tab_manifest) ? $source->tab_manifest : [];
@@ -121,6 +167,18 @@ class GoogleDocsAiAssignmentService
             ]);
         if ($tabs->count() !== count($manifest)) {
             throw $this->incomplete();
+        }
+
+        if ($selectedTabIds !== null) {
+            $selectedTabIds = array_values(array_unique($selectedTabIds));
+            if ($selectedTabIds === []
+                || count(array_intersect($selectedTabIds, $tabs->keys()->all())) !== count($selectedTabIds)) {
+                throw $this->incomplete();
+            }
+            $selectedLookup = array_fill_keys($selectedTabIds, true);
+            $tabs = $tabs->filter(
+                fn (string $title, string $tabId): bool => isset($selectedLookup[$tabId]),
+            );
         }
 
         $mappingQuery = WeeklyPlanGoogleDocsTabMapping::query()
@@ -158,16 +216,18 @@ class GoogleDocsAiAssignmentService
         $verifiedCount = 0;
         foreach ($tabs as $tabId => $title) {
             $mapping = $mappings->get(hash('sha256', $tabId));
-            if ($mapping === null
-                || ! in_array($mapping->status, [
+            if ($requireResolvedManifest
+                && ($mapping === null || ! in_array($mapping->status, [
                     WeeklyPlanGoogleDocsMappingStatus::VERIFIED,
                     WeeklyPlanGoogleDocsMappingStatus::NOT_APPLICABLE,
-                ], true)) {
+                ], true))) {
                 throw $this->incomplete();
             }
 
+            $status = $mapping?->status?->value
+                ?? WeeklyPlanGoogleDocsMappingStatus::UNVERIFIED->value;
             $assignee = null;
-            if ($mapping->status === WeeklyPlanGoogleDocsMappingStatus::VERIFIED) {
+            if ($mapping?->status === WeeklyPlanGoogleDocsMappingStatus::VERIFIED) {
                 $membership = $eligibleMemberships->get($mapping->assignee_user_id);
                 if ($membership === null || $membership->user === null) {
                     throw $this->incomplete();
@@ -182,12 +242,12 @@ class GoogleDocsAiAssignmentService
 
             $resolved[$tabId] = [
                 'title' => $title,
-                'status' => $mapping->status->value,
-                'mapping_version' => (int) $mapping->version,
+                'status' => $status,
+                'mapping_version' => (int) ($mapping?->version ?? 0),
                 'assignee' => $assignee,
             ];
         }
-        if ($verifiedCount < 1) {
+        if ($requireResolvedManifest && $verifiedCount < 1) {
             throw $this->incomplete();
         }
 

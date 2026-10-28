@@ -33,8 +33,12 @@ class WeeklyPlanTaskExtractionService
      * @param  array{tabs: array<string, array<string, mixed>>, fingerprint: string}|null  $googleDocsContext
      * @return list<array<string, mixed>>
      */
-    public function preview(WeeklyPlan $plan, User $actor, ?array $googleDocsContext = null): array
-    {
+    public function preview(
+        WeeklyPlan $plan,
+        User $actor,
+        ?array $googleDocsContext = null,
+        ?string $selectionFingerprint = null,
+    ): array {
         if (! $this->extractor->isConfigured()) {
             throw new ConflictHttpException('Chưa kết nối AI.');
         }
@@ -91,16 +95,20 @@ class WeeklyPlanTaskExtractionService
                 'source' => ['Nội dung tài liệu vượt giới hạn phân tích AI; hệ thống không tự động cắt bỏ dữ liệu.'],
             ]);
         }
+        $fingerprintParts = [
+            'weekly-plan-task-extraction-v1',
+            (string) $plan->id,
+            (string) $plan->source_sha256,
+            hash('sha256', $contextJson),
+            $googleDocsContext['fingerprint'] ?? 'DOCX',
+        ];
+        if ($selectionFingerprint !== null) {
+            $fingerprintParts[] = $selectionFingerprint;
+        }
         $context['_request'] = [
             'organization_id' => (int) $plan->organization_id,
             'requested_by_user_id' => (int) $actor->id,
-            'idempotency_key' => hash('sha256', implode('|', [
-                'weekly-plan-task-extraction-v1',
-                (string) $plan->id,
-                (string) $plan->source_sha256,
-                hash('sha256', $contextJson),
-                $googleDocsContext['fingerprint'] ?? 'DOCX',
-            ])),
+            'idempotency_key' => hash('sha256', implode('|', $fingerprintParts)),
         ];
 
         try {

@@ -135,6 +135,7 @@ export type WeeklyPlanActions = {
   can_apply_source: boolean;
   can_group_source: boolean;
   can_ai_extract_source: boolean;
+  can_ai_extract_selected_source: boolean;
   can_manage_google_docs_mappings: boolean;
 };
 

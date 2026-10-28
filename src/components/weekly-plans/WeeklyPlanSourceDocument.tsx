@@ -12,19 +12,29 @@ import type {
   WeeklyPlanAiSuggestion,
   WeeklyPlanEmployee,
   WeeklyPlanEntryInput,
+  WeeklyPlanGoogleDocsEmployeeMappings,
   WeeklyPlanSourceEntryInput,
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
-import { spansMultipleGoogleDocsTabs } from "@/utils/weeklyPlanSourceSelection";
+import {
+  allSelectedGoogleDocsTabsVerified,
+  googleDocsTabId,
+  selectedGoogleDocsTabs,
+  sourceBlockSelectionState,
+  spansMultipleGoogleDocsTabs,
+} from "@/utils/weeklyPlanSourceSelection";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type Props = {
   plan: WeeklyPlan;
   employees: WeeklyPlanEmployee[];
+  googleDocsMappings: WeeklyPlanGoogleDocsEmployeeMappings | null;
   busy: boolean;
   onExtract: () => void;
-  onAiExtract: () => Promise<WeeklyPlanAiSuggestion[]>;
+  onAiExtract: (
+    sourcePassageIds?: number[],
+  ) => Promise<WeeklyPlanAiSuggestion[]>;
   onApply: (
     requestId: string,
     entries: WeeklyPlanSourceEntryInput[],
@@ -140,6 +150,7 @@ const buildPassageBlocks = (
 function WeeklyPlanSourceDocument({
   plan,
   employees,
+  googleDocsMappings,
   busy,
   onExtract,
   onAiExtract,
@@ -187,6 +198,27 @@ function WeeklyPlanSourceDocument({
   const selectedPassages = useMemo(
     () => orderedPassages.filter((passage) => selectedIdSet.has(passage.id)),
     [orderedPassages, selectedIdSet],
+  );
+  const selectedGoogleTabs = useMemo(
+    () => selectedGoogleDocsTabs(selectedPassages, googleDocsMappings),
+    [googleDocsMappings, selectedPassages],
+  );
+  const hasMultipleSelectedGoogleTabs =
+    plan.source_type === "GOOGLE_DOCS" && selectedGoogleTabs.length > 1;
+  const selectedGoogleTabsVerified =
+    allSelectedGoogleDocsTabsVerified(selectedGoogleTabs);
+  const unresolvedSelectedGoogleTabs = selectedGoogleTabs.filter(
+    (tab) => tab.status !== "VERIFIED" || tab.employee === null,
+  );
+  const mappingsByTabId = useMemo(
+    () =>
+      new Map(
+        (googleDocsMappings?.tabs ?? []).map((mapping) => [
+          mapping.tab_id,
+          mapping,
+        ]),
+      ),
+    [googleDocsMappings],
   );
   const blocks = useMemo(
     () =>
@@ -291,7 +323,6 @@ function WeeklyPlanSourceDocument({
       plan.source_type === "GOOGLE_DOCS" &&
       spansMultipleGoogleDocsTabs(selectedPassages)
     ) {
-      setLocalError(t("multiTabAssignmentWarning"));
       return;
     }
 
@@ -343,12 +374,15 @@ function WeeklyPlanSourceDocument({
     });
   };
 
-  const runAiExtraction = async () => {
+  const runAiExtraction = async (sourcePassageIds?: number[]) => {
     if (busy || aiLoading) return;
     setAiLoading(true);
     setAiError(null);
     try {
-      const suggestions = await onAiExtract();
+      const suggestions =
+        sourcePassageIds === undefined
+          ? await onAiExtract()
+          : await onAiExtract(sourcePassageIds);
       setAiSuggestions(suggestions);
       setAiPreviewVersion((current) => current + 1);
       setAiPreviewOpen(true);
@@ -462,9 +496,19 @@ function WeeklyPlanSourceDocument({
 
             {blocks.map((block, blockIndex) => {
               const isExpanded = expandedBlockKeys.has(block.key);
-              const allSelected = block.passages.every((passage) =>
+              const selectedInBlock = block.passages.filter((passage) =>
                 selectedIdSet.has(passage.id),
+              ).length;
+              const selectionState = sourceBlockSelectionState(
+                block.passages.map((passage) => passage.id),
+                selectedIdSet,
               );
+              const allSelected = selectionState === "ALL";
+              const partiallySelected = selectionState === "PARTIAL";
+              const blockTabId = googleDocsTabId(block.passages[0]);
+              const persistedMapping = blockTabId
+                ? mappingsByTabId.get(blockTabId)
+                : undefined;
               const headerId = `weekly-source-block-${blockIndex}-header`;
               const regionId = `weekly-source-block-${blockIndex}-content`;
               const evidence = evidenceSummary(block.evidence);
@@ -472,7 +516,15 @@ function WeeklyPlanSourceDocument({
               return (
                 <section
                   key={block.key}
-                  className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                  data-selection-state={selectionState}
+                  className={`overflow-hidden rounded-xl border transition ${
+                    {
+                      ALL: "border-brand-500 bg-brand-25 shadow-theme-xs ring-1 ring-brand-500/30 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400/30",
+                      PARTIAL:
+                        "border-warning-400 bg-warning-50/70 ring-1 ring-warning-400/20 dark:border-warning-500 dark:bg-warning-500/10 dark:ring-warning-400/20",
+                      NONE: "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900",
+                    }[selectionState]
+                  }`}
                 >
                   <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
                     <button
@@ -492,12 +544,45 @@ function WeeklyPlanSourceDocument({
                           <span className="font-semibold text-gray-900 dark:text-white">
                             {block.title}
                           </span>
+                          {allSelected && (
+                            <span className="rounded-full bg-brand-500 px-2 py-0.5 text-theme-xs font-semibold text-white dark:bg-brand-400 dark:text-gray-950">
+                              {t("selectedIndicator")}
+                            </span>
+                          )}
+                          {partiallySelected && (
+                            <span className="rounded-full bg-warning-100 px-2 py-0.5 text-theme-xs font-semibold text-warning-800 dark:bg-warning-500/20 dark:text-warning-300">
+                              {t("partialIndicator")}
+                            </span>
+                          )}
                           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-theme-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                             {t("origin." + block.origin)}
                           </span>
-                          {block.isSourceGroup && (
-                            <span className="rounded-full bg-warning-50 px-2 py-0.5 text-theme-xs font-semibold text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
-                              {t("identityUnverified")}
+                          {block.isSourceGroup &&
+                            block.origin !== "GOOGLE_DOCS_TAB" && (
+                              <span className="rounded-full bg-warning-50 px-2 py-0.5 text-theme-xs font-semibold text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                                {t("identityUnverified")}
+                              </span>
+                            )}
+                          {block.origin === "GOOGLE_DOCS_TAB" && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-theme-xs font-semibold ${
+                                persistedMapping?.status === "VERIFIED" &&
+                                persistedMapping.employee
+                                  ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
+                                  : persistedMapping?.status ===
+                                      "NOT_APPLICABLE"
+                                    ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                    : "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400"
+                              }`}
+                            >
+                              {persistedMapping?.status === "VERIFIED" &&
+                              persistedMapping.employee
+                                ? t("googleDocsMapping.verified", {
+                                    name: persistedMapping.employee.name,
+                                  })
+                                : persistedMapping?.status === "NOT_APPLICABLE"
+                                  ? t("googleDocsMapping.notApplicable")
+                                  : t("googleDocsMapping.unverified")}
                             </span>
                           )}
                         </span>
@@ -505,14 +590,22 @@ function WeeklyPlanSourceDocument({
                           {t("passageCount", {
                             count: block.passages.length,
                           })}
+                          {canSelect
+                            ? ` · ${t("blockSelectedCount", {
+                                selected: selectedInBlock,
+                                total: block.passages.length,
+                              })}`
+                            : ""}
                           {evidence
                             ? ` · ${t("groupEvidence", { evidence })}`
                             : ""}
                         </span>
                         <span className="mt-1 block text-theme-xs text-gray-500 dark:text-gray-400">
-                          {block.isSourceGroup
-                            ? t("groupIdentityHelp")
-                            : t("contextIdentityHelp")}
+                          {block.origin === "GOOGLE_DOCS_TAB"
+                            ? t("googleDocsMapping.help")
+                            : block.isSourceGroup
+                              ? t("groupIdentityHelp")
+                              : t("contextIdentityHelp")}
                         </span>
                       </span>
                     </button>
@@ -521,10 +614,22 @@ function WeeklyPlanSourceDocument({
                         type="button"
                         size="sm"
                         variant="outline"
+                        aria-pressed={allSelected}
                         disabled={busy || grouping}
+                        className={
+                          allSelected
+                            ? "border-brand-500 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-300"
+                            : partiallySelected
+                              ? "border-warning-400 bg-warning-50 text-warning-800 hover:bg-warning-100 dark:border-warning-500 dark:bg-warning-500/10 dark:text-warning-300"
+                              : undefined
+                        }
                         onClick={() => toggleBlockSelection(block)}
                       >
-                        {allSelected ? t("deselectGroup") : t("selectGroup")}
+                        {allSelected
+                          ? t("selectedGroup")
+                          : partiallySelected
+                            ? t("selectRemainingGroup")
+                            : t("selectGroup")}
                       </Button>
                     )}
                   </div>
@@ -597,10 +702,39 @@ function WeeklyPlanSourceDocument({
             })}
 
             {canSelect && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                  {t("selectedCount", { count: selectedIds.length })}
-                </p>
+              <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-end sm:justify-between dark:border-gray-700 dark:bg-gray-800/50">
+                <div className="min-w-0">
+                  <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                    {plan.source_type === "GOOGLE_DOCS"
+                      ? t("googleDocsSelectionSummary", {
+                          passages: selectedIds.length,
+                          groups: selectedGoogleTabs.length,
+                        })
+                      : t("selectedCount", { count: selectedIds.length })}
+                  </p>
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    selectedGoogleTabs.length > 0 && (
+                      <p className="mt-1 text-theme-xs text-gray-600 dark:text-gray-300">
+                        {selectedGoogleTabs
+                          .map((tab) =>
+                            tab.employee
+                              ? `${tab.title} — ${tab.employee.name}`
+                              : tab.title,
+                          )
+                          .join(" · ")}
+                      </p>
+                    )}
+                  {hasMultipleSelectedGoogleTabs &&
+                    unresolvedSelectedGoogleTabs.length > 0 && (
+                      <p className="mt-2 text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+                        {t("unresolvedSelectedTabs", {
+                          tabs: unresolvedSelectedGoogleTabs
+                            .map((tab) => tab.title)
+                            .join(", "),
+                        })}
+                      </p>
+                    )}
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {plan.actions.can_group_source && (
                     <Button
@@ -613,14 +747,46 @@ function WeeklyPlanSourceDocument({
                     </Button>
                   )}
                   {plan.actions.can_apply_source && (
-                    <Button
-                      type="button"
-                      disabled={busy || grouping || selectedIds.length === 0}
-                      className="bg-kps-primary hover:bg-kps-primary-hover"
-                      onClick={openDraft}
-                    >
-                      {t("createFromSelection")}
-                    </Button>
+                    <>
+                      {!hasMultipleSelectedGoogleTabs && (
+                        <Button
+                          type="button"
+                          disabled={
+                            busy || grouping || selectedIds.length === 0
+                          }
+                          className="bg-kps-primary hover:bg-kps-primary-hover"
+                          onClick={openDraft}
+                        >
+                          {plan.source_type === "GOOGLE_DOCS"
+                            ? t("createManualEntry")
+                            : t("createFromSelection")}
+                        </Button>
+                      )}
+                      {hasMultipleSelectedGoogleTabs && (
+                        <Button
+                          type="button"
+                          disabled={
+                            busy ||
+                            grouping ||
+                            aiLoading ||
+                            !plan.actions.can_ai_extract_selected_source ||
+                            !selectedGoogleTabsVerified
+                          }
+                          className="bg-kps-primary hover:bg-kps-primary-hover"
+                          onClick={() =>
+                            void runAiExtraction(
+                              selectedPassages.map((passage) => passage.id),
+                            )
+                          }
+                        >
+                          {aiLoading
+                            ? t("aiExtracting")
+                            : t("extractSelectedGroupsWithAi", {
+                                count: selectedGoogleTabs.length,
+                              })}
+                        </Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -648,6 +814,7 @@ function WeeklyPlanSourceDocument({
         onApplied={() => {
           setAiSuggestions([]);
           setAiPreviewOpen(false);
+          setSelectedIds([]);
         }}
       />
 

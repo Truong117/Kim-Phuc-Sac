@@ -76,6 +76,197 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
 
+    public function test_scoped_multi_tab_extraction_uses_only_selected_verified_passages_in_one_request(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $firstEmployee = $this->employee($organizationId, 'Employee A');
+        $secondEmployee = $this->employee($organizationId, 'Employee B');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $firstEmployee->id),
+            $this->tab('tab-b', 'Tab B', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $secondEmployee->id),
+            $this->tab('tab-c', 'Unresolved Tab', WeeklyPlanGoogleDocsMappingStatus::NEEDS_REVIEW),
+        ]);
+        $passages = $plan->sourcePassages()->orderBy('sequence')->get();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response($this->completedResponse([
+                'tasks' => [
+                    $this->validSuggestion($passages[0]->source_key),
+                    $this->validSuggestion($passages[1]->source_key),
+                ],
+            ])),
+        ]);
+
+        $this->actingAs($hr)
+            ->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_ai_extract_source', false)
+            ->assertJsonPath('data.actions.can_ai_extract_selected_source', true);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", [
+                'source_passage_ids' => [$passages[0]->id, $passages[1]->id],
+            ])
+            ->assertOk()
+            ->assertJsonCount(2, 'data.suggestions')
+            ->assertJsonPath('data.suggestions.0.assignee.id', $firstEmployee->id)
+            ->assertJsonPath('data.suggestions.1.assignee.id', $secondEmployee->id);
+
+        Http::assertSentCount(1);
+        $providerRequest = Http::recorded()->first()[0];
+        $input = json_decode(
+            (string) data_get($providerRequest->data(), 'input.0.content.0.text'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        $serialized = json_encode($input, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $this->assertSame(
+            [$passages[0]->source_key, $passages[1]->source_key],
+            collect($input['passages'])->pluck('source_key')->all(),
+        );
+        $this->assertStringNotContainsString($passages[2]->source_key, $serialized);
+        $this->assertStringNotContainsString($firstEmployee->email, $serialized);
+        $this->assertStringNotContainsString($secondEmployee->email, $serialized);
+        $this->assertStringNotContainsString('assignee', $serialized);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+    }
+
+    public function test_apply_for_a_verified_selected_tab_does_not_require_unrelated_tabs_to_be_resolved(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Verified', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+            $this->tab('tab-b', 'Unresolved', WeeklyPlanGoogleDocsMappingStatus::NEEDS_REVIEW),
+        ]);
+        $passage = $plan->sourcePassages()->orderBy('sequence')->firstOrFail();
+
+        $this->apply(
+            $hr,
+            $plan,
+            $passage->id,
+            $employee->id,
+            '12121212-1212-4121-8121-121212121212',
+        )->assertOk();
+
+        $this->assertDatabaseHas('weekly_plan_entries', [
+            'weekly_plan_id' => $plan->id,
+            'assignee_id' => $employee->id,
+        ]);
+    }
+
+    public function test_scoped_extraction_rejects_unknown_and_cross_plan_passages(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ], '2026-11-02');
+        $otherPlan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-b', 'Tab B', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ], '2026-11-09');
+        Http::fake();
+
+        foreach ([
+            [999999],
+            [$otherPlan->sourcePassages()->firstOrFail()->id],
+        ] as $sourcePassageIds) {
+            $this->actingAs($hr)
+                ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", [
+                    'source_passage_ids' => $sourcePassageIds,
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('source_passage_ids');
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_usage_records', 0);
+    }
+
+    public function test_scoped_extraction_rejects_a_passage_from_an_old_source_snapshot(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $oldSnapshotPassage = $plan->sourcePassages()->create([
+            'source_sha256' => hash('sha256', 'old-snapshot'),
+            'source_key' => 'google-tab:old:paragraph:1',
+            'sequence' => 99,
+            'kind' => 'paragraph',
+            'text' => 'Old snapshot',
+            'metadata' => [],
+            'content_sha256' => hash('sha256', 'Old snapshot'),
+        ]);
+        Http::fake();
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", [
+                'source_passage_ids' => [$oldSnapshotPassage->id],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('source_passage_ids');
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_usage_records', 0);
+    }
+
+    public function test_scoped_extraction_rejects_unresolved_and_not_applicable_tabs(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Verified', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+            $this->tab('tab-b', 'Needs review', WeeklyPlanGoogleDocsMappingStatus::NEEDS_REVIEW),
+            $this->tab('tab-c', 'Not applicable', WeeklyPlanGoogleDocsMappingStatus::NOT_APPLICABLE),
+        ]);
+        $passages = $plan->sourcePassages()->orderBy('sequence')->get();
+        Http::fake();
+
+        foreach ([$passages[1]->id, $passages[2]->id] as $passageId) {
+            $this->actingAs($hr)
+                ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", [
+                    'source_passage_ids' => [$passageId],
+                ])
+                ->assertConflict()
+                ->assertJsonPath('code', 'GOOGLE_DOCS_SELECTED_TAB_NOT_VERIFIED');
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ai_usage_records', 0);
+    }
+
+    public function test_selected_scope_changes_the_ai_idempotency_fingerprint(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+            $this->tab('tab-b', 'Tab B', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $passages = $plan->sourcePassages()->orderBy('sequence')->get();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::sequence()
+                ->push($this->completedResponse(['tasks' => [$this->validSuggestion($passages[0]->source_key)]]))
+                ->push($this->completedResponse(['tasks' => [$this->validSuggestion($passages[1]->source_key)]])),
+        ]);
+
+        foreach ($passages as $passage) {
+            $this->actingAs($hr)
+                ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", [
+                    'source_passage_ids' => [$passage->id],
+                ])
+                ->assertOk();
+        }
+
+        Http::assertSentCount(2);
+        $fingerprints = DB::table('ai_usage_records')
+            ->where('feature', 'weekly_plan_task_extraction')
+            ->pluck('request_fingerprint');
+        $this->assertCount(2, $fingerprints);
+        $this->assertCount(2, $fingerprints->unique());
+    }
+
     public function test_one_request_excludes_not_applicable_tabs_and_enriches_from_verified_mapping(): void
     {
         [$hr, $organizationId] = $this->manager();
@@ -137,6 +328,43 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertStringContainsString('employee_identifier', (string) ($payload['instructions'] ?? ''));
         $this->assertSame('title', $response->json('data.suggestions.0.verification_fields.0'));
         $this->assertDatabaseCount('weekly_plan_entries', 0);
+    }
+
+    public function test_no_scope_extraction_still_analyzes_every_eligible_verified_tab(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $firstEmployee = $this->employee($organizationId, 'Employee A');
+        $secondEmployee = $this->employee($organizationId, 'Employee B');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $firstEmployee->id),
+            $this->tab('tab-b', 'Tab B', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $secondEmployee->id),
+            $this->tab('tab-c', 'Not applicable', WeeklyPlanGoogleDocsMappingStatus::NOT_APPLICABLE),
+        ]);
+        $passages = $plan->sourcePassages()->orderBy('sequence')->get();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response($this->completedResponse([
+                'tasks' => [
+                    $this->validSuggestion($passages[0]->source_key),
+                    $this->validSuggestion($passages[1]->source_key),
+                ],
+            ])),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonCount(2, 'data.suggestions');
+
+        Http::assertSentCount(1);
+        $input = json_decode(
+            (string) data_get(Http::recorded()->first()[0]->data(), 'input.0.content.0.text'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+        $this->assertSame(
+            [$passages[0]->source_key, $passages[1]->source_key],
+            collect($input['passages'])->pluck('source_key')->all(),
+        );
     }
 
     public function test_cross_tab_and_hallucinated_source_keys_are_rejected_and_usage_is_marked_rejected(): void

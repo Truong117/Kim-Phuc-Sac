@@ -7,6 +7,11 @@ import {
   submitGoogleDocsAiApplyAll,
   updateGoogleDocsAiReviewDraft,
 } from "../src/utils/weeklyPlanGoogleDocsAiReview.ts";
+import {
+  allSelectedGoogleDocsTabsVerified,
+  selectedGoogleDocsTabs,
+  sourceBlockSelectionState,
+} from "../src/utils/weeklyPlanSourceSelection.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -20,6 +25,25 @@ const passage = (id, sourceKey, tabId = "tab-a") => ({
   metadata: { tab_id: tabId },
   source_context: null,
   source_group: null,
+});
+
+const googlePassage = (id, tabId, title) => ({
+  ...passage(id, `google-docs:${tabId}:${id}`, tabId),
+  source_group: {
+    version: 1,
+    key: `tab:${tabId}`,
+    title,
+    origin: "GOOGLE_DOCS_TAB",
+    order: id,
+    identity_verified: false,
+    evidence: { type: "GOOGLE_DOCS_TAB", tab_id: tabId },
+  },
+});
+
+const mappingSnapshot = (tabs) => ({
+  tabs,
+  employees: tabs.flatMap((tab) => (tab.employee ? [tab.employee] : [])),
+  actions: { can_update: true },
 });
 
 const suggestion = ({
@@ -217,5 +241,152 @@ test("successful Apply All is wired to clear suggestions and close the preview",
   assert.match(
     sourceDocument,
     /onApplied=\{\(\) => \{[\s\S]*setAiSuggestions\(\[\]\);[\s\S]*setAiPreviewOpen\(false\);/,
+  );
+});
+
+test("persisted mapping snapshot drives Google Docs badges and updates immediately after Save All", async () => {
+  const sourcePassage = googlePassage(11, "tab-a", "Phương Anh");
+  const unresolved = selectedGoogleDocsTabs(
+    [sourcePassage],
+    mappingSnapshot([
+      {
+        tab_id: "tab-a",
+        title: "Phương Anh",
+        status: "NEEDS_REVIEW",
+        employee: null,
+      },
+    ]),
+  );
+  const verified = selectedGoogleDocsTabs(
+    [sourcePassage],
+    mappingSnapshot([
+      {
+        tab_id: "tab-a",
+        title: "Phương Anh",
+        status: "VERIFIED",
+        employee: { id: 101, name: "KPS Admin", email: "admin@example.test" },
+      },
+    ]),
+  );
+  const [detail, panel, sourceDocument, translationsSource] = await Promise.all(
+    [
+      readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+      readSource(
+        "src/components/weekly-plans/GoogleDocsEmployeeMappingPanel.tsx",
+      ),
+      readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+      readSource("src/locales/vi/common.json"),
+    ],
+  );
+  const copy = JSON.parse(translationsSource).weeklyPlanning.sourceDocument;
+
+  assert.equal(unresolved[0].status, "NEEDS_REVIEW");
+  assert.equal(verified[0].status, "VERIFIED");
+  assert.equal(verified[0].employee.name, "KPS Admin");
+  assert.match(detail, /googleDocsMappings={googleDocsMappings}/);
+  assert.match(detail, /onMappingsChange={setGoogleDocsMappings}/);
+  assert.match(panel, /onMappingsChange\(next\)/);
+  assert.match(sourceDocument, /persistedMapping\?\.status === "VERIFIED"/);
+  assert.match(sourceDocument, /persistedMapping\.employee\.name/);
+  assert.equal(copy.googleDocsMapping.verified, "Đã map: {name}");
+  assert.equal(copy.googleDocsMapping.notApplicable, "Không áp dụng");
+  assert.equal(copy.googleDocsMapping.unverified, "Chưa xác minh nhân viên");
+  assert.match(sourceDocument, /block\.origin !== "GOOGLE_DOCS_TAB"/);
+  assert.doesNotMatch(sourceDocument, /source_group\.identity_verified\s*=/);
+});
+
+test("source block selection exposes strong full and partial states", async () => {
+  const [sourceDocument, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning.sourceDocument;
+
+  assert.equal(sourceBlockSelectionState([1, 2], new Set()), "NONE");
+  assert.equal(sourceBlockSelectionState([1, 2], new Set([1])), "PARTIAL");
+  assert.equal(sourceBlockSelectionState([1, 2], new Set([1, 2])), "ALL");
+  assert.match(sourceDocument, /data-selection-state={selectionState}/);
+  assert.match(sourceDocument, /aria-pressed={allSelected}/);
+  assert.match(sourceDocument, /border-brand-500/);
+  assert.match(sourceDocument, /border-warning-400/);
+  assert.match(sourceDocument, /focus-visible:ring-2/);
+  assert.equal(copy.selectedGroup, "✓ Đã chọn nhóm");
+  assert.equal(copy.blockSelectedCount, "{selected}/{total} đoạn đã chọn");
+});
+
+test("Google Docs selection summary and single versus multi-tab actions stay explicit", async () => {
+  const [sourceDocument, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning.sourceDocument;
+
+  assert.match(sourceDocument, /selectedGoogleTabs\.length/);
+  assert.match(sourceDocument, /googleDocsSelectionSummary/);
+  assert.match(sourceDocument, /!hasMultipleSelectedGoogleTabs/);
+  assert.match(sourceDocument, /hasMultipleSelectedGoogleTabs &&/);
+  assert.match(sourceDocument, /createManualEntry/);
+  assert.match(sourceDocument, /extractSelectedGroupsWithAi/);
+  assert.match(sourceDocument, /runAiExtraction\([\s\S]*selectedPassages\.map/);
+  assert.equal(copy.createManualEntry, "Tạo đầu việc thủ công");
+  assert.equal(
+    copy.extractSelectedGroupsWithAi,
+    "Phân tích {count} nhóm đã chọn bằng AI",
+  );
+  assert.equal(
+    copy.googleDocsSelectionSummary,
+    "Đã chọn {passages} đoạn từ {groups} nhóm",
+  );
+});
+
+test("multi-tab AI readiness requires every selected persisted mapping to be verified", () => {
+  const passages = [
+    googlePassage(11, "tab-a", "Phương Anh"),
+    googlePassage(12, "tab-b", "Huyền My"),
+  ];
+  const verifiedTabs = selectedGoogleDocsTabs(
+    passages,
+    mappingSnapshot([
+      {
+        tab_id: "tab-a",
+        title: "Phương Anh",
+        status: "VERIFIED",
+        employee: { id: 101, name: "Employee A", email: "a@example.test" },
+      },
+      {
+        tab_id: "tab-b",
+        title: "Huyền My",
+        status: "VERIFIED",
+        employee: { id: 202, name: "Employee B", email: "b@example.test" },
+      },
+    ]),
+  );
+  const unresolvedTabs = selectedGoogleDocsTabs(
+    passages,
+    mappingSnapshot([
+      verifiedTabs[0],
+      { ...verifiedTabs[1], status: "NEEDS_REVIEW", employee: null },
+    ]),
+  );
+
+  assert.equal(allSelectedGoogleDocsTabsVerified(verifiedTabs), true);
+  assert.equal(allSelectedGoogleDocsTabsVerified(unresolvedTabs), false);
+  assert.equal(unresolvedTabs[1].title, "Huyền My");
+});
+
+test("AI failure preserves selected groups while successful Apply All clears them", async () => {
+  const sourceDocument = await readSource(
+    "src/components/weekly-plans/WeeklyPlanSourceDocument.tsx",
+  );
+  const extractionFlow = sourceDocument.slice(
+    sourceDocument.indexOf("const runAiExtraction"),
+    sourceDocument.indexOf("const reviewAiSuggestion"),
+  );
+
+  assert.match(extractionFlow, /catch \(error\)/);
+  assert.doesNotMatch(extractionFlow, /setSelectedIds\(\[\]\)/);
+  assert.match(
+    sourceDocument,
+    /onApplied=\{\(\) => \{[\s\S]*setAiSuggestions\(\[\]\);[\s\S]*setAiPreviewOpen\(false\);[\s\S]*setSelectedIds\(\[\]\);/,
   );
 });

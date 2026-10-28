@@ -603,9 +603,15 @@ class WeeklyPlanService
         return $this->findVisible($actor, $planId);
     }
 
-    /** @return list<array<string, mixed>> */
-    public function previewAiSourceEntries(User $actor, int $planId): array
-    {
+    /**
+     * @param  list<int>|null  $sourcePassageIds
+     * @return list<array<string, mixed>>
+     */
+    public function previewAiSourceEntries(
+        User $actor,
+        int $planId,
+        ?array $sourcePassageIds = null,
+    ): array {
         $plan = $this->editablePlan($actor, $planId);
         $plan->load(['sourcePassages' => fn ($query) => $query
             ->where('source_sha256', $plan->source_sha256)
@@ -617,8 +623,47 @@ class WeeklyPlanService
         }
 
         $googleDocsContext = null;
+        $selectionFingerprint = null;
         if ($plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS) {
-            $googleDocsContext = $this->googleDocsAiAssignments->previewContext($plan);
+            if ($sourcePassageIds !== null) {
+                $requestedIds = collect($sourcePassageIds)
+                    ->map(fn (mixed $id): int => (int) $id)
+                    ->unique()
+                    ->values();
+                $knownPassages = $plan->sourcePassages->keyBy('id');
+                if ($requestedIds->count() !== count($sourcePassageIds)
+                    || $requestedIds->contains(fn (int $id): bool => ! $knownPassages->has($id))) {
+                    throw ValidationException::withMessages([
+                        'source_passage_ids' => ['Đoạn nguồn đã chọn không thuộc phiên bản Google Docs hiện tại.'],
+                    ]);
+                }
+
+                $selectedIdLookup = $requestedIds->flip();
+                $selectedPassages = $plan->sourcePassages
+                    ->filter(fn (WeeklyPlanSourcePassage $passage): bool => $selectedIdLookup->has($passage->id))
+                    ->values();
+                $selectedTabIds = $selectedPassages
+                    ->map(fn (WeeklyPlanSourcePassage $passage): ?string => $this->googleDocsAiAssignments->passageTabId($passage));
+                if ($selectedTabIds->contains(null)) {
+                    throw new GoogleDocsSourceException(
+                        'GOOGLE_DOCS_SOURCE_METADATA_INVALID',
+                        409,
+                        'Metadata tab của nguồn Google Docs không còn hợp lệ.',
+                    );
+                }
+                $googleDocsContext = $this->googleDocsAiAssignments->previewContextForTabs(
+                    $plan,
+                    $selectedTabIds->unique()->values()->all(),
+                );
+                $plan->setRelation('sourcePassages', $selectedPassages);
+                $selectionFingerprint = hash('sha256', $selectedPassages
+                    ->pluck('id')
+                    ->sort()
+                    ->implode(','));
+            } else {
+                $googleDocsContext = $this->googleDocsAiAssignments->previewContext($plan);
+            }
+
             $knownTabIds = array_keys($googleDocsContext['tabs']);
             $hasInvalidPassage = $plan->sourcePassages->contains(
                 fn (WeeklyPlanSourcePassage $passage): bool => ! in_array(
@@ -635,14 +680,14 @@ class WeeklyPlanService
                 );
             }
 
-            $eligiblePassages = $plan->sourcePassages
-                ->filter(function (WeeklyPlanSourcePassage $passage) use ($googleDocsContext): bool {
+            $eligiblePassages = $plan->sourcePassages->filter(
+                function (WeeklyPlanSourcePassage $passage) use ($googleDocsContext): bool {
                     $tabId = $this->googleDocsAiAssignments->passageTabId($passage);
                     $tab = $tabId === null ? null : ($googleDocsContext['tabs'][$tabId] ?? null);
 
                     return is_array($tab) && $tab['status'] === 'VERIFIED';
-                })
-                ->values();
+                },
+            )->values();
             if ($eligiblePassages->isEmpty()) {
                 throw ValidationException::withMessages([
                     'source' => ['Không có đoạn nguồn nào thuộc tab Google Docs đã xác minh.'],
@@ -651,9 +696,19 @@ class WeeklyPlanService
             $plan->setRelation('sourcePassages', $eligiblePassages);
         }
 
-        $suggestions = $this->taskExtraction->preview($plan, $actor, $googleDocsContext);
+        $suggestions = $this->taskExtraction->preview(
+            $plan,
+            $actor,
+            $googleDocsContext,
+            $selectionFingerprint,
+        );
         if ($googleDocsContext !== null) {
-            $currentContext = $this->googleDocsAiAssignments->previewContext($plan);
+            $currentContext = $sourcePassageIds === null
+                ? $this->googleDocsAiAssignments->previewContext($plan)
+                : $this->googleDocsAiAssignments->previewContextForTabs(
+                    $plan,
+                    array_keys($googleDocsContext['tabs']),
+                );
             if (! hash_equals($googleDocsContext['fingerprint'], $currentContext['fingerprint'])) {
                 throw new GoogleDocsSourceException(
                     'GOOGLE_DOCS_MAPPING_CHANGED',
@@ -1503,6 +1558,11 @@ class WeeklyPlanService
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
                 && $googleDocsAiReady
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_ai_extract_selected_source' => $isGoogleDocs
+                && in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $sourceStatus === 'EXTRACTED'
+                && $aiStatus['configured']
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_manage_google_docs_mappings' => $isGoogleDocs
                 && $plan->status === WeeklyPlanStatus::DRAFT

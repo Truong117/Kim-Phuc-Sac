@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\WeeklyPlanning\ApplyWeeklyPlanSourceEntriesRequest;
 use App\Http\Requests\WeeklyPlanning\AssignWeeklyPlanSourceGroupRequest;
 use App\Http\Requests\WeeklyPlanning\DecideWeeklyPlanSuggestionRequest;
+use App\Http\Requests\WeeklyPlanning\ExtractWeeklyPlanSourceWithAiRequest;
 use App\Http\Requests\WeeklyPlanning\ImportWeeklyPlanRequest;
 use App\Http\Requests\WeeklyPlanning\ReparseWeeklyPlanRequest;
 use App\Http\Requests\WeeklyPlanning\ReplaceWeeklyPlanSourceRequest;
@@ -140,14 +141,20 @@ class WeeklyPlanController extends Controller
         ));
     }
 
-    public function extractSourceWithAi(Request $request, int $id): JsonResponse
-    {
+    public function extractSourceWithAi(
+        ExtractWeeklyPlanSourceWithAiRequest $request,
+        int $id,
+    ): JsonResponse {
         /** @var User $user */
         $user = $request->user();
 
         return response()->json([
             'data' => [
-                'suggestions' => $this->plans->previewAiSourceEntries($user, $id),
+                'suggestions' => $this->plans->previewAiSourceEntries(
+                    $user,
+                    $id,
+                    $request->sourcePassageIds(),
+                ),
             ],
         ]);
     }
