@@ -140,7 +140,7 @@ jobs:
         run: php artisan test
 
   backend-container:
-    name: Backend production container
+    name: Backend container build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

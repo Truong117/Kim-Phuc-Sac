@@ -142,7 +142,9 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringContainsString('USER www-data', $dockerfile);
         $this->assertStringContainsString('EXPOSE 10000', $dockerfile);
 
-        $this->assertStringContainsString('http://0.0.0.0:{$PORT:10000}', $caddyfile);
+        $this->assertStringContainsString(':{$PORT:10000}', $caddyfile);
+        $this->assertStringContainsString('bind 0.0.0.0', $caddyfile);
+        $this->assertStringNotContainsString('http://0.0.0.0:', $caddyfile);
         $this->assertStringContainsString('root * /app/public', $caddyfile);
         $this->assertStringContainsString('num_threads {$FRANKENPHP_NUM_THREADS:4}', $caddyfile);
         $this->assertStringContainsString('output stdout', $caddyfile);
@@ -165,6 +167,7 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringContainsString("'KPS_AI_DRIVER=fake'", $smokeTest);
         $this->assertStringContainsString("'WEEKLY_PLAN_DOCUMENT_AI_DRIVER=none'", $smokeTest);
         $this->assertStringContainsString('sleep(6)', $slowFixture);
+        $this->assertStringContainsString('name: Backend container build', $workflow);
         $this->assertStringContainsString('Test-ProductionContainer.ps1 -Image kps-backend-ci -SkipBuild', $workflow);
 
         $this->assertStringContainsString("health: '/up'", $bootstrap);
