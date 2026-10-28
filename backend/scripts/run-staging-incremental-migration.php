@@ -14,6 +14,8 @@ use Pdo\Mysql;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\ConsoleOutput;
 
+require_once dirname(__DIR__).'/vendor/autoload.php';
+
 const RUNNER_ALLOWED_MIGRATIONS = [
     '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
     '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php',
