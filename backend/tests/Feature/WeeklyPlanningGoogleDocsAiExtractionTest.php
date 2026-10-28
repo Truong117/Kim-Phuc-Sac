@@ -177,6 +177,8 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && data_get($payload, 'text.format.schema.properties.tab_results.maxItems') === 1
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tab_id.enum') === ['tab-a']
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.additionalProperties') === false
+                && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.status.enum') === ['TASKS_PROPOSED']
+                && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.minItems') === 1
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.maxItems') === 20
                 && data_get($schema, 'anyOf.0.additionalProperties') === false
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.minLength') === 1
@@ -190,7 +192,9 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && str_contains($instructions, 'must not invent employee identity, KPS account ownership')
                 && str_contains($instructions, 'credentials, identifiers, or dates outside week_start and week_end')
                 && str_contains($instructions, 'return every selected tab_id exactly once')
-                && str_contains($instructions, 'NO_ACTIONABLE_WORK with an empty tasks array')
+                && str_contains($instructions, 'Every selected tab requires at least one actionable proposed job')
+                && str_contains($instructions, 'must never decide or change mapping applicability')
+                && str_contains($instructions, 'HR must classify a tab as NOT_APPLICABLE before AI extraction')
                 && str_contains($instructions, 'at most 20 proposed jobs in total across all selected tabs')
                 && str_contains($instructions, 'never silently omit a selected tab')
                 && ! str_contains($instructions, 'không dùng kiến thức bên ngoài và không tạo dữ kiện');
@@ -412,7 +416,11 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->actingAs($hr)
             ->getJson("/api/weekly-plans/{$plan->id}")
             ->assertOk()
-            ->assertJsonPath('data.actions.can_ai_extract_source', true);
+            ->assertJsonPath('data.actions.can_ai_extract_source', true)
+            ->assertJsonPath('data.source_document.google_docs.processed_tab_ids', [])
+            ->assertJsonPath('data.source_document.google_docs.remaining_tab_ids', ['tab-a'])
+            ->assertJsonPath('data.source_document.google_docs.processed_tab_count', 0)
+            ->assertJsonPath('data.source_document.google_docs.relevant_tab_count', 1);
         Http::assertSentCount(1);
         $providerRequest = Http::recorded()->first()[0];
         $payload = $providerRequest->data();
@@ -769,7 +777,7 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_entries', 4);
     }
 
-    public function test_selected_tab_coverage_rejects_missing_unknown_and_duplicate_results_and_accepts_no_action(): void
+    public function test_selected_tab_coverage_rejects_missing_unknown_duplicate_and_zero_task_results(): void
     {
         [$hr, $organizationId] = $this->manager();
         $first = $this->employee($organizationId, 'Employee A');
@@ -795,28 +803,33 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                     $this->tabResult('tab-a', [$taskA]),
                 ]]))
                 ->push($this->completedResponse(['tab_results' => [
-                    $this->tabResult('tab-a', [], 'NO_ACTIONABLE_WORK'),
+                    $this->tabResult('tab-a', []),
+                    $this->tabResult('tab-b', [$taskB]),
+                ]]))
+                ->push($this->completedResponse(['tab_results' => [
+                    $this->tabResult('tab-a', [$taskA]),
                     $this->tabResult('tab-b', [$taskB]),
                 ]])),
         ]);
         $scope = ['source_passage_ids' => $passages->pluck('id')->all()];
         $actors = [$hr];
-        for ($index = 0; $index < 3; $index++) {
+        for ($index = 0; $index < 4; $index++) {
             [$actor] = $this->manager();
             $actors[] = $actor;
         }
 
-        for ($attempt = 0; $attempt < 3; $attempt++) {
+        for ($attempt = 0; $attempt < 4; $attempt++) {
             $this->actingAs($actors[$attempt])
                 ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", $scope)
                 ->assertUnprocessable()
                 ->assertJsonValidationErrors('extraction');
         }
-        $this->actingAs($actors[3])
+        $this->actingAs($actors[4])
             ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", $scope)
             ->assertOk()
-            ->assertJsonCount(1, 'data.suggestions')
-            ->assertJsonPath('data.suggestions.0.source_tab.tab_id', 'tab-b');
+            ->assertJsonCount(2, 'data.suggestions')
+            ->assertJsonPath('data.suggestions.0.source_tab.tab_id', 'tab-a')
+            ->assertJsonPath('data.suggestions.1.source_tab.tab_id', 'tab-b');
 
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
@@ -1105,11 +1118,10 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
     private function tabResult(
         string $tabId,
         array $tasks,
-        string $status = 'TASKS_PROPOSED',
     ): array {
         return [
             'tab_id' => $tabId,
-            'status' => $status,
+            'status' => 'TASKS_PROPOSED',
             'tasks' => $tasks,
         ];
     }

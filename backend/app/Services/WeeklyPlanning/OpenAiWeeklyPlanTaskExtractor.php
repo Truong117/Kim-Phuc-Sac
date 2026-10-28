@@ -115,8 +115,9 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
         $maxTasks = WeeklyPlanAiOutputLimits::maxTasks();
         $googleDocsCoverage = $isGoogleDocs ? [
             'For GOOGLE_DOCS, return every selected tab_id exactly once in tab_results and never add another tab_id.',
-            'Use TASKS_PROPOSED only when that tab has at least one task, and use NO_ACTIONABLE_WORK with an empty tasks array when it has no safe actionable work.',
+            'Every selected tab requires at least one actionable proposed job and must use status=TASKS_PROPOSED.',
             "Distribute at most {$maxTasks} proposed jobs in total across all selected tabs; never silently omit a selected tab.",
+            'The model must never decide or change mapping applicability. HR must classify a tab as NOT_APPLICABLE before AI extraction when it is intentionally outside the weekly plan.',
         ] : [];
 
         return implode(' ', [
@@ -303,10 +304,11 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                             ],
                             'status' => [
                                 'type' => 'string',
-                                'enum' => ['TASKS_PROPOSED', 'NO_ACTIONABLE_WORK'],
+                                'enum' => ['TASKS_PROPOSED'],
                             ],
                             'tasks' => [
                                 'type' => 'array',
+                                'minItems' => 1,
                                 'maxItems' => WeeklyPlanAiOutputLimits::maxTasks(),
                                 'items' => $taskSchema,
                             ],

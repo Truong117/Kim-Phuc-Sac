@@ -173,11 +173,10 @@ class WeeklyPlanTaskExtractionService
                 || ! is_string($result['tab_id'])
                 || ! isset($selectedLookup[$result['tab_id']])
                 || isset($seen[$result['tab_id']])
-                || ! in_array($result['status'], ['TASKS_PROPOSED', 'NO_ACTIONABLE_WORK'], true)
+                || $result['status'] !== 'TASKS_PROPOSED'
                 || ! is_array($result['tasks'])
                 || ! array_is_list($result['tasks'])
-                || ($result['status'] === 'TASKS_PROPOSED' && $result['tasks'] === [])
-                || ($result['status'] === 'NO_ACTIONABLE_WORK' && $result['tasks'] !== [])) {
+                || $result['tasks'] === []) {
                 $this->rejectInvalidGoogleDocsCoverage();
             }
 
