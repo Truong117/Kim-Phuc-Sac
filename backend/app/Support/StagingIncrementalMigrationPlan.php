@@ -10,6 +10,8 @@ final class StagingIncrementalMigrationPlan
 
     public const MIGRATION_17 = '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php';
 
+    public const MIGRATION_18 = '2026_10_28_000000_create_weekly_plan_entry_items_tables.php';
+
     /** @var array<string, array{migration: string, before: int, after: int}> */
     private const ALLOWLIST = [
         self::MIGRATION_16 => [
@@ -21,6 +23,11 @@ final class StagingIncrementalMigrationPlan
             'migration' => '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables',
             'before' => 16,
             'after' => 17,
+        ],
+        self::MIGRATION_18 => [
+            'migration' => '2026_10_28_000000_create_weekly_plan_entry_items_tables',
+            'before' => 17,
+            'after' => 18,
         ],
     ];
 
@@ -59,6 +66,7 @@ final class StagingIncrementalMigrationPlan
      *     unexpected_migrations: list<string>,
      *     migration_16_schema_state: string,
      *     migration_17_schema_state: string,
+     *     migration_18_schema_state: string,
      *     parent_prerequisites_verified: bool
      * }  $state
      * @return list<string>
@@ -82,7 +90,9 @@ final class StagingIncrementalMigrationPlan
         }
 
         if (! $state['parent_prerequisites_verified']) {
-            $violations[] = 'foreign_key_prerequisites_missing_or_incompatible';
+            $violations[] = $migrationFile === self::MIGRATION_18
+                ? 'migration_18_parent_prerequisites_missing_or_incompatible'
+                : 'foreign_key_prerequisites_missing_or_incompatible';
         }
 
         if ($migrationFile === self::MIGRATION_16) {
@@ -93,13 +103,33 @@ final class StagingIncrementalMigrationPlan
             if ($state['migration_17_schema_state'] !== 'absent') {
                 $violations[] = 'migration_17_schema_exists_before_migration_16';
             }
-        } else {
+
+            if ($state['migration_18_schema_state'] !== 'absent') {
+                $violations[] = 'migration_18_schema_exists_before_migration_16';
+            }
+        } elseif ($migrationFile === self::MIGRATION_17) {
             if ($state['migration_16_schema_state'] !== 'complete') {
                 $violations[] = 'migration_16_schema_not_verified';
             }
 
             if ($state['migration_17_schema_state'] !== 'absent') {
                 $violations[] = 'migration_17_partial_or_existing_schema';
+            }
+
+            if ($state['migration_18_schema_state'] !== 'absent') {
+                $violations[] = 'migration_18_schema_exists_before_migration_17';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete') {
+                $violations[] = 'migration_16_schema_not_verified';
+            }
+
+            if ($state['migration_17_schema_state'] !== 'complete') {
+                $violations[] = 'migration_17_schema_not_verified';
+            }
+
+            if ($state['migration_18_schema_state'] !== 'absent') {
+                $violations[] = 'migration_18_partial_or_existing_schema';
             }
         }
 
@@ -124,11 +154,15 @@ final class StagingIncrementalMigrationPlan
      *     unexpected_migrations: list<string>,
      *     migration_16_schema_state: string,
      *     migration_17_schema_state: string,
+     *     migration_18_schema_state: string,
      *     source_row_count: int|null,
      *     mapping_row_count: int|null,
      *     event_row_count: int|null,
+     *     item_row_count: int|null,
+     *     item_source_passage_row_count: int|null,
      *     weekly_plan_count: int,
      *     weekly_plan_id_fingerprint: string,
+     *     weekly_plan_entry_count: int,
      *     uploaded_file_plan_count: int|null
      * }  $state
      * @return list<string>
@@ -138,6 +172,7 @@ final class StagingIncrementalMigrationPlan
         array $state,
         int $expectedWeeklyPlanCount,
         string $expectedWeeklyPlanIdFingerprint,
+        ?int $expectedWeeklyPlanEntryCount = null,
     ): array {
         $definition = self::definition($migrationFile);
         $violations = self::commonViolations($state);
@@ -162,7 +197,8 @@ final class StagingIncrementalMigrationPlan
 
         if ($migrationFile === self::MIGRATION_16) {
             if ($state['migration_16_schema_state'] !== 'complete'
-                || $state['migration_17_schema_state'] !== 'absent') {
+                || $state['migration_17_schema_state'] !== 'absent'
+                || $state['migration_18_schema_state'] !== 'absent') {
                 $violations[] = 'migration_16_postflight_schema_mismatch';
             }
 
@@ -173,14 +209,31 @@ final class StagingIncrementalMigrationPlan
             if ($state['uploaded_file_plan_count'] !== $expectedWeeklyPlanCount) {
                 $violations[] = 'existing_plans_missing_uploaded_file_default';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_17) {
             if ($state['migration_16_schema_state'] !== 'complete'
-                || $state['migration_17_schema_state'] !== 'complete') {
+                || $state['migration_17_schema_state'] !== 'complete'
+                || $state['migration_18_schema_state'] !== 'absent') {
                 $violations[] = 'migration_17_postflight_schema_mismatch';
             }
 
             if ($state['mapping_row_count'] !== 0 || $state['event_row_count'] !== 0) {
                 $violations[] = 'migration_17_tables_not_empty';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete'
+                || $state['migration_17_schema_state'] !== 'complete'
+                || $state['migration_18_schema_state'] !== 'complete') {
+                $violations[] = 'migration_18_postflight_schema_mismatch';
+            }
+
+            if ($state['item_row_count'] !== 0
+                || $state['item_source_passage_row_count'] !== 0) {
+                $violations[] = 'migration_18_tables_not_empty';
+            }
+
+            if ($expectedWeeklyPlanEntryCount === null
+                || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
+                $violations[] = 'weekly_plan_entry_count_baseline_changed';
             }
         }
 

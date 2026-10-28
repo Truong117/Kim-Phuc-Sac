@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)]
     [ValidateSet(
         '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
-        '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php'
+        '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php',
+        '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
     )]
     [string]$Migration,
     [switch]$Status,
@@ -46,7 +47,8 @@ $PlanReceiptTtlMinutes = 15
 $ReceiptStoreRoot = Join-Path $env:LOCALAPPDATA 'KPS\incremental-migration-receipts'
 $AllowedMigrations = @(
     '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
-    '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php'
+    '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php',
+    '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
 )
 
 if ($Migration -notin $AllowedMigrations -or [IO.Path]::GetFileName($Migration) -cne $Migration) {
@@ -609,7 +611,8 @@ function Invoke-Inspector {
         'KPS_PRODUCTION_CONFIRMED_USERNAME_PREFIX',
         'KPS_PRODUCTION_USERNAME_PREFIX_FINGERPRINT',
         'KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT',
-        'KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT'
+        'KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT',
+        'KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT'
     )
     $processResult = Invoke-IsolatedPhpProcess `
         -ScriptPath $InspectorScript `
@@ -871,6 +874,7 @@ function Invoke-KpsStagingIncrementalRunner {
             $postflightEnvironment = Get-InspectorEnvironment $config $secrets $migrationPassword $auditPassword 'postflight'
             $postflightEnvironment['KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT'] = [string]$finalPreflight.Result.baseline.weekly_plan_count
             $postflightEnvironment['KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT'] = [string]$finalPreflight.Result.baseline.weekly_plan_id_fingerprint
+            $postflightEnvironment['KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT'] = [string]$finalPreflight.Result.baseline.weekly_plan_entry_count
             $postflight = Invoke-Inspector $postflightEnvironment
             $outputLines.Add($postflight.Json)
 

@@ -57,6 +57,11 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
         $this->assertTrue($payload['input']['force']);
         $this->assertTrue($payload['input']['no_interaction']);
         $this->assertFalse($payload['input']['interactive']);
+        $this->assertSame(
+            'database/migrations/2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
+            $payload['migration_18_path'],
+        );
+        $this->assertTrue($payload['unknown_migration_rejected']);
         $this->assertSame(0, $payload['kernel_handle_call_count']);
     }
 
@@ -123,6 +128,15 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
                 $input = runnerMigrationInput(
                     '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
                 );
+                $migration18Input = runnerMigrationInput(
+                    '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
+                );
+                $unknownMigrationRejected = false;
+                try {
+                    runnerMigrationInput('2099_01_01_000000_unknown.php');
+                } catch (RuntimeException) {
+                    $unknownMigrationRejected = true;
+                }
                 $autoloadPath = realpath(dirname($launcherPath, 2).'/vendor/autoload.php');
                 $autoloadIncludes = array_filter(
                     get_included_files(),
@@ -149,6 +163,8 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
                         'no_interaction' => $input->hasParameterOption('--no-interaction'),
                         'interactive' => $input->isInteractive(),
                     ],
+                    'migration_18_path' => $migration18Input->getParameterOption('--path'),
+                    'unknown_migration_rejected' => $unknownMigrationRejected,
                     'kernel_handle_call_count' => 0,
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
                 PHP,

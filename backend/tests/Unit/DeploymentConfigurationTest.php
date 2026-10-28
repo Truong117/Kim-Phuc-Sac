@@ -364,6 +364,7 @@ class DeploymentConfigurationTest extends TestCase
 
         $this->assertStringContainsString('2026_10_27_000000_add_google_docs_source_to_weekly_plans.php', $wrapper);
         $this->assertStringContainsString('2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php', $wrapper);
+        $this->assertStringContainsString('2026_10_28_000000_create_weekly_plan_entry_items_tables.php', $wrapper);
         $this->assertStringContainsString('[switch]$Status', $wrapper);
         $this->assertStringContainsString('[switch]$Plan', $wrapper);
         $this->assertStringContainsString('[switch]$Execute', $wrapper);

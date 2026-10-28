@@ -19,6 +19,7 @@ require_once dirname(__DIR__).'/vendor/autoload.php';
 const RUNNER_ALLOWED_MIGRATIONS = [
     '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
     '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php',
+    '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
 ];
 
 const RUNNER_ALLOWED_ENVIRONMENT = [
