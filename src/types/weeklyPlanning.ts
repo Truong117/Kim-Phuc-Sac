@@ -209,6 +209,10 @@ export type WeeklyPlan = {
           captured_at: string;
           last_verified_at: string;
           stale_at: string | null;
+          processed_tab_ids: string[];
+          remaining_tab_ids: string[];
+          relevant_tab_count: number;
+          processed_tab_count: number;
         })
       | null;
     passages: WeeklyPlanSourcePassage[];

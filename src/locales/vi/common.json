@@ -1245,7 +1245,7 @@
       "groupSaveFailed": "Không thể lưu nhãn nhóm. Vui lòng kiểm tra và thử lại.",
       "createDraft": "Tạo đầu việc nháp",
       "createFromSelection": "Tạo đầu việc từ đoạn đã chọn",
-      "createManualEntry": "Tạo đầu việc thủ công",
+      "createManualEntry": "Tạo công việc thủ công",
       "extractSelectedGroupsWithAi": "Phân tích {count} nhóm đã chọn bằng AI",
       "applyToDraft": "Áp dụng vào bản nháp",
       "selectRequired": "Vui lòng chọn ít nhất một đoạn nguồn.",

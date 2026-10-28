@@ -544,6 +544,24 @@ class WeeklyPlanService
                 ]);
             }
 
+            if ($locked->source_type === WeeklyPlanSourceType::GOOGLE_DOCS) {
+                $processedLookup = array_fill_keys(
+                    $this->googleDocsAiAssignments->processedTabIds($locked),
+                    true,
+                );
+                $selectedTabIds = $passages
+                    ->map(fn (WeeklyPlanSourcePassage $passage): ?string => $this->googleDocsAiAssignments->passageTabId($passage))
+                    ->filter()
+                    ->unique();
+                if ($selectedTabIds->contains(
+                    fn (string $tabId): bool => isset($processedLookup[$tabId]),
+                )) {
+                    throw ValidationException::withMessages([
+                        'entries' => ['Một hoặc nhiều nhóm Google Docs đã được áp dụng. Vui lòng tải lại kế hoạch và chỉ chọn nhóm còn lại.'],
+                    ]);
+                }
+            }
+
             $preparedEntries = [];
             $validationErrors = $locked->source_type === WeeklyPlanSourceType::GOOGLE_DOCS
                 ? $this->googleDocsAiAssignments->applyErrors($locked, $entries, $passages)
@@ -625,6 +643,10 @@ class WeeklyPlanService
         $googleDocsContext = null;
         $selectionFingerprint = null;
         if ($plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS) {
+            $processedLookup = array_fill_keys(
+                $this->googleDocsAiAssignments->processedTabIds($plan),
+                true,
+            );
             if ($sourcePassageIds !== null) {
                 $requestedIds = collect($sourcePassageIds)
                     ->map(fn (mixed $id): int => (int) $id)
@@ -651,9 +673,20 @@ class WeeklyPlanService
                         'Metadata tab của nguồn Google Docs không còn hợp lệ.',
                     );
                 }
+                $selectedTabIds = $selectedTabIds->unique()->values();
+                $processedSelectedTabIds = $selectedTabIds
+                    ->filter(fn (string $tabId): bool => isset($processedLookup[$tabId]));
+                if ($processedSelectedTabIds->isNotEmpty()) {
+                    $message = $processedSelectedTabIds->count() === $selectedTabIds->count()
+                        ? 'Các nhóm Google Docs đã chọn đã được áp dụng.'
+                        : 'Không thể kết hợp nhóm Google Docs đã áp dụng với nhóm chưa xử lý. Vui lòng tải lại và chọn lại các nhóm còn lại.';
+                    throw ValidationException::withMessages([
+                        'source_passage_ids' => [$message],
+                    ]);
+                }
                 $googleDocsContext = $this->googleDocsAiAssignments->previewContextForTabs(
                     $plan,
-                    $selectedTabIds->unique()->values()->all(),
+                    $selectedTabIds->all(),
                 );
                 $plan->setRelation('sourcePassages', $selectedPassages);
                 $selectionFingerprint = hash('sha256', $selectedPassages
@@ -661,7 +694,32 @@ class WeeklyPlanService
                     ->sort()
                     ->implode(','));
             } else {
-                $googleDocsContext = $this->googleDocsAiAssignments->previewContext($plan);
+                $allTabsContext = $this->googleDocsAiAssignments->previewContext($plan);
+                $remainingPassages = $plan->sourcePassages->filter(
+                    function (WeeklyPlanSourcePassage $passage) use ($allTabsContext, $processedLookup): bool {
+                        $tabId = $this->googleDocsAiAssignments->passageTabId($passage);
+                        $tab = $tabId === null ? null : ($allTabsContext['tabs'][$tabId] ?? null);
+
+                        return is_array($tab)
+                            && $tab['status'] === 'VERIFIED'
+                            && ! isset($processedLookup[$tabId]);
+                    },
+                )->values();
+                $remainingTabIds = $remainingPassages
+                    ->map(fn (WeeklyPlanSourcePassage $passage): ?string => $this->googleDocsAiAssignments->passageTabId($passage))
+                    ->filter()
+                    ->unique()
+                    ->values();
+                if ($remainingTabIds->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'source' => ['Không còn nhóm Google Docs chưa xử lý để phân tích.'],
+                    ]);
+                }
+                $googleDocsContext = $this->googleDocsAiAssignments->previewContextForTabs(
+                    $plan,
+                    $remainingTabIds->all(),
+                );
+                $plan->setRelation('sourcePassages', $remainingPassages);
             }
 
             $knownTabIds = array_keys($googleDocsContext['tabs']);
@@ -703,12 +761,10 @@ class WeeklyPlanService
             $selectionFingerprint,
         );
         if ($googleDocsContext !== null) {
-            $currentContext = $sourcePassageIds === null
-                ? $this->googleDocsAiAssignments->previewContext($plan)
-                : $this->googleDocsAiAssignments->previewContextForTabs(
-                    $plan,
-                    array_keys($googleDocsContext['tabs']),
-                );
+            $currentContext = $this->googleDocsAiAssignments->previewContextForTabs(
+                $plan,
+                array_keys($googleDocsContext['tabs']),
+            );
             if (! hash_equals($googleDocsContext['fingerprint'], $currentContext['fingerprint'])) {
                 throw new GoogleDocsSourceException(
                     'GOOGLE_DOCS_MAPPING_CHANGED',
@@ -1481,6 +1537,12 @@ class WeeklyPlanService
         $aiStatus = $this->taskExtraction->status();
         $googleDocsAiReady = ! $isGoogleDocs
             || ($sourceStatus === 'EXTRACTED' && $this->googleDocsAiAssignments->isReady($plan));
+        $googleDocsProcessing = $isGoogleDocs
+            ? $this->googleDocsAiAssignments->processingState($plan)
+            : null;
+        $hasRemainingGoogleDocsTabs = ! $isGoogleDocs
+            || ($googleDocsProcessing['remaining_tab_ids'] ?? []) !== [];
+        $plan->setAttribute('google_docs_processing', $googleDocsProcessing);
         $plan->setAttribute('source_document', [
             'status' => $sourceStatus,
             'ai' => $aiStatus,
@@ -1550,22 +1612,27 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_apply_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
+                && $hasRemainingGoogleDocsTabs
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_group_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
+                && $hasRemainingGoogleDocsTabs
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_ai_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
                 && $googleDocsAiReady
+                && $hasRemainingGoogleDocsTabs
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_ai_extract_selected_source' => $isGoogleDocs
                 && in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
+                && $hasRemainingGoogleDocsTabs
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_manage_google_docs_mappings' => $isGoogleDocs
                 && $plan->status === WeeklyPlanStatus::DRAFT
+                && $hasRemainingGoogleDocsTabs
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
         ]);
 

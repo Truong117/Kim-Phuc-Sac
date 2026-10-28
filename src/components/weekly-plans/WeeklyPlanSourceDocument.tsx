@@ -19,6 +19,7 @@ import type {
 import {
   allSelectedGoogleDocsTabsVerified,
   googleDocsTabId,
+  remainingGoogleDocsPassages,
   selectedGoogleDocsTabs,
   sourceBlockSelectionState,
   spansMultipleGoogleDocsTabs,
@@ -188,11 +189,24 @@ function WeeklyPlanSourceDocument({
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formErrorVersion, setFormErrorVersion] = useState(0);
   const orderedPassages = useMemo(
-    () =>
-      [...plan.source_document.passages].sort(
+    () => {
+      const passages =
+        plan.source_type === "GOOGLE_DOCS"
+          ? remainingGoogleDocsPassages(
+              plan.source_document.passages,
+              plan.source_document.google_docs?.remaining_tab_ids ?? [],
+            )
+          : plan.source_document.passages;
+
+      return [...passages].sort(
         (first, second) => first.sequence - second.sequence,
-      ),
-    [plan.source_document.passages],
+      );
+    },
+    [
+      plan.source_document.google_docs?.remaining_tab_ids,
+      plan.source_document.passages,
+      plan.source_type,
+    ],
   );
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedPassages = useMemo(
@@ -378,13 +392,15 @@ function WeeklyPlanSourceDocument({
     if (busy || aiLoading) return;
     setAiLoading(true);
     setAiError(null);
+    setAiSuggestions([]);
+    setAiPreviewOpen(false);
+    setAiPreviewVersion((current) => current + 1);
     try {
       const suggestions =
         sourcePassageIds === undefined
           ? await onAiExtract()
           : await onAiExtract(sourcePassageIds);
       setAiSuggestions(suggestions);
-      setAiPreviewVersion((current) => current + 1);
       setAiPreviewOpen(true);
     } catch (error) {
       setAiError(error instanceof Error ? error.message : t("aiFailed"));

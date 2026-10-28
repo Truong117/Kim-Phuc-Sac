@@ -187,6 +187,8 @@ class WeeklyPlanResource extends JsonResource
             return null;
         }
 
+        $processing = $this->getAttribute('google_docs_processing');
+
         return [
             'title' => $this->googleDocsSource->document_title,
             'snapshot_sha256' => $this->googleDocsSource->snapshot_sha256,
@@ -195,6 +197,18 @@ class WeeklyPlanResource extends JsonResource
             'passage_count' => $this->googleDocsSource->passage_count,
             'character_count' => $this->googleDocsSource->character_count,
             'tabs' => $this->googleDocsTabManifest(),
+            'processed_tab_ids' => is_array($processing)
+                ? ($processing['processed_tab_ids'] ?? [])
+                : [],
+            'remaining_tab_ids' => is_array($processing)
+                ? ($processing['remaining_tab_ids'] ?? [])
+                : [],
+            'relevant_tab_count' => is_array($processing)
+                ? (int) ($processing['relevant_tab_count'] ?? 0)
+                : 0,
+            'processed_tab_count' => is_array($processing)
+                ? (int) ($processing['processed_tab_count'] ?? 0)
+                : 0,
             'captured_at' => $this->googleDocsSource->captured_at?->toISOString(),
             'last_verified_at' => $this->googleDocsSource->last_verified_at?->toISOString(),
             'stale_at' => $this->googleDocsSource->stale_at?->toISOString(),

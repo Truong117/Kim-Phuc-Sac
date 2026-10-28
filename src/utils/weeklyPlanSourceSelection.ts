@@ -40,6 +40,23 @@ export const spansMultipleGoogleDocsTabs = (
   return tabKeys.size > 1;
 };
 
+export const remainingGoogleDocsPassages = (
+  passages: readonly WeeklyPlanSourcePassage[],
+  remainingTabIds: readonly string[],
+): WeeklyPlanSourcePassage[] => {
+  const remaining = new Set(remainingTabIds);
+
+  return passages.filter((passage) => {
+    const tabId = googleDocsTabId(passage);
+
+    return tabId !== null && remaining.has(tabId);
+  });
+};
+
+export const hasRemainingGoogleDocsTabs = (
+  remainingTabIds: readonly string[],
+): boolean => remainingTabIds.length > 0;
+
 export type SourceBlockSelectionState = "NONE" | "PARTIAL" | "ALL";
 
 export const sourceBlockSelectionState = (

@@ -30,6 +30,13 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
 
     public function extract(array $context): array
     {
+        $isGoogleDocs = ($context['source_type'] ?? null) === 'GOOGLE_DOCS';
+        $selectedTabIds = $isGoogleDocs && is_array($context['selected_tab_ids'] ?? null)
+            ? array_values(array_filter(
+                $context['selected_tab_ids'],
+                fn (mixed $tabId): bool => is_string($tabId) && $tabId !== '',
+            ))
+            : [];
         $requestMetadata = $context['_request'] ?? null;
         unset($context['_request']);
         if (! is_array($requestMetadata)) {
@@ -41,15 +48,34 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             requestedByUserId: (int) ($requestMetadata['requested_by_user_id'] ?? 0),
             feature: 'weekly_plan_task_extraction',
             idempotencyKey: (string) ($requestMetadata['idempotency_key'] ?? ''),
-            instructions: $this->instructions(),
+            instructions: $this->instructions($isGoogleDocs),
             input: $context,
-            schemaName: 'kps_weekly_plan_tasks_v3',
-            schema: $this->schema(),
+            schemaName: $isGoogleDocs
+                ? 'kps_weekly_plan_google_docs_tab_results_v4'
+                : 'kps_weekly_plan_tasks_v3',
+            schema: $isGoogleDocs
+                ? $this->googleDocsSchema($selectedTabIds)
+                : $this->schema(),
             maxOutputTokens: (int) config('weekly_plans.ai_max_output_tokens', 3000),
             reasoningEffort: $this->reasoningEffort(),
         ));
         $this->latestUsageRecordId = $result->usageRecordId;
         $payload = $result->result;
+        if ($isGoogleDocs) {
+            $tabResults = $payload['tab_results'] ?? null;
+            if (array_keys($payload) !== ['tab_results']
+                || ! is_array($tabResults)
+                || ! array_is_list($tabResults)) {
+                $this->rejectLatestResult('AI_INVALID_SCHEMA');
+                throw new AiGatewayException(
+                    'AI_INVALID_SCHEMA',
+                    'Weekly Planning Google Docs AI result is missing tab_results.',
+                );
+            }
+
+            return array_values($tabResults);
+        }
+
         $tasks = $payload['tasks'] ?? null;
         if (array_keys($payload) !== ['tasks'] || ! is_array($tasks) || ! array_is_list($tasks)) {
             $this->rejectLatestResult('AI_INVALID_SCHEMA');
@@ -84,9 +110,15 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
         return $effort === '' ? null : strtolower($effort);
     }
 
-    private function instructions(): string
+    private function instructions(bool $isGoogleDocs): string
     {
         $maxTasks = WeeklyPlanAiOutputLimits::maxTasks();
+        $googleDocsCoverage = $isGoogleDocs ? [
+            'For GOOGLE_DOCS, return every selected tab_id exactly once in tab_results and never add another tab_id.',
+            'Every selected tab requires at least one actionable proposed job and must use status=TASKS_PROPOSED.',
+            "Distribute at most {$maxTasks} proposed jobs in total across all selected tabs; never silently omit a selected tab.",
+            'The model must never decide or change mapping applicability. HR must classify a tab as NOT_APPLICABLE before AI extraction when it is intentionally outside the weekly plan.',
+        ] : [];
 
         return implode(' ', [
             "Return at most {$maxTasks} proposed jobs.",
@@ -95,6 +127,7 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             'Never combine unrelated work merely to stay below the job limit.',
             'Prefer explicit, actionable source work over duplicated wording, headings, continuation lines, explanatory text, or repeated passages.',
             'For GOOGLE_DOCS, every source_key referenced by one proposed job must belong to exactly one tab_id.',
+            ...$googleDocsCoverage,
             'Do not repeat values in verification_fields; include each required field at most once.',
             'For detail_suggestions only, you may use general operational reasoning to propose practical planning recommendations when the source task is too generic.',
             'Use SOURCE_DERIVED only when the exact detail is explicitly supported by the supplied passages. Every unsupported operational recommendation must use basis=AI_SUGGESTION and must never be represented as a source or company fact.',
@@ -243,6 +276,49 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                 ],
             ],
             'required' => ['tasks'],
+            'additionalProperties' => false,
+        ];
+    }
+
+    /** @param list<string> $selectedTabIds
+     * @return array<string, mixed>
+     */
+    private function googleDocsSchema(array $selectedTabIds): array
+    {
+        $taskSchema = $this->schema()['properties']['tasks']['items'];
+        $selectedTabCount = count($selectedTabIds);
+
+        return [
+            'type' => 'object',
+            'properties' => [
+                'tab_results' => [
+                    'type' => 'array',
+                    'minItems' => $selectedTabCount,
+                    'maxItems' => $selectedTabCount,
+                    'items' => [
+                        'type' => 'object',
+                        'properties' => [
+                            'tab_id' => [
+                                'type' => 'string',
+                                'enum' => $selectedTabIds,
+                            ],
+                            'status' => [
+                                'type' => 'string',
+                                'enum' => ['TASKS_PROPOSED'],
+                            ],
+                            'tasks' => [
+                                'type' => 'array',
+                                'minItems' => 1,
+                                'maxItems' => WeeklyPlanAiOutputLimits::maxTasks(),
+                                'items' => $taskSchema,
+                            ],
+                        ],
+                        'required' => ['tab_id', 'status', 'tasks'],
+                        'additionalProperties' => false,
+                    ],
+                ],
+            ],
+            'required' => ['tab_results'],
             'additionalProperties' => false,
         ];
     }

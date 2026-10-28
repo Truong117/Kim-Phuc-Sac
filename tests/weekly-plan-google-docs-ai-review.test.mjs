@@ -11,6 +11,8 @@ import {
 } from "../src/utils/weeklyPlanGoogleDocsAiReview.ts";
 import {
   allSelectedGoogleDocsTabsVerified,
+  hasRemainingGoogleDocsTabs,
+  remainingGoogleDocsPassages,
   selectedGoogleDocsTabs,
   sourceBlockSelectionState,
 } from "../src/utils/weeklyPlanSourceSelection.ts";
@@ -482,7 +484,7 @@ test("Google Docs selection summary and single versus multi-tab actions stay exp
   assert.match(sourceDocument, /createManualEntry/);
   assert.match(sourceDocument, /extractSelectedGroupsWithAi/);
   assert.match(sourceDocument, /runAiExtraction\([\s\S]*selectedPassages\.map/);
-  assert.equal(copy.createManualEntry, "Tạo đầu việc thủ công");
+  assert.equal(copy.createManualEntry, "Tạo công việc thủ công");
   assert.equal(
     copy.extractSelectedGroupsWithAi,
     "Phân tích {count} nhóm đã chọn bằng AI",
@@ -539,8 +541,42 @@ test("AI failure preserves selected groups while successful Apply All clears the
 
   assert.match(extractionFlow, /catch \(error\)/);
   assert.doesNotMatch(extractionFlow, /setSelectedIds\(\[\]\)/);
+  assert.match(extractionFlow, /setAiSuggestions\(\[\]\)/);
+  assert.match(extractionFlow, /setAiPreviewOpen\(false\)/);
+  assert.match(extractionFlow, /setAiPreviewVersion\(\(current\) => current \+ 1\)/);
+  assert.ok(
+    extractionFlow.indexOf("setAiSuggestions([])") <
+      extractionFlow.indexOf("await onAiExtract"),
+  );
   assert.match(
     sourceDocument,
     /onApplied=\{\(\) => \{[\s\S]*setAiSuggestions\(\[\]\);[\s\S]*setAiPreviewOpen\(false\);[\s\S]*setSelectedIds\(\[\]\);/,
+  );
+});
+
+test("authoritative remaining tab ids filter source cards and hide the completed workflow", async () => {
+  const passages = [
+    googlePassage(11, "tab-a", "Phương Anh"),
+    googlePassage(12, "tab-b", "Huyền My"),
+    googlePassage(13, "tab-c", "Minh Đăng"),
+    googlePassage(14, "tab-d", "Lê Hùng"),
+  ];
+  const remaining = remainingGoogleDocsPassages(passages, ["tab-c", "tab-d"]);
+  const [detail, sourceDocument] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+  ]);
+
+  assert.deepEqual(
+    remaining.map((item) => item.id),
+    [13, 14],
+  );
+  assert.equal(hasRemainingGoogleDocsTabs(["tab-c", "tab-d"]), true);
+  assert.equal(hasRemainingGoogleDocsTabs([]), false);
+  assert.match(sourceDocument, /remainingGoogleDocsPassages/);
+  assert.match(detail, /hasRemainingGoogleDocsTabs && \(/);
+  assert.match(
+    detail,
+    /plan\.source_type === "GOOGLE_DOCS" &&[\s\S]*hasRemainingGoogleDocsTabs &&[\s\S]*can_manage_google_docs_mappings/,
   );
 });
