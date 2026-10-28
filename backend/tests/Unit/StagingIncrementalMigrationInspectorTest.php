@@ -140,6 +140,18 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
             'wrong column type' => static function (array &$metadata): void {
                 $metadata['item_columns'][2]['COLUMN_TYPE'] = 'varchar(191)';
             },
+            'longtext source payload' => static function (array &$metadata): void {
+                $metadata['item_columns'][5]['COLUMN_TYPE'] = 'longtext';
+            },
+            'varchar source payload' => static function (array &$metadata): void {
+                $metadata['item_columns'][5]['COLUMN_TYPE'] = 'varchar(255)';
+            },
+            'text source payload' => static function (array &$metadata): void {
+                $metadata['item_columns'][5]['COLUMN_TYPE'] = 'text';
+            },
+            'non-nullable source payload' => static function (array &$metadata): void {
+                $metadata['item_columns'][5]['IS_NULLABLE'] = 'NO';
+            },
             'missing exact index' => static function (array &$metadata): void {
                 unset($metadata['item_indexes']['weekly_entry_items_entry_sort_index']);
             },
@@ -215,7 +227,7 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
                 $this->column('title', 3, 'varchar(255)', 'NO'),
                 $this->column('content', 4, 'text', 'YES'),
                 $this->column('sort_order', 5, 'int unsigned', 'NO', '0'),
-                $this->column('source_payload', 6, 'longtext', 'YES'),
+                $this->column('source_payload', 6, 'json', 'YES'),
                 $this->column('created_at', 7, 'timestamp', 'YES'),
                 $this->column('updated_at', 8, 'timestamp', 'YES'),
             ],

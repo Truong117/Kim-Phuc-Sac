@@ -557,7 +557,7 @@ function incrementalMigration18SchemaStateFromMetadata(
         'title' => incrementalExpectedColumn('/^varchar\(255\)$/'),
         'content' => incrementalExpectedColumn('/^text$/', 'YES'),
         'sort_order' => incrementalExpectedColumn('/^int(?:\(\d+\))? unsigned$/', default: '0'),
-        'source_payload' => incrementalExpectedColumn('/^longtext$/', 'YES'),
+        'source_payload' => incrementalExpectedColumn('/^json$/', 'YES'),
         'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
         'updated_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
     ]);
