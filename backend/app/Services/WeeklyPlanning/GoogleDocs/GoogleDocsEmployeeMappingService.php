@@ -43,28 +43,61 @@ final class GoogleDocsEmployeeMappingService
         ?int $employeeId,
         int $expectedVersion,
     ): array {
-        $plan = $this->planFor($actor, $planId);
-        $tab = $this->tabById($plan, $tabId);
-        if ($tab === null) {
+        return $this->updateBatch($actor, $planId, [[
+            'tab_id' => $tabId,
+            'status' => $status,
+            'employee_id' => $employeeId,
+            'expected_version' => $expectedVersion,
+        ]]);
+    }
+
+    /**
+     * @param  list<array{tab_id: string, status: WeeklyPlanGoogleDocsMappingStatus, employee_id: int|null, expected_version: int}>  $updates
+     * @return array<string, mixed>
+     */
+    public function updateBatch(User $actor, int $planId, array $updates): array
+    {
+        if ($updates === []) {
             throw new GoogleDocsEmployeeMappingException(
-                'GOOGLE_DOCS_TAB_NOT_FOUND',
+                'GOOGLE_DOCS_MAPPING_INVALID',
                 422,
-                'Tab Google Docs không còn thuộc nguồn tài liệu của kế hoạch.',
+                'Phải có ít nhất một mapping để lưu.',
             );
+        }
+
+        $plan = $this->planFor($actor, $planId);
+        $initialManifest = $plan->googleDocsSource?->tab_manifest;
+        $seenTabIds = [];
+        foreach ($updates as $update) {
+            $tabId = $update['tab_id'];
+            if (isset($seenTabIds[$tabId])) {
+                throw new GoogleDocsEmployeeMappingException(
+                    'GOOGLE_DOCS_MAPPING_INVALID',
+                    422,
+                    'Mỗi tab Google Docs chỉ được xuất hiện một lần trong batch.',
+                );
+            }
+            $seenTabIds[$tabId] = true;
+
+            if ($this->tabById($plan, $tabId) === null) {
+                throw new GoogleDocsEmployeeMappingException(
+                    'GOOGLE_DOCS_TAB_NOT_FOUND',
+                    422,
+                    'Tab Google Docs không còn thuộc nguồn tài liệu của kế hoạch.',
+                );
+            }
         }
 
         DB::transaction(function () use (
             $actor,
-            $employeeId,
-            $expectedVersion,
+            $initialManifest,
             $plan,
-            $status,
-            $tab,
-            $tabId,
+            $updates,
         ): void {
             // Lock order for mapping writes is intentionally aligned with
             // UserManagementService: organization, actor membership/grants,
-            // plan, mapping, target membership, then mapping/event writes.
+            // plan, mappings by tab hash, target memberships by user ID, then
+            // mapping/event writes after every validation has passed.
             $organization = Organization::query()
                 ->whereKey($plan->organization_id)
                 ->where('code', KpsMembershipResolver::ORGANIZATION_CODE)
@@ -94,8 +127,7 @@ final class GoogleDocsEmployeeMappingService
             $this->assertGoogleDocs($lockedPlan);
             $this->assertEditable($lockedPlan);
 
-            $currentTab = $this->tabById($lockedPlan, $tabId);
-            if ($currentTab === null || $currentTab !== $tab) {
+            if ($lockedPlan->googleDocsSource?->tab_manifest !== $initialManifest) {
                 throw new GoogleDocsEmployeeMappingException(
                     'GOOGLE_DOCS_TAB_CHANGED',
                     409,
@@ -104,88 +136,154 @@ final class GoogleDocsEmployeeMappingService
             }
 
             $source = $lockedPlan->googleDocsSource;
-            $titleSha256 = $this->titleSha256((string) $currentTab['title']);
-            $mapping = WeeklyPlanGoogleDocsTabMapping::query()
+            usort(
+                $updates,
+                static fn (array $first, array $second): int => strcmp(
+                    hash('sha256', $first['tab_id']),
+                    hash('sha256', $second['tab_id']),
+                ),
+            );
+            $tabHashes = array_map(
+                static fn (array $update): string => hash('sha256', $update['tab_id']),
+                $updates,
+            );
+            $mappings = WeeklyPlanGoogleDocsTabMapping::query()
                 ->where('organization_id', $lockedPlan->organization_id)
                 ->where('weekly_plan_id', $lockedPlan->id)
                 ->where('document_id_sha256', $source->document_id_sha256)
-                ->where('tab_id_sha256', hash('sha256', $tabId))
+                ->whereIn('tab_id_sha256', $tabHashes)
+                ->orderBy('tab_id_sha256')
                 ->lockForUpdate()
-                ->first();
+                ->get()
+                ->keyBy('tab_id_sha256');
 
-            $currentVersion = $mapping?->version ?? 0;
-            if ($expectedVersion !== $currentVersion) {
-                throw new GoogleDocsEmployeeMappingException(
-                    'GOOGLE_DOCS_MAPPING_CONFLICT',
-                    409,
-                    'Mapping đã được cập nhật bởi một yêu cầu khác. Vui lòng tải lại trước khi lưu.',
-                );
-            }
+            $employeeIds = collect($updates)
+                ->filter(fn (array $update): bool => $update['status'] === WeeklyPlanGoogleDocsMappingStatus::VERIFIED
+                    && $update['employee_id'] !== null)
+                ->map(fn (array $update): int => (int) $update['employee_id'])
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+            $eligibleMemberships = $employeeIds === []
+                ? collect()
+                : OrganizationMembership::query()
+                    ->where('organization_id', $lockedPlan->organization_id)
+                    ->whereIn('user_id', $employeeIds)
+                    ->where('is_default', true)
+                    ->where('is_active', true)
+                    ->whereHas('user')
+                    ->orderBy('user_id')
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('user_id');
 
-            $assigneeId = null;
-            if ($status === WeeklyPlanGoogleDocsMappingStatus::VERIFIED) {
-                if ($employeeId === null
-                    || $this->lockEligibleMembership($lockedPlan, $employeeId) === null) {
+            foreach ($updates as $update) {
+                $mapping = $mappings->get(hash('sha256', $update['tab_id']));
+                $currentVersion = $mapping?->version ?? 0;
+                if ($update['expected_version'] !== $currentVersion) {
                     throw new GoogleDocsEmployeeMappingException(
-                        'GOOGLE_DOCS_EMPLOYEE_INELIGIBLE',
-                        422,
-                        'Nhân viên không còn thuộc tổ chức hoặc không đủ điều kiện nhận công việc.',
+                        'GOOGLE_DOCS_MAPPING_CONFLICT',
+                        409,
+                        'Mapping đã được cập nhật bởi một yêu cầu khác. Vui lòng tải lại trước khi lưu.',
                     );
                 }
-                $assigneeId = $employeeId;
-            } elseif ($employeeId !== null) {
-                throw new GoogleDocsEmployeeMappingException(
-                    'GOOGLE_DOCS_MAPPING_INVALID',
-                    422,
-                    'Chỉ trạng thái đã xác minh mới được liên kết với nhân viên.',
-                );
             }
 
-            if ($mapping !== null && $this->sameDecision(
-                $mapping,
-                $status,
-                $assigneeId,
-                $titleSha256,
-            )) {
-                return;
+            $decisions = [];
+            foreach ($updates as $update) {
+                $tabId = $update['tab_id'];
+                $status = $update['status'];
+                $employeeId = $update['employee_id'];
+                $currentTab = $this->tabById($lockedPlan, $tabId);
+                if ($currentTab === null) {
+                    throw new GoogleDocsEmployeeMappingException(
+                        'GOOGLE_DOCS_TAB_CHANGED',
+                        409,
+                        'Cấu trúc tab đã thay đổi. Vui lòng tải lại dữ liệu mapping.',
+                    );
+                }
+
+                $assigneeId = null;
+                if ($status === WeeklyPlanGoogleDocsMappingStatus::VERIFIED) {
+                    if ($employeeId === null || ! $eligibleMemberships->has($employeeId)) {
+                        throw new GoogleDocsEmployeeMappingException(
+                            'GOOGLE_DOCS_EMPLOYEE_INELIGIBLE',
+                            422,
+                            'Nhân viên không còn thuộc tổ chức hoặc không đủ điều kiện nhận công việc.',
+                        );
+                    }
+                    $assigneeId = $employeeId;
+                } elseif ($employeeId !== null) {
+                    throw new GoogleDocsEmployeeMappingException(
+                        'GOOGLE_DOCS_MAPPING_INVALID',
+                        422,
+                        'Chỉ trạng thái đã xác minh mới được liên kết với nhân viên.',
+                    );
+                }
+
+                $mapping = $mappings->get(hash('sha256', $tabId));
+                $decisions[] = [
+                    'tab_id' => $tabId,
+                    'status' => $status,
+                    'assignee_id' => $assigneeId,
+                    'title_sha256' => $this->titleSha256((string) ($currentTab['title'] ?? '')),
+                    'mapping' => $mapping,
+                    'current_version' => $mapping?->version ?? 0,
+                ];
             }
 
-            $previousStatus = $mapping?->status?->value;
-            $previousAssigneeId = $mapping?->assignee_user_id;
             $now = CarbonImmutable::now('UTC');
-            $version = $currentVersion + 1;
-            $attributes = [
-                'organization_id' => $lockedPlan->organization_id,
-                'weekly_plan_id' => $lockedPlan->id,
-                'document_id_sha256' => $source->document_id_sha256,
-                'tab_id_sha256' => hash('sha256', $tabId),
-                'tab_title_sha256' => $titleSha256,
-                'status' => $status,
-                'assignee_user_id' => $assigneeId,
-                'verified_by_user_id' => $actor->id,
-                'verified_at' => $now,
-                'version' => $version,
-            ];
+            foreach ($decisions as $decision) {
+                $mapping = $decision['mapping'];
+                $status = $decision['status'];
+                $assigneeId = $decision['assignee_id'];
+                $titleSha256 = $decision['title_sha256'];
+                if ($mapping !== null && $this->sameDecision(
+                    $mapping,
+                    $status,
+                    $assigneeId,
+                    $titleSha256,
+                )) {
+                    continue;
+                }
 
-            if ($mapping === null) {
-                $mapping = WeeklyPlanGoogleDocsTabMapping::query()->create($attributes);
-            } else {
-                $mapping->forceFill($attributes)->save();
+                $previousStatus = $mapping?->status?->value;
+                $previousAssigneeId = $mapping?->assignee_user_id;
+                $version = $decision['current_version'] + 1;
+                $attributes = [
+                    'organization_id' => $lockedPlan->organization_id,
+                    'weekly_plan_id' => $lockedPlan->id,
+                    'document_id_sha256' => $source->document_id_sha256,
+                    'tab_id_sha256' => hash('sha256', $decision['tab_id']),
+                    'tab_title_sha256' => $titleSha256,
+                    'status' => $status,
+                    'assignee_user_id' => $assigneeId,
+                    'verified_by_user_id' => $actor->id,
+                    'verified_at' => $now,
+                    'version' => $version,
+                ];
+
+                if ($mapping === null) {
+                    $mapping = WeeklyPlanGoogleDocsTabMapping::query()->create($attributes);
+                } else {
+                    $mapping->forceFill($attributes)->save();
+                }
+
+                WeeklyPlanGoogleDocsTabMappingEvent::query()->create([
+                    'mapping_id' => $mapping->id,
+                    'organization_id' => $lockedPlan->organization_id,
+                    'weekly_plan_id' => $lockedPlan->id,
+                    'actor_user_id' => $actor->id,
+                    'previous_status' => $previousStatus,
+                    'new_status' => $status->value,
+                    'previous_assignee_user_id' => $previousAssigneeId,
+                    'new_assignee_user_id' => $assigneeId,
+                    'tab_title_sha256' => $titleSha256,
+                    'mapping_version' => $version,
+                    'created_at' => $now,
+                ]);
             }
-
-            WeeklyPlanGoogleDocsTabMappingEvent::query()->create([
-                'mapping_id' => $mapping->id,
-                'organization_id' => $lockedPlan->organization_id,
-                'weekly_plan_id' => $lockedPlan->id,
-                'actor_user_id' => $actor->id,
-                'previous_status' => $previousStatus,
-                'new_status' => $status->value,
-                'previous_assignee_user_id' => $previousAssigneeId,
-                'new_assignee_user_id' => $assigneeId,
-                'tab_title_sha256' => $titleSha256,
-                'mapping_version' => $version,
-                'created_at' => $now,
-            ]);
         });
 
         return $this->buildOverview($this->planFor($actor, $planId), $actor);
@@ -221,20 +319,6 @@ final class GoogleDocsEmployeeMappingService
             ->first();
 
         return $grant === null ? null : $membership;
-    }
-
-    private function lockEligibleMembership(
-        WeeklyPlan $plan,
-        int $userId,
-    ): ?OrganizationMembership {
-        return OrganizationMembership::query()
-            ->where('organization_id', $plan->organization_id)
-            ->where('user_id', $userId)
-            ->where('is_default', true)
-            ->where('is_active', true)
-            ->whereHas('user')
-            ->lockForUpdate()
-            ->first();
     }
 
     private function planFor(User $actor, int $planId): WeeklyPlan

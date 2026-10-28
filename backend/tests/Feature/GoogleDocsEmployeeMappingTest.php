@@ -28,6 +28,272 @@ class GoogleDocsEmployeeMappingTest extends TestCase
     use AuthorizationFixtures;
     use RefreshDatabase;
 
+    public function test_batch_request_enforces_shape_status_employee_version_identity_and_tab_bound(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Nhân viên');
+        $plan = $this->googlePlan(
+            $organizationId,
+            $hr,
+            'document-batch-validation',
+            [$this->tab('tab-a', 'Tab A'), $this->tab('tab-b', 'Tab B', 2)],
+        );
+
+        $this->batch($hr, $plan, [])->assertUnprocessable()
+            ->assertJsonValidationErrors('mappings');
+        $this->batch($hr, $plan, [[
+            'tab_id' => 'tab-a',
+            'status' => 'VERIFIED',
+            'expected_version' => 0,
+        ]])->assertUnprocessable()
+            ->assertJsonValidationErrors('mappings.0.employee_id');
+        $this->batch($hr, $plan, [[
+            'tab_id' => 'tab-a',
+            'status' => 'NOT_APPLICABLE',
+            'employee_id' => null,
+            'expected_version' => 0,
+        ]])->assertUnprocessable()
+            ->assertJsonValidationErrors('mappings.0.employee_id');
+        $this->batch($hr, $plan, [[
+            'tab_id' => 'tab-a',
+            'status' => 'UNVERIFIED',
+            'expected_version' => '0',
+            'organization_id' => $organizationId,
+            'document_id' => 'untrusted',
+        ]])->assertUnprocessable()
+            ->assertJsonValidationErrors([
+                'mappings.0.status',
+                'mappings.0.expected_version',
+                'mappings.0.organization_id',
+                'mappings.0.document_id',
+            ]);
+
+        config()->set('google_docs.max_tabs', 1);
+        $this->batch($hr, $plan, [
+            [
+                'tab_id' => 'tab-a',
+                'status' => 'VERIFIED',
+                'employee_id' => $employee->id,
+                'expected_version' => 0,
+            ],
+            [
+                'tab_id' => 'tab-b',
+                'status' => 'VERIFIED',
+                'employee_id' => $employee->id,
+                'expected_version' => 0,
+            ],
+        ])->assertUnprocessable()->assertJsonValidationErrors('mappings');
+
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 0);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 0);
+    }
+
+    public function test_batch_saves_four_verified_tabs_with_one_version_and_event_each(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employees = collect(range(1, 4))
+            ->map(fn (int $index): User => $this->employee($organizationId, "Nhân viên {$index}"));
+        $tabs = collect(range(1, 4))
+            ->map(fn (int $index): array => $this->tab("tab-{$index}", "Tab {$index}", $index))
+            ->all();
+        $plan = $this->googlePlan($organizationId, $hr, 'document-batch', $tabs);
+
+        $response = $this->batch($hr, $plan, collect($tabs)
+            ->map(fn (array $tab, int $index): array => [
+                'tab_id' => $tab['tab_id'],
+                'status' => 'VERIFIED',
+                'employee_id' => $employees[$index]->id,
+                'expected_version' => 0,
+            ])
+            ->all());
+
+        $response->assertOk()
+            ->assertJsonPath('data.tabs.0.version', 1)
+            ->assertJsonPath('data.tabs.1.version', 1)
+            ->assertJsonPath('data.tabs.2.version', 1)
+            ->assertJsonPath('data.tabs.3.version', 1);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 4);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 4);
+        $this->assertSame(4, DB::table('weekly_plan_google_docs_tab_mappings')
+            ->where('weekly_plan_id', $plan->id)
+            ->where('version', 1)
+            ->where('verified_by_user_id', $hr->id)
+            ->count());
+        $this->assertSame(4, DB::table('weekly_plan_google_docs_tab_mapping_events')
+            ->where('weekly_plan_id', $plan->id)
+            ->where('mapping_version', 1)
+            ->where('actor_user_id', $hr->id)
+            ->count());
+    }
+
+    public function test_batch_invalid_employee_rolls_back_every_mapping_and_event(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Nhân viên hợp lệ');
+        $ineligible = User::factory()->create();
+        $plan = $this->googlePlan($organizationId, $hr, 'document-batch', [
+            $this->tab('tab-a', 'Tab A'),
+            $this->tab('tab-b', 'Tab B', 2),
+        ]);
+
+        $this->batch($hr, $plan, [
+            [
+                'tab_id' => 'tab-a',
+                'status' => 'VERIFIED',
+                'employee_id' => $employee->id,
+                'expected_version' => 0,
+            ],
+            [
+                'tab_id' => 'tab-b',
+                'status' => 'VERIFIED',
+                'employee_id' => $ineligible->id,
+                'expected_version' => 0,
+            ],
+        ])->assertUnprocessable()
+            ->assertJsonPath('code', 'GOOGLE_DOCS_EMPLOYEE_INELIGIBLE');
+
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 0);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 0);
+    }
+
+    public function test_batch_stale_version_rolls_back_every_other_changed_tab(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $first = $this->employee($organizationId, 'Nhân viên một');
+        $second = $this->employee($organizationId, 'Nhân viên hai');
+        $plan = $this->googlePlan($organizationId, $hr, 'document-batch', [
+            $this->tab('tab-a', 'Tab A'),
+            $this->tab('tab-b', 'Tab B', 2),
+        ]);
+        $this->map($hr, $plan, 'tab-a', 'VERIFIED', $first->id, 0)->assertOk();
+
+        $this->batch($hr, $plan, [
+            [
+                'tab_id' => 'tab-b',
+                'status' => 'VERIFIED',
+                'employee_id' => $second->id,
+                'expected_version' => 0,
+            ],
+            [
+                'tab_id' => 'tab-a',
+                'status' => 'VERIFIED',
+                'employee_id' => $second->id,
+                'expected_version' => 0,
+            ],
+        ])->assertConflict()
+            ->assertJsonPath('code', 'GOOGLE_DOCS_MAPPING_CONFLICT');
+
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 1);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 1);
+        $this->assertDatabaseHas('weekly_plan_google_docs_tab_mappings', [
+            'weekly_plan_id' => $plan->id,
+            'tab_id_sha256' => hash('sha256', 'tab-a'),
+            'assignee_user_id' => $first->id,
+            'version' => 1,
+        ]);
+        $this->assertDatabaseMissing('weekly_plan_google_docs_tab_mappings', [
+            'weekly_plan_id' => $plan->id,
+            'tab_id_sha256' => hash('sha256', 'tab-b'),
+        ]);
+    }
+
+    public function test_batch_duplicate_and_unknown_tabs_fail_without_writes(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Nhân viên');
+        $plan = $this->googlePlan(
+            $organizationId,
+            $hr,
+            'document-batch',
+            [$this->tab('tab-a', 'Tab A')],
+        );
+        $mapping = [
+            'tab_id' => 'tab-a',
+            'status' => 'VERIFIED',
+            'employee_id' => $employee->id,
+            'expected_version' => 0,
+        ];
+
+        $this->batch($hr, $plan, [$mapping, $mapping])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('mappings.1.tab_id');
+        $this->batch($hr, $plan, [$mapping, [
+            ...$mapping,
+            'tab_id' => 'stale-tab',
+        ]])->assertUnprocessable()
+            ->assertJsonPath('code', 'GOOGLE_DOCS_TAB_NOT_FOUND');
+
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 0);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 0);
+    }
+
+    public function test_batch_rejects_non_draft_plan_and_freshly_removed_authorization(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Nhân viên');
+        $plan = $this->googlePlan(
+            $organizationId,
+            $hr,
+            'document-batch',
+            [$this->tab('tab-a', 'Tab A')],
+        );
+        $input = [[
+            'tab_id' => 'tab-a',
+            'status' => 'VERIFIED',
+            'employee_id' => $employee->id,
+            'expected_version' => 0,
+        ]];
+
+        $plan->forceFill(['status' => WeeklyPlanStatus::SUBMITTED])->save();
+        $this->batch($hr, $plan, $input)
+            ->assertConflict()
+            ->assertJsonPath('code', 'GOOGLE_DOCS_MAPPING_LOCKED');
+        $plan->forceFill(['status' => WeeklyPlanStatus::DRAFT])->save();
+
+        $staleActorModel = User::query()->findOrFail($hr->id);
+        $this->revokeManageDraft($hr);
+        $this->bindStaleScopePreflight($organizationId);
+        try {
+            app(GoogleDocsEmployeeMappingService::class)->updateBatch(
+                $staleActorModel,
+                $plan->id,
+                [[
+                    'tab_id' => 'tab-a',
+                    'status' => WeeklyPlanGoogleDocsMappingStatus::VERIFIED,
+                    'employee_id' => $employee->id,
+                    'expected_version' => 0,
+                ]],
+            );
+            $this->fail('Batch unexpectedly accepted a revoked permission.');
+        } catch (AccessDeniedHttpException) {
+            $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 0);
+            $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 0);
+        }
+    }
+
+    public function test_batch_true_no_op_creates_no_new_version_or_event(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Nhân viên');
+        $plan = $this->googlePlan(
+            $organizationId,
+            $hr,
+            'document-batch',
+            [$this->tab('tab-a', 'Tab A')],
+        );
+        $this->map($hr, $plan, 'tab-a', 'VERIFIED', $employee->id, 0)->assertOk();
+
+        $this->batch($hr, $plan, [[
+            'tab_id' => 'tab-a',
+            'status' => 'VERIFIED',
+            'employee_id' => $employee->id,
+            'expected_version' => 1,
+        ]])->assertOk()->assertJsonPath('data.tabs.0.version', 1);
+
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mappings', 1);
+        $this->assertDatabaseCount('weekly_plan_google_docs_tab_mapping_events', 1);
+    }
+
     public function test_hr_maps_duplicate_titles_by_tab_id_and_never_creates_entries_or_tasks(): void
     {
         [$hr, $organizationId] = $this->manager();
@@ -672,6 +938,15 @@ class GoogleDocsEmployeeMappingTest extends TestCase
                 'employee_id' => $employeeId,
                 'expected_version' => $expectedVersion,
             ],
+        );
+    }
+
+    /** @param list<array<string, mixed>> $mappings */
+    private function batch(User $actor, WeeklyPlan $plan, array $mappings)
+    {
+        return $this->actingAs($actor)->putJson(
+            "/api/weekly-plans/{$plan->id}/google-docs/employee-mappings/batch",
+            ['mappings' => $mappings],
         );
     }
 
