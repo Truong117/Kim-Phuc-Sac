@@ -157,7 +157,10 @@ final class StagingBootstrapPlan
         );
 
         if ($ordered !== self::EXPECTED_MIGRATIONS) {
-            throw new RuntimeException('The migration set differs from the reviewed 16-file staging baseline.');
+            throw new RuntimeException(sprintf(
+                'The migration set differs from the reviewed %d-file staging baseline.',
+                count(self::EXPECTED_MIGRATIONS),
+            ));
         }
 
         $hashes = [];

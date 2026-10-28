@@ -64,7 +64,10 @@ class DeploymentConfigurationTest extends TestCase
         ));
 
         foreach ($deploymentFiles as $deploymentFile) {
-            if (basename($deploymentFile) === 'Invoke-KpsStagingDatabaseBootstrap.ps1') {
+            if (in_array(basename($deploymentFile), [
+                'Invoke-KpsStagingDatabaseBootstrap.ps1',
+                'Invoke-KpsStagingIncrementalMigration.ps1',
+            ], true)) {
                 continue;
             }
 
@@ -290,6 +293,89 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringNotContainsString('DROP DATABASE', $helper);
         $this->assertStringNotContainsString('DROP USER', $helper);
         $this->assertStringContainsString('DB_DATABASE=kps_internal', $stagingEnvironment);
+    }
+
+    public function test_incremental_staging_runner_is_allowlisted_manual_and_never_seeds(): void
+    {
+        $wrapper = $this->readRepositoryFile('deployment/Invoke-KpsStagingIncrementalMigration.ps1');
+        $helper = $this->readBackendFile('scripts/inspect-staging-incremental-migration.php');
+        $launcher = $this->readBackendFile('scripts/run-staging-incremental-migration.php');
+        $databaseConfiguration = $this->readBackendFile('config/database.php');
+
+        $this->assertStringContainsString('2026_10_27_000000_add_google_docs_source_to_weekly_plans.php', $wrapper);
+        $this->assertStringContainsString('2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php', $wrapper);
+        $this->assertStringContainsString('[switch]$Status', $wrapper);
+        $this->assertStringContainsString('[switch]$Plan', $wrapper);
+        $this->assertStringContainsString('[switch]$Execute', $wrapper);
+        $this->assertStringContainsString('PlanReceiptPath', $wrapper);
+        $this->assertStringContainsString('Windows DPAPI CurrentUser', $wrapper);
+        $this->assertStringContainsString('AcknowledgeBackupAvailable', $wrapper);
+        $this->assertStringContainsString('AcknowledgeRecoveryPoint', $wrapper);
+        $this->assertStringContainsString('AcknowledgeNewInstanceRestore', $wrapper);
+        $this->assertStringContainsString('AcknowledgeRpo', $wrapper);
+        $this->assertStringContainsString('MIGRATE KPS-STAGING', $wrapper);
+        $this->assertStringContainsString('Local\KPS-Staging-Incremental-Migration', $wrapper);
+        $this->assertStringContainsString('EnvironmentVariables.Clear()', $wrapper);
+        $this->assertStringContainsString('Open-VerifiedMigrationFile', $wrapper);
+        $this->assertStringContainsString("'command' => 'migrate'", $launcher);
+        $this->assertStringContainsString("'--database' => 'mysql'", $launcher);
+        $this->assertStringContainsString("'--path' => 'database/migrations/'", $launcher);
+        $this->assertStringContainsString("'--force' => true", $launcher);
+        $this->assertStringContainsString("'--no-interaction' => true", $launcher);
+        $this->assertStringNotContainsString('db:seed', $wrapper.$helper.$launcher);
+        $this->assertStringNotContainsString('StagingSeeder', $wrapper.$helper.$launcher);
+        $this->assertStringNotContainsString('Invoke-KpsStagingDatabaseBootstrap', $wrapper);
+        $this->assertStringNotContainsString('backend/.env', $wrapper.$helper.$launcher);
+        $this->assertStringNotContainsString('LoadEnvironmentVariables::class', $launcher);
+        $this->assertStringContainsString("'url' => null", $launcher);
+        $this->assertStringContainsString("'unix_socket' => ''", $launcher);
+        $this->assertStringContainsString('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true', $helper);
+        $this->assertStringContainsString(
+            'Mysql::ATTR_SSL_VERIFY_SERVER_CERT : PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT) => true',
+            $launcher,
+        );
+        $this->assertStringNotContainsString('ATTR_SSL_VERIFY_SERVER_CERT', $databaseConfiguration);
+        $this->assertStringContainsString('CURRENT_USER() AS authenticated_user', $helper);
+        $this->assertStringContainsString('CURRENT_USER() AS authenticated_user', $launcher);
+        $this->assertStringContainsString('@@foreign_key_checks AS foreign_key_checks', $helper);
+        $this->assertStringContainsString('@@foreign_key_checks AS foreign_key_checks', $launcher);
+        $this->assertStringContainsString('ADMIN SHOW DDL JOBS 100', $helper);
+        $this->assertStringContainsString('INFORMATION_SCHEMA.PROCESSLIST', $helper);
+        $this->assertStringNotContainsString('->exec(', $helper);
+
+        $readOnlyExitPosition = strpos($wrapper, "if (\$Mode -ne 'Execute') {");
+        $artisanPosition = strpos($wrapper, 'Invoke-ArtisanMigration $artisanEnvironment $Migration');
+        $acknowledgementPosition = strpos($wrapper, "if (\$Mode -eq 'Execute') {");
+        $configReadPosition = strpos($wrapper, '$config = Get-ValidatedAuditConfig');
+        $confirmationPosition = strpos($wrapper, '$confirmation = Read-RunnerConfirmation');
+        $finalPreflightPosition = strpos($wrapper, '$finalPreflight = Invoke-Inspector');
+        $finalHashPosition = strpos($wrapper, '$finalMigrationHash = Get-FileSha256');
+
+        $this->assertIsInt($readOnlyExitPosition);
+        $this->assertIsInt($artisanPosition);
+        $this->assertIsInt($acknowledgementPosition);
+        $this->assertIsInt($configReadPosition);
+        $this->assertIsInt($confirmationPosition);
+        $this->assertIsInt($finalPreflightPosition);
+        $this->assertIsInt($finalHashPosition);
+        $this->assertLessThan($artisanPosition, $readOnlyExitPosition);
+        $this->assertLessThan($configReadPosition, $acknowledgementPosition);
+        $this->assertLessThan($finalPreflightPosition, $confirmationPosition);
+        $this->assertLessThan($finalHashPosition, $finalPreflightPosition);
+        $this->assertLessThan($artisanPosition, $finalHashPosition);
+
+        foreach ([
+            'INSERT INTO',
+            'UPDATE `',
+            'DELETE FROM',
+            'CREATE TABLE',
+            'DROP TABLE',
+            'ALTER TABLE',
+            'TRUNCATE TABLE',
+            'REPLACE INTO',
+        ] as $writeStatement) {
+            $this->assertStringNotContainsString($writeStatement, $helper);
+        }
     }
 
     private function readBackendFile(string $path): string
