@@ -139,10 +139,7 @@ export type WeeklyPlanActions = {
 };
 
 export type WeeklyPlanGoogleDocsMappingStatus =
-  | "UNVERIFIED"
-  | "VERIFIED"
-  | "NEEDS_REVIEW"
-  | "NOT_APPLICABLE";
+  "UNVERIFIED" | "VERIFIED" | "NEEDS_REVIEW" | "NOT_APPLICABLE";
 
 export type WeeklyPlanGoogleDocsEmployeeMappingTab = {
   tab_id: string;
@@ -188,11 +185,7 @@ export type WeeklyPlan = {
     sha256: string;
     uploaded_at: string | null;
     availability:
-      | "AVAILABLE"
-      | "MISSING"
-      | "UNAVAILABLE"
-      | "NOT_APPLICABLE"
-      | null;
+      "AVAILABLE" | "MISSING" | "UNAVAILABLE" | "NOT_APPLICABLE" | null;
   };
   source_document: {
     status:
@@ -210,11 +203,13 @@ export type WeeklyPlan = {
       max_passages_per_entry: number;
       max_entries_per_request: number;
     };
-    google_docs: (Omit<WeeklyPlanGoogleDocsPreview, "revision_id"> & {
-      captured_at: string;
-      last_verified_at: string;
-      stale_at: string | null;
-    }) | null;
+    google_docs:
+      | (Omit<WeeklyPlanGoogleDocsPreview, "revision_id"> & {
+          captured_at: string;
+          last_verified_at: string;
+          stale_at: string | null;
+        })
+      | null;
     passages: WeeklyPlanSourcePassage[];
   };
   creator: { id: number; name: string };
@@ -322,6 +317,9 @@ export type WeeklyPlanAiSuggestion = {
   due_date: string | null;
   priority: TaskPriority | null;
   note: string | null;
+  source_tab?: { tab_id: string; title: string } | null;
+  assignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email"> | null;
+  assignment_source?: "VERIFIED_GOOGLE_DOCS_TAB_MAPPING" | null;
   verification_fields: string[];
   evidence: string;
   provenance: Record<

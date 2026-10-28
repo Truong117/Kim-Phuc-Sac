@@ -1,7 +1,9 @@
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
+import WeeklyPlanGoogleDocsAiReview from "@/components/weekly-plans/WeeklyPlanGoogleDocsAiReview";
 import type {
   WeeklyPlanAiSuggestion,
+  WeeklyPlanSourceEntryInput,
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
@@ -11,6 +13,10 @@ type Props = {
   isOpen: boolean;
   suggestions: WeeklyPlanAiSuggestion[];
   passages: WeeklyPlanSourcePassage[];
+  sourceType: "UPLOADED_FILE" | "GOOGLE_DOCS";
+  weekStart: string;
+  weekEnd: string;
+  reviewVersion: number;
   busy: boolean;
   onClose: () => void;
   onReview: (
@@ -18,15 +24,29 @@ type Props = {
     passageIds: number[],
     index: number,
   ) => void;
+  onApplyAll: (
+    requestId: string,
+    entries: WeeklyPlanSourceEntryInput[],
+  ) => Promise<{
+    succeeded: boolean;
+    validationErrors?: Record<string, string[]>;
+  }>;
+  onApplied: () => void;
 };
 
 export default function WeeklyPlanAiExtractionPreview({
   isOpen,
   suggestions,
   passages,
+  sourceType,
+  weekStart,
+  weekEnd,
+  reviewVersion,
   busy,
   onClose,
   onReview,
+  onApplyAll,
+  onApplied,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.sourceDocument.aiPreview",
@@ -51,16 +71,31 @@ export default function WeeklyPlanAiExtractionPreview({
         {t("title")}
       </h2>
       <p className="mt-2 text-theme-sm text-gray-500 dark:text-gray-400">
-        {t("description")}
+        {sourceType === "GOOGLE_DOCS"
+          ? t("googleDocs.description")
+          : t("description")}
       </p>
-      <p className="mt-3 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
-        {t("verificationWarning")}
-      </p>
+      {sourceType !== "GOOGLE_DOCS" && (
+        <p className="mt-3 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+          {t("verificationWarning")}
+        </p>
+      )}
 
       {suggestions.length === 0 ? (
         <p className="mt-5 rounded-xl bg-gray-50 px-4 py-8 text-center text-theme-sm text-gray-500 dark:bg-gray-800/50 dark:text-gray-400">
           {t("empty")}
         </p>
+      ) : sourceType === "GOOGLE_DOCS" ? (
+        <WeeklyPlanGoogleDocsAiReview
+          key={`google-docs-ai-review-${reviewVersion}`}
+          suggestions={suggestions}
+          passages={passages}
+          weekStart={weekStart}
+          weekEnd={weekEnd}
+          busy={busy}
+          onApplyAll={onApplyAll}
+          onApplied={onApplied}
+        />
       ) : (
         <div className="mt-5 space-y-4">
           {suggestions.map((suggestion, index) => {

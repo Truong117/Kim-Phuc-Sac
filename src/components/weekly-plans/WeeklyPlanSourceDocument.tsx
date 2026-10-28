@@ -171,6 +171,7 @@ function WeeklyPlanSourceDocument({
   const [aiSuggestions, setAiSuggestions] = useState<WeeklyPlanAiSuggestion[]>(
     [],
   );
+  const [aiPreviewVersion, setAiPreviewVersion] = useState(0);
   const [aiError, setAiError] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
@@ -349,6 +350,7 @@ function WeeklyPlanSourceDocument({
     try {
       const suggestions = await onAiExtract();
       setAiSuggestions(suggestions);
+      setAiPreviewVersion((current) => current + 1);
       setAiPreviewOpen(true);
     } catch (error) {
       setAiError(error instanceof Error ? error.message : t("aiFailed"));
@@ -635,9 +637,18 @@ function WeeklyPlanSourceDocument({
         isOpen={aiPreviewOpen}
         suggestions={aiSuggestions}
         passages={orderedPassages}
+        sourceType={plan.source_type}
+        weekStart={plan.week_start}
+        weekEnd={plan.week_end}
+        reviewVersion={aiPreviewVersion}
         busy={busy}
         onClose={() => setAiPreviewOpen(false)}
         onReview={reviewAiSuggestion}
+        onApplyAll={onApply}
+        onApplied={() => {
+          setAiSuggestions([]);
+          setAiPreviewOpen(false);
+        }}
       />
 
       <Modal

@@ -75,7 +75,7 @@ Giá không được hardcode vào source vì thay đổi theo model/thời đi�
 
 Các giới hạn kỹ thuật được mô tả trong `.env.staging.example`: timeout/connect timeout, tối đa hai attempts, bounded retry delay, stale reservation, input/output limit và giới hạn passages/context riêng của Weekly Planning.
 
-`WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE` là giới hạn an toàn riêng cho số đầu việc trong một kết quả extraction. Biến này không dùng chung với `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`, vốn chỉ giới hạn số entry trong một lần ghi `source/apply`. Backend từ chối toàn bộ response vượt giới hạn AI và không truncate; tài liệu trên giới hạn tiếp tục fail-closed cho tới khi batching được triển khai.
+`WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE` là giới hạn an toàn cho số đầu việc trong một kết quả extraction. Giới hạn hiệu lực là giá trị nhỏ hơn giữa biến này và `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`, để toàn bộ preview luôn có thể đi qua đúng một lần ghi `source/apply`. Backend từ chối toàn bộ response vượt giới hạn và không truncate.
 
 ## Trình tự bật thử trên staging
 
