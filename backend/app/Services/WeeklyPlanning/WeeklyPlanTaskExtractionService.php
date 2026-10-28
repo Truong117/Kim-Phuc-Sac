@@ -101,6 +101,7 @@ class WeeklyPlanTaskExtractionService
         ];
         if ($googleDocsContext !== null) {
             $context['source_type'] = 'GOOGLE_DOCS';
+            $context['selected_tab_ids'] = array_keys($googleDocsContext['tabs']);
         }
         $contextJson = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         if (strlen($contextJson) > (int) config('weekly_plans.ai_max_context_bytes', 60000)) {
@@ -131,6 +132,14 @@ class WeeklyPlanTaskExtractionService
         }
 
         try {
+            if ($googleDocsContext !== null) {
+                $raw = $this->validateGoogleDocsTabResults(
+                    $plan,
+                    $raw,
+                    array_keys($googleDocsContext['tabs']),
+                );
+            }
+
             return $this->validateTasks($plan, $raw, $googleDocsContext);
         } catch (ValidationException $exception) {
             if ($this->extractor instanceof RejectableWeeklyPlanTaskExtractor) {
@@ -139,6 +148,73 @@ class WeeklyPlanTaskExtractionService
 
             throw $exception;
         }
+    }
+
+    /**
+     * @param  list<mixed>  $raw
+     * @param  list<string>  $selectedTabIds
+     * @return list<mixed>
+     */
+    private function validateGoogleDocsTabResults(
+        WeeklyPlan $plan,
+        array $raw,
+        array $selectedTabIds,
+    ): array {
+        $selectedLookup = array_fill_keys($selectedTabIds, true);
+        $seen = [];
+        $tasks = [];
+        $passagesByKey = $plan->sourcePassages->keyBy('source_key');
+
+        foreach ($raw as $result) {
+            if (! is_array($result)
+                || array_is_list($result)
+                || array_diff(array_keys($result), ['tab_id', 'status', 'tasks']) !== []
+                || array_diff(['tab_id', 'status', 'tasks'], array_keys($result)) !== []
+                || ! is_string($result['tab_id'])
+                || ! isset($selectedLookup[$result['tab_id']])
+                || isset($seen[$result['tab_id']])
+                || ! in_array($result['status'], ['TASKS_PROPOSED', 'NO_ACTIONABLE_WORK'], true)
+                || ! is_array($result['tasks'])
+                || ! array_is_list($result['tasks'])
+                || ($result['status'] === 'TASKS_PROPOSED' && $result['tasks'] === [])
+                || ($result['status'] === 'NO_ACTIONABLE_WORK' && $result['tasks'] !== [])) {
+                $this->rejectInvalidGoogleDocsCoverage();
+            }
+
+            $seen[$result['tab_id']] = true;
+            foreach ($result['tasks'] as $task) {
+                if (is_array($task) && is_array($task['source_keys'] ?? null)) {
+                    $taskTabIds = collect($task['source_keys'])
+                        ->map(fn (mixed $sourceKey): ?string => is_string($sourceKey)
+                            ? data_get($passagesByKey->get($sourceKey)?->metadata, 'tab_id')
+                            : null)
+                        ->unique()
+                        ->values();
+                    if ($taskTabIds->count() !== 1 || $taskTabIds->first() !== $result['tab_id']) {
+                        $this->rejectInvalidGoogleDocsCoverage();
+                    }
+                }
+                $tasks[] = $task;
+            }
+        }
+
+        if (array_diff($selectedTabIds, array_keys($seen)) !== []) {
+            $this->rejectInvalidGoogleDocsCoverage();
+        }
+
+        return $tasks;
+    }
+
+    private function rejectInvalidGoogleDocsCoverage(): never
+    {
+        $this->logValidationFailure('google_docs_tab_coverage', [[
+            'task_index' => null,
+            'field' => 'tasks',
+            'rule' => 'selected_tabs',
+        ]]);
+        throw ValidationException::withMessages([
+            'extraction' => ['Kết quả AI không bao phủ chính xác tất cả nhóm Google Docs đã chọn. Vui lòng chạy lại phân tích.'],
+        ]);
     }
 
     /**

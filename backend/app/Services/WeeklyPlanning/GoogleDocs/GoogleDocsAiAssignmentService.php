@@ -58,6 +58,79 @@ class GoogleDocsAiAssignmentService
         }
     }
 
+    /** @return list<string> */
+    public function processedTabIds(WeeklyPlan $plan): array
+    {
+        $plan->loadMissing(['googleDocsSource', 'entries.sourcePassages']);
+        $manifestTabIds = collect($plan->googleDocsSource?->tab_manifest ?? [])
+            ->filter(fn (mixed $tab): bool => is_array($tab)
+                && is_string($tab['tab_id'] ?? null)
+                && $tab['tab_id'] !== '')
+            ->pluck('tab_id')
+            ->values();
+        $processedLookup = $plan->entries
+            ->flatMap(fn ($entry) => $entry->sourcePassages)
+            ->map(fn (WeeklyPlanSourcePassage $passage): ?string => $this->passageTabId($passage))
+            ->filter()
+            ->flip();
+
+        return $manifestTabIds
+            ->filter(fn (string $tabId): bool => $processedLookup->has($tabId))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{
+     *   processed_tab_ids: list<string>,
+     *   remaining_tab_ids: list<string>,
+     *   relevant_tab_count: int,
+     *   processed_tab_count: int
+     * }
+     */
+    public function processingState(WeeklyPlan $plan): array
+    {
+        $plan->loadMissing('googleDocsSource');
+        $source = $plan->googleDocsSource;
+        $manifestTabIds = collect($source?->tab_manifest ?? [])
+            ->filter(fn (mixed $tab): bool => is_array($tab)
+                && is_string($tab['tab_id'] ?? null)
+                && $tab['tab_id'] !== '')
+            ->pluck('tab_id')
+            ->values();
+        $mappingStatuses = $source === null
+            ? collect()
+            : WeeklyPlanGoogleDocsTabMapping::query()
+                ->where('organization_id', $plan->organization_id)
+                ->where('weekly_plan_id', $plan->id)
+                ->where('document_id_sha256', $source->document_id_sha256)
+                ->whereIn('tab_id_sha256', $manifestTabIds
+                    ->map(fn (string $tabId): string => hash('sha256', $tabId)))
+                ->get(['tab_id_sha256', 'status'])
+                ->keyBy('tab_id_sha256');
+        $relevantTabIds = $manifestTabIds
+            ->filter(function (string $tabId) use ($mappingStatuses): bool {
+                $mapping = $mappingStatuses->get(hash('sha256', $tabId));
+
+                return $mapping?->status !== WeeklyPlanGoogleDocsMappingStatus::NOT_APPLICABLE;
+            })
+            ->values();
+        $processedLookup = array_fill_keys($this->processedTabIds($plan), true);
+        $processedTabIds = $relevantTabIds
+            ->filter(fn (string $tabId): bool => isset($processedLookup[$tabId]))
+            ->values();
+        $remainingTabIds = $relevantTabIds
+            ->reject(fn (string $tabId): bool => isset($processedLookup[$tabId]))
+            ->values();
+
+        return [
+            'processed_tab_ids' => $processedTabIds->all(),
+            'remaining_tab_ids' => $remainingTabIds->all(),
+            'relevant_tab_count' => $relevantTabIds->count(),
+            'processed_tab_count' => $processedTabIds->count(),
+        ];
+    }
+
     /**
      * @param  list<array<string, mixed>>  $entries
      * @param  Collection<int, WeeklyPlanSourcePassage>  $passages

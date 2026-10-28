@@ -43,6 +43,7 @@ import type {
   WeeklyPlanSourceEntryInput,
 } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
+import { hasRemainingGoogleDocsTabs as hasRemainingTabs } from "@/utils/weeklyPlanSourceSelection";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
@@ -198,6 +199,11 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
       latestInvalidationEvent.id > latestAnalysisEvent.id),
   );
   const hasCurrentAnalysis = Boolean(latestAnalysisEvent) && !analysisIsStale;
+  const hasRemainingGoogleDocsTabs =
+    plan.source_type !== "GOOGLE_DOCS" ||
+    hasRemainingTabs(
+      plan.source_document.google_docs?.remaining_tab_ids ?? [],
+    );
 
   return (
     <>
@@ -346,7 +352,8 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
           />
         </ComponentCard>
 
-        {["docx", "gdoc"].includes(plan.source_file.extension) && (
+        {["docx", "gdoc"].includes(plan.source_file.extension) &&
+          hasRemainingGoogleDocsTabs && (
           <WeeklyPlanSourceDocument
             plan={plan}
             employees={references.employees}
@@ -380,6 +387,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
         )}
 
         {plan.source_type === "GOOGLE_DOCS" &&
+          hasRemainingGoogleDocsTabs &&
           plan.actions.can_manage_google_docs_mappings &&
           googleDocsMappings && (
             <GoogleDocsEmployeeMappingPanel
