@@ -167,6 +167,8 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
             $payload = $request->data();
             $schema = data_get($payload, 'text.format.schema.properties.tasks.items.properties.detail_suggestions');
 
+            $instructions = (string) ($payload['instructions'] ?? '');
+
             return data_get($payload, 'text.format.name') === 'kps_weekly_plan_tasks_v2'
                 && data_get($payload, 'text.format.strict') === true
                 && data_get($schema, 'anyOf.0.additionalProperties') === false
@@ -174,7 +176,13 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === 500
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.basis.enum')
                     === ['SOURCE_DERIVED', 'AI_SUGGESTION']
-                && str_contains((string) ($payload['instructions'] ?? ''), 'Never present an AI suggestion as a company fact');
+                && str_contains($instructions, 'you may use general operational reasoning')
+                && str_contains($instructions, 'Use SOURCE_DERIVED only when the exact detail is explicitly supported')
+                && str_contains($instructions, 'Every unsupported operational recommendation must use basis=AI_SUGGESTION')
+                && str_contains($instructions, 'must never be represented as a source or company fact')
+                && str_contains($instructions, 'must not invent employee identity, KPS account ownership')
+                && str_contains($instructions, 'credentials, identifiers, or dates outside week_start and week_end')
+                && ! str_contains($instructions, 'không dùng kiến thức bên ngoài và không tạo dữ kiện');
         });
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
