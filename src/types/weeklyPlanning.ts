@@ -308,6 +308,24 @@ export type WeeklyPlanSourceEntryInput = WeeklyPlanEntryInput & {
   source_passage_ids: number[];
 };
 
+export type WeeklyPlanAiDetailSuggestionBasis =
+  "SOURCE_DERIVED" | "AI_SUGGESTION";
+
+export type WeeklyPlanAiDetailSuggestion = {
+  value: string;
+  basis: WeeklyPlanAiDetailSuggestionBasis;
+};
+
+export type WeeklyPlanAiDetailSuggestions = {
+  channel: WeeklyPlanAiDetailSuggestion | null;
+  account: WeeklyPlanAiDetailSuggestion | null;
+  frequency: WeeklyPlanAiDetailSuggestion | null;
+  format: WeeklyPlanAiDetailSuggestion | null;
+  content_direction: WeeklyPlanAiDetailSuggestion | null;
+  objective: WeeklyPlanAiDetailSuggestion | null;
+  notes: WeeklyPlanAiDetailSuggestion | null;
+};
+
 export type WeeklyPlanAiSuggestion = {
   source_keys: string[];
   title: string;
@@ -321,6 +339,7 @@ export type WeeklyPlanAiSuggestion = {
   source_tab?: { tab_id: string; title: string } | null;
   assignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email"> | null;
   assignment_source?: "VERIFIED_GOOGLE_DOCS_TAB_MAPPING" | null;
+  detail_suggestions?: WeeklyPlanAiDetailSuggestions | null;
   verification_fields: string[];
   evidence: string;
   provenance: Record<

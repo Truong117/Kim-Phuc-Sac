@@ -1,9 +1,12 @@
 import type { TaskPriority } from "@/types/tasks";
 import type {
+  WeeklyPlanAiDetailSuggestions,
   WeeklyPlanAiSuggestion,
   WeeklyPlanSourceEntryInput,
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
+
+export type GoogleDocsAiReviewPriority = "MEDIUM" | "HIGH";
 
 export type GoogleDocsAiReviewDraft = {
   key: string;
@@ -15,29 +18,33 @@ export type GoogleDocsAiReviewDraft = {
   title: string;
   content: string;
   expectedResult: string;
-  startDate: string;
-  dueDate: string;
-  priority: TaskPriority | "";
+  priority: GoogleDocsAiReviewPriority;
   note: string;
+  included: boolean;
+  detailSuggestions: WeeklyPlanAiDetailSuggestions | null;
   verificationFields: string[];
-  evidence: string;
-  provenance: WeeklyPlanAiSuggestion["provenance"];
 };
 
 export type GoogleDocsAiReviewField =
-  | "assignee_id"
-  | "title"
-  | "start_date"
-  | "due_date"
-  | "priority"
-  | "source_passage_ids"
-  | "source_tab";
+  "assignee_id" | "title" | "priority" | "source_passage_ids" | "source_tab";
 
 export type GoogleDocsAiReviewErrors = Partial<
   Record<GoogleDocsAiReviewField, string>
 >;
 
-const priorities = new Set<TaskPriority>(["LOW", "MEDIUM", "HIGH", "URGENT"]);
+export type GoogleDocsAiReviewChanges = Partial<
+  Pick<
+    GoogleDocsAiReviewDraft,
+    "title" | "content" | "expectedResult" | "priority" | "note" | "included"
+  >
+>;
+
+const priorities = new Set<GoogleDocsAiReviewPriority>(["MEDIUM", "HIGH"]);
+
+export const googleDocsAiPriority = (
+  priority: TaskPriority | null,
+): GoogleDocsAiReviewPriority =>
+  priority === "HIGH" || priority === "URGENT" ? "HIGH" : "MEDIUM";
 
 export const createGoogleDocsAiReviewDrafts = (
   suggestions: WeeklyPlanAiSuggestion[],
@@ -59,31 +66,18 @@ export const createGoogleDocsAiReviewDrafts = (
     title: suggestion.title,
     content: suggestion.content ?? "",
     expectedResult: suggestion.expected_result ?? "",
-    startDate: suggestion.start_date ?? "",
-    dueDate: suggestion.due_date ?? "",
-    priority: suggestion.priority ?? "",
+    priority: googleDocsAiPriority(suggestion.priority),
     note: suggestion.note ?? "",
+    included: true,
+    detailSuggestions: suggestion.detail_suggestions ?? null,
     verificationFields: [...suggestion.verification_fields],
-    evidence: suggestion.evidence,
-    provenance: { ...suggestion.provenance },
   }));
 };
 
 export const updateGoogleDocsAiReviewDraft = (
   drafts: GoogleDocsAiReviewDraft[],
   index: number,
-  changes: Partial<
-    Pick<
-      GoogleDocsAiReviewDraft,
-      | "title"
-      | "content"
-      | "expectedResult"
-      | "startDate"
-      | "dueDate"
-      | "priority"
-      | "note"
-    >
-  >,
+  changes: GoogleDocsAiReviewChanges,
 ): GoogleDocsAiReviewDraft[] =>
   drafts.map((draft, draftIndex) =>
     draftIndex === index
@@ -92,37 +86,20 @@ export const updateGoogleDocsAiReviewDraft = (
           title: changes.title ?? draft.title,
           content: changes.content ?? draft.content,
           expectedResult: changes.expectedResult ?? draft.expectedResult,
-          startDate: changes.startDate ?? draft.startDate,
-          dueDate: changes.dueDate ?? draft.dueDate,
           priority: changes.priority ?? draft.priority,
           note: changes.note ?? draft.note,
+          included: changes.included ?? draft.included,
         }
       : draft,
   );
 
 export const validateGoogleDocsAiReviewDraft = (
   draft: GoogleDocsAiReviewDraft,
-  weekStart: string,
-  weekEnd: string,
 ): GoogleDocsAiReviewErrors => {
   const errors: GoogleDocsAiReviewErrors = {};
   if (!draft.assignee?.id) errors.assignee_id = "assigneeRequired";
   if (!draft.title.trim()) errors.title = "titleRequired";
-  if (!draft.startDate) errors.start_date = "startRequired";
-  if (!draft.dueDate) errors.due_date = "dueRequired";
-  if (
-    draft.startDate &&
-    (draft.startDate < weekStart || draft.startDate > weekEnd)
-  ) {
-    errors.start_date = "dateOutsideWeek";
-  }
-  if (draft.dueDate && (draft.dueDate < weekStart || draft.dueDate > weekEnd)) {
-    errors.due_date = "dateOutsideWeek";
-  }
-  if (draft.startDate && draft.dueDate && draft.dueDate < draft.startDate) {
-    errors.due_date = "dateOrder";
-  }
-  if (!draft.priority || !priorities.has(draft.priority)) {
+  if (!priorities.has(draft.priority)) {
     errors.priority = "priorityRequired";
   }
   if (
@@ -150,10 +127,11 @@ export const buildGoogleDocsAiApplyAllEntries = (
   errors: GoogleDocsAiReviewErrors[];
 } => {
   const errors = drafts.map((draft) =>
-    validateGoogleDocsAiReviewDraft(draft, weekStart, weekEnd),
+    draft.included ? validateGoogleDocsAiReviewDraft(draft) : {},
   );
+  const includedDrafts = drafts.filter((draft) => draft.included);
   if (
-    drafts.length === 0 ||
+    includedDrafts.length === 0 ||
     errors.some((draftErrors) => Object.keys(draftErrors).length > 0)
   ) {
     return { entries: null, errors };
@@ -161,18 +139,53 @@ export const buildGoogleDocsAiApplyAllEntries = (
 
   return {
     errors,
-    entries: drafts.map((draft) => ({
+    entries: includedDrafts.map((draft) => ({
       assignee_id: draft.assignee!.id,
       title: draft.title.trim(),
       content: draft.content.trim() || null,
       expected_result: draft.expectedResult.trim() || null,
-      start_date: draft.startDate,
-      due_date: draft.dueDate,
-      priority: draft.priority as TaskPriority,
+      start_date: weekStart,
+      due_date: weekEnd,
+      priority: draft.priority,
       note: draft.note.trim() || null,
       source_passage_ids: [...draft.sourcePassageIds],
     })),
   };
+};
+
+export type GoogleDocsAiReviewGroup = {
+  key: string;
+  employee: GoogleDocsAiReviewDraft["assignee"];
+  tabTitles: string[];
+  draftIndexes: number[];
+};
+
+export const groupGoogleDocsAiReviewDrafts = (
+  drafts: GoogleDocsAiReviewDraft[],
+): GoogleDocsAiReviewGroup[] => {
+  const groups = new Map<string, GoogleDocsAiReviewGroup>();
+
+  drafts.forEach((draft, index) => {
+    const key = draft.assignee?.id
+      ? `employee:${draft.assignee.id}`
+      : `tab:${draft.sourceTab?.tab_id ?? draft.key}`;
+    const current = groups.get(key) ?? {
+      key,
+      employee: draft.assignee,
+      tabTitles: [],
+      draftIndexes: [],
+    };
+    if (
+      draft.sourceTab?.title &&
+      !current.tabTitles.includes(draft.sourceTab.title)
+    ) {
+      current.tabTitles.push(draft.sourceTab.title);
+    }
+    current.draftIndexes.push(index);
+    groups.set(key, current);
+  });
+
+  return [...groups.values()];
 };
 
 export const submitGoogleDocsAiApplyAll = async <T>(

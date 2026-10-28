@@ -61,14 +61,16 @@ export default function WeeklyPlanAiExtractionPreview({
       onClose={() => {
         if (!busy) onClose();
       }}
-      className="max-h-[90vh] max-w-4xl overflow-y-auto p-6"
+      className={`max-h-[90vh] overflow-y-auto p-6 ${
+        sourceType === "GOOGLE_DOCS" ? "max-w-6xl" : "max-w-4xl"
+      }`}
       ariaLabelledBy="weekly-ai-preview-title"
     >
       <h2
         id="weekly-ai-preview-title"
         className="text-lg font-semibold text-gray-900 dark:text-white"
       >
-        {t("title")}
+        {sourceType === "GOOGLE_DOCS" ? t("googleDocs.title") : t("title")}
       </h2>
       <p className="mt-2 text-theme-sm text-gray-500 dark:text-gray-400">
         {sourceType === "GOOGLE_DOCS"

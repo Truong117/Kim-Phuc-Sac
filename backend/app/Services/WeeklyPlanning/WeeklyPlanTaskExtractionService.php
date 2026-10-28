@@ -17,6 +17,17 @@ use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 
 class WeeklyPlanTaskExtractionService
 {
+    /** @var list<string> */
+    private const DETAIL_SUGGESTION_FIELDS = [
+        'channel',
+        'account',
+        'frequency',
+        'format',
+        'content_direction',
+        'objective',
+        'notes',
+    ];
+
     public function __construct(private readonly WeeklyPlanTaskExtractor $extractor) {}
 
     /** @return array{configured: bool, provider: string} */
@@ -81,6 +92,7 @@ class WeeklyPlanTaskExtractionService
                 'due_date',
                 'priority',
                 'note',
+                'detail_suggestions',
                 'verification_fields',
                 'evidence',
                 'provenance',
@@ -164,16 +176,18 @@ class WeeklyPlanTaskExtractionService
             'due_date',
             'priority',
             'note',
+            'detail_suggestions',
             'verification_fields',
             'evidence',
             'provenance',
         ];
+        $requiredTaskFields = array_values(array_diff($taskFields, ['detail_suggestions']));
         foreach ($raw as $taskIndex => $task) {
             $structuralFailure = null;
             if (! is_array($task)) {
                 $structuralFailure = ['field' => 'tasks', 'rule' => 'object'];
             } else {
-                $missingFields = array_values(array_diff($taskFields, array_keys($task)));
+                $missingFields = array_values(array_diff($requiredTaskFields, array_keys($task)));
                 if ($missingFields !== []) {
                     $structuralFailure = ['field' => $missingFields[0], 'rule' => 'present'];
                 } elseif (array_diff(array_keys($task), $taskFields) !== []) {
@@ -182,6 +196,10 @@ class WeeklyPlanTaskExtractionService
                     $structuralFailure = ['field' => 'source_keys', 'rule' => 'list'];
                 } elseif (! is_array($task['verification_fields']) || ! array_is_list($task['verification_fields'])) {
                     $structuralFailure = ['field' => 'verification_fields', 'rule' => 'list'];
+                } elseif (array_key_exists('detail_suggestions', $task)
+                    && $task['detail_suggestions'] !== null
+                    && $this->hasInvalidDetailSuggestions($task['detail_suggestions'])) {
+                    $structuralFailure = ['field' => 'detail_suggestions', 'rule' => 'object'];
                 }
             }
             if ($structuralFailure !== null) {
@@ -199,6 +217,14 @@ class WeeklyPlanTaskExtractionService
                 $task['verification_fields'],
                 $verificationFieldWhitelist,
             );
+            if ($googleDocsContext !== null) {
+                $raw[$taskIndex]['start_date'] = $plan->week_start->toDateString();
+                $raw[$taskIndex]['due_date'] = $plan->week_end->toDateString();
+                if (is_array($raw[$taskIndex]['provenance'])) {
+                    $raw[$taskIndex]['provenance']['start_date'] = 'SUGGESTED';
+                    $raw[$taskIndex]['provenance']['due_date'] = 'SUGGESTED';
+                }
+            }
         }
         $rules = [
             'tasks' => ['present', 'array', 'max:'.min(
@@ -215,6 +241,7 @@ class WeeklyPlanTaskExtractionService
             'tasks.*.due_date' => ['nullable', 'date_format:Y-m-d'],
             'tasks.*.priority' => ['nullable', Rule::enum(TaskPriority::class)],
             'tasks.*.note' => ['nullable', 'string', 'max:5000'],
+            'tasks.*.detail_suggestions' => ['sometimes', 'nullable', 'array'],
             'tasks.*.verification_fields' => ['present', 'array'],
             'tasks.*.evidence' => ['required', 'string', 'max:5000'],
             'tasks.*.provenance' => ['required', 'array', 'size:'.count($provenanceFields)],
@@ -225,6 +252,28 @@ class WeeklyPlanTaskExtractionService
                 'distinct',
                 Rule::in($verificationFieldWhitelist),
             ];
+            $detailSuggestions = $raw[$taskIndex]['detail_suggestions'] ?? null;
+            if (is_array($detailSuggestions)) {
+                foreach (self::DETAIL_SUGGESTION_FIELDS as $field) {
+                    $rules["tasks.{$taskIndex}.detail_suggestions.{$field}"] = [
+                        'present',
+                        'nullable',
+                        'array',
+                    ];
+                    if (is_array($detailSuggestions[$field] ?? null)) {
+                        $rules["tasks.{$taskIndex}.detail_suggestions.{$field}.value"] = [
+                            'required',
+                            'string',
+                            'min:1',
+                            'max:500',
+                        ];
+                        $rules["tasks.{$taskIndex}.detail_suggestions.{$field}.basis"] = [
+                            'required',
+                            Rule::in(['SOURCE_DERIVED', 'AI_SUGGESTION']),
+                        ];
+                    }
+                }
+            }
         }
         foreach ($provenanceFields as $field) {
             $rules["tasks.*.provenance.{$field}"] = [
@@ -262,6 +311,7 @@ class WeeklyPlanTaskExtractionService
         $tasks = $validator->validated()['tasks'];
         $knownSourceKeys = $plan->sourcePassages->pluck('source_key')->all();
         foreach ($tasks as $taskIndex => $task) {
+            $tasks[$taskIndex]['detail_suggestions'] ??= null;
             if (array_diff(array_keys($task['provenance']), $provenanceFields) !== []
                 || array_diff($provenanceFields, array_keys($task['provenance'])) !== []) {
                 throw ValidationException::withMessages([
@@ -301,7 +351,11 @@ class WeeklyPlanTaskExtractionService
                 $tasks[$taskIndex]['employee_identifier'] = null;
                 $tasks[$taskIndex]['verification_fields'] = array_values(array_filter(
                     $task['verification_fields'],
-                    fn (string $field): bool => $field !== 'assignee_id',
+                    fn (string $field): bool => ! in_array(
+                        $field,
+                        ['assignee_id', 'start_date', 'due_date'],
+                        true,
+                    ),
                 ));
                 $tasks[$taskIndex]['source_tab'] = [
                     'tab_id' => $tabId,
@@ -355,6 +409,31 @@ class WeeklyPlanTaskExtractionService
         }
 
         return $normalized;
+    }
+
+    private function hasInvalidDetailSuggestions(mixed $details): bool
+    {
+        if (! is_array($details)
+            || array_is_list($details)
+            || array_diff(array_keys($details), self::DETAIL_SUGGESTION_FIELDS) !== []
+            || array_diff(self::DETAIL_SUGGESTION_FIELDS, array_keys($details)) !== []) {
+            return true;
+        }
+
+        foreach (self::DETAIL_SUGGESTION_FIELDS as $field) {
+            $detail = $details[$field];
+            if ($detail === null) {
+                continue;
+            }
+            if (! is_array($detail)
+                || array_is_list($detail)
+                || array_diff(array_keys($detail), ['value', 'basis']) !== []
+                || array_diff(['value', 'basis'], array_keys($detail)) !== []) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @param list<array{task_index: int|null, field: string, rule: string}> $failures */
