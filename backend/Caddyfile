@@ -1,0 +1,36 @@
+{
+    admin off
+    auto_https off
+    skip_install_trust
+
+    frankenphp {
+        num_threads {$FRANKENPHP_NUM_THREADS:4}
+    }
+}
+
+http://0.0.0.0:{$PORT:10000} {
+    root * /app/public
+
+    @private {
+        path /.env* /.git* /bootstrap/* /config/* /database/* /resources/* /routes/* /storage/* /tests/* /vendor/*
+    }
+    respond @private 404
+
+    encode zstd gzip
+
+    log {
+        output stdout
+        format filter {
+            wrap json
+            request>uri query {
+                replace authorization REDACTED
+                replace code REDACTED
+                replace key REDACTED
+                replace secret REDACTED
+                replace token REDACTED
+            }
+        }
+    }
+
+    php_server
+}

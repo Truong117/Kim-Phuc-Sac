@@ -140,7 +140,7 @@ jobs:
         run: php artisan test
 
   backend-container:
-    name: Backend container build
+    name: Backend production container
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -152,3 +152,7 @@ jobs:
 
       - name: Build backend image without publishing
         run: docker build --file backend/Dockerfile --tag kps-backend-ci backend
+
+      - name: Verify startup, routing and concurrent health response
+        shell: pwsh
+        run: ./backend/scripts/Test-ProductionContainer.ps1 -Image kps-backend-ci -SkipBuild

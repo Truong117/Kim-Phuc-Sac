@@ -61,6 +61,7 @@ class DeploymentConfigurationTest extends TestCase
             glob($repositoryRoot.'/deployment/*.ps1') ?: [],
             glob($repositoryRoot.'/backend/*.sh') ?: [],
             glob($repositoryRoot.'/backend/*.ps1') ?: [],
+            glob($repositoryRoot.'/backend/scripts/*.ps1') ?: [],
         ));
 
         foreach ($deploymentFiles as $deploymentFile) {
@@ -115,6 +116,62 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringContainsString('simplexml', $dockerfile);
         $this->assertStringContainsString('curl', $dockerfile);
         $this->assertStringContainsString('composer check-platform-reqs --no-dev', $dockerfile);
+    }
+
+    public function test_render_container_uses_concurrent_frankenphp_with_public_only_web_root(): void
+    {
+        $dockerfile = $this->readBackendFile('Dockerfile');
+        $caddyfile = $this->readBackendFile('Caddyfile');
+        $phpConfiguration = $this->readBackendFile('docker/frankenphp.ini');
+        $smokeTest = $this->readBackendFile('scripts/Test-ProductionContainer.ps1');
+        $slowFixture = $this->readBackendFile('tests/Deployment/slow-request.php');
+        $workflow = $this->readRepositoryFile('.github/workflows/ci.yml');
+        $bootstrap = $this->readBackendFile('bootstrap/app.php');
+        $routes = $this->readBackendFile('routes/api.php');
+
+        $this->assertStringContainsString('FROM dunglas/frankenphp:1-php8.2-bookworm', $dockerfile);
+        $this->assertStringNotContainsString('artisan serve', $dockerfile);
+        $this->assertStringNotContainsString('PHP_CLI_SERVER_WORKERS', $dockerfile);
+        $this->assertStringNotContainsString('octane', strtolower($dockerfile.$caddyfile));
+        foreach (['pdo_mysql', 'curl', 'simplexml', 'mbstring', 'bcmath', 'pcntl', 'zip'] as $extension) {
+            $this->assertStringContainsString($extension, $dockerfile);
+        }
+        $this->assertStringContainsString('composer install', $dockerfile);
+        $this->assertStringContainsString('php artisan config:cache', $dockerfile);
+        $this->assertStringContainsString('exec frankenphp run', $dockerfile);
+        $this->assertStringContainsString('USER www-data', $dockerfile);
+        $this->assertStringContainsString('EXPOSE 10000', $dockerfile);
+
+        $this->assertStringContainsString('http://0.0.0.0:{$PORT:10000}', $caddyfile);
+        $this->assertStringContainsString('root * /app/public', $caddyfile);
+        $this->assertStringContainsString('num_threads {$FRANKENPHP_NUM_THREADS:4}', $caddyfile);
+        $this->assertStringContainsString('output stdout', $caddyfile);
+        $this->assertStringContainsString('replace token REDACTED', $caddyfile);
+        $this->assertStringContainsString('php_server', $caddyfile);
+        $this->assertStringContainsString('/.env*', $caddyfile);
+        $this->assertStringContainsString('/storage/*', $caddyfile);
+        $this->assertStringContainsString('/vendor/*', $caddyfile);
+
+        $this->assertStringContainsString('max_execution_time = 420', $phpConfiguration);
+        $this->assertStringContainsString('error_log = /proc/self/fd/2', $phpConfiguration);
+        $this->assertStringContainsString('opcache.enable = 1', $phpConfiguration);
+
+        $this->assertStringContainsString('Start-Job', $smokeTest);
+        $this->assertStringContainsString('CONCURRENT_UP_STATUS=', $smokeTest);
+        $this->assertStringContainsString('FORWARDED_HEADERS_STATUS=PASS', $smokeTest);
+        $this->assertStringContainsString('/api/health', $smokeTest);
+        $this->assertStringContainsString('/sanctum/csrf-cookie', $smokeTest);
+        $this->assertStringContainsString("'X-Forwarded-Proto' = 'https'", $smokeTest);
+        $this->assertStringContainsString("'KPS_AI_DRIVER=fake'", $smokeTest);
+        $this->assertStringContainsString("'WEEKLY_PLAN_DOCUMENT_AI_DRIVER=none'", $smokeTest);
+        $this->assertStringContainsString('sleep(6)', $slowFixture);
+        $this->assertStringContainsString('Test-ProductionContainer.ps1 -Image kps-backend-ci -SkipBuild', $workflow);
+
+        $this->assertStringContainsString("health: '/up'", $bootstrap);
+        $this->assertStringContainsString("Route::get('/health'", $routes);
+        $this->assertStringContainsString("Route::post('/{id}/source/ai-extract'", $routes);
+        $this->assertStringContainsString("Route::post('/google-docs/preview'", $routes);
+        $this->assertStringNotContainsString('__kps_concurrency_smoke', $routes);
     }
 
     public function test_ephemeral_weekly_plan_storage_is_explicitly_limited_to_staging(): void

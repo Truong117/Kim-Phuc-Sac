@@ -259,6 +259,10 @@ Không phát hành trực tiếp từ feature branch, không cấu hình staging
 
 Container web chỉ khởi động ứng dụng. Start command/Docker `CMD` không được chứa `php artisan migrate`, seeder, `migrate:fresh`, `migrate:refresh`, `migrate:reset` hoặc `db:wipe`.
 
+Render staging và production chạy Laravel bằng FrankenPHP ở classic request mode, không dùng Octane và tuyệt đối không dùng `php artisan serve`. Caddy chỉ phục vụ web root `/app/public`, bind `0.0.0.0` tại `PORT` do Render cung cấp (mặc định `10000`) và ghi access log ra stdout; PHP error log đi ra stderr. Startup chỉ chạy `php artisan config:cache` rồi `exec` FrankenPHP để tiến trình web nhận trực tiếp tín hiệu dừng của Render. TLS vẫn kết thúc tại Render; các header proxy được chuyển nguyên vẹn tới Laravel và topology Vercel → Render không thay đổi.
+
+Container regression smoke được chạy bằng `backend/scripts/Test-ProductionContainer.ps1`. Script build image production, khởi động container với SQLite in-memory và AI driver giả/tắt, chép một slow-request fixture chỉ vào container tạm thời, rồi xác nhận `/up` trả lời trong khi request đó vẫn đang chạy. Script cũng kiểm tra `/api/health`, Sanctum CSRF cookie qua forwarded headers và các đường dẫn private trả `404`; nó không gọi database từ xa hoặc OpenAI.
+
 Automated tests kiểm tra Dockerfile, package/composer scripts, GitHub workflows và các file Render/startup script được lưu trong repository. Chúng không thể đọc Start Command hoặc Pre-Deploy Command được nhập trực tiếp trên Render Dashboard; quản trị viên phải đối chiếu thủ công hai trường này trước mỗi thay đổi cấu hình service.
 
 Migration production phải là bước release riêng do người có thẩm quyền chủ động chạy, tốt nhất bằng Render Pre-Deploy Command hoặc one-off job chỉ chạy một lần. Không cho nhiều web instance đồng thời chạy migration khi restart/autoscale.
@@ -406,7 +410,7 @@ GitHub Actions phải hoạt động mà không cần production secrets:
 - Job `Branch policy` chỉ chấp nhận `feature/*`, `fix/*`, `refactor/*`, `hotfix/*` vào `staging`; PR vào `main` phải đến từ `staging` hoặc một `hotfix/*` được phê duyệt.
 - Frontend: `npm ci`, `npm test`, `npm run lint`, `npm run build`.
 - Backend: `composer install`, `composer validate --strict`, `vendor/bin/pint --test`, `php artisan test`.
-- Container: build `backend/Dockerfile` không push và không chạy container; bước này xác minh PHP extensions cùng production dependencies.
+- Container: build `backend/Dockerfile` không push, sau đó chạy production-container smoke để xác minh PHP extensions, startup, Laravel health/routing, Sanctum cookie và `/up` vẫn đáp ứng đồng thời với một slow PHP request.
 - Backend test sử dụng SQLite `:memory:`, array cache/session và sync queue.
 - Workflow dùng `contents: read`, không giữ Git credential sau checkout, không nhận production secret, không chạy migration/seeder trên TiDB, không upload dữ liệu nội bộ và không deploy.
 
