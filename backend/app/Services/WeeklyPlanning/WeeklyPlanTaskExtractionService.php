@@ -8,6 +8,7 @@ use App\Models\WeeklyPlan;
 use App\Services\AI\AiGatewayException;
 use App\Services\WeeklyPlanning\Contracts\RejectableWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
+use App\Support\WeeklyPlanAiOutputLimits;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -227,11 +228,8 @@ class WeeklyPlanTaskExtractionService
             }
         }
         $rules = [
-            'tasks' => ['present', 'array', 'max:'.min(
-                (int) config('weekly_plans.ai_max_tasks_per_response', 20),
-                (int) config('weekly_plans.max_source_entries_per_request', 20),
-            )],
-            'tasks.*.source_keys' => ['required', 'array', 'min:1', 'max:'.config('weekly_plans.max_source_passages_per_entry', 20)],
+            'tasks' => ['present', 'array', 'max:'.WeeklyPlanAiOutputLimits::maxTasks()],
+            'tasks.*.source_keys' => ['required', 'array', 'min:1', 'max:'.WeeklyPlanAiOutputLimits::maxSourceKeysPerTask()],
             'tasks.*.source_keys.*' => ['required', 'string', 'distinct', 'max:128'],
             'tasks.*.title' => ['required', 'string', 'max:255'],
             'tasks.*.content' => ['nullable', 'string', 'max:10000'],
