@@ -58,6 +58,31 @@ function incrementalQueryRows(PDO $pdo, string $sql, array $bindings = []): arra
     return is_array($rows) ? $rows : [];
 }
 
+/**
+ * @param  list<mixed>  $rows
+ * @return list<mixed>
+ */
+function incrementalFirstColumnValues(array $rows): array
+{
+    $values = [];
+
+    foreach ($rows as $row) {
+        if (! is_array($row) || $row === []) {
+            throw new RuntimeException('The database returned a malformed single-column row.');
+        }
+
+        $value = array_values($row)[0];
+
+        if (! is_scalar($value)) {
+            throw new RuntimeException('The database returned a malformed single-column value.');
+        }
+
+        $values[] = $value;
+    }
+
+    return $values;
+}
+
 /** @param list<mixed> $bindings
  * @return list<string>
  */
@@ -65,7 +90,7 @@ function incrementalQueryColumn(PDO $pdo, string $sql, array $bindings = []): ar
 {
     return array_map(
         static fn (mixed $value): string => (string) $value,
-        array_column(incrementalQueryRows($pdo, $sql, $bindings), 0),
+        incrementalFirstColumnValues(incrementalQueryRows($pdo, $sql, $bindings)),
     );
 }
 
@@ -552,6 +577,10 @@ function incrementalCountRows(PDO $pdo, string $table, array $tables): ?int
     $rows = incrementalQueryRows($pdo, "SELECT COUNT(*) AS aggregate FROM `{$table}`");
 
     return (int) ($rows[0]['aggregate'] ?? -1);
+}
+
+if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) !== __FILE__) {
+    return;
 }
 
 $mode = incrementalRequiredEnvironment('KPS_STAGING_INCREMENTAL_MODE');
