@@ -528,7 +528,13 @@ class WeeklyPlanService
             }
 
             $passageIds = collect($entries)
-                ->flatMap(fn (array $entry): array => $entry['source_passage_ids'])
+                ->flatMap(function (array $entry): array {
+                    $itemPassageIds = collect($entry['items'] ?? [])
+                        ->flatMap(fn (array $item): array => $item['source_passage_ids'] ?? [])
+                        ->all();
+
+                    return [...$entry['source_passage_ids'], ...$itemPassageIds];
+                })
                 ->map(fn (mixed $id): int => (int) $id)
                 ->unique()
                 ->values();
@@ -568,6 +574,8 @@ class WeeklyPlanService
                 : [];
             foreach ($entries as $index => $attributes) {
                 $sourcePassageIds = array_values(array_map('intval', $attributes['source_passage_ids']));
+                $items = $attributes['items'] ?? [];
+                unset($attributes['items']);
                 $sourceGroupKeys = collect($sourcePassageIds)
                     ->map(fn (int $passageId): ?string => $this->sourceGroupKey($passages->get($passageId)));
                 $groupedSourceKeys = $sourceGroupKeys
@@ -587,7 +595,14 @@ class WeeklyPlanService
                 if ($prepared['validation_errors'] !== []) {
                     $validationErrors['entries.'.$index] = $prepared['validation_errors'];
                 }
-                $preparedEntries[] = [$prepared, $sourcePassageIds];
+                $preparedItems = $this->prepareItems(
+                    $items,
+                    $sourcePassageIds,
+                    $locked->source_type === WeeklyPlanSourceType::GOOGLE_DOCS,
+                    'entries.'.$index.'.items',
+                    $validationErrors,
+                );
+                $preparedEntries[] = [$prepared, $sourcePassageIds, $preparedItems];
             }
             if ($validationErrors !== []) {
                 throw ValidationException::withMessages($validationErrors);
@@ -602,9 +617,12 @@ class WeeklyPlanService
             ]);
             $sortOrder = (int) $locked->entries()->max('sort_order');
             $entryIds = [];
-            foreach ($preparedEntries as [$prepared, $sourcePassageIds]) {
+            $itemCount = 0;
+            foreach ($preparedEntries as [$prepared, $sourcePassageIds, $preparedItems]) {
                 $entry = $locked->entries()->create($prepared + ['sort_order' => ++$sortOrder]);
                 $entry->sourcePassages()->attach($sourcePassageIds);
+                $this->replaceEntryItems($entry, $preparedItems);
+                $itemCount += count($preparedItems);
                 $entryIds[] = $entry->id;
             }
             $application->forceFill(['entry_ids' => $entryIds])->save();
@@ -614,6 +632,7 @@ class WeeklyPlanService
             $this->record($locked, $actor, 'SOURCE_ENTRIES_APPLIED', [
                 'application_id' => $application->id,
                 'entry_count' => count($entryIds),
+                'item_count' => $itemCount,
                 'passage_count' => $passageIds->count(),
             ]);
         });
@@ -892,6 +911,9 @@ class WeeklyPlanService
                 throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể xét duyệt.');
             }
             $entry = $locked->entries()->whereKey($entryId)->lockForUpdate()->firstOrFail();
+            $hasItems = array_key_exists('items', $attributes);
+            $items = $hasItems ? $attributes['items'] : [];
+            unset($attributes['items']);
             $oldAssignee = $entry->assignee_id;
             if (! $isDraftEditor) {
                 $attributes['assignee_id'] = $entry->assignee_id;
@@ -899,6 +921,21 @@ class WeeklyPlanService
             }
             $prepared = $this->prepareEntry($locked, $attributes + ['source_row' => $entry->source_row]);
             $entry->forceFill($prepared)->save();
+            if ($hasItems) {
+                $parentSourceIds = $entry->sourcePassages()->pluck('weekly_plan_source_passages.id')->all();
+                $validationErrors = [];
+                $preparedItems = $this->prepareItems(
+                    $items,
+                    array_map('intval', $parentSourceIds),
+                    false,
+                    'items',
+                    $validationErrors,
+                );
+                if ($validationErrors !== []) {
+                    throw ValidationException::withMessages($validationErrors);
+                }
+                $this->replaceEntryItems($entry, $preparedItems);
+            }
             $this->resetEmployeeReview($locked, $oldAssignee);
             $this->resetEmployeeReview($locked, $entry->assignee_id);
             $this->syncReviews($locked);
@@ -1171,9 +1208,78 @@ class WeeklyPlanService
     /** @param array<string, mixed> $attributes */
     private function storeEntry(WeeklyPlan $plan, array $attributes, int $sortOrder): WeeklyPlanEntry
     {
-        return $plan->entries()->create(
+        $items = $attributes['items'] ?? [];
+        unset($attributes['items']);
+        $entry = $plan->entries()->create(
             $this->prepareEntry($plan, $attributes) + ['sort_order' => $sortOrder],
         );
+        $validationErrors = [];
+        $preparedItems = $this->prepareItems($items, [], false, 'items', $validationErrors);
+        if ($validationErrors !== []) {
+            throw ValidationException::withMessages($validationErrors);
+        }
+        $this->replaceEntryItems($entry, $preparedItems);
+
+        return $entry;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $items
+     * @param  list<int>  $parentSourcePassageIds
+     * @param  array<string, list<string>>  $validationErrors
+     * @return list<array{title: string, content: string|null, source_payload: array<string, mixed>|null, source_passage_ids: list<int>}>
+     */
+    private function prepareItems(
+        array $items,
+        array $parentSourcePassageIds,
+        bool $requireSourcePassages,
+        string $errorPath,
+        array &$validationErrors,
+    ): array {
+        $parentLookup = array_fill_keys($parentSourcePassageIds, true);
+        $prepared = [];
+        foreach ($items as $index => $item) {
+            $sourcePassageIds = array_values(array_unique(array_map(
+                'intval',
+                (array) ($item['source_passage_ids'] ?? []),
+            )));
+            if ($requireSourcePassages && $sourcePassageIds === []) {
+                $validationErrors["{$errorPath}.{$index}.source_passage_ids"] = [
+                    'Đầu mục do AI tạo phải có ít nhất một đoạn nguồn.',
+                ];
+            }
+            if (collect($sourcePassageIds)->contains(
+                fn (int $passageId): bool => ! isset($parentLookup[$passageId]),
+            )) {
+                $validationErrors["{$errorPath}.{$index}.source_passage_ids"] = [
+                    'Đoạn nguồn của đầu mục phải thuộc phạm vi nguồn của công việc cha.',
+                ];
+            }
+            $prepared[] = [
+                'title' => trim((string) ($item['title'] ?? '')),
+                'content' => isset($item['content'])
+                    ? trim((string) $item['content']) ?: null
+                    : null,
+                'source_payload' => $item === [] ? null : $item,
+                'source_passage_ids' => $sourcePassageIds,
+            ];
+        }
+
+        return $prepared;
+    }
+
+    /** @param list<array{title: string, content: string|null, source_payload: array<string, mixed>|null, source_passage_ids: list<int>}> $items */
+    private function replaceEntryItems(WeeklyPlanEntry $entry, array $items): void
+    {
+        $entry->items()->delete();
+        foreach ($items as $index => $item) {
+            $sourcePassageIds = $item['source_passage_ids'];
+            unset($item['source_passage_ids']);
+            $entryItem = $entry->items()->create($item + ['sort_order' => $index + 1]);
+            if ($sourcePassageIds !== []) {
+                $entryItem->sourcePassages()->attach($sourcePassageIds);
+            }
+        }
     }
 
     /** @param array<string, mixed> $attributes @return array<string, mixed> */
@@ -1514,6 +1620,7 @@ class WeeklyPlanService
             'creator:id,name',
             'entries.assignee:id,name,email',
             'entries.sourcePassages',
+            'entries.items',
             'employeeReviews.assignee:id,name',
             'comments.author:id,name',
             'suggestions',

@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanGoogleDocsSource;
 use App\Models\WeeklyPlanGoogleDocsTabMapping;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -170,7 +171,7 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
 
             $instructions = (string) ($payload['instructions'] ?? '');
 
-            return data_get($payload, 'text.format.name') === 'kps_weekly_plan_google_docs_tab_results_v4'
+            return data_get($payload, 'text.format.name') === 'kps_weekly_plan_google_docs_tab_results_v5'
                 && data_get($payload, 'text.format.strict') === true
                 && data_get($payload, 'text.format.schema.additionalProperties') === false
                 && data_get($payload, 'text.format.schema.properties.tab_results.minItems') === 1
@@ -180,6 +181,11 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.status.enum') === ['TASKS_PROPOSED']
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.minItems') === 1
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.maxItems') === 20
+                && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.grouping_basis.enum')
+                    === ['SOURCE_STRUCTURE', 'AI_GROUPED', 'ATOMIC']
+                && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.maxItems') === 20
+                && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.items.additionalProperties') === false
+                && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.items.properties.source_keys.maxItems') === 20
                 && data_get($schema, 'anyOf.0.additionalProperties') === false
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.minLength') === 1
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === 500
@@ -873,6 +879,232 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
 
+    public function test_google_docs_v5_preserves_source_structure_ai_grouping_and_atomic_work(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $first = $plan->sourcePassages()->firstOrFail();
+        $second = $this->additionalPassage($plan, $first, 2, 'Child action two');
+        $third = $this->additionalPassage($plan, $first, 3, 'Flat action one');
+        $fourth = $this->additionalPassage($plan, $first, 4, 'Flat action two');
+        $fifth = $this->additionalPassage($plan, $first, 5, 'Atomic action');
+
+        $sourceStructured = $this->validSuggestion($first->source_key);
+        $sourceStructured['source_keys'] = [$first->source_key, $second->source_key];
+        $sourceStructured['title'] = 'Bán hàng';
+        $sourceStructured['grouping_basis'] = 'SOURCE_STRUCTURE';
+        $sourceStructured['items'] = [
+            ['title' => 'Lên đơn', 'content' => null, 'source_keys' => [$first->source_key]],
+            ['title' => 'Theo dõi đơn', 'content' => null, 'source_keys' => [$second->source_key]],
+        ];
+        $aiGrouped = $sourceStructured;
+        $aiGrouped['source_keys'] = [$third->source_key, $fourth->source_key];
+        $aiGrouped['title'] = 'Hành chính nhân sự';
+        $aiGrouped['grouping_basis'] = 'AI_GROUPED';
+        $aiGrouped['items'] = [
+            ['title' => 'Chấm công', 'content' => null, 'source_keys' => [$third->source_key]],
+            ['title' => 'BHXH', 'content' => null, 'source_keys' => [$fourth->source_key]],
+        ];
+        $atomic = $this->validSuggestion($fifth->source_key);
+
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response($this->completedResponse([
+                'tasks' => [$sourceStructured, $aiGrouped, $atomic],
+            ])),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.grouping_basis', 'SOURCE_STRUCTURE')
+            ->assertJsonCount(2, 'data.suggestions.0.items')
+            ->assertJsonPath('data.suggestions.1.grouping_basis', 'AI_GROUPED')
+            ->assertJsonCount(2, 'data.suggestions.1.items')
+            ->assertJsonPath('data.suggestions.2.grouping_basis', 'ATOMIC')
+            ->assertJsonCount(0, 'data.suggestions.2.items');
+    }
+
+    public function test_item_source_keys_fail_closed_for_unknown_cross_tab_and_parent_mismatch(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plans = [];
+        foreach (['2026-11-02', '2026-11-09', '2026-11-16'] as $weekStart) {
+            $plans[] = $this->googlePlan($organizationId, $hr, [
+                $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+                $this->tab('tab-b', 'Tab B', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+            ], $weekStart);
+        }
+
+        $responses = [];
+        $scopes = [];
+        foreach ($plans as $index => $plan) {
+            $passages = $plan->sourcePassages()->orderBy('sequence')->get();
+            $task = $this->validSuggestion($passages[0]->source_key);
+            $task['grouping_basis'] = 'AI_GROUPED';
+            $itemSourceKey = $index === 0 ? 'unknown:key' : $passages[1]->source_key;
+            if ($index === 2) {
+                $sameTabPassage = $this->additionalPassage($plan, $passages[0], 3, 'Same-tab mismatch');
+                $itemSourceKey = $sameTabPassage->source_key;
+                $scopes[] = [$passages[0]->id, $sameTabPassage->id];
+            } else {
+                $scopes[] = $index === 0
+                    ? [$passages[0]->id]
+                    : [$passages[0]->id, $passages[1]->id];
+            }
+            $task['items'] = [[
+                'title' => 'Grouped item',
+                'content' => null,
+                'source_keys' => [$itemSourceKey],
+            ]];
+            $responses[] = $this->completedResponse([
+                'tab_results' => [$this->tabResult('tab-a', [$task])],
+            ]);
+        }
+        $sequence = Http::fakeSequence('api.openai.test/v1/responses');
+        foreach ($responses as $response) {
+            $sequence->push($response);
+        }
+
+        $actors = [$hr, $this->manager()[0], $this->manager()[0]];
+        foreach ($plans as $index => $plan) {
+            $this->actingAs($actors[$index])
+                ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract", [
+                    'source_passage_ids' => $scopes[$index],
+                ])
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('extraction');
+        }
+
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+    }
+
+    public function test_item_limits_are_enforced_from_centralized_config(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $perTaskPlan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $totalPlan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ], '2026-11-09');
+
+        $perTaskKey = $perTaskPlan->sourcePassages()->firstOrFail()->source_key;
+        $tooManyPerTask = $this->validSuggestion($perTaskKey);
+        $tooManyPerTask['grouping_basis'] = 'AI_GROUPED';
+        $tooManyPerTask['items'] = array_fill(0, 21, [
+            'title' => 'Item', 'content' => null, 'source_keys' => [$perTaskKey],
+        ]);
+
+        config()->set('weekly_plans.ai_max_items_per_task', 60);
+        $totalKey = $totalPlan->sourcePassages()->firstOrFail()->source_key;
+        $tooManyTotalA = $this->validSuggestion($totalKey);
+        $tooManyTotalA['grouping_basis'] = 'AI_GROUPED';
+        $tooManyTotalA['items'] = array_fill(0, 51, [
+            'title' => 'Item A', 'content' => null, 'source_keys' => [$totalKey],
+        ]);
+        $tooManyTotalB = $tooManyTotalA;
+        $tooManyTotalB['title'] = 'Second group';
+
+        Http::fakeSequence('api.openai.test/v1/responses')
+            ->push($this->completedResponse(['tasks' => [$tooManyPerTask]]))
+            ->push($this->completedResponse(['tasks' => [$tooManyTotalA, $tooManyTotalB]]));
+
+        config()->set('weekly_plans.ai_max_items_per_task', 20);
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$perTaskPlan->id}/source/ai-extract")
+            ->assertUnprocessable();
+        config()->set('weekly_plans.ai_max_items_per_task', 60);
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$totalPlan->id}/source/ai-extract")
+            ->assertUnprocessable();
+    }
+
+    public function test_apply_all_persists_ordered_items_and_item_evidence_atomically(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $first = $plan->sourcePassages()->firstOrFail();
+        $second = $this->additionalPassage($plan, $first, 2, 'Second item evidence');
+        $entry = $this->entry($first->id, $employee->id, 'Grouped work', '2026-11-02');
+        $entry['source_passage_ids'] = [$first->id, $second->id];
+        $entry['items'] = [
+            ['title' => 'First item', 'content' => null, 'source_passage_ids' => [$first->id]],
+            ['title' => 'Second item', 'content' => 'Details', 'source_passage_ids' => [$second->id]],
+        ];
+
+        $response = $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/source/apply", [
+            'request_id' => fake()->uuid(),
+            'entries' => [$entry],
+        ])->assertOk()
+            ->assertJsonPath('data.summary.entry_count', 1)
+            ->assertJsonPath('data.summary.item_count', 2)
+            ->assertJsonPath('data.entries.0.items.0.title', 'First item')
+            ->assertJsonPath('data.entries.0.items.0.sort_order', 1)
+            ->assertJsonPath('data.entries.0.items.1.title', 'Second item')
+            ->assertJsonPath('data.entries.0.items.1.sort_order', 2)
+            ->assertJsonPath('data.events.0.metadata.entry_count', 1)
+            ->assertJsonPath('data.events.0.metadata.item_count', 2);
+
+        $entryId = (int) $response->json('data.entries.0.id');
+        $itemIds = DB::table('weekly_plan_entry_items')
+            ->where('weekly_plan_entry_id', $entryId)
+            ->orderBy('sort_order')
+            ->pluck('id');
+        $this->assertCount(2, $itemIds);
+        $this->assertDatabaseCount('weekly_plan_entry_source_passage', 2);
+        $this->assertDatabaseCount('weekly_plan_entry_item_source_passage', 2);
+
+        try {
+            DB::table('weekly_plan_entry_item_source_passage')->insert([
+                'weekly_plan_entry_item_id' => $itemIds[0],
+                'weekly_plan_source_passage_id' => $first->id,
+            ]);
+            $this->fail('Duplicate item evidence should be rejected.');
+        } catch (QueryException) {
+            $this->assertDatabaseCount('weekly_plan_entry_item_source_passage', 2);
+        }
+
+        DB::table('weekly_plan_entries')->where('id', $entryId)->delete();
+        $this->assertDatabaseCount('weekly_plan_entry_items', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_item_source_passage', 0);
+    }
+
+    public function test_invalid_item_evidence_rolls_back_the_entire_apply_all_request(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $first = $plan->sourcePassages()->firstOrFail();
+        $second = $this->additionalPassage($plan, $first, 2, 'Second item evidence');
+        $valid = $this->entry($first->id, $employee->id, 'Valid grouped work', '2026-11-02');
+        $valid['items'] = [[
+            'title' => 'Valid item', 'content' => null, 'source_passage_ids' => [$first->id],
+        ]];
+        $invalid = $this->entry($first->id, $employee->id, 'Invalid grouped work', '2026-11-02');
+        $invalid['items'] = [[
+            'title' => 'Mismatched item', 'content' => null, 'source_passage_ids' => [$second->id],
+        ]];
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/source/apply", [
+            'request_id' => fake()->uuid(),
+            'entries' => [$valid, $invalid],
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_items', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_applications', 0);
+    }
+
     /** @return array{User, int} */
     private function manager(string $organizationCode = 'KPS'): array
     {
@@ -1014,6 +1246,23 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         return ['tab_id' => $id, 'title' => $title, 'status' => $status, 'employee_id' => $employeeId];
     }
 
+    private function additionalPassage(
+        WeeklyPlan $plan,
+        $template,
+        int $sequence,
+        string $text,
+    ) {
+        return $plan->sourcePassages()->create([
+            'source_sha256' => $plan->source_sha256,
+            'source_key' => preg_replace('/:\d+$/', ':'.$sequence, $template->source_key),
+            'sequence' => $sequence,
+            'kind' => 'list_item',
+            'text' => $text,
+            'metadata' => $template->metadata,
+            'content_sha256' => hash('sha256', $text),
+        ]);
+    }
+
     private function apply(User $actor, WeeklyPlan $plan, int $passageId, int $assigneeId, string $requestId)
     {
         return $this->actingAs($actor)->postJson("/api/weekly-plans/{$plan->id}/source/apply", [
@@ -1051,6 +1300,8 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
             'due_date' => '2026-11-07',
             'priority' => 'MEDIUM',
             'note' => null,
+            'grouping_basis' => 'ATOMIC',
+            'items' => [],
             'verification_fields' => ['assignee_id'],
             'evidence' => 'Content can be verified.',
             'provenance' => [

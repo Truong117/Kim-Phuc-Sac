@@ -27,6 +27,8 @@ class WeeklyPlanningMigrationTest extends TestCase
         'weekly_plan_source_passages',
         'weekly_plan_entry_source_passage',
         'weekly_plan_entry_applications',
+        'weekly_plan_entry_items',
+        'weekly_plan_entry_item_source_passage',
     ];
 
     public function test_fresh_schema_contains_weekly_planning_tables_indexes_and_foreign_keys(): void
@@ -59,6 +61,13 @@ class WeeklyPlanningMigrationTest extends TestCase
             'validation_status',
         ]));
         $this->assertTrue(Schema::hasColumn('tasks', 'weekly_plan_entry_id'));
+        $this->assertTrue(Schema::hasColumns('weekly_plan_entry_items', [
+            'weekly_plan_entry_id',
+            'title',
+            'content',
+            'sort_order',
+            'source_payload',
+        ]));
 
         $this->assertUniqueIndex('weekly_plans', 'weekly_plans_org_week_unique');
         $this->assertUniqueIndex('weekly_plan_employee_reviews', 'weekly_reviews_plan_assignee_unique');
@@ -96,6 +105,9 @@ class WeeklyPlanningMigrationTest extends TestCase
         $this->assertForeignKey('weekly_plan_entry_source_passage', 'weekly_plan_source_passage_id', 'weekly_plan_source_passages', 'id', 'CASCADE');
         $this->assertForeignKey('weekly_plan_entry_applications', 'weekly_plan_id', 'weekly_plans', 'id', 'CASCADE');
         $this->assertForeignKey('weekly_plan_entry_applications', 'created_by', 'users', 'id', 'RESTRICT');
+        $this->assertForeignKey('weekly_plan_entry_items', 'weekly_plan_entry_id', 'weekly_plan_entries', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_entry_item_source_passage', 'weekly_plan_entry_item_id', 'weekly_plan_entry_items', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_entry_item_source_passage', 'weekly_plan_source_passage_id', 'weekly_plan_source_passages', 'id', 'CASCADE');
         $this->assertForeignKey('tasks', 'weekly_plan_entry_id', 'weekly_plan_entries', 'id', 'RESTRICT');
     }
 
@@ -162,8 +174,10 @@ class WeeklyPlanningMigrationTest extends TestCase
 
         $sourceMigration = $this->migration('2026_10_22_010001_add_weekly_plan_source_to_tasks_table.php');
         $documentMigration = $this->migration('2026_10_22_020000_create_weekly_plan_document_extraction_tables.php');
+        $itemMigration = $this->migration('2026_10_28_000000_create_weekly_plan_entry_items_tables.php');
         $weeklyMigration = $this->migration('2026_10_22_010000_create_weekly_planning_tables.php');
 
+        $itemMigration->down();
         $documentMigration->down();
         $sourceMigration->down();
 
@@ -182,6 +196,7 @@ class WeeklyPlanningMigrationTest extends TestCase
         $weeklyMigration->up();
         $sourceMigration->up();
         $documentMigration->up();
+        $itemMigration->up();
 
         foreach (self::WEEKLY_TABLES as $table) {
             $this->assertTrue(Schema::hasTable($table), "Weekly planning table was not recreated: {$table}");

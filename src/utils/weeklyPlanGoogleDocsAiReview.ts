@@ -2,6 +2,7 @@ import type { TaskPriority } from "@/types/tasks";
 import type {
   WeeklyPlanAiDetailSuggestions,
   WeeklyPlanAiSuggestion,
+  WeeklyPlanEntryItemInput,
   WeeklyPlanSourceEntryInput,
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
@@ -23,10 +24,17 @@ export type GoogleDocsAiReviewDraft = {
   included: boolean;
   detailSuggestions: WeeklyPlanAiDetailSuggestions | null;
   verificationFields: string[];
+  groupingBasis: "SOURCE_STRUCTURE" | "AI_GROUPED" | "ATOMIC";
+  items: WeeklyPlanEntryItemInput[];
 };
 
 export type GoogleDocsAiReviewField =
-  "assignee_id" | "title" | "priority" | "source_passage_ids" | "source_tab";
+  | "assignee_id"
+  | "title"
+  | "priority"
+  | "source_passage_ids"
+  | "source_tab"
+  | "items";
 
 export type GoogleDocsAiReviewErrors = Partial<
   Record<GoogleDocsAiReviewField, string>
@@ -71,6 +79,14 @@ export const createGoogleDocsAiReviewDrafts = (
     included: true,
     detailSuggestions: suggestion.detail_suggestions ?? null,
     verificationFields: [...suggestion.verification_fields],
+    groupingBasis: suggestion.grouping_basis ?? "ATOMIC",
+    items: (suggestion.items ?? []).map((item) => ({
+      title: item.title,
+      content: item.content,
+      source_passage_ids: item.source_keys
+        .map((sourceKey) => passageIdsByKey.get(sourceKey))
+        .filter((id): id is number => id !== undefined),
+    })),
   }));
 };
 
@@ -114,6 +130,14 @@ export const validateGoogleDocsAiReviewDraft = (
   ) {
     errors.source_tab = "verifiedMappingRequired";
   }
+  if (
+    draft.items.some(
+      (item) =>
+        !item.title.trim() || (item.source_passage_ids?.length ?? 0) === 0,
+    )
+  ) {
+    errors.items = "sourceRequired";
+  }
 
   return errors;
 };
@@ -149,6 +173,11 @@ export const buildGoogleDocsAiApplyAllEntries = (
       priority: draft.priority,
       note: draft.note.trim() || null,
       source_passage_ids: [...draft.sourcePassageIds],
+      items: draft.items.map((item) => ({
+        title: item.title.trim(),
+        content: item.content?.trim() || null,
+        source_passage_ids: [...(item.source_passage_ids ?? [])],
+      })),
     })),
   };
 };

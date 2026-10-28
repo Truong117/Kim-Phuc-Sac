@@ -73,9 +73,16 @@ export default function WeeklyPlanGoogleDocsAiReviewJobRow({
         <span className="flex size-8 items-center justify-center rounded-full bg-kps-primary/10 text-theme-xs font-bold text-kps-primary md:col-span-1 dark:bg-kps-primary/20 dark:text-sidebar-selected">
           {displayIndex}
         </span>
-        <p className="min-w-0 truncate text-theme-sm font-semibold text-gray-900 md:col-span-6 dark:text-white">
-          {draft.title || t("googleDocs.untitledJob")}
-        </p>
+        <div className="min-w-0 md:col-span-6">
+          <p className="truncate text-theme-sm font-semibold text-gray-900 dark:text-white">
+            {draft.title || t("googleDocs.untitledJob")}
+          </p>
+          {draft.items.length > 0 && (
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+              {t("googleDocs.itemCount", { count: draft.items.length })}
+            </p>
+          )}
+        </div>
         <div className="md:col-span-3">
           <Label htmlFor={`google-ai-priority-${index}`} className="sr-only">
             {t("fields.priority")}
@@ -210,11 +217,13 @@ export default function WeeklyPlanGoogleDocsAiReviewJobRow({
 
           {(errorFor("assignee_id") ||
             errorFor("source_tab") ||
-            errorFor("source_passage_ids")) && (
+            errorFor("source_passage_ids") ||
+            errorFor("items")) && (
             <p className="text-theme-xs text-error-600 dark:text-error-400">
               {errorFor("assignee_id") ??
                 errorFor("source_tab") ??
-                errorFor("source_passage_ids")}
+                errorFor("source_passage_ids") ??
+                errorFor("items")}
             </p>
           )}
         </div>

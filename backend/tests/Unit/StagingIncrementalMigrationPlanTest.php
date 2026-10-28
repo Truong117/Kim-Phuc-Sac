@@ -115,7 +115,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
     public function test_postflight_requires_expected_schema_empty_tables_and_unchanged_plan_identity(): void
     {
         $state = array_replace($this->stateForMigration17(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 17),
             'migration_17_schema_state' => 'complete',
             'source_row_count' => 0,
             'mapping_row_count' => 0,

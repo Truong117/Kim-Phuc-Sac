@@ -61,6 +61,8 @@ const suggestion = ({
   tabTitle = "Phương Anh",
   employeeName = `Employee ${assigneeId}`,
   detailSuggestions = null,
+  groupingBasis = "ATOMIC",
+  items = [],
 } = {}) => ({
   source_keys: sourceKeys,
   title,
@@ -71,6 +73,8 @@ const suggestion = ({
   due_date: dueDate,
   priority,
   note: "Note",
+  grouping_basis: groupingBasis,
+  items,
   source_tab: { tab_id: tabId, title: tabTitle },
   assignee: {
     id: assigneeId,
@@ -143,6 +147,39 @@ test("Google Docs AI review is employee-grouped and keeps DOCX review separate",
   assert.match(copy.assigneeLocked, /mapping tab đã được HR xác minh/);
   assert.match(sourceDocument, /plan\.actions\.can_ai_extract_source/);
   assert.doesNotMatch(sourceDocument, /mapping.*can_ai_extract_source/i);
+});
+
+test("structured AI items stay nested in the single atomic Apply All request", () => {
+  const sourceKeys = ["google-docs:tab-a:1", "google-docs:tab-a:2"];
+  const drafts = createGoogleDocsAiReviewDrafts(
+    [
+      suggestion({
+        sourceKeys,
+        groupingBasis: "SOURCE_STRUCTURE",
+        items: [
+          { title: "Child A", content: null, source_keys: [sourceKeys[0]] },
+          {
+            title: "Child B",
+            content: "Details",
+            source_keys: [sourceKeys[1]],
+          },
+        ],
+      }),
+    ],
+    [passage(11, sourceKeys[0]), passage(12, sourceKeys[1])],
+  );
+  const built = buildGoogleDocsAiApplyAllEntries(
+    drafts,
+    "2026-11-02",
+    "2026-11-07",
+  );
+
+  assert.equal(built.entries.length, 1);
+  assert.equal(drafts[0].groupingBasis, "SOURCE_STRUCTURE");
+  assert.deepEqual(built.entries[0].items, [
+    { title: "Child A", content: null, source_passage_ids: [11] },
+    { title: "Child B", content: "Details", source_passage_ids: [12] },
+  ]);
 });
 
 test("employee groups are stable by trusted assignee and retain tab labels", () => {
@@ -543,7 +580,10 @@ test("AI failure preserves selected groups while successful Apply All clears the
   assert.doesNotMatch(extractionFlow, /setSelectedIds\(\[\]\)/);
   assert.match(extractionFlow, /setAiSuggestions\(\[\]\)/);
   assert.match(extractionFlow, /setAiPreviewOpen\(false\)/);
-  assert.match(extractionFlow, /setAiPreviewVersion\(\(current\) => current \+ 1\)/);
+  assert.match(
+    extractionFlow,
+    /setAiPreviewVersion\(\(current\) => current \+ 1\)/,
+  );
   assert.ok(
     extractionFlow.indexOf("setAiSuggestions([])") <
       extractionFlow.indexOf("await onAiExtract"),

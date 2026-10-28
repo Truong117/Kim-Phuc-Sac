@@ -102,6 +102,8 @@ class WeeklyPlanTaskExtractionService
         if ($googleDocsContext !== null) {
             $context['source_type'] = 'GOOGLE_DOCS';
             $context['selected_tab_ids'] = array_keys($googleDocsContext['tabs']);
+            $context['allowed_fields'][] = 'grouping_basis';
+            $context['allowed_fields'][] = 'items';
         }
         $contextJson = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         if (strlen($contextJson) > (int) config('weekly_plans.ai_max_context_bytes', 60000)) {
@@ -257,6 +259,10 @@ class WeeklyPlanTaskExtractionService
             'evidence',
             'provenance',
         ];
+        if ($googleDocsContext !== null) {
+            $taskFields[] = 'grouping_basis';
+            $taskFields[] = 'items';
+        }
         $requiredTaskFields = array_values(array_diff($taskFields, ['detail_suggestions']));
         foreach ($raw as $taskIndex => $task) {
             $structuralFailure = null;
@@ -272,6 +278,12 @@ class WeeklyPlanTaskExtractionService
                     $structuralFailure = ['field' => 'source_keys', 'rule' => 'list'];
                 } elseif (! is_array($task['verification_fields']) || ! array_is_list($task['verification_fields'])) {
                     $structuralFailure = ['field' => 'verification_fields', 'rule' => 'list'];
+                } elseif ($googleDocsContext !== null
+                    && (! is_array($task['items']) || ! array_is_list($task['items']))) {
+                    $structuralFailure = ['field' => 'items', 'rule' => 'list'];
+                } elseif ($googleDocsContext !== null
+                    && $this->hasInvalidItemsStructure($task['items'])) {
+                    $structuralFailure = ['field' => 'items', 'rule' => 'strict_objects'];
                 } elseif (array_key_exists('detail_suggestions', $task)
                     && $task['detail_suggestions'] !== null
                     && $this->hasInvalidDetailSuggestions($task['detail_suggestions'])) {
@@ -319,6 +331,31 @@ class WeeklyPlanTaskExtractionService
             'tasks.*.evidence' => ['required', 'string', 'max:5000'],
             'tasks.*.provenance' => ['required', 'array', 'size:'.count($provenanceFields)],
         ];
+        if ($googleDocsContext !== null) {
+            $rules['tasks.*.grouping_basis'] = [
+                'required',
+                Rule::in(['SOURCE_STRUCTURE', 'AI_GROUPED', 'ATOMIC']),
+            ];
+            $rules['tasks.*.items'] = [
+                'present',
+                'array',
+                'max:'.WeeklyPlanAiOutputLimits::maxItemsPerTask(),
+            ];
+            $rules['tasks.*.items.*.title'] = ['required', 'string', 'max:255'];
+            $rules['tasks.*.items.*.content'] = ['nullable', 'string', 'max:10000'];
+            $rules['tasks.*.items.*.source_keys'] = [
+                'required',
+                'array',
+                'min:1',
+                'max:'.WeeklyPlanAiOutputLimits::maxSourceKeysPerTask(),
+            ];
+            $rules['tasks.*.items.*.source_keys.*'] = [
+                'required',
+                'string',
+                'distinct',
+                'max:128',
+            ];
+        }
         foreach (array_keys($raw) as $taskIndex) {
             $rules["tasks.{$taskIndex}.verification_fields.*"] = [
                 'string',
@@ -355,6 +392,19 @@ class WeeklyPlanTaskExtractionService
             ];
         }
         $validator = Validator::make(['tasks' => $raw], $rules);
+
+        if ($googleDocsContext !== null
+            && collect($raw)->sum(fn (array $task): int => count($task['items']))
+                > WeeklyPlanAiOutputLimits::maxTotalItems()) {
+            $this->logValidationFailure('laravel_validator', [[
+                'task_index' => null,
+                'field' => 'items',
+                'rule' => 'max_total_items',
+            ]]);
+            throw ValidationException::withMessages([
+                'extraction' => ['Kết quả trích xuất có quá nhiều đầu mục.'],
+            ]);
+        }
 
         if ($validator->fails()) {
             $failures = [];
@@ -395,6 +445,23 @@ class WeeklyPlanTaskExtractionService
                 throw ValidationException::withMessages([
                     'extraction' => ['Kết quả trích xuất tham chiếu đoạn nguồn không tồn tại.'],
                 ]);
+            }
+
+            if ($googleDocsContext !== null) {
+                $groupingBasis = $task['grouping_basis'];
+                if (($groupingBasis === 'ATOMIC' && $task['items'] !== [])
+                    || ($groupingBasis !== 'ATOMIC' && $task['items'] === [])) {
+                    throw ValidationException::withMessages([
+                        'extraction' => ['Cấu trúc công việc AI không phù hợp với cơ sở phân nhóm.'],
+                    ]);
+                }
+                foreach ($task['items'] as $item) {
+                    if (array_diff($item['source_keys'], $task['source_keys']) !== []) {
+                        throw ValidationException::withMessages([
+                            'extraction' => ['Nguồn của đầu mục không thuộc phạm vi nguồn của công việc cha.'],
+                        ]);
+                    }
+                }
             }
 
             if ($googleDocsContext !== null) {
@@ -502,6 +569,23 @@ class WeeklyPlanTaskExtractionService
                 || array_is_list($detail)
                 || array_diff(array_keys($detail), ['value', 'basis']) !== []
                 || array_diff(['value', 'basis'], array_keys($detail)) !== []) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param list<mixed> $items */
+    private function hasInvalidItemsStructure(array $items): bool
+    {
+        foreach ($items as $item) {
+            if (! is_array($item)
+                || array_is_list($item)
+                || array_diff(array_keys($item), ['title', 'content', 'source_keys']) !== []
+                || array_diff(['title', 'content', 'source_keys'], array_keys($item)) !== []
+                || ! is_array($item['source_keys'])
+                || ! array_is_list($item['source_keys'])) {
                 return true;
             }
         }

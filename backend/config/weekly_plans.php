@@ -20,6 +20,10 @@ return [
     // AI response safety boundary. Runtime validation also caps this at
     // max_source_entries_per_request so one preview always fits one atomic apply.
     'ai_max_tasks_per_response' => (int) env('WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE', 20),
+    // Nested planning items use the existing entry text conventions:
+    // title <= 255 characters and nullable content <= 10,000 characters.
+    'ai_max_items_per_task' => (int) env('WEEKLY_PLAN_AI_MAX_ITEMS_PER_TASK', 20),
+    'ai_max_total_items_per_response' => (int) env('WEEKLY_PLAN_AI_MAX_TOTAL_ITEMS_PER_RESPONSE', 100),
     'ai_max_output_tokens' => (int) env('WEEKLY_PLAN_AI_MAX_OUTPUT_TOKENS', 3000),
     'ai_reasoning_effort' => env('WEEKLY_PLAN_AI_REASONING_EFFORT'),
 ];
