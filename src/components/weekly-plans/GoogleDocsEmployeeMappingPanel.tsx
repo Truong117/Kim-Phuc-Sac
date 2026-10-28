@@ -5,25 +5,26 @@ import Button from "@/components/ui/button/Button";
 import { ApiServiceError } from "@/services/apiClient";
 import {
   getWeeklyPlanGoogleDocsEmployeeMappings,
-  updateWeeklyPlanGoogleDocsEmployeeMapping,
+  updateWeeklyPlanGoogleDocsEmployeeMappingsBatch,
 } from "@/services/weeklyPlanningService";
 import type { WeeklyPlanGoogleDocsEmployeeMappings } from "@/types/weeklyPlanning";
 import {
-  buildGoogleDocsMappingUpdateInput,
-  canSaveGoogleDocsMappingDraft,
+  buildGoogleDocsMappingBatchUpdateInput,
+  canSaveGoogleDocsMappingBatch,
   confirmGoogleDocsMappingDraft,
   createGoogleDocsMappingDrafts,
   getGoogleDocsMappingConflictKind,
-  isGoogleDocsMappingConflictRefreshTrusted,
+  isGoogleDocsMappingBatchConflictRefreshTrusted,
   isGoogleDocsMappingSnapshotRegressive,
-  markGoogleDocsMappingConflictPending,
-  reconcileGoogleDocsMappingConflict,
-  reconcileGoogleDocsMappingSaveSuccess,
+  markGoogleDocsMappingBatchConflictPending,
+  reconcileGoogleDocsMappingBatchConflict,
+  reconcileGoogleDocsMappingBatchSaveSuccess,
   reconcileGoogleDocsMappingSnapshot,
   resetGoogleDocsMappingDraftFromServer,
   shouldBlockGoogleDocsMappingWrites,
   shouldApplyGoogleDocsMappingResponse,
   updateGoogleDocsMappingDraft,
+  type GoogleDocsMappingBatchUpdateInput,
   type GoogleDocsMappingDrafts,
   type GoogleDocsMappingRequestToken,
 } from "@/utils/googleDocsEmployeeMappingDrafts";
@@ -40,10 +41,14 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
     useState<WeeklyPlanGoogleDocsEmployeeMappings | null>(null);
   const [drafts, setDrafts] = useState<GoogleDocsMappingDrafts>({});
   const [loading, setLoading] = useState(true);
-  const [savingTabId, setSavingTabId] = useState<string | null>(null);
-  const [refreshingTabId, setRefreshingTabId] = useState<string | null>(null);
+  const [savingBatch, setSavingBatch] = useState(false);
+  const [refreshingConflicts, setRefreshingConflicts] = useState(false);
+  const [conflictInputs, setConflictInputs] = useState<
+    GoogleDocsMappingBatchUpdateInput[] | null
+  >(null);
   const [writeBlocked, setWriteBlocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const activeControllerRef = useRef<AbortController | null>(null);
   const requestGenerationRef = useRef(0);
   const activePlanIdRef = useRef(planId);
@@ -134,8 +139,8 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
         if (requestIsActive(controller, token)) {
           activeControllerRef.current = null;
           setLoading(false);
-          setSavingTabId(null);
-          setRefreshingTabId(null);
+          setSavingBatch(false);
+          setRefreshingConflicts(false);
         }
       });
 
@@ -156,6 +161,7 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
       updateGoogleDocsMappingDraft(current, tabId, values),
     );
     setError(null);
+    setSaved(false);
   };
 
   const chooseServerDraft = (tabId: string) => {
@@ -174,9 +180,8 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
     setError(null);
   };
 
-  const refreshConflict = async (
-    tabId: string,
-    submittedExpectedVersion: number,
+  const refreshBatchConflict = async (
+    submitted: GoogleDocsMappingBatchUpdateInput[],
     controller: AbortController,
     token: GoogleDocsMappingRequestToken,
   ): Promise<boolean> => {
@@ -187,10 +192,9 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
       );
       if (!requestIsActive(controller, token)) return false;
       if (
-        !isGoogleDocsMappingConflictRefreshTrusted(
+        !isGoogleDocsMappingBatchConflictRefreshTrusted(
           refreshed.tabs,
-          tabId,
-          submittedExpectedVersion,
+          submitted,
         )
       ) {
         setError(translateRef.current("errors.conflictSnapshotStale"));
@@ -198,14 +202,15 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
       }
       if (
         !applySnapshot(refreshed, (current, tabs) =>
-          reconcileGoogleDocsMappingConflict(current, tabs, tabId),
+          reconcileGoogleDocsMappingBatchConflict(current, tabs, submitted),
         )
       ) {
         setError(translateRef.current("errors.conflictRefresh"));
         return false;
       }
 
-      setError(null);
+      setConflictInputs(null);
+      setError(translateRef.current("errors.batchConflict"));
       return true;
     } catch {
       if (requestIsActive(controller, token)) {
@@ -215,67 +220,56 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
     }
   };
 
-  const retryConflictRefresh = async (tabId: string) => {
-    if (operationInFlightRef.current) return;
-    const draft = drafts[tabId];
-    if (
-      !draft?.conflictRefreshPending ||
-      !Number.isSafeInteger(draft.conflictExpectedVersion) ||
-      draft.conflictExpectedVersion === null
-    )
-      return;
+  const retryBatchConflictRefresh = async () => {
+    if (operationInFlightRef.current || !conflictInputs) return;
 
     const { controller, token } = startRequest();
     operationInFlightRef.current = true;
-    setRefreshingTabId(tabId);
+    setRefreshingConflicts(true);
     setError(null);
     try {
-      await refreshConflict(
-        tabId,
-        draft.conflictExpectedVersion,
-        controller,
-        token,
-      );
+      await refreshBatchConflict(conflictInputs, controller, token);
     } finally {
       if (activeControllerRef.current === controller) {
         activeControllerRef.current = null;
         operationInFlightRef.current = false;
-        if (!controller.signal.aborted) setRefreshingTabId(null);
+        if (!controller.signal.aborted) setRefreshingConflicts(false);
       }
     }
   };
 
-  const save = async (tabId: string) => {
-    if (operationInFlightRef.current || writeBlocked) return;
-
-    const draft = drafts[tabId];
-    if (!draft || draft.conflict) return;
-    if (!canSaveGoogleDocsMappingDraft(draft)) {
+  const saveAll = async () => {
+    if (operationInFlightRef.current || writeBlocked || !mappings) return;
+    if (!canSaveGoogleDocsMappingBatch(mappings.tabs, drafts)) {
       setError(t("errors.employeeRequired"));
       return;
     }
 
     const { controller, token } = startRequest();
-    const submitted = buildGoogleDocsMappingUpdateInput(tabId, draft);
+    const submitted = buildGoogleDocsMappingBatchUpdateInput(
+      mappings.tabs,
+      drafts,
+    );
     operationInFlightRef.current = true;
-    setSavingTabId(tabId);
+    setSavingBatch(true);
+    setSaved(false);
     setError(null);
     try {
-      const next = await updateWeeklyPlanGoogleDocsEmployeeMapping(
+      const next = await updateWeeklyPlanGoogleDocsEmployeeMappingsBatch(
         planId,
         submitted,
         controller.signal,
       );
+      if (!requestIsActive(controller, token)) return;
       if (
-        !requestIsActive(controller, token)
-      )
-        return;
-      if (
-        !applySnapshot(next, (current, tabs) =>
-          reconcileGoogleDocsMappingSaveSuccess(current, tabs, tabId),
+        !applySnapshot(next, (_current, tabs) =>
+          reconcileGoogleDocsMappingBatchSaveSuccess(tabs),
         )
       ) {
         setError(translateRef.current("errors.staleResponse"));
+      } else {
+        setConflictInputs(null);
+        setSaved(true);
       }
     } catch (nextError) {
       if (
@@ -293,19 +287,11 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
       );
       const conflictKind = getGoogleDocsMappingConflictKind(nextError);
       if (conflictKind === "VERSION") {
+        setConflictInputs(submitted);
         setDrafts((current) =>
-          markGoogleDocsMappingConflictPending(
-            current,
-            submitted.tab_id,
-            submitted.expected_version,
-          ),
+          markGoogleDocsMappingBatchConflictPending(current, submitted),
         );
-        await refreshConflict(
-          submitted.tab_id,
-          submitted.expected_version,
-          controller,
-          token,
-        );
+        await refreshBatchConflict(submitted, controller, token);
       } else if (shouldBlockGoogleDocsMappingWrites(conflictKind)) {
         setWriteBlocked(true);
       }
@@ -313,13 +299,51 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
       if (activeControllerRef.current === controller) {
         activeControllerRef.current = null;
         operationInFlightRef.current = false;
-        if (!controller.signal.aborted) setSavingTabId(null);
+        if (!controller.signal.aborted) setSavingBatch(false);
       }
     }
   };
 
+  const completedCount =
+    mappings?.tabs.filter((tab) =>
+      ["VERIFIED", "NOT_APPLICABLE"].includes(tab.status),
+    ).length ?? 0;
+  const totalCount = mappings?.tabs.length ?? 0;
+  const completed = totalCount > 0 && completedCount === totalCount;
+  const canSaveAll = Boolean(
+    mappings &&
+    mappings.actions.can_update &&
+    !writeBlocked &&
+    !savingBatch &&
+    !refreshingConflicts &&
+    canSaveGoogleDocsMappingBatch(mappings.tabs, drafts),
+  );
+
   return (
     <ComponentCard title={t("title")} desc={t("description")} compact>
+      {mappings && (
+        <div className="rounded-xl bg-gray-50 px-4 py-3 dark:bg-gray-800/60">
+          <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+            {t("progress", { completed: completedCount, total: totalCount })}
+          </p>
+          {completed && (
+            <div className="mt-2 space-y-1 text-theme-sm text-success-700 dark:text-success-400">
+              <p className="font-semibold">{t("completed")}</p>
+              <p>{t("readyForAi")}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {saved && (
+        <p
+          role="status"
+          className="rounded-lg bg-success-50 px-4 py-3 text-theme-sm text-success-700 dark:bg-success-500/10 dark:text-success-400"
+        >
+          {t("savedAll")}
+        </p>
+      )}
+
       {error && (
         <p
           role="alert"
@@ -327,6 +351,20 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
         >
           {error}
         </p>
+      )}
+      {conflictInputs && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            size="sm"
+            disabled={refreshingConflicts || savingBatch}
+            onClick={() => void retryBatchConflictRefresh()}
+          >
+            {refreshingConflicts
+              ? t("conflict.refreshing")
+              : t("conflict.retryRefresh")}
+          </Button>
+        </div>
       )}
 
       {loading && !mappings ? (
@@ -390,8 +428,8 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                           disabled={
                             !mappings.actions.can_update ||
                             writeBlocked ||
-                            savingTabId !== null ||
-                            refreshingTabId !== null ||
+                            savingBatch ||
+                            refreshingConflicts ||
                             draft.conflict
                           }
                           className="text-theme-xs font-semibold text-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400"
@@ -408,7 +446,7 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                     )}
                   </div>
 
-                  <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-2xl lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
+                  <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-2xl">
                     <div>
                       <Label htmlFor={`mapping-status-${tab.tab_id}`}>
                         {t("statusLabel")}
@@ -419,8 +457,8 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                         disabled={
                           !mappings.actions.can_update ||
                           writeBlocked ||
-                          savingTabId !== null ||
-                          refreshingTabId !== null ||
+                          savingBatch ||
+                          refreshingConflicts ||
                           draft.conflict
                         }
                         options={[
@@ -453,8 +491,8 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                         disabled={
                           !mappings.actions.can_update ||
                           writeBlocked ||
-                          savingTabId !== null ||
-                          refreshingTabId !== null ||
+                          savingBatch ||
+                          refreshingConflicts ||
                           draft.conflict ||
                           draft.status !== "VERIFIED"
                         }
@@ -464,25 +502,16 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                           updateDraft(tab.tab_id, { employeeId: value })
                         }
                       />
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={
-                          !mappings.actions.can_update ||
-                          writeBlocked ||
-                          savingTabId !== null ||
-                          refreshingTabId !== null ||
-                          !canSaveGoogleDocsMappingDraft(draft)
-                        }
-                        onClick={() => void save(tab.tab_id)}
-                      >
-                        {savingTabId === tab.tab_id ? t("saving") : t("save")}
-                      </Button>
+                      {draft.dirty &&
+                        draft.status === "VERIFIED" &&
+                        !draft.employeeId && (
+                          <p className="mt-2 text-theme-xs text-error-600 dark:text-error-400">
+                            {t("errors.employeeRequired")}
+                          </p>
+                        )}
                     </div>
                     {draft.conflict && (
-                      <div className="sm:col-span-2 lg:col-span-3">
+                      <div className="sm:col-span-2">
                         <div
                           role="alert"
                           className="rounded-lg border border-warning-200 bg-warning-50 p-3 text-theme-xs text-warning-800 dark:border-warning-900/50 dark:bg-warning-500/10 dark:text-warning-300"
@@ -495,25 +524,13 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                             )}
                           </p>
                           <div className="mt-3 flex flex-wrap gap-2">
-                            {draft.conflictRefreshPending ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                disabled={refreshingTabId !== null}
-                                onClick={() =>
-                                  void retryConflictRefresh(tab.tab_id)
-                                }
-                              >
-                                {refreshingTabId === tab.tab_id
-                                  ? t("conflict.refreshing")
-                                  : t("conflict.retryRefresh")}
-                              </Button>
-                            ) : (
+                            {!draft.conflictRefreshPending && (
                               <>
                                 <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
+                                  disabled={savingBatch || refreshingConflicts}
                                   onClick={() => chooseServerDraft(tab.tab_id)}
                                 >
                                   {t("conflict.useServer")}
@@ -521,6 +538,7 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
                                 <Button
                                   type="button"
                                   size="sm"
+                                  disabled={savingBatch || refreshingConflicts}
                                   onClick={() =>
                                     keepDraftAfterConflict(tab.tab_id)
                                   }
@@ -538,6 +556,19 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
               </section>
             );
           })}
+        </div>
+      )}
+
+      {mappings && mappings.tabs.length > 0 && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            disabled={!canSaveAll}
+            className="bg-kps-primary hover:bg-kps-primary-hover"
+            onClick={() => void saveAll()}
+          >
+            {savingBatch ? t("savingAll") : t("saveAll")}
+          </Button>
         </div>
       )}
 

@@ -3,14 +3,20 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import ts from "typescript";
 import {
+  buildGoogleDocsMappingBatchUpdateInput,
   buildGoogleDocsMappingUpdateInput,
+  canSaveGoogleDocsMappingBatch,
   canSaveGoogleDocsMappingDraft,
   confirmGoogleDocsMappingDraft,
   createGoogleDocsMappingDrafts,
   getGoogleDocsMappingConflictKind,
+  isGoogleDocsMappingBatchConflictRefreshTrusted,
   isGoogleDocsMappingConflictRefreshTrusted,
   isGoogleDocsMappingSnapshotRegressive,
+  markGoogleDocsMappingBatchConflictPending,
   markGoogleDocsMappingConflictPending,
+  reconcileGoogleDocsMappingBatchConflict,
+  reconcileGoogleDocsMappingBatchSaveSuccess,
   reconcileGoogleDocsMappingConflict,
   reconcileGoogleDocsMappingSaveSuccess,
   reconcileGoogleDocsMappingSnapshot,
@@ -19,14 +25,17 @@ import {
   shouldApplyGoogleDocsMappingResponse,
   updateGoogleDocsMappingDraft,
 } from "../src/utils/googleDocsEmployeeMappingDrafts.ts";
+import { spansMultipleGoogleDocsTabs } from "../src/utils/weeklyPlanSourceSelection.ts";
+import { requestGoogleDocsEmployeeMappingsBatch } from "../src/services/googleDocsEmployeeMappingRequest.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
 const loadApiClient = async () => {
-  const source = (
-    await readSource("src/services/apiClient.ts")
-  ).replace("import.meta.env.VITE_API_BASE_URL", '"/"');
+  const source = (await readSource("src/services/apiClient.ts")).replace(
+    "import.meta.env.VITE_API_BASE_URL",
+    '"/"',
+  );
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
       module: ts.ModuleKind.ESNext,
@@ -61,6 +70,186 @@ const serverTabs = ({
   },
 ];
 
+test("bulk edits stay local and build one payload containing only changed rows", () => {
+  const tabs = serverTabs();
+  let drafts = createGoogleDocsMappingDrafts(tabs);
+  drafts = updateGoogleDocsMappingDraft(drafts, "tab-a", {
+    status: "VERIFIED",
+    employeeId: "101",
+  });
+  drafts = updateGoogleDocsMappingDraft(drafts, "tab-b", {
+    status: "NOT_APPLICABLE",
+    employeeId: "",
+  });
+
+  assert.equal(canSaveGoogleDocsMappingBatch(tabs, drafts), true);
+  assert.deepEqual(buildGoogleDocsMappingBatchUpdateInput(tabs, drafts), [
+    {
+      tab_id: "tab-a",
+      status: "VERIFIED",
+      employee_id: 101,
+      expected_version: 0,
+    },
+    {
+      tab_id: "tab-b",
+      status: "NOT_APPLICABLE",
+      expected_version: 0,
+    },
+  ]);
+
+  drafts = updateGoogleDocsMappingDraft(drafts, "tab-b", {
+    status: "NEEDS_REVIEW",
+    employeeId: "",
+  });
+  assert.equal(drafts["tab-b"].dirty, false);
+  assert.deepEqual(buildGoogleDocsMappingBatchUpdateInput(tabs, drafts), [
+    {
+      tab_id: "tab-a",
+      status: "VERIFIED",
+      employee_id: 101,
+      expected_version: 0,
+    },
+  ]);
+
+  drafts = updateGoogleDocsMappingDraft(drafts, "tab-a", {
+    status: "VERIFIED",
+    employeeId: "",
+  });
+  assert.equal(canSaveGoogleDocsMappingBatch(tabs, drafts), false);
+});
+
+test("Save All request sends exactly one batch call with the supplied changed rows", async () => {
+  const calls = [];
+  const controller = new AbortController();
+  const mappings = [
+    {
+      tab_id: "tab-a",
+      status: "VERIFIED",
+      employee_id: 101,
+      expected_version: 2,
+    },
+  ];
+  const overview = { tabs: [{ tab_id: "tab-a", version: 3 }] };
+  const result = await requestGoogleDocsEmployeeMappingsBatch(
+    async (path, options) => {
+      calls.push({ path, options });
+      return { data: overview };
+    },
+    42,
+    mappings,
+    controller.signal,
+  );
+
+  assert.strictEqual(result, overview);
+  assert.equal(calls.length, 1);
+  assert.equal(
+    calls[0].path,
+    "/api/weekly-plans/42/google-docs/employee-mappings/batch",
+  );
+  assert.equal(calls[0].options.method, "PUT");
+  assert.equal(calls[0].options.body, JSON.stringify({ mappings }));
+  assert.strictEqual(calls[0].options.signal, controller.signal);
+});
+
+test("bulk success clears dirty state and bulk conflict identifies only changed server versions", () => {
+  const initial = serverTabs();
+  let drafts = createGoogleDocsMappingDrafts(initial);
+  drafts = updateGoogleDocsMappingDraft(drafts, "tab-a", {
+    status: "VERIFIED",
+    employeeId: "101",
+  });
+  drafts = updateGoogleDocsMappingDraft(drafts, "tab-b", {
+    status: "VERIFIED",
+    employeeId: "202",
+  });
+  const inputs = buildGoogleDocsMappingBatchUpdateInput(initial, drafts);
+  const pending = markGoogleDocsMappingBatchConflictPending(drafts, inputs);
+  assert.equal(pending["tab-a"].conflictRefreshPending, true);
+  assert.equal(pending["tab-b"].conflictRefreshPending, true);
+
+  const refreshed = serverTabs({
+    firstEmployeeId: 303,
+    firstVersion: 1,
+    secondVersion: 0,
+  });
+  assert.equal(
+    isGoogleDocsMappingBatchConflictRefreshTrusted(refreshed, inputs),
+    true,
+  );
+  const conflicted = reconcileGoogleDocsMappingBatchConflict(
+    pending,
+    refreshed,
+    inputs,
+  );
+  assert.equal(conflicted["tab-a"].employeeId, "101");
+  assert.equal(conflicted["tab-a"].conflict, true);
+  assert.equal(conflicted["tab-b"].employeeId, "202");
+  assert.equal(conflicted["tab-b"].conflict, false);
+  assert.equal(conflicted["tab-b"].dirty, true);
+  assert.equal(
+    isGoogleDocsMappingBatchConflictRefreshTrusted(initial, inputs),
+    false,
+  );
+
+  const successful = reconcileGoogleDocsMappingBatchSaveSuccess(
+    serverTabs({
+      firstEmployeeId: 101,
+      firstVersion: 1,
+      secondEmployeeId: 202,
+      secondVersion: 1,
+    }),
+  );
+  assert.equal(successful["tab-a"].dirty, false);
+  assert.equal(successful["tab-b"].dirty, false);
+  assert.equal(successful["tab-a"].baseVersion, 1);
+  assert.equal(successful["tab-b"].baseVersion, 1);
+});
+
+test("Google Docs source selection detects multiple tabs without blocking one-tab or DOCX selection", () => {
+  const passage = (tabId, origin = "GOOGLE_DOCS_TAB") => ({
+    source_group: {
+      key: `group-${tabId}`,
+      origin,
+      evidence: { tab_id: tabId },
+    },
+    source_context: null,
+  });
+
+  assert.equal(
+    spansMultipleGoogleDocsTabs([passage("tab-a"), passage("tab-b")]),
+    true,
+  );
+  assert.equal(
+    spansMultipleGoogleDocsTabs([passage("tab-a"), passage("tab-a")]),
+    false,
+  );
+  assert.equal(
+    spansMultipleGoogleDocsTabs([
+      passage("section-a", "DOCX_SECTION"),
+      passage("section-b", "DOCX_SECTION"),
+    ]),
+    false,
+  );
+  assert.equal(
+    spansMultipleGoogleDocsTabs([
+      {
+        source_group: {
+          key: "manual-group",
+          origin: "MANUAL",
+          evidence: {},
+        },
+        source_context: {
+          key: "google-tab-a",
+          origin: "GOOGLE_DOCS_TAB",
+          evidence: { tab_id: "tab-a" },
+        },
+      },
+      passage("tab-b"),
+    ]),
+    true,
+  );
+});
+
 test("saving B preserves dirty A and detects A server version drift", () => {
   let drafts = createGoogleDocsMappingDrafts(
     serverTabs({ firstEmployeeId: 1, firstVersion: 1 }),
@@ -88,6 +277,8 @@ test("saving B preserves dirty A and detects A server version drift", () => {
   assert.deepEqual(reconciled["tab-a"], {
     status: "VERIFIED",
     employeeId: "101",
+    baseStatus: "VERIFIED",
+    baseEmployeeId: "1",
     baseVersion: 1,
     dirty: true,
     conflict: true,
@@ -97,6 +288,8 @@ test("saving B preserves dirty A and detects A server version drift", () => {
   assert.deepEqual(reconciled["tab-b"], {
     status: "VERIFIED",
     employeeId: "202",
+    baseStatus: "VERIFIED",
+    baseEmployeeId: "202",
     baseVersion: 1,
     dirty: false,
     conflict: false,
@@ -152,6 +345,8 @@ test("409 refresh preserves dirty drafts and marks every drifted version", () =>
   assert.deepEqual(serverChoice["tab-b"], {
     status: "VERIFIED",
     employeeId: "303",
+    baseStatus: "VERIFIED",
+    baseEmployeeId: "303",
     baseVersion: 1,
     dirty: false,
     conflict: false,
@@ -532,6 +727,8 @@ test("using server data resets only the selected tab and preserves another dirty
   assert.deepEqual(serverChoice["tab-a"], {
     status: "VERIFIED",
     employeeId: "2",
+    baseStatus: "VERIFIED",
+    baseEmployeeId: "2",
     baseVersion: 2,
     dirty: false,
     conflict: false,
@@ -541,6 +738,8 @@ test("using server data resets only the selected tab and preserves another dirty
   assert.deepEqual(serverChoice["tab-b"], {
     status: "VERIFIED",
     employeeId: "202",
+    baseStatus: "VERIFIED",
+    baseEmployeeId: "20",
     baseVersion: 4,
     dirty: true,
     conflict: false,
@@ -692,6 +891,7 @@ test("Google Docs employee mapping uses backend actions and scoped plan routes",
     service,
     /`\/api\/weekly-plans\/\$\{id\}\/google-docs\/employee-mappings`/,
   );
+  assert.match(service, /requestGoogleDocsEmployeeMappingsBatch/);
   assert.match(service, /method: "PUT"/);
   assert.doesNotMatch(service, /organization_id|document_id|document_url/);
   assert.match(types, /can_manage_google_docs_mappings: boolean/);
@@ -705,13 +905,12 @@ test("mapping UI preserves tab identity, requires explicit confirmation, and han
   );
 
   assert.match(panel, /key=\{tab\.tab_id\}/);
-  assert.match(panel, /buildGoogleDocsMappingUpdateInput\(tabId, draft\)/);
+  assert.match(panel, /buildGoogleDocsMappingBatchUpdateInput/);
+  assert.match(panel, /draft\.status === "VERIFIED"[\s\S]*!draft\.employeeId/);
   assert.match(panel, /status: "VERIFIED"/);
   assert.match(panel, /useSuggestion/);
-  assert.match(
-    panel,
-    /onClick=\{\(\) => void save\(tab\.tab_id\)\}/,
-  );
+  assert.match(panel, /onClick=\{\(\) => void saveAll\(\)\}/);
+  assert.doesNotMatch(panel, /void save\(tab\.tab_id\)/);
   assert.match(panel, /getGoogleDocsMappingConflictKind\(nextError\)/);
   assert.match(
     panel,
@@ -727,20 +926,21 @@ test("mapping UI preserves tab identity, requires explicit confirmation, and han
 });
 
 test("mapping UI coordinates loads, saves and conflict refreshes with one generation", async () => {
-  const [panel, service, apiClient] = await Promise.all([
+  const [panel, service, batchRequest, apiClient] = await Promise.all([
     readSource(
       "src/components/weekly-plans/GoogleDocsEmployeeMappingPanel.tsx",
     ),
     readSource("src/services/weeklyPlanningService.ts"),
+    readSource("src/services/googleDocsEmployeeMappingRequest.ts"),
     readSource("src/services/apiClient.ts"),
   ]);
 
-  assert.match(panel, /if \(operationInFlightRef\.current\) return/);
+  assert.match(panel, /if \(operationInFlightRef\.current \|\|/);
   assert.match(panel, /activeControllerRef\.current\?\.abort\(\)/);
   assert.match(panel, /generation: \+\+requestGenerationRef\.current/);
   assert.match(
     panel,
-    /updateWeeklyPlanGoogleDocsEmployeeMapping\([\s\S]*controller\.signal/,
+    /updateWeeklyPlanGoogleDocsEmployeeMappingsBatch\([\s\S]*controller\.signal/,
   );
   assert.match(
     panel,
@@ -751,22 +951,27 @@ test("mapping UI coordinates loads, saves and conflict refreshes with one genera
     /getWeeklyPlanGoogleDocsEmployeeMappings\([\s\S]*controller\.signal/,
   );
   assert.ok(
-    panel.match(/savingTabId !== null/g)?.length >= 4,
-    "suggestion, status, employee and save controls must all lock during a save",
+    panel.match(/savingBatch/g)?.length >= 6,
+    "all mapping controls must lock during a batch save",
   );
-  assert.match(panel, /markGoogleDocsMappingConflictPending/);
-  assert.match(panel, /retryConflictRefresh/);
-  assert.match(panel, /const submitted = buildGoogleDocsMappingUpdateInput/);
-  assert.match(panel, /submitted\.expected_version/);
+  assert.match(panel, /markGoogleDocsMappingBatchConflictPending/);
+  assert.match(panel, /retryBatchConflictRefresh/);
+  assert.match(
+    panel,
+    /const submitted = buildGoogleDocsMappingBatchUpdateInput/,
+  );
   assert.match(panel, /getGoogleDocsMappingConflictKind/);
-  assert.match(panel, /isGoogleDocsMappingConflictRefreshTrusted/);
+  assert.match(panel, /isGoogleDocsMappingBatchConflictRefreshTrusted/);
   assert.match(panel, /isGoogleDocsMappingSnapshotRegressive/);
   assert.match(panel, /setWriteBlocked\(true\)/);
   assert.match(
     service,
     /expected_version: number;[\s\S]*signal\?: AbortSignal/,
   );
-  assert.match(service, /body: JSON\.stringify\(input\),[\s\S]*signal/);
+  assert.match(
+    batchRequest,
+    /body: JSON\.stringify\(\{ mappings \}\),[\s\S]*signal/,
+  );
   assert.match(apiClient, /readonly code\?: string/);
   assert.match(apiClient, /typeof payload\.code === "string"/);
 });
@@ -782,6 +987,35 @@ test("mapping translations include every persisted and derived status", async ()
   assert.equal(mapping.statuses.NEEDS_REVIEW, "Cần kiểm tra");
   assert.equal(mapping.statuses.NOT_APPLICABLE, "Không áp dụng");
   assert.match(mapping.privacyNotice, /HR chủ động lưu lựa chọn/);
-  assert.match(mapping.conflict.refreshPending, /chưa tải được dữ liệu mới nhất/i);
+  assert.match(
+    mapping.conflict.refreshPending,
+    /chưa tải được dữ liệu mới nhất/i,
+  );
   assert.match(mapping.conflict.retryRefresh, /Thử tải lại dữ liệu/);
+  assert.equal(mapping.saveAll, "Lưu tất cả xác minh");
+  assert.equal(mapping.completed, "Đã hoàn tất xác minh tab");
+  assert.match(mapping.readyForAi, /Sẵn sàng phân tích công việc bằng AI/);
+});
+
+test("Google Docs multi-tab assignment guard is wired before the manual assignee modal", async () => {
+  const [sourceDocument, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const translations = JSON.parse(translationsSource);
+
+  assert.match(sourceDocument, /plan\.source_type === "GOOGLE_DOCS"/);
+  assert.match(
+    sourceDocument,
+    /spansMultipleGoogleDocsTabs\(selectedPassages\)/,
+  );
+  assert.match(
+    sourceDocument,
+    /setLocalError\(t\("multiTabAssignmentWarning"\)\)/,
+  );
+  assert.match(sourceDocument, /setDraft\(\{/);
+  assert.match(
+    translations.weeklyPlanning.sourceDocument.multiTabAssignmentWarning,
+    /Mỗi tab có thể thuộc một nhân viên khác nhau/,
+  );
 });

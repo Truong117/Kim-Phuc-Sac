@@ -1,5 +1,9 @@
 import { apiDownload, apiRequest } from "@/services/apiClient";
 import { requestGoogleDocsPreview } from "@/services/googleDocsPreviewRequest";
+import {
+  requestGoogleDocsEmployeeMappingsBatch,
+  type GoogleDocsEmployeeMappingBatchInput,
+} from "@/services/googleDocsEmployeeMappingRequest";
 import { requestGoogleDocsSource } from "@/services/googleDocsSourceRequest";
 import type {
   WeeklyPlan,
@@ -95,6 +99,22 @@ export const updateWeeklyPlanGoogleDocsEmployeeMapping = async (
   });
 
   return response.data;
+};
+
+export type WeeklyPlanGoogleDocsEmployeeMappingUpdateInput =
+  GoogleDocsEmployeeMappingBatchInput;
+
+export const updateWeeklyPlanGoogleDocsEmployeeMappingsBatch = async (
+  id: number,
+  mappings: WeeklyPlanGoogleDocsEmployeeMappingUpdateInput[],
+  signal?: AbortSignal,
+): Promise<WeeklyPlanGoogleDocsEmployeeMappings> => {
+  return requestGoogleDocsEmployeeMappingsBatch<WeeklyPlanGoogleDocsEmployeeMappings>(
+    apiRequest,
+    id,
+    mappings,
+    signal,
+  );
 };
 
 export const importWeeklyPlan = async (

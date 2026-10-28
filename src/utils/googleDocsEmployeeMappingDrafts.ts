@@ -11,6 +11,8 @@ export type GoogleDocsMappingServerTab = {
 export type GoogleDocsMappingDraft = {
   status: GoogleDocsMappingDraftStatus;
   employeeId: string;
+  baseStatus: GoogleDocsMappingDraftStatus;
+  baseEmployeeId: string;
   baseVersion: number;
   dirty: boolean;
   conflict: boolean;
@@ -22,15 +24,22 @@ export type GoogleDocsMappingDrafts = Record<string, GoogleDocsMappingDraft>;
 
 const fromServer = (
   tab: GoogleDocsMappingServerTab,
-): GoogleDocsMappingDraft => ({
-  status: tab.status === "UNVERIFIED" ? "NEEDS_REVIEW" : tab.status,
-  employeeId: tab.employee ? String(tab.employee.id) : "",
-  baseVersion: tab.version,
-  dirty: false,
-  conflict: false,
-  conflictExpectedVersion: null,
-  conflictRefreshPending: false,
-});
+): GoogleDocsMappingDraft => {
+  const status = tab.status === "UNVERIFIED" ? "NEEDS_REVIEW" : tab.status;
+  const employeeId = tab.employee ? String(tab.employee.id) : "";
+
+  return {
+    status,
+    employeeId,
+    baseStatus: status,
+    baseEmployeeId: employeeId,
+    baseVersion: tab.version,
+    dirty: false,
+    conflict: false,
+    conflictExpectedVersion: null,
+    conflictRefreshPending: false,
+  };
+};
 
 const reconcileDraftWithServer = (
   current: GoogleDocsMappingDraft | undefined,
@@ -51,8 +60,7 @@ export type GoogleDocsMappingRequestToken = {
   planId: number;
 };
 
-export const GOOGLE_DOCS_MAPPING_CONFLICT_CODE =
-  "GOOGLE_DOCS_MAPPING_CONFLICT";
+export const GOOGLE_DOCS_MAPPING_CONFLICT_CODE = "GOOGLE_DOCS_MAPPING_CONFLICT";
 export const GOOGLE_DOCS_MAPPING_LOCKED_CODE = "GOOGLE_DOCS_MAPPING_LOCKED";
 
 export type GoogleDocsMappingConflictKind = "VERSION" | "LOCKED" | "OTHER";
@@ -90,9 +98,9 @@ export const isGoogleDocsMappingConflictRefreshTrusted = (
 
   return Boolean(
     tab &&
-      Number.isSafeInteger(tab.version) &&
-      (tab.version as number) >= 0 &&
-      (tab.version as number) > submittedExpectedVersion,
+    Number.isSafeInteger(tab.version) &&
+    (tab.version as number) >= 0 &&
+    (tab.version as number) > submittedExpectedVersion,
   );
 };
 
@@ -120,12 +128,17 @@ export const updateGoogleDocsMappingDraft = (
   const current = drafts[tabId];
   if (!current) return drafts;
 
+  const status = values.status ?? current.status;
+  const employeeId = values.employeeId ?? current.employeeId;
+
   return {
     ...drafts,
     [tabId]: {
       ...current,
-      ...values,
-      dirty: true,
+      status,
+      employeeId,
+      dirty:
+        status !== current.baseStatus || employeeId !== current.baseEmployeeId,
     },
   };
 };
@@ -145,6 +158,114 @@ export const reconcileGoogleDocsMappingSaveSuccess = (
       return [tab.tab_id, reconcileDraftWithServer(current, tab)];
     }),
   );
+
+export type GoogleDocsMappingBatchUpdateInput = {
+  tab_id: string;
+  status: GoogleDocsMappingDraftStatus;
+  employee_id?: number;
+  expected_version: number;
+};
+
+export const buildGoogleDocsMappingBatchUpdateInput = (
+  tabs: readonly { tab_id: string }[],
+  drafts: GoogleDocsMappingDrafts,
+): GoogleDocsMappingBatchUpdateInput[] =>
+  tabs.flatMap((tab) => {
+    const draft = drafts[tab.tab_id];
+    if (!draft?.dirty) return [];
+
+    return [
+      {
+        tab_id: tab.tab_id,
+        status: draft.status,
+        ...(draft.status === "VERIFIED"
+          ? { employee_id: Number(draft.employeeId) }
+          : {}),
+        expected_version: draft.baseVersion,
+      },
+    ];
+  });
+
+export const canSaveGoogleDocsMappingBatch = (
+  tabs: readonly { tab_id: string }[],
+  drafts: GoogleDocsMappingDrafts,
+): boolean => {
+  const dirtyDrafts = tabs
+    .map((tab) => drafts[tab.tab_id])
+    .filter((draft): draft is GoogleDocsMappingDraft => Boolean(draft?.dirty));
+
+  return (
+    dirtyDrafts.length > 0 &&
+    dirtyDrafts.every((draft) => canSaveGoogleDocsMappingDraft(draft))
+  );
+};
+
+export const reconcileGoogleDocsMappingBatchSaveSuccess = (
+  tabs: GoogleDocsMappingServerTab[],
+): GoogleDocsMappingDrafts => createGoogleDocsMappingDrafts(tabs);
+
+export const markGoogleDocsMappingBatchConflictPending = (
+  drafts: GoogleDocsMappingDrafts,
+  inputs: readonly GoogleDocsMappingBatchUpdateInput[],
+): GoogleDocsMappingDrafts =>
+  inputs.reduce(
+    (next, input) =>
+      markGoogleDocsMappingConflictPending(
+        next,
+        input.tab_id,
+        input.expected_version,
+      ),
+    drafts,
+  );
+
+export const isGoogleDocsMappingBatchConflictRefreshTrusted = (
+  tabs: readonly { tab_id: string; version?: unknown }[],
+  inputs: readonly GoogleDocsMappingBatchUpdateInput[],
+): boolean => {
+  let hasNewerVersion = false;
+
+  for (const input of inputs) {
+    const tab = tabs.find((candidate) => candidate.tab_id === input.tab_id);
+    if (!tab || !Number.isSafeInteger(tab.version)) return false;
+    const version = tab.version as number;
+    if (version < input.expected_version) return false;
+    if (version > input.expected_version) hasNewerVersion = true;
+  }
+
+  return hasNewerVersion;
+};
+
+export const reconcileGoogleDocsMappingBatchConflict = (
+  drafts: GoogleDocsMappingDrafts,
+  tabs: GoogleDocsMappingServerTab[],
+  inputs: readonly GoogleDocsMappingBatchUpdateInput[],
+): GoogleDocsMappingDrafts => {
+  const expectedVersions = new Map(
+    inputs.map((input) => [input.tab_id, input.expected_version]),
+  );
+
+  return Object.fromEntries(
+    tabs.map((tab) => {
+      const current = drafts[tab.tab_id];
+      if (!current) return [tab.tab_id, fromServer(tab)];
+      const submittedVersion = expectedVersions.get(tab.tab_id);
+      if (submittedVersion === undefined) {
+        return [tab.tab_id, reconcileDraftWithServer(current, tab)];
+      }
+
+      return [
+        tab.tab_id,
+        {
+          ...current,
+          dirty: true,
+          conflict: tab.version !== submittedVersion,
+          conflictExpectedVersion: null,
+          conflictRefreshPending: false,
+        },
+      ];
+    }),
+  );
+};
 
 export const reconcileGoogleDocsMappingConflict = (
   drafts: GoogleDocsMappingDrafts,
@@ -211,13 +332,21 @@ export const confirmGoogleDocsMappingDraft = (
   const current = drafts[tabId];
   const serverTab = tabs.find((tab) => tab.tab_id === tabId);
   if (!current || !serverTab || current.conflictRefreshPending) return drafts;
+  const baseStatus =
+    serverTab.status === "UNVERIFIED" ? "NEEDS_REVIEW" : serverTab.status;
+  const baseEmployeeId = serverTab.employee
+    ? String(serverTab.employee.id)
+    : "";
 
   return {
     ...drafts,
     [tabId]: {
       ...current,
+      baseStatus,
+      baseEmployeeId,
       baseVersion: serverTab.version,
-      dirty: true,
+      dirty:
+        current.status !== baseStatus || current.employeeId !== baseEmployeeId,
       conflict: false,
       conflictExpectedVersion: null,
       conflictRefreshPending: false,
@@ -230,8 +359,8 @@ export const canSaveGoogleDocsMappingDraft = (
 ): boolean =>
   Boolean(
     draft &&
-      !draft.conflict &&
-      (draft.status !== "VERIFIED" || draft.employeeId),
+    !draft.conflict &&
+    (draft.status !== "VERIFIED" || draft.employeeId),
   );
 
 export const buildGoogleDocsMappingUpdateInput = (

@@ -15,6 +15,7 @@ import type {
   WeeklyPlanSourceEntryInput,
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
+import { spansMultipleGoogleDocsTabs } from "@/utils/weeklyPlanSourceSelection";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -282,6 +283,14 @@ function WeeklyPlanSourceDocument({
     setFormErrors({});
     if (selectedPassages.length === 0) {
       setLocalError(t("selectRequired"));
+      return;
+    }
+
+    if (
+      plan.source_type === "GOOGLE_DOCS" &&
+      spansMultipleGoogleDocsTabs(selectedPassages)
+    ) {
+      setLocalError(t("multiTabAssignmentWarning"));
       return;
     }
 

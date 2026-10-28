@@ -925,6 +925,12 @@
       "useSuggestion": "Dùng gợi ý",
       "save": "Lưu xác minh",
       "saving": "Đang lưu...",
+      "saveAll": "Lưu tất cả xác minh",
+      "savingAll": "Đang lưu tất cả...",
+      "savedAll": "Đã lưu tất cả thay đổi xác minh.",
+      "progress": "Đã xác minh {completed} / {total} tab",
+      "completed": "Đã hoàn tất xác minh tab",
+      "readyForAi": "Sẵn sàng phân tích công việc bằng AI",
       "unsaved": "Có thay đổi chưa lưu",
       "conflict": {
         "description": "Mapping này đã được cập nhật ở nơi khác. Lựa chọn của bạn vẫn được giữ lại. Hãy dùng dữ liệu máy chủ hoặc xác nhận lại lựa chọn hiện tại trước khi lưu.",
@@ -944,6 +950,7 @@
       "errors": {
         "load": "Không thể tải dữ liệu xác minh nhân viên.",
         "save": "Không thể lưu xác minh nhân viên. Vui lòng thử lại.",
+        "batchConflict": "Không có thay đổi nào được lưu vì một hoặc nhiều tab đã được cập nhật ở nơi khác. Hãy xem lại các tab xung đột trước khi lưu lại.",
         "conflictRefresh": "Chưa thể tải dữ liệu mapping mới nhất. Lựa chọn của bạn vẫn được giữ; vui lòng thử tải lại.",
         "conflictSnapshotStale": "Máy chủ chưa trả về phiên bản mapping mới hơn yêu cầu bị xung đột. Lựa chọn của bạn vẫn được giữ; vui lòng thử tải lại.",
         "staleResponse": "Phản hồi mapping cũ đã bị bỏ qua. Vui lòng tải lại dữ liệu trước khi tiếp tục.",
@@ -1157,6 +1164,7 @@
       "applyToDraft": "Áp dụng vào bản nháp",
       "selectRequired": "Vui lòng chọn ít nhất một đoạn nguồn.",
       "entryGroupSelectionRequired": "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo đầu việc.",
+      "multiTabAssignmentWarning": "Bạn đang chọn nội dung từ nhiều tab. Mỗi tab có thể thuộc một nhân viên khác nhau. Hãy xác minh nhân viên theo tab; việc phân tích thành đầu việc sẽ được thực hiện ở bước AI.",
       "selectionLimit": "Mỗi đầu việc chỉ được gắn tối đa {count} đoạn nguồn.",
       "selectionTooLong": "Nội dung đã chọn quá dài. Vui lòng chọn ít đoạn hơn.",
       "empty": {
