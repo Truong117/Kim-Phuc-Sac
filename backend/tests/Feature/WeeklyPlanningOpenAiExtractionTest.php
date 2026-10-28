@@ -419,32 +419,33 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             'weekly_plans.manage_draft',
         ]);
         config()->set([
-            'weekly_plans.max_source_entries_per_request' => 1,
-            'weekly_plans.ai_max_passages' => 30,
-            'weekly_plans.ai_max_tasks_per_response' => 20,
+            'weekly_plans.max_source_entries_per_request' => 2,
+            'weekly_plans.max_source_passages_per_entry' => 2,
+            'weekly_plans.ai_max_passages' => 5,
+            'weekly_plans.ai_max_tasks_per_response' => 3,
         ]);
         $acceptedPlan = $this->planWithPassage(
             $hr,
             $organizationId,
-            'Nguồn có đúng hai mươi đề xuất.',
+            'Nguồn có đúng hai đề xuất.',
         );
         $rejectedPlan = $this->planWithPassage(
             $hr,
             $organizationId,
-            'Nguồn có hai mươi mốt đề xuất.',
+            'Nguồn có ba đề xuất.',
             '2026-11-02',
             '2026-11-07',
         );
-        $acceptedSourceKeys = $this->sourceKeys($acceptedPlan, 20);
-        $rejectedSourceKeys = $this->sourceKeys($rejectedPlan, 21);
-        $acceptedTasks = collect(range(1, 20))->map(function (int $index) use ($acceptedSourceKeys): array {
+        $acceptedSourceKeys = $this->sourceKeys($acceptedPlan, 2);
+        $rejectedSourceKeys = $this->sourceKeys($rejectedPlan, 3);
+        $acceptedTasks = collect(range(1, 2))->map(function (int $index) use ($acceptedSourceKeys): array {
             $task = $this->validSuggestion($acceptedSourceKeys[$index - 1]);
             $task['title'] .= " {$index}";
             $task['verification_fields'] = [];
 
             return $task;
         })->all();
-        $rejectedTasks = collect(range(1, 21))->map(function (int $index) use ($rejectedSourceKeys): array {
+        $rejectedTasks = collect(range(1, 3))->map(function (int $index) use ($rejectedSourceKeys): array {
             $task = $this->validSuggestion($rejectedSourceKeys[$index - 1], '2026-11-02', '2026-11-07');
             $task['title'] .= " {$index}";
             $task['verification_fields'] = [];
@@ -459,8 +460,8 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
 
         $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$acceptedPlan->id}/source/ai-extract")
-            ->assertUnprocessable()
-            ->assertJsonValidationErrors('extraction');
+            ->assertOk()
+            ->assertJsonCount(2, 'data.suggestions');
         $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$rejectedPlan->id}/source/ai-extract")
             ->assertUnprocessable()
@@ -470,10 +471,27 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
             );
 
         Http::assertSentCount(2);
-        $this->assertSame(1, config('weekly_plans.max_source_entries_per_request'));
-        $this->assertSame(20, config('weekly_plans.ai_max_tasks_per_response'));
-        $this->assertSame(0, DB::table('ai_usage_records')->where('status', 'completed')->count());
-        $this->assertSame(2, DB::table('ai_usage_records')->where('status', 'rejected')->count());
+        $requests = Http::recorded()->map(
+            static fn (array $requestAndResponse): array => $requestAndResponse[0]->data(),
+        )->values();
+        $this->assertCount(2, $requests);
+        foreach ($requests as $payload) {
+            $instructions = (string) ($payload['instructions'] ?? '');
+            $this->assertSame('kps_weekly_plan_tasks_v3', data_get($payload, 'text.format.name'));
+            $this->assertTrue(data_get($payload, 'text.format.strict'));
+            $this->assertSame(2, data_get($payload, 'text.format.schema.properties.tasks.maxItems'));
+            $this->assertSame(1, data_get($payload, 'text.format.schema.properties.tasks.items.properties.source_keys.minItems'));
+            $this->assertSame(2, data_get($payload, 'text.format.schema.properties.tasks.items.properties.source_keys.maxItems'));
+            $this->assertStringContainsString('Return at most 2 proposed jobs.', $instructions);
+            $this->assertStringContainsString('Do not automatically create one job for every passage.', $instructions);
+            $this->assertStringContainsString('Consolidate passages only when they describe the same actual job', $instructions);
+            $this->assertStringContainsString('Never combine unrelated work merely to stay below the job limit.', $instructions);
+            $this->assertStringContainsString('For GOOGLE_DOCS, every source_key referenced by one proposed job must belong to exactly one tab_id.', $instructions);
+        }
+        $this->assertSame(2, config('weekly_plans.max_source_entries_per_request'));
+        $this->assertSame(3, config('weekly_plans.ai_max_tasks_per_response'));
+        $this->assertSame(1, DB::table('ai_usage_records')->where('status', 'completed')->count());
+        $this->assertSame(1, DB::table('ai_usage_records')->where('status', 'rejected')->count());
         $this->assertSame(0, DB::table('ai_budget_periods')->sum('reserved_cost_microusd'));
         $this->assertGreaterThan(0, DB::table('ai_budget_periods')->sum('spent_cost_microusd'));
         $this->assertNull(DB::table('ai_usage_records')->where('status', 'rejected')->value('response_payload'));

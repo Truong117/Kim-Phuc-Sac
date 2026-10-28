@@ -169,7 +169,7 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
 
             $instructions = (string) ($payload['instructions'] ?? '');
 
-            return data_get($payload, 'text.format.name') === 'kps_weekly_plan_tasks_v2'
+            return data_get($payload, 'text.format.name') === 'kps_weekly_plan_tasks_v3'
                 && data_get($payload, 'text.format.strict') === true
                 && data_get($schema, 'anyOf.0.additionalProperties') === false
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.minLength') === 1

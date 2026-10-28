@@ -8,6 +8,7 @@ use App\Services\AI\AiGatewayRequest;
 use App\Services\AI\OpenAiGateway;
 use App\Services\WeeklyPlanning\Contracts\RejectableWeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
+use App\Support\WeeklyPlanAiOutputLimits;
 use RuntimeException;
 
 class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor, WeeklyPlanTaskExtractor
@@ -42,7 +43,7 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             idempotencyKey: (string) ($requestMetadata['idempotency_key'] ?? ''),
             instructions: $this->instructions(),
             input: $context,
-            schemaName: 'kps_weekly_plan_tasks_v2',
+            schemaName: 'kps_weekly_plan_tasks_v3',
             schema: $this->schema(),
             maxOutputTokens: (int) config('weekly_plans.ai_max_output_tokens', 3000),
             reasoningEffort: $this->reasoningEffort(),
@@ -85,7 +86,15 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
 
     private function instructions(): string
     {
+        $maxTasks = WeeklyPlanAiOutputLimits::maxTasks();
+
         return implode(' ', [
+            "Return at most {$maxTasks} proposed jobs.",
+            'Do not automatically create one job for every passage.',
+            'Consolidate passages only when they describe the same actual job; one consolidated job may then reference multiple source_keys.',
+            'Never combine unrelated work merely to stay below the job limit.',
+            'Prefer explicit, actionable source work over duplicated wording, headings, continuation lines, explanatory text, or repeated passages.',
+            'For GOOGLE_DOCS, every source_key referenced by one proposed job must belong to exactly one tab_id.',
             'Do not repeat values in verification_fields; include each required field at most once.',
             'For detail_suggestions only, you may use general operational reasoning to propose practical planning recommendations when the source task is too generic.',
             'Use SOURCE_DERIVED only when the exact detail is explicitly supported by the supplied passages. Every unsupported operational recommendation must use basis=AI_SUGGESTION and must never be represented as a source or company fact.',
@@ -107,6 +116,8 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
     /** @return array<string, mixed> */
     private function schema(): array
     {
+        $maxTasks = WeeklyPlanAiOutputLimits::maxTasks();
+        $maxSourceKeysPerTask = WeeklyPlanAiOutputLimits::maxSourceKeysPerTask();
         $nullableString = [
             'anyOf' => [
                 ['type' => 'string'],
@@ -164,11 +175,14 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             'properties' => [
                 'tasks' => [
                     'type' => 'array',
+                    'maxItems' => $maxTasks,
                     'items' => [
                         'type' => 'object',
                         'properties' => [
                             'source_keys' => [
                                 'type' => 'array',
+                                'minItems' => 1,
+                                'maxItems' => $maxSourceKeysPerTask,
                                 'items' => ['type' => 'string'],
                             ],
                             'title' => ['type' => 'string'],
