@@ -119,6 +119,33 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
+    public function test_weekly_plan_extraction_accepts_a_9000_token_runtime_limit_below_the_gateway_hard_cap(): void
+    {
+        config()->set([
+            'weekly_plans.ai_max_output_tokens' => 9000,
+            'kps_ai.max_output_tokens' => 9000,
+        ]);
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        $sourceKey = $plan->sourcePassages()->firstOrFail()->source_key;
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$this->validSuggestion($sourceKey)]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk();
+
+        Http::assertSent(fn (Request $request): bool => $request['max_output_tokens'] === 9000);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
     public function test_ai_preview_enforces_permission_active_membership_and_tenant_scope_before_provider_access(): void
     {
         [$creator, $organizationId] = $this->userWithPermissions([
