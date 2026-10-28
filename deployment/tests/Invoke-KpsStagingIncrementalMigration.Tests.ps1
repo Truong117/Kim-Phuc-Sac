@@ -362,6 +362,73 @@ Describe 'KPS staging incremental migration orchestration' {
     }
 }
 
+Describe 'Status inspector zero-argument regression' {
+    BeforeEach {
+        $script:Mode = 'Status'
+        $script:Status = [Management.Automation.SwitchParameter]$true
+        $script:Plan = [Management.Automation.SwitchParameter]$false
+        $script:Execute = [Management.Automation.SwitchParameter]$false
+        $script:PlanReceiptPath = ''
+        $script:StatusConfig = [pscustomobject]@{
+            target_type = 'independent_instance'
+            expected_target = 'KPS-Staging'
+            connection_metadata_source = 'tidb_cloud_connect_dialog'
+            staging_host = 'gateway.example.test'
+            staging_port = 4000
+            staging_database = 'sys'
+            staging_username = 'StagePrefix.root'
+            staging_ssl_ca = 'C:\outside-repository\ca.pem'
+            staging_username_prefix = 'StagePrefix'
+            staging_fingerprint = 'b' * 64
+            staging_endpoint_fingerprint = 'c' * 64
+            production_endpoint_fingerprint = 'c' * 64
+            production_username = 'ProdPrefix.root'
+            production_username_prefix = 'ProdPrefix'
+            production_username_prefix_fingerprint = 'd' * 64
+            encrypted_password = 'protected-audit-password'
+        }
+        $script:StatusSecrets = [pscustomobject]@{
+            migration_username = 'StagePrefix.kps_migrator'
+            encrypted_migration_password = 'protected-migration-password'
+        }
+
+        Mock Get-ValidatedAuditConfig { $script:StatusConfig }
+        Mock Get-ValidatedMigrationSecrets { $script:StatusSecrets }
+        Mock Unprotect-RunnerSecret { 'test-password' }
+        Mock Write-ProtectedPlanReceipt { throw 'Status must not create a receipt.' }
+        Mock Invoke-ArtisanMigration { throw 'Status must not invoke a migration child.' }
+    }
+
+    It 'routes Status through a real zero-argument inspector child' {
+        $probePath = Join-Path $TestDrive 'status-zero-arguments.php'
+        $probe = @'
+<?php
+echo json_encode([
+    'status' => 'PASS',
+    'mode' => getenv('KPS_STAGING_INCREMENTAL_MODE'),
+    'extra_argument_count' => count($argv) - 1,
+], JSON_THROW_ON_ERROR);
+'@
+        Set-Content -LiteralPath $probePath -Value $probe -Encoding ASCII
+        $oldInspectorScript = $script:InspectorScript
+
+        try {
+            $script:InspectorScript = $probePath
+            $result = Invoke-KpsStagingIncrementalRunner
+            $statusResult = $result.Output[0] | ConvertFrom-Json
+
+            $result.ExitCode | Should Be 0
+            $statusResult.mode | Should Be 'status'
+            $statusResult.extra_argument_count | Should Be 0
+        } finally {
+            $script:InspectorScript = $oldInspectorScript
+        }
+
+        Assert-MockCalled Write-ProtectedPlanReceipt -Times 0
+        Assert-MockCalled Invoke-ArtisanMigration -Times 0
+    }
+}
+
 Describe 'isolated child environment and file integrity' {
     It 'atomically rejects reuse of a consumed receipt nonce' {
         $oldStore = $script:ReceiptStoreRoot
@@ -398,6 +465,25 @@ echo json_encode([
         $input.force | Should Be $true
         $input.no_interaction | Should Be $true
         $json | Should Not Match 'seed|bootstrap'
+    }
+
+    It 'preserves non-empty isolated child arguments exactly' {
+        $probePath = Join-Path $TestDrive 'inspect-non-empty-arguments.php'
+        Set-Content -LiteralPath $probePath -Value '<?php echo json_encode(array_slice($argv, 1), JSON_THROW_ON_ERROR);' -Encoding ASCII -NoNewline
+        $environment = @{ KPS_ARGUMENT_PROBE = 'true' }
+        $allowed = @('SystemRoot', 'WINDIR', 'TEMP', 'TMP', 'KPS_ARGUMENT_PROBE')
+        $process = Invoke-IsolatedPhpProcess `
+            -ScriptPath $probePath `
+            -Arguments @('first value', 'second') `
+            -EnvironmentValues $environment `
+            -AllowedEnvironmentNames $allowed `
+            -WorkingDirectory $backendRoot
+        $arguments = [string[]]($process.StdOut | ConvertFrom-Json)
+
+        $process.ExitCode | Should Be 0
+        $arguments.Count | Should Be 2
+        $arguments[0] | Should Be 'first value'
+        $arguments[1] | Should Be 'second'
     }
 
     It 'does not inherit DB_SOCKET, DB_URL, credentials, or unrelated caller values' {

@@ -129,7 +129,7 @@ function New-IsolatedProcessEnvironment {
 function Invoke-IsolatedPhpProcess {
     param(
         [Parameter(Mandatory = $true)][string]$ScriptPath,
-        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Arguments,
         [Parameter(Mandatory = $true)][hashtable]$EnvironmentValues,
         [Parameter(Mandatory = $true)][string[]]$AllowedEnvironmentNames,
         [Parameter(Mandatory = $true)][string]$WorkingDirectory
