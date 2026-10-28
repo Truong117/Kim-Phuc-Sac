@@ -238,6 +238,7 @@ class GoogleDocsDocumentReaderTest extends TestCase
             'api/weekly-plans/google-docs/preview',
             'api/weekly-plans/{id}/google-docs/employee-mappings',
             'api/weekly-plans/{id}/google-docs/employee-mappings',
+            'api/weekly-plans/{id}/google-docs/employee-mappings/batch',
         ], $googleDocsRoutes->sort()->values()->all());
     }
 
