@@ -385,7 +385,7 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
-    public function test_ai_task_limit_is_independent_from_apply_limit_and_oversized_results_are_not_truncated(): void
+    public function test_ai_task_limit_never_exceeds_one_atomic_apply_request(): void
     {
         [$hr, $organizationId] = $this->userWithPermissions([
             'weekly_plans.view',
@@ -432,8 +432,8 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
 
         $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$acceptedPlan->id}/source/ai-extract")
-            ->assertOk()
-            ->assertJsonCount(20, 'data.suggestions');
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('extraction');
         $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$rejectedPlan->id}/source/ai-extract")
             ->assertUnprocessable()
@@ -445,8 +445,8 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
         Http::assertSentCount(2);
         $this->assertSame(1, config('weekly_plans.max_source_entries_per_request'));
         $this->assertSame(20, config('weekly_plans.ai_max_tasks_per_response'));
-        $this->assertSame(1, DB::table('ai_usage_records')->where('status', 'completed')->count());
-        $this->assertSame(1, DB::table('ai_usage_records')->where('status', 'rejected')->count());
+        $this->assertSame(0, DB::table('ai_usage_records')->where('status', 'completed')->count());
+        $this->assertSame(2, DB::table('ai_usage_records')->where('status', 'rejected')->count());
         $this->assertSame(0, DB::table('ai_budget_periods')->sum('reserved_cost_microusd'));
         $this->assertGreaterThan(0, DB::table('ai_budget_periods')->sum('spent_cost_microusd'));
         $this->assertNull(DB::table('ai_usage_records')->where('status', 'rejected')->value('response_payload'));

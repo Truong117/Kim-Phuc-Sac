@@ -29,7 +29,11 @@ class WeeklyPlanTaskExtractionService
     }
 
     /** @return list<array<string, mixed>> */
-    public function preview(WeeklyPlan $plan, User $actor): array
+    /**
+     * @param  array{tabs: array<string, array<string, mixed>>, fingerprint: string}|null  $googleDocsContext
+     * @return list<array<string, mixed>>
+     */
+    public function preview(WeeklyPlan $plan, User $actor, ?array $googleDocsContext = null): array
     {
         if (! $this->extractor->isConfigured()) {
             throw new ConflictHttpException('Chưa kết nối AI.');
@@ -45,14 +49,24 @@ class WeeklyPlanTaskExtractionService
         $context = [
             'week_start' => $plan->week_start->toDateString(),
             'week_end' => $plan->week_end->toDateString(),
-            'passages' => $plan->sourcePassages->map(fn ($passage): array => [
-                'source_key' => $passage->source_key,
-                'sequence' => (int) $passage->sequence,
-                'kind' => $passage->kind,
-                'text' => $passage->text,
-                'group_title' => data_get($passage->metadata, 'source_group.title'),
-                'group_origin' => data_get($passage->metadata, 'source_group.origin'),
-            ])->all(),
+            'passages' => $plan->sourcePassages->map(function ($passage) use ($googleDocsContext): array {
+                $safePassage = [
+                    'source_key' => $passage->source_key,
+                    'sequence' => (int) $passage->sequence,
+                    'kind' => $passage->kind,
+                    'text' => $passage->text,
+                    'group_title' => data_get($passage->metadata, 'source_group.title'),
+                    'group_origin' => data_get($passage->metadata, 'source_group.origin'),
+                ];
+                if ($googleDocsContext !== null) {
+                    $tabId = data_get($passage->metadata, 'tab_id');
+                    $tab = is_string($tabId) ? ($googleDocsContext['tabs'][$tabId] ?? null) : null;
+                    $safePassage['tab_id'] = $tabId;
+                    $safePassage['tab_title'] = is_array($tab) ? ($tab['title'] ?? '') : '';
+                }
+
+                return $safePassage;
+            })->all(),
             'allowed_fields' => [
                 'source_keys',
                 'title',
@@ -68,6 +82,9 @@ class WeeklyPlanTaskExtractionService
                 'provenance',
             ],
         ];
+        if ($googleDocsContext !== null) {
+            $context['source_type'] = 'GOOGLE_DOCS';
+        }
         $contextJson = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
         if (strlen($contextJson) > (int) config('weekly_plans.ai_max_context_bytes', 60000)) {
             throw ValidationException::withMessages([
@@ -82,6 +99,7 @@ class WeeklyPlanTaskExtractionService
                 (string) $plan->id,
                 (string) $plan->source_sha256,
                 hash('sha256', $contextJson),
+                $googleDocsContext['fingerprint'] ?? 'DOCX',
             ])),
         ];
 
@@ -92,7 +110,7 @@ class WeeklyPlanTaskExtractionService
         }
 
         try {
-            return $this->validateTasks($plan, $raw);
+            return $this->validateTasks($plan, $raw, $googleDocsContext);
         } catch (ValidationException $exception) {
             if ($this->extractor instanceof RejectableWeeklyPlanTaskExtractor) {
                 $this->extractor->rejectLatestResult('AI_RESULT_REJECTED');
@@ -106,7 +124,7 @@ class WeeklyPlanTaskExtractionService
      * @param  list<mixed>  $raw
      * @return list<array<string, mixed>>
      */
-    private function validateTasks(WeeklyPlan $plan, array $raw): array
+    private function validateTasks(WeeklyPlan $plan, array $raw, ?array $googleDocsContext): array
     {
         $verificationFieldWhitelist = [
             'assignee_id',
@@ -175,7 +193,10 @@ class WeeklyPlanTaskExtractionService
             );
         }
         $rules = [
-            'tasks' => ['present', 'array', 'max:'.config('weekly_plans.ai_max_tasks_per_response', 20)],
+            'tasks' => ['present', 'array', 'max:'.min(
+                (int) config('weekly_plans.ai_max_tasks_per_response', 20),
+                (int) config('weekly_plans.max_source_entries_per_request', 20),
+            )],
             'tasks.*.source_keys' => ['required', 'array', 'min:1', 'max:'.config('weekly_plans.max_source_passages_per_entry', 20)],
             'tasks.*.source_keys.*' => ['required', 'string', 'distinct', 'max:128'],
             'tasks.*.title' => ['required', 'string', 'max:255'],
@@ -232,7 +253,7 @@ class WeeklyPlanTaskExtractionService
 
         $tasks = $validator->validated()['tasks'];
         $knownSourceKeys = $plan->sourcePassages->pluck('source_key')->all();
-        foreach ($tasks as $task) {
+        foreach ($tasks as $taskIndex => $task) {
             if (array_diff(array_keys($task['provenance']), $provenanceFields) !== []
                 || array_diff($provenanceFields, array_keys($task['provenance'])) !== []) {
                 throw ValidationException::withMessages([
@@ -243,6 +264,43 @@ class WeeklyPlanTaskExtractionService
                 throw ValidationException::withMessages([
                     'extraction' => ['Kết quả trích xuất tham chiếu đoạn nguồn không tồn tại.'],
                 ]);
+            }
+
+            if ($googleDocsContext !== null) {
+                $passagesByKey = $plan->sourcePassages->keyBy('source_key');
+                $tabIds = collect($task['source_keys'])
+                    ->map(fn (string $sourceKey): mixed => data_get(
+                        $passagesByKey->get($sourceKey)?->metadata,
+                        'tab_id',
+                    ))
+                    ->filter(fn (mixed $tabId): bool => is_string($tabId) && $tabId !== '')
+                    ->unique()
+                    ->values();
+                if ($tabIds->count() !== 1) {
+                    throw ValidationException::withMessages([
+                        'extraction' => ['Một đầu việc AI không được kết hợp đoạn nguồn từ nhiều tab Google Docs.'],
+                    ]);
+                }
+                $tabId = $tabIds->first();
+                $tab = $googleDocsContext['tabs'][$tabId] ?? null;
+                if (! is_array($tab)
+                    || ($tab['status'] ?? null) !== 'VERIFIED'
+                    || ! is_array($tab['assignee'] ?? null)) {
+                    throw ValidationException::withMessages([
+                        'extraction' => ['Mapping tab Google Docs không còn hợp lệ cho đầu việc AI.'],
+                    ]);
+                }
+                $tasks[$taskIndex]['employee_identifier'] = null;
+                $tasks[$taskIndex]['verification_fields'] = array_values(array_filter(
+                    $task['verification_fields'],
+                    fn (string $field): bool => $field !== 'assignee_id',
+                ));
+                $tasks[$taskIndex]['source_tab'] = [
+                    'tab_id' => $tabId,
+                    'title' => $tab['title'],
+                ];
+                $tasks[$taskIndex]['assignee'] = $tab['assignee'];
+                $tasks[$taskIndex]['assignment_source'] = 'VERIFIED_GOOGLE_DOCS_TAB_MAPPING';
             }
 
             $startDate = $task['start_date'] ?? null;

@@ -134,7 +134,7 @@ class GoogleDocsSourceImportTest extends TestCase
         Log::shouldNotHaveReceived('info');
     }
 
-    public function test_google_source_ai_extraction_is_rejected_before_the_gateway(): void
+    public function test_google_source_ai_extraction_requires_completed_mappings_before_the_gateway(): void
     {
         Http::preventStrayRequests();
         config()->set([
@@ -155,8 +155,8 @@ class GoogleDocsSourceImportTest extends TestCase
 
         $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$planId}/source/ai-extract")
-            ->assertUnprocessable()
-            ->assertJsonPath('code', 'GOOGLE_DOCS_AI_EXTRACTION_NOT_SUPPORTED');
+            ->assertConflict()
+            ->assertJsonPath('code', 'GOOGLE_DOCS_MAPPING_INCOMPLETE');
 
         Http::assertNothingSent();
         $this->assertDatabaseCount('ai_budget_periods', 0);

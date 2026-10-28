@@ -1120,6 +1120,32 @@
           "INFERRED": "Suy luận",
           "SUGGESTED": "Đề xuất"
         },
+        "googleDocs": {
+          "description": "Kiểm tra và chỉnh sửa toàn bộ đầu việc tại đây. Chưa có dữ liệu nào được ghi cho đến khi HR bấm Áp dụng tất cả.",
+          "assignmentAuthority": "Người phụ trách được lấy từ mapping tab đã được HR xác minh, không phải do AI suy luận.",
+          "tab": "Tab",
+          "employee": "Nhân viên",
+          "verifiedBadge": "Nhân viên đã xác minh từ mapping",
+          "assigneeLocked": "Nhân viên được lấy từ mapping tab đã được HR xác minh.",
+          "chooseDate": "Chọn ngày",
+          "priorityPlaceholder": "Chọn mức độ ưu tiên",
+          "completeRequired": "Vui lòng hoàn tất mọi trường bắt buộc trước khi áp dụng.",
+          "applyAll": "Áp dụng tất cả",
+          "applying": "Đang áp dụng...",
+          "applyConflict": "Mapping có thể đã thay đổi. Bản chỉnh sửa vẫn được giữ lại để HR kiểm tra.",
+          "applyFailed": "Không thể áp dụng các đầu việc. Bản chỉnh sửa vẫn được giữ lại.",
+          "validation": {
+            "assigneeRequired": "Không còn nhân viên đã xác minh cho tab này.",
+            "titleRequired": "Vui lòng nhập tiêu đề.",
+            "startRequired": "Vui lòng chọn ngày bắt đầu.",
+            "dueRequired": "Vui lòng chọn hạn hoàn thành.",
+            "dateOutsideWeek": "Ngày phải nằm trong tuần kế hoạch.",
+            "dateOrder": "Hạn hoàn thành không được trước ngày bắt đầu.",
+            "priorityRequired": "Vui lòng chọn mức độ ưu tiên.",
+            "sourceRequired": "Không tìm thấy đầy đủ đoạn nguồn đã tham chiếu.",
+            "verifiedMappingRequired": "Mapping tab đã xác minh không còn hợp lệ."
+          }
+        },
         "close": "Đóng"
       },
       "extract": "Đọc nội dung file Word",

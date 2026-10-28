@@ -85,10 +85,7 @@ test("DOCX source extraction and missing-file recovery are driven by opaque acti
 
   assert.match(sourceDocument, /plan\.actions\.can_extract_source/);
   assert.match(sourceDocument, /plan\.actions\.can_apply_source/);
-  assert.match(
-    sourceDocument,
-    /\{plan\.actions\.can_ai_extract_source && \(/,
-  );
+  assert.match(sourceDocument, /\{plan\.actions\.can_ai_extract_source && \(/);
   assert.match(sourceDocument, /disabled=\{busy \|\| aiLoading\}/);
   assert.match(sourceDocument, /const runAiExtraction = async/);
   assert.match(sourceDocument, /const suggestions = await onAiExtract\(\)/);
@@ -103,7 +100,7 @@ test("DOCX source extraction and missing-file recovery are driven by opaque acti
   assert.match(sourceRecovery, /onReplace\(replacement\)/);
   assert.match(
     types,
-    /\| "AVAILABLE"[\s\S]*\| "MISSING"[\s\S]*\| "UNAVAILABLE"[\s\S]*\| "NOT_APPLICABLE"[\s\S]*\| null/,
+    /availability:[\s\S]*"AVAILABLE"[\s\S]*"MISSING"[\s\S]*"UNAVAILABLE"[\s\S]*"NOT_APPLICABLE"[\s\S]*null/,
   );
   assert.doesNotMatch(
     sourceDocument + sourceRecovery + detail,

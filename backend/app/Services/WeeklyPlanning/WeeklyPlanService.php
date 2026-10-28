@@ -16,6 +16,7 @@ use App\Models\WeeklyPlanEntry;
 use App\Models\WeeklyPlanEntryApplication;
 use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanSourcePassage;
+use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsAiAssignmentService;
 use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsSourceException;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -45,6 +46,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanSuggestionGenerator $suggestions,
         private readonly WeeklyPlanPublisher $publisher,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
+        private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
 
     /** @return LengthAwarePaginator<WeeklyPlan> */
@@ -543,7 +545,9 @@ class WeeklyPlanService
             }
 
             $preparedEntries = [];
-            $validationErrors = [];
+            $validationErrors = $locked->source_type === WeeklyPlanSourceType::GOOGLE_DOCS
+                ? $this->googleDocsAiAssignments->applyErrors($locked, $entries, $passages)
+                : [];
             foreach ($entries as $index => $attributes) {
                 $sourcePassageIds = array_values(array_map('intval', $attributes['source_passage_ids']));
                 $sourceGroupKeys = collect($sourcePassageIds)
@@ -603,14 +607,6 @@ class WeeklyPlanService
     public function previewAiSourceEntries(User $actor, int $planId): array
     {
         $plan = $this->editablePlan($actor, $planId);
-        if ($plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS) {
-            throw new GoogleDocsSourceException(
-                'GOOGLE_DOCS_AI_EXTRACTION_NOT_SUPPORTED',
-                422,
-                'Nguồn Google Docs chưa hỗ trợ trích xuất công việc bằng AI.',
-            );
-        }
-
         $plan->load(['sourcePassages' => fn ($query) => $query
             ->where('source_sha256', $plan->source_sha256)
             ->orderBy('sequence')]);
@@ -620,7 +616,54 @@ class WeeklyPlanService
             ]);
         }
 
-        return $this->taskExtraction->preview($plan, $actor);
+        $googleDocsContext = null;
+        if ($plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS) {
+            $googleDocsContext = $this->googleDocsAiAssignments->previewContext($plan);
+            $knownTabIds = array_keys($googleDocsContext['tabs']);
+            $hasInvalidPassage = $plan->sourcePassages->contains(
+                fn (WeeklyPlanSourcePassage $passage): bool => ! in_array(
+                    $this->googleDocsAiAssignments->passageTabId($passage),
+                    $knownTabIds,
+                    true,
+                ),
+            );
+            if ($hasInvalidPassage) {
+                throw new GoogleDocsSourceException(
+                    'GOOGLE_DOCS_SOURCE_METADATA_INVALID',
+                    409,
+                    'Metadata tab của nguồn Google Docs không còn hợp lệ.',
+                );
+            }
+
+            $eligiblePassages = $plan->sourcePassages
+                ->filter(function (WeeklyPlanSourcePassage $passage) use ($googleDocsContext): bool {
+                    $tabId = $this->googleDocsAiAssignments->passageTabId($passage);
+                    $tab = $tabId === null ? null : ($googleDocsContext['tabs'][$tabId] ?? null);
+
+                    return is_array($tab) && $tab['status'] === 'VERIFIED';
+                })
+                ->values();
+            if ($eligiblePassages->isEmpty()) {
+                throw ValidationException::withMessages([
+                    'source' => ['Không có đoạn nguồn nào thuộc tab Google Docs đã xác minh.'],
+                ]);
+            }
+            $plan->setRelation('sourcePassages', $eligiblePassages);
+        }
+
+        $suggestions = $this->taskExtraction->preview($plan, $actor, $googleDocsContext);
+        if ($googleDocsContext !== null) {
+            $currentContext = $this->googleDocsAiAssignments->previewContext($plan);
+            if (! hash_equals($googleDocsContext['fingerprint'], $currentContext['fingerprint'])) {
+                throw new GoogleDocsSourceException(
+                    'GOOGLE_DOCS_MAPPING_CHANGED',
+                    409,
+                    'Mapping tab Google Docs đã thay đổi trong khi AI phân tích. Vui lòng chạy lại.',
+                );
+            }
+        }
+
+        return $suggestions;
     }
 
     /** @param array<string, string> $mapping */
@@ -1381,6 +1424,8 @@ class WeeklyPlanService
                     ? ($plan->sourcePassages->isEmpty() ? 'EMPTY' : 'EXTRACTED')
                     : 'NOT_EXTRACTED'));
         $aiStatus = $this->taskExtraction->status();
+        $googleDocsAiReady = ! $isGoogleDocs
+            || ($sourceStatus === 'EXTRACTED' && $this->googleDocsAiAssignments->isReady($plan));
         $plan->setAttribute('source_document', [
             'status' => $sourceStatus,
             'ai' => $aiStatus,
@@ -1455,9 +1500,9 @@ class WeeklyPlanService
                 && $sourceStatus === 'EXTRACTED'
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_ai_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
-                && ! $isGoogleDocs
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
+                && $googleDocsAiReady
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_manage_google_docs_mappings' => $isGoogleDocs
                 && $plan->status === WeeklyPlanStatus::DRAFT

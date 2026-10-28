@@ -108,7 +108,7 @@ Applying passages requires a UUID `request_id`. Repeating the same request and p
 }
 ```
 
-Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. The last setting limits one source/apply write and remains independent from `WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE`, which fail-closes an oversized AI extraction response without truncating it. AI preview also has explicit passage, context and output-token limits. Until deterministic batching is implemented, a document that produces more tasks than the AI-specific response limit is rejected safely. The structured task extractor remains behind `WeeklyPlanTaskExtractor`: `none` is the safe default and `openai` uses the shared budgeted AI Gateway only after its key, model, prices and positive budget are configured. It reads persisted passages instead of the original DOCX, returns proposals with source keys/evidence/provenance, and never creates entries or Tasks. HR must choose an active scoped assignee and submit through the existing idempotent `source/apply` flow. See `docs/AI_GATEWAY_V1.md`.
+Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. AI output is also bounded by `WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE`; the effective task limit is the smaller of that value and the one-request apply limit. Oversized output is rejected without truncation. The structured task extractor remains behind `WeeklyPlanTaskExtractor`: `none` is the safe default and `openai` uses the shared budgeted AI Gateway only after its key, model, prices and positive budget are configured. It reads persisted passages, returns proposals with source keys/evidence/provenance, and never creates entries or Tasks. DOCX retains manual assignee review. Google Docs sends only passages from `VERIFIED` tabs, injects the current verified assignee server-side, rejects cross-tab output, and revalidates that assignment in the existing idempotent atomic `source/apply` flow. See `docs/AI_GATEWAY_V1.md`.
 
 ### Explicit rule-based analysis
 
@@ -169,7 +169,7 @@ Normalized rows and DOCX source passages are durable database records. Import pa
 
 Dependency after import:
 
-- Works without the original file: view/edit saved entries, rule-based analysis, review/approval/publication, view/group/apply persisted DOCX passages, and future AI extraction that consumes persisted passages.
+- Works without the original file: view/edit saved entries, rule-based analysis, review/approval/publication, view/group/apply persisted passages, and AI extraction that consumes those persisted passages.
 - Still needs the original file: reparse with a new column mapping and first-time extraction for legacy DOCX plans imported before immediate passage persistence. Re-upload restores only the source object/metadata; it does not silently rewrite existing entries.
 
 Do not log provider secrets, expose a public source URL, or run the general authorization seeder merely to enable this module.
@@ -190,4 +190,4 @@ The Docker entry point does not run migrations. Keep schema changes in a separat
 
 `POST /api/weekly-plans/google-docs/import` xác nhận snapshot đã xem trước và tạo Weekly Plan draft mới. Payload chỉ gồm `document_url`, `expected_snapshot_sha256`, `request_id`; organization, Google document ID, passages và assignee không được nhận từ client. Chi tiết authorization, persistence, idempotency và migration xem tại [GOOGLE_DOCS_DURABLE_SOURCE_V1.md](./GOOGLE_DOCS_DURABLE_SOURCE_V1.md).
 
-Replay cùng organization/request/payload chỉ trả plan durable đã có khi active membership và `weekly_plans.manage_draft` vẫn hợp lệ; folder bị disable/replace không làm replay gọi Google hoặc ghi thêm dữ liệu. Google source có passages ở trạng thái `EXTRACTED` nhưng `can_ai_extract_source=false`; direct AI extraction trả `422 GOOGLE_DOCS_AI_EXTRACTION_NOT_SUPPORTED`. AI extraction của DOCX giữ nguyên.
+Replay cùng organization/request/payload chỉ trả plan durable đã có khi active membership và `weekly_plans.manage_draft` vẫn hợp lệ; folder bị disable/replace không làm replay gọi Google hoặc ghi thêm dữ liệu. Với Google Docs, `can_ai_extract_source=true` chỉ khi mọi tab đã là `VERIFIED` hoặc `NOT_APPLICABLE`, có ít nhất một tab `VERIFIED`, và mọi nhân viên mapping còn hợp lệ. Direct AI extraction fail-closed trước gateway nếu mapping chưa hoàn tất. AI extraction của DOCX giữ nguyên.

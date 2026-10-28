@@ -104,7 +104,7 @@ Rollback chỉ chạy khi source table rỗng **và** không có `weekly_plans.s
 
 ## AI extraction boundary
 
-`source_document.status=EXTRACTED` chỉ có nghĩa passages đã được trích xuất từ Google Docs. PR 2 không cho phép AI task extraction trên nguồn Google Docs: `can_ai_extract_source=false` và direct `POST /source/ai-extract` trả `422 GOOGLE_DOCS_AI_EXTRACTION_NOT_SUPPORTED` trước AI Gateway/budget/usage. AI extraction của nguồn DOCX không thay đổi. Google Docs AI batching/extraction thuộc PR 3 sau khi có quyết định riêng.
+Tại thời điểm PR 2, `source_document.status=EXTRACTED` chỉ có nghĩa passages đã được trích xuất từ Google Docs và AI task extraction còn bị chặn. Phiên bản hiện tại đã bổ sung lát cắt tiếp theo: AI chỉ nhận passages thuộc tab `VERIFIED`, mapping HR là nguồn assignee duy nhất, `NOT_APPLICABLE` bị loại, và Apply All được kiểm tra lại nguyên tử phía server. AI extraction của nguồn DOCX không thay đổi.
 
 ## Source-key semantics — quyết định cần có trước PR 3
 
