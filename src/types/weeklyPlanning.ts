@@ -55,9 +55,17 @@ export type WeeklyPlanEntry = {
   sort_order: number;
   validation_status: "VALID" | "INVALID";
   validation_errors: string[];
+  items: WeeklyPlanEntryItem[];
   source_passages: Array<
     Pick<WeeklyPlanSourcePassage, "id" | "source_key" | "kind" | "text">
   >;
+};
+
+export type WeeklyPlanEntryItem = {
+  id: number;
+  title: string;
+  content: string | null;
+  sort_order: number;
 };
 
 export type WeeklyPlanSourcePassage = {
@@ -223,6 +231,7 @@ export type WeeklyPlan = {
     employee_count: number;
     matched_employee_count: number;
     entry_count: number;
+    item_count: number;
     invalid_entry_count: number;
     departments: string[];
   };
@@ -306,6 +315,13 @@ export type WeeklyPlanEntryInput = {
   due_date: string;
   priority: TaskPriority;
   note: string | null;
+  items?: WeeklyPlanEntryItemInput[];
+};
+
+export type WeeklyPlanEntryItemInput = {
+  title: string;
+  content: string | null;
+  source_passage_ids?: number[];
 };
 
 export type WeeklyPlanSourceEntryInput = WeeklyPlanEntryInput & {
@@ -340,6 +356,8 @@ export type WeeklyPlanAiSuggestion = {
   due_date: string | null;
   priority: TaskPriority | null;
   note: string | null;
+  grouping_basis?: "SOURCE_STRUCTURE" | "AI_GROUPED" | "ATOMIC";
+  items?: WeeklyPlanAiSuggestionItem[];
   source_tab?: { tab_id: string; title: string } | null;
   assignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email"> | null;
   assignment_source?: "VERIFIED_GOOGLE_DOCS_TAB_MAPPING" | null;
@@ -357,4 +375,10 @@ export type WeeklyPlanAiSuggestion = {
     | "note",
     "VERBATIM" | "INFERRED" | "SUGGESTED"
   >;
+};
+
+export type WeeklyPlanAiSuggestionItem = {
+  title: string;
+  content: string | null;
+  source_keys: string[];
 };

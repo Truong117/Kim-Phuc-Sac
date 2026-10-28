@@ -1121,6 +1121,7 @@
           "SUGGESTED": "Đề xuất"
         },
         "googleDocs": {
+          "itemCount": "{count} đầu mục",
           "title": "Kết quả phân tích bằng AI",
           "description": "Xem nhanh công việc theo từng nhân viên, chỉnh sửa khi cần và chỉ áp dụng những công việc đã chọn.",
           "assignmentAuthority": "Người phụ trách được lấy từ mapping tab đã được HR xác minh, không phải do AI suy luận.",

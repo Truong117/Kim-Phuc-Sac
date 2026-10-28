@@ -1561,6 +1561,62 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
+    public function test_manual_entry_create_update_and_delete_support_ordered_items(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions(['tasks.view']);
+        $planId = $this->importValidPlan($hr, $assignee);
+        $this->actingAs($hr)
+            ->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.summary.item_count', 0)
+            ->assertJsonCount(0, 'data.entries.0.items');
+        $input = [
+            'assignee_id' => $assignee->id,
+            'title' => 'Grouped manual work',
+            'content' => null,
+            'expected_result' => 'Completed',
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'priority' => 'MEDIUM',
+            'note' => null,
+            'items' => [
+                ['title' => 'First item', 'content' => null],
+                ['title' => 'Second item', 'content' => 'Details'],
+            ],
+        ];
+
+        $created = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/entries", $input)
+            ->assertCreated()
+            ->assertJsonPath('data.summary.item_count', 2)
+            ->assertJsonPath('data.entries.1.items.0.title', 'First item')
+            ->assertJsonPath('data.entries.1.items.0.sort_order', 1)
+            ->assertJsonPath('data.entries.1.items.1.title', 'Second item')
+            ->assertJsonPath('data.entries.1.items.1.sort_order', 2);
+        $entryId = (int) $created->json('data.entries.1.id');
+
+        $input['items'] = [
+            ['title' => 'Second item revised', 'content' => null],
+        ];
+        $this->actingAs($hr)
+            ->patchJson("/api/weekly-plans/{$planId}/entries/{$entryId}", $input)
+            ->assertOk()
+            ->assertJsonPath('data.summary.item_count', 1)
+            ->assertJsonCount(1, 'data.entries.1.items')
+            ->assertJsonPath('data.entries.1.items.0.title', 'Second item revised')
+            ->assertJsonPath('data.entries.1.items.0.sort_order', 1);
+
+        $this->actingAs($hr)
+            ->deleteJson("/api/weekly-plans/{$planId}/entries/{$entryId}")
+            ->assertOk()
+            ->assertJsonPath('data.summary.item_count', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_items', 0);
+    }
+
     /** @return array{User, int} */
     private function userWithPermissions(
         array $permissions,

@@ -30,21 +30,30 @@ function New-FakeInspectionResult {
             migration_grants_verified = $true
         }
         ledger = [pscustomobject]@{
-            expected_count = 17
+            expected_count = 18
             applied_count = 15
             pending_migrations = @(
                 '2026_10_27_000000_add_google_docs_source_to_weekly_plans',
-                '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables'
+                '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables',
+                '2026_10_28_000000_create_weekly_plan_entry_items_tables'
             )
             unexpected_migrations = @()
         }
         schema = [pscustomobject]@{
             migration_16_state = 'absent'
             migration_17_state = 'absent'
+            migration_18_state = 'absent'
             parent_prerequisites_verified = $true
+            migration_18_parent_prerequisites = [pscustomobject]@{
+                weekly_plan_entries_id_referenceable = $true
+                weekly_plan_source_passages_id_referenceable = $true
+                verified = $true
+            }
             source_row_count = $null
             mapping_row_count = $null
             event_row_count = $null
+            item_row_count = $null
+            item_source_passage_row_count = $null
         }
         concurrency = [pscustomobject]@{
             ddl_jobs_verified = $true
@@ -55,6 +64,7 @@ function New-FakeInspectionResult {
         baseline = [pscustomobject]@{
             weekly_plan_count = 4
             weekly_plan_id_fingerprint = ('d' * 64)
+            weekly_plan_entry_count = 9
         }
         plan = [pscustomobject]@{}
     }
@@ -328,6 +338,10 @@ Describe 'KPS staging incremental migration orchestration' {
         }
         Assert-MockCalled Use-PlanReceiptOnce -Times 1
         Assert-MockCalled Exit-RunnerMutex -Times 1
+        Assert-MockCalled Invoke-Inspector -Times 1 -ParameterFilter {
+            $EnvironmentValues.KPS_STAGING_INCREMENTAL_MODE -eq 'postflight' -and
+            $EnvironmentValues.KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT -eq '9'
+        }
     }
 
     It 'does not retry or run another migration after a returned postflight failure' {
@@ -430,6 +444,27 @@ echo json_encode([
 }
 
 Describe 'isolated child environment and file integrity' {
+    It 'accepts migration 18 in both PowerShell and isolated PHP allowlists' {
+        $validateSet = (Get-Command $runnerPath).Parameters['Migration'].Attributes |
+            Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
+            Select-Object -First 1
+        $migration18 = '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
+
+        ($validateSet.ValidValues -contains $migration18) | Should Be $true
+        ($script:AllowedMigrations -contains $migration18) | Should Be $true
+
+        $probe = @'
+require $argv[1].'/vendor/autoload.php';
+require $argv[1].'/scripts/run-staging-incremental-migration.php';
+$input = runnerMigrationInput($argv[2]);
+echo $input->getParameterOption('--path');
+'@
+        $path = & php -r $probe $backendRoot $migration18
+
+        $LASTEXITCODE | Should Be 0
+        $path | Should Be ('database/migrations/' + $migration18)
+    }
+
     It 'atomically rejects reuse of a consumed receipt nonce' {
         $oldStore = $script:ReceiptStoreRoot
         $script:ReceiptStoreRoot = Join-Path $TestDrive 'receipts'

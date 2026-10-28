@@ -51,7 +51,7 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             instructions: $this->instructions($isGoogleDocs),
             input: $context,
             schemaName: $isGoogleDocs
-                ? 'kps_weekly_plan_google_docs_tab_results_v4'
+                ? 'kps_weekly_plan_google_docs_tab_results_v5'
                 : 'kps_weekly_plan_tasks_v3',
             schema: $isGoogleDocs
                 ? $this->googleDocsSchema($selectedTabIds)
@@ -113,11 +113,19 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
     private function instructions(bool $isGoogleDocs): string
     {
         $maxTasks = WeeklyPlanAiOutputLimits::maxTasks();
+        $maxItemsPerTask = WeeklyPlanAiOutputLimits::maxItemsPerTask();
+        $maxTotalItems = WeeklyPlanAiOutputLimits::maxTotalItems();
         $googleDocsCoverage = $isGoogleDocs ? [
             'For GOOGLE_DOCS, return every selected tab_id exactly once in tab_results and never add another tab_id.',
             'Every selected tab requires at least one actionable proposed job and must use status=TASKS_PROPOSED.',
             "Distribute at most {$maxTasks} proposed jobs in total across all selected tabs; never silently omit a selected tab.",
             'The model must never decide or change mapping applicability. HR must classify a tab as NOT_APPLICABLE before AI extraction when it is intentionally outside the weekly plan.',
+            "Each proposed job may contain at most {$maxItemsPerTask} items, and the whole response may contain at most {$maxTotalItems} items.",
+            'Respect explicit source hierarchy: when a heading or numbered group has child bullets, create one SOURCE_STRUCTURE job and keep those bullets as items instead of promoting every bullet to a job.',
+            'For flat or fragmented source, related actions may be grouped into one manageable AI_GROUPED job with items. Never group unrelated domains merely to reduce the job count.',
+            'Use ATOMIC with items=[] when one source work item is already a complete standalone job.',
+            'Every item must use source_keys from the same selected tab as its parent, and item source_keys must be a subset of the parent job source_keys.',
+            'Parent source_keys must be the union of evidence supporting the job and its items. Items must not include employee identity or assignee data.',
         ] : [];
 
         return implode(' ', [
@@ -286,6 +294,36 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
     private function googleDocsSchema(array $selectedTabIds): array
     {
         $taskSchema = $this->schema()['properties']['tasks']['items'];
+        $taskSchema['properties']['grouping_basis'] = [
+            'type' => 'string',
+            'enum' => ['SOURCE_STRUCTURE', 'AI_GROUPED', 'ATOMIC'],
+        ];
+        $taskSchema['properties']['items'] = [
+            'type' => 'array',
+            'maxItems' => WeeklyPlanAiOutputLimits::maxItemsPerTask(),
+            'items' => [
+                'type' => 'object',
+                'properties' => [
+                    'title' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255],
+                    'content' => [
+                        'anyOf' => [
+                            ['type' => 'string', 'maxLength' => 10000],
+                            ['type' => 'null'],
+                        ],
+                    ],
+                    'source_keys' => [
+                        'type' => 'array',
+                        'minItems' => 1,
+                        'maxItems' => WeeklyPlanAiOutputLimits::maxSourceKeysPerTask(),
+                        'items' => ['type' => 'string'],
+                    ],
+                ],
+                'required' => ['title', 'content', 'source_keys'],
+                'additionalProperties' => false,
+            ],
+        ];
+        $taskSchema['required'][] = 'grouping_basis';
+        $taskSchema['required'][] = 'items';
         $selectedTabCount = count($selectedTabIds);
 
         return [

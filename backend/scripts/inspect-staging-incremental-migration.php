@@ -530,8 +530,151 @@ function incrementalMigration17SchemaState(PDO $pdo): string
         : 'partial';
 }
 
-function incrementalParentPrerequisitesVerified(PDO $pdo, string $migrationFile, string $migration16State): bool
+/**
+ * @param  list<array<string, mixed>>  $itemColumns
+ * @param  array<string, mixed>  $itemIndexes
+ * @param  array<string, mixed>  $itemForeignKeys
+ * @param  list<array<string, mixed>>  $passageColumns
+ * @param  array<string, mixed>  $passageIndexes
+ * @param  array<string, mixed>  $passageForeignKeys
+ */
+function incrementalMigration18SchemaStateFromMetadata(
+    array $itemColumns,
+    array $itemIndexes,
+    array $itemForeignKeys,
+    array $passageColumns,
+    array $passageIndexes,
+    array $passageForeignKeys,
+): string {
+    if ($itemColumns === [] && $itemIndexes === [] && $itemForeignKeys === []
+        && $passageColumns === [] && $passageIndexes === [] && $passageForeignKeys === []) {
+        return 'absent';
+    }
+
+    $itemColumnsValid = incrementalColumnsMatch($itemColumns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_entry_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'title' => incrementalExpectedColumn('/^varchar\(255\)$/'),
+        'content' => incrementalExpectedColumn('/^text$/', 'YES'),
+        'sort_order' => incrementalExpectedColumn('/^int(?:\(\d+\))? unsigned$/', default: '0'),
+        'source_payload' => incrementalExpectedColumn('/^longtext$/', 'YES'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'updated_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+    ]);
+    $passageColumnsValid = incrementalColumnsMatch($passageColumns, [
+        'weekly_plan_entry_item_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI'),
+        'weekly_plan_source_passage_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI'),
+    ]);
+    $indexesValid = StagingIncrementalSchema::indexesMatch($itemIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_entry_items_entry_sort_index' => incrementalExpectedIndex(1, [
+            'weekly_plan_entry_id',
+            'sort_order',
+            'id',
+        ]),
+    ]) && StagingIncrementalSchema::indexesMatch($passageIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, [
+            'weekly_plan_entry_item_id',
+            'weekly_plan_source_passage_id',
+        ]),
+        'weekly_item_passage_passage_foreign' => incrementalExpectedIndex(1, [
+            'weekly_plan_source_passage_id',
+        ]),
+    ]);
+    $foreignKeysValid = StagingIncrementalSchema::foreignKeysMatch($itemForeignKeys, [
+        'weekly_plan_entry_items_weekly_plan_entry_id_foreign' => incrementalExpectedForeignKey(
+            ['weekly_plan_entry_id'],
+            'weekly_plan_entries',
+            ['id'],
+            'CASCADE',
+        ),
+    ]) && StagingIncrementalSchema::foreignKeysMatch($passageForeignKeys, [
+        'weekly_item_passage_item_foreign' => incrementalExpectedForeignKey(
+            ['weekly_plan_entry_item_id'],
+            'weekly_plan_entry_items',
+            ['id'],
+            'CASCADE',
+        ),
+        'weekly_item_passage_passage_foreign' => incrementalExpectedForeignKey(
+            ['weekly_plan_source_passage_id'],
+            'weekly_plan_source_passages',
+            ['id'],
+            'CASCADE',
+        ),
+    ]);
+
+    return $itemColumnsValid && $passageColumnsValid && $indexesValid && $foreignKeysValid
+        ? 'complete'
+        : 'partial';
+}
+
+function incrementalMigration18SchemaState(PDO $pdo): string
 {
+    return incrementalMigration18SchemaStateFromMetadata(
+        incrementalColumns($pdo, 'weekly_plan_entry_items'),
+        incrementalIndexes($pdo, 'weekly_plan_entry_items'),
+        incrementalForeignKeys($pdo, 'weekly_plan_entry_items'),
+        incrementalColumns($pdo, 'weekly_plan_entry_item_source_passage'),
+        incrementalIndexes($pdo, 'weekly_plan_entry_item_source_passage'),
+        incrementalForeignKeys($pdo, 'weekly_plan_entry_item_source_passage'),
+    );
+}
+
+/**
+ * @param  list<array<string, mixed>>  $entryColumns
+ * @param  array<string, mixed>  $entryIndexes
+ * @param  list<array<string, mixed>>  $passageColumns
+ * @param  array<string, mixed>  $passageIndexes
+ * @return array{weekly_plan_entries_id_referenceable: bool, weekly_plan_source_passages_id_referenceable: bool, verified: bool}
+ */
+function incrementalMigration18ParentPrerequisiteEvidenceFromMetadata(
+    array $entryColumns,
+    array $entryIndexes,
+    array $passageColumns,
+    array $passageIndexes,
+): array {
+    $entryIdReferenceable = StagingIncrementalSchema::hasReferenceableUnsignedBigInt(
+        $entryColumns,
+        $entryIndexes,
+        'id',
+    );
+    $passageIdReferenceable = StagingIncrementalSchema::hasReferenceableUnsignedBigInt(
+        $passageColumns,
+        $passageIndexes,
+        'id',
+    );
+
+    return [
+        'weekly_plan_entries_id_referenceable' => $entryIdReferenceable,
+        'weekly_plan_source_passages_id_referenceable' => $passageIdReferenceable,
+        'verified' => $entryIdReferenceable && $passageIdReferenceable,
+    ];
+}
+
+/** @return array{weekly_plan_entries_id_referenceable: bool, weekly_plan_source_passages_id_referenceable: bool, verified: bool} */
+function incrementalMigration18ParentPrerequisiteEvidence(PDO $pdo): array
+{
+    return incrementalMigration18ParentPrerequisiteEvidenceFromMetadata(
+        incrementalColumns($pdo, 'weekly_plan_entries'),
+        incrementalIndexes($pdo, 'weekly_plan_entries'),
+        incrementalColumns($pdo, 'weekly_plan_source_passages'),
+        incrementalIndexes($pdo, 'weekly_plan_source_passages'),
+    );
+}
+
+function incrementalParentPrerequisitesVerified(
+    PDO $pdo,
+    string $migrationFile,
+    string $migration16State,
+    string $migration17State,
+    array $migration18ParentEvidence,
+): bool {
+    if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_18) {
+        return $migration16State === 'complete'
+            && $migration17State === 'complete'
+            && $migration18ParentEvidence['verified'] === true;
+    }
+
     foreach ([
         ['weekly_plans', 'id'],
         ['organizations', 'id'],
@@ -568,6 +711,8 @@ function incrementalCountRows(PDO $pdo, string $table, array $tables): ?int
         'weekly_plan_google_docs_sources',
         'weekly_plan_google_docs_tab_mappings',
         'weekly_plan_google_docs_tab_mapping_events',
+        'weekly_plan_entry_items',
+        'weekly_plan_entry_item_source_passage',
     ];
 
     if (! in_array($table, $allowed, true)) {
@@ -719,6 +864,10 @@ try {
         [StagingBootstrapPlan::APPLICATION_DATABASE],
     );
     $weeklyPlanIds = incrementalQueryColumn($pdo, 'SELECT id FROM weekly_plans ORDER BY id');
+    $weeklyPlanEntryCountRows = incrementalQueryRows(
+        $pdo,
+        'SELECT COUNT(*) AS aggregate FROM weekly_plan_entries',
+    );
     $auditIdentity = incrementalQueryRows(
         $auditPdo,
         'SELECT DATABASE() AS database_name, CURRENT_USER() AS authenticated_user, CONNECTION_ID() AS connection_id',
@@ -753,8 +902,11 @@ $sessions = $auditProcessVisibilityVerified
     : ['verified' => false, 'competing_count' => -1];
 $migration16State = incrementalMigration16SchemaState($pdo);
 $migration17State = incrementalMigration17SchemaState($pdo);
+$migration18State = incrementalMigration18SchemaState($pdo);
+$migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);
 $weeklyPlanIdFingerprint = hash('sha256', implode(',', $weeklyPlanIds));
+$weeklyPlanEntryCount = (int) ($weeklyPlanEntryCountRows[0]['aggregate'] ?? -1);
 $uploadedFilePlanCount = null;
 
 if ($migration16State === 'complete') {
@@ -788,24 +940,36 @@ $state = [
     )),
     'migration_16_schema_state' => $migration16State,
     'migration_17_schema_state' => $migration17State,
+    'migration_18_schema_state' => $migration18State,
     'parent_prerequisites_verified' => incrementalParentPrerequisitesVerified(
         $pdo,
         $migrationFile,
         $migration16State,
+        $migration17State,
+        $migration18ParentEvidence,
     ),
     'source_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_sources', $tables),
     'mapping_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_tab_mappings', $tables),
     'event_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_tab_mapping_events', $tables),
+    'item_row_count' => incrementalCountRows($pdo, 'weekly_plan_entry_items', $tables),
+    'item_source_passage_row_count' => incrementalCountRows(
+        $pdo,
+        'weekly_plan_entry_item_source_passage',
+        $tables,
+    ),
     'weekly_plan_count' => $weeklyPlanCount,
     'weekly_plan_id_fingerprint' => $weeklyPlanIdFingerprint,
+    'weekly_plan_entry_count' => $weeklyPlanEntryCount,
     'uploaded_file_plan_count' => $uploadedFilePlanCount,
 ];
 
 if ($mode === 'postflight') {
     $expectedWeeklyPlanCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT');
     $expectedWeeklyPlanIdFingerprint = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT');
+    $expectedWeeklyPlanEntryCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT');
 
     if (! ctype_digit($expectedWeeklyPlanCount)
+        || ! ctype_digit($expectedWeeklyPlanEntryCount)
         || preg_match('/^[a-f0-9]{64}$/', $expectedWeeklyPlanIdFingerprint) !== 1) {
         incrementalFinish(['status' => 'FAIL', 'reason' => 'invalid_postflight_baseline'], 2);
     }
@@ -815,6 +979,7 @@ if ($mode === 'postflight') {
         $state,
         (int) $expectedWeeklyPlanCount,
         $expectedWeeklyPlanIdFingerprint,
+        (int) $expectedWeeklyPlanEntryCount,
     );
 } else {
     $violations = StagingIncrementalMigrationPlan::preflightViolations($migrationFile, $state);
@@ -849,10 +1014,14 @@ incrementalFinish([
     'schema' => [
         'migration_16_state' => $migration16State,
         'migration_17_state' => $migration17State,
+        'migration_18_state' => $migration18State,
         'parent_prerequisites_verified' => $state['parent_prerequisites_verified'],
+        'migration_18_parent_prerequisites' => $migration18ParentEvidence,
         'source_row_count' => $state['source_row_count'],
         'mapping_row_count' => $state['mapping_row_count'],
         'event_row_count' => $state['event_row_count'],
+        'item_row_count' => $state['item_row_count'],
+        'item_source_passage_row_count' => $state['item_source_passage_row_count'],
     ],
     'concurrency' => [
         'ddl_jobs_verified' => $state['ddl_jobs_verified'],
@@ -863,6 +1032,7 @@ incrementalFinish([
     'baseline' => [
         'weekly_plan_count' => $weeklyPlanCount,
         'weekly_plan_id_fingerprint' => $weeklyPlanIdFingerprint,
+        'weekly_plan_entry_count' => $weeklyPlanEntryCount,
     ],
     'plan' => [
         'artisan_command' => $command,

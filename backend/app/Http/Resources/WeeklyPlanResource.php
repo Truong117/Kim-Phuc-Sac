@@ -80,6 +80,11 @@ class WeeklyPlanResource extends JsonResource
                         ->unique()
                         ->count(),
                     'entry_count' => $this->entries->count(),
+                    'item_count' => $this->entries->sum(
+                        fn (WeeklyPlanEntry $entry): int => $entry->relationLoaded('items')
+                            ? $entry->items->count()
+                            : 0,
+                    ),
                     'invalid_entry_count' => $this->entries
                         ->where('validation_status', 'INVALID')
                         ->count(),
@@ -113,6 +118,14 @@ class WeeklyPlanResource extends JsonResource
                     'sort_order' => $entry->sort_order,
                     'validation_status' => $entry->validation_status,
                     'validation_errors' => $entry->validation_errors ?? [],
+                    'items' => $entry->relationLoaded('items')
+                        ? $entry->items->map(fn ($item): array => [
+                            'id' => $item->id,
+                            'title' => $item->title,
+                            'content' => $item->content,
+                            'sort_order' => $item->sort_order,
+                        ])->values()
+                        : [],
                     'source_passages' => $entry->relationLoaded('sourcePassages')
                         ? $entry->sourcePassages->map(fn ($passage): array => [
                             'id' => $passage->id,
