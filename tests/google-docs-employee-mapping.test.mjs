@@ -1121,7 +1121,10 @@ test("mapping UI preserves tab identity, requires explicit confirmation, and han
     /getWeeklyPlanGoogleDocsEmployeeMappings\(\s*planId,\s*controller\.signal/,
   );
   assert.match(panel, /new AbortController\(\)/);
-  assert.match(panel, /return \(\) => \{[\s\S]*controller\.abort\(\)/);
+  assert.match(
+    panel,
+    /return \(\) => \{[\s\S]*activeControllerRef\.current\?\.abort\(\)/,
+  );
   assert.doesNotMatch(
     panel,
     /localStorage|sessionStorage|dangerouslySetInnerHTML/,
@@ -1202,7 +1205,7 @@ test("mapping translations include every persisted and derived status", async ()
   assert.match(mapping.readyForAi, /Sẵn sàng phân tích công việc bằng AI/);
 });
 
-test("Google Docs multi-tab assignment guard is wired before the manual assignee modal", async () => {
+test("Google Docs multi-tab selection routes to scoped AI instead of the manual assignee modal", async () => {
   const [sourceDocument, translationsSource] = await Promise.all([
     readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
     readSource("src/locales/vi/common.json"),
@@ -1214,10 +1217,13 @@ test("Google Docs multi-tab assignment guard is wired before the manual assignee
     sourceDocument,
     /spansMultipleGoogleDocsTabs\(selectedPassages\)/,
   );
-  assert.match(
+  assert.doesNotMatch(
     sourceDocument,
     /setLocalError\(t\("multiTabAssignmentWarning"\)\)/,
   );
+  assert.match(sourceDocument, /hasMultipleSelectedGoogleTabs/);
+  assert.match(sourceDocument, /extractSelectedGroupsWithAi/);
+  assert.match(sourceDocument, /sourcePassageIds/);
   assert.match(sourceDocument, /setDraft\(\{/);
   assert.match(
     translations.weeklyPlanning.sourceDocument.multiTabAssignmentWarning,

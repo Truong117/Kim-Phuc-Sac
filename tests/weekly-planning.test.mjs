@@ -62,7 +62,10 @@ test("weekly AI preview treats an empty suggestion list as a successful empty st
   ]);
   const translations = JSON.parse(translationsSource);
 
-  assert.match(sourceDocument, /const suggestions = await onAiExtract\(\)/);
+  assert.match(
+    sourceDocument,
+    /const suggestions =[\s\S]*?await onAiExtract\(\)/,
+  );
   assert.match(sourceDocument, /setAiSuggestions\(suggestions\)/);
   assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
   assert.match(aiPreview, /suggestions\.length === 0/);
@@ -88,7 +91,10 @@ test("DOCX source extraction and missing-file recovery are driven by opaque acti
   assert.match(sourceDocument, /\{plan\.actions\.can_ai_extract_source && \(/);
   assert.match(sourceDocument, /disabled=\{busy \|\| aiLoading\}/);
   assert.match(sourceDocument, /const runAiExtraction = async/);
-  assert.match(sourceDocument, /const suggestions = await onAiExtract\(\)/);
+  assert.match(
+    sourceDocument,
+    /const suggestions =[\s\S]*?await onAiExtract\(\)/,
+  );
   assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
   assert.match(sourceDocument, /<WeeklyPlanAiExtractionPreview/);
   assert.match(sourceDocument, /crypto\.randomUUID\(\)/);

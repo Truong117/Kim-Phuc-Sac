@@ -202,12 +202,17 @@ export const assignWeeklyPlanSourceGroup = async (
 
 export const extractWeeklyPlanSourceWithAi = async (
   id: number,
+  sourcePassageIds?: number[],
 ): Promise<WeeklyPlanAiSuggestion[]> => {
   const response = await apiRequest<{
     data: { suggestions: WeeklyPlanAiSuggestion[] };
   }>("/api/weekly-plans/" + id + "/source/ai-extract", {
     method: "POST",
-    body: JSON.stringify({}),
+    body: JSON.stringify(
+      sourcePassageIds === undefined
+        ? {}
+        : { source_passage_ids: sourcePassageIds },
+    ),
   });
   return response.data.suggestions;
 };

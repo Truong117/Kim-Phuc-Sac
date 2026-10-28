@@ -19,7 +19,6 @@ import {
   markGoogleDocsMappingBatchConflictPending,
   reconcileGoogleDocsMappingBatchConflict,
   reconcileGoogleDocsMappingBatchSaveSuccess,
-  reconcileGoogleDocsMappingSnapshot,
   resetGoogleDocsMappingDraftFromServer,
   shouldBlockGoogleDocsMappingWrites,
   shouldApplyGoogleDocsMappingResponse,
@@ -31,16 +30,24 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-type Props = { planId: number };
+type Props = {
+  planId: number;
+  mappings: WeeklyPlanGoogleDocsEmployeeMappings | null;
+  onMappingsChange: (mappings: WeeklyPlanGoogleDocsEmployeeMappings) => void;
+};
 
-export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
+export default function GoogleDocsEmployeeMappingPanel({
+  planId,
+  mappings,
+  onMappingsChange,
+}: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.googleDocsEmployeeMapping",
   });
-  const [mappings, setMappings] =
-    useState<WeeklyPlanGoogleDocsEmployeeMappings | null>(null);
-  const [drafts, setDrafts] = useState<GoogleDocsMappingDrafts>({});
-  const [loading, setLoading] = useState(true);
+  const [drafts, setDrafts] = useState<GoogleDocsMappingDrafts>(() =>
+    mappings ? createGoogleDocsMappingDrafts(mappings.tabs) : {},
+  );
+  const loading = mappings === null;
   const [savingBatch, setSavingBatch] = useState(false);
   const [refreshingConflicts, setRefreshingConflicts] = useState(false);
   const [conflictInputs, setConflictInputs] = useState<
@@ -53,7 +60,9 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
   const requestGenerationRef = useRef(0);
   const activePlanIdRef = useRef(planId);
   const operationInFlightRef = useRef(false);
-  const mappingsRef = useRef<WeeklyPlanGoogleDocsEmployeeMappings | null>(null);
+  const mappingsRef = useRef<WeeklyPlanGoogleDocsEmployeeMappings | null>(
+    mappings,
+  );
   const translateRef = useRef(t);
 
   const startRequest = () => {
@@ -97,7 +106,7 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
 
     mappingsRef.current = next;
     if (!next.actions.can_update) setWriteBlocked(true);
-    setMappings(next);
+    onMappingsChange(next);
     setDrafts((drafts) => reconcile(drafts, next.tabs));
 
     return true;
@@ -108,44 +117,10 @@ export default function GoogleDocsEmployeeMappingPanel({ planId }: Props) {
   }, [t]);
 
   useEffect(() => {
-    activeControllerRef.current?.abort();
-    const controller = new AbortController();
-    const token: GoogleDocsMappingRequestToken = {
-      generation: ++requestGenerationRef.current,
-      planId,
-    };
-    activeControllerRef.current = controller;
     activePlanIdRef.current = planId;
-    mappingsRef.current = null;
     operationInFlightRef.current = false;
-    getWeeklyPlanGoogleDocsEmployeeMappings(planId, controller.signal)
-      .then((next) => {
-        if (!requestIsActive(controller, token)) return;
-        applySnapshot(next, (current, tabs) =>
-          Object.keys(current).length === 0
-            ? createGoogleDocsMappingDrafts(tabs)
-            : reconcileGoogleDocsMappingSnapshot(current, tabs),
-        );
-      })
-      .catch((nextError: unknown) => {
-        if (!requestIsActive(controller, token)) return;
-        setError(
-          nextError instanceof ApiServiceError && nextError.status === 403
-            ? translateRef.current("errors.forbidden")
-            : translateRef.current("errors.load"),
-        );
-      })
-      .finally(() => {
-        if (requestIsActive(controller, token)) {
-          activeControllerRef.current = null;
-          setLoading(false);
-          setSavingBatch(false);
-          setRefreshingConflicts(false);
-        }
-      });
 
     return () => {
-      controller.abort();
       activeControllerRef.current?.abort();
       activeControllerRef.current = null;
       requestGenerationRef.current += 1;
