@@ -133,6 +133,81 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
 
+    public function test_google_docs_prompt_treats_minh_dang_daily_work_as_a_generic_mixed_domain_container(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Minh Đăng');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-minh-dang', 'Minh Đăng', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $passage = $plan->sourcePassages()->firstOrFail();
+        $groupTitle = 'Công việc hàng ngày Minh Đăng';
+        $texts = [
+            'Điền bảng chấm công hàng ngày',
+            'Quản lý hồ sơ nhân sự',
+            'Cập nhật BHXH',
+            'Làm bảng lương',
+            'Lên kế hoạch tuyển dụng',
+            'Tuyển KTV SPA',
+            'Tìm bác sĩ da liễu',
+            'Viết content fanpage tuyển dụng',
+            'Tìm content TikTok KPS Caares',
+            'Quay content TikTok',
+            'Đăng video TikTok',
+        ];
+        $metadata = $passage->metadata;
+        data_set($metadata, 'source_group.title', $groupTitle);
+        data_set($metadata, 'source_context.title', $groupTitle);
+        $passage->update([
+            'text' => $texts[0],
+            'metadata' => $metadata,
+            'content_sha256' => hash('sha256', $texts[0]),
+        ]);
+        $passage->refresh();
+        foreach (array_slice($texts, 1) as $index => $text) {
+            $this->additionalPassage($plan, $passage, $index + 2, $text);
+        }
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$this->validSuggestion($passage->source_key)]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk();
+
+        Http::assertSent(function ($request) use ($groupTitle, $texts): bool {
+            $payload = $request->data();
+            $instructions = (string) ($payload['instructions'] ?? '');
+            $input = json_decode(
+                (string) data_get($payload, 'input.0.content.0.text'),
+                true,
+                flags: JSON_THROW_ON_ERROR,
+            );
+
+            $this->assertSame($groupTitle, data_get($input, 'passages.0.group_title'));
+            $this->assertSame($texts, collect($input['passages'])->pluck('text')->all());
+            $this->assertStringContainsString('meaningful, coherent work domain', $instructions);
+            $this->assertStringContainsString('inspect all child bullets for semantic coherence', $instructions);
+            $this->assertStringContainsString('Generic document containers must not automatically create SOURCE_STRUCTURE jobs', $instructions);
+            $this->assertStringContainsString('Công việc hàng ngày <employee name>', $instructions);
+            $this->assertStringContainsString('do not preserve the parent as one job', $instructions);
+            $this->assertStringContainsString('regroup related actions into multiple manageable AI_GROUPED jobs', $instructions);
+            $this->assertStringContainsString('must not become one SOURCE_STRUCTURE job', $instructions);
+            $this->assertStringContainsString('Do not reuse a generic document-container heading', $instructions);
+            $this->assertStringContainsString('Bán hàng with Lên đơn, Theo dõi đơn, and Ghi lịch sử bán hàng remains one SOURCE_STRUCTURE job', $instructions);
+            $this->assertStringContainsString('Chăm sóc khách hàng Zalo', $instructions);
+            $this->assertStringContainsString('Hành chính nhân sự for chấm công, hồ sơ, BHXH, and lương', $instructions);
+            $this->assertStringContainsString('Tuyển dụng for planning, KTV, bác sĩ, and recruitment content', $instructions);
+            $this->assertStringContainsString('Content KPS Caares for finding, filming, and posting TikTok content', $instructions);
+
+            return true;
+        });
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
     public function test_google_docs_detail_suggestions_are_strict_bounded_and_keep_assignment_server_trusted(): void
     {
         [$hr, $organizationId] = $this->manager();
