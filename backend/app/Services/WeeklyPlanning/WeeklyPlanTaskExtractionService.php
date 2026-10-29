@@ -307,10 +307,6 @@ class WeeklyPlanTaskExtractionService
             }
         }
         foreach ($raw as $taskIndex => $task) {
-            $raw[$taskIndex]['verification_fields'] = $this->normalizeVerificationFields(
-                $task['verification_fields'],
-                $verificationFieldWhitelist,
-            );
             if ($googleDocsContext !== null) {
                 $raw[$taskIndex]['start_date'] = $plan->week_start->toDateString();
                 $raw[$taskIndex]['due_date'] = $plan->week_end->toDateString();
@@ -525,36 +521,6 @@ class WeeklyPlanTaskExtractionService
         }
 
         return $tasks;
-    }
-
-    /**
-     * Remove repeated valid fields without hiding malformed or unknown values
-     * from the validator that follows.
-     *
-     * @param  list<mixed>  $fields
-     * @param  list<string>  $whitelist
-     * @return list<mixed>
-     */
-    private function normalizeVerificationFields(array $fields, array $whitelist): array
-    {
-        $normalized = [];
-        $seen = [];
-
-        foreach ($fields as $field) {
-            if (! is_string($field) || ! in_array($field, $whitelist, true)) {
-                $normalized[] = $field;
-
-                continue;
-            }
-            if (isset($seen[$field])) {
-                continue;
-            }
-
-            $seen[$field] = true;
-            $normalized[] = $field;
-        }
-
-        return $normalized;
     }
 
     private function hasInvalidDetailSuggestions(mixed $details): bool

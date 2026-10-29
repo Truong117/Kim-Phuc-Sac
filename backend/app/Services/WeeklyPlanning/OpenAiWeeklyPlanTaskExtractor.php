@@ -125,6 +125,7 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             'For flat or fragmented source, related actions may be grouped into one manageable AI_GROUPED job with items. Never group unrelated domains merely to reduce the job count.',
             'Use ATOMIC with items=[] when one source work item is already a complete standalone job.',
             'Every item must use source_keys from the same selected tab as its parent, and item source_keys must be a subset of the parent job source_keys.',
+            'Never repeat a source_key inside one child item.',
             'Parent source_keys must be the union of evidence supporting the job and its items. Items must not include employee identity or assignee data.',
         ] : [];
         $assignmentGuidance = $isGoogleDocs ? [
@@ -140,11 +141,12 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             "Return at most {$maxTasks} proposed jobs.",
             'Do not automatically create one job for every passage.',
             'Consolidate passages only when they describe the same actual job; one consolidated job may then reference multiple source_keys.',
+            'Never repeat a source_key inside one proposed job.',
             'Never combine unrelated work merely to stay below the job limit.',
             'Prefer explicit, actionable source work over duplicated wording, headings, continuation lines, explanatory text, or repeated passages.',
             'For GOOGLE_DOCS, every source_key referenced by one proposed job must belong to exactly one tab_id.',
             ...$googleDocsCoverage,
-            'Do not repeat values in verification_fields; include each required field at most once.',
+            'Do not repeat verification_fields values; include each required field at most once.',
             'For detail_suggestions only, you may use general operational reasoning to propose practical planning recommendations when the source task is too generic.',
             'Use SOURCE_DERIVED only when the exact detail is explicitly supported by the supplied passages. Every unsupported operational recommendation must use basis=AI_SUGGESTION and must never be represented as a source or company fact.',
             'AI_SUGGESTION must not invent employee identity, KPS account ownership, internal company facts, customer facts, source-document claims, credentials, identifiers, or dates outside week_start and week_end.',
@@ -241,7 +243,6 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                                 'type' => 'array',
                                 'minItems' => 1,
                                 'maxItems' => $maxSourceKeysPerTask,
-                                'uniqueItems' => true,
                                 'items' => [
                                     'type' => 'string',
                                     'minLength' => 1,
@@ -292,7 +293,6 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                             ],
                             'verification_fields' => [
                                 'type' => 'array',
-                                'uniqueItems' => true,
                                 'items' => [
                                     'type' => 'string',
                                     'enum' => [
@@ -361,7 +361,6 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                         'type' => 'array',
                         'minItems' => 1,
                         'maxItems' => WeeklyPlanAiOutputLimits::maxSourceKeysPerTask(),
-                        'uniqueItems' => true,
                         'items' => [
                             'type' => 'string',
                             'minLength' => 1,
