@@ -11,7 +11,10 @@ import {
   submitWeeklyPlan,
 } from "@/services/weeklyPlanningService";
 import { formatWeeklyPlanCommentTimestamp } from "@/utils/weeklyPlanCommentContext";
-import { resolveWeeklyPlanCommentTargetArguments } from "@/utils/weeklyPlanDiscussionTarget";
+import {
+  isWeeklyPlanDiscussionEmployeeConsistent,
+  resolveWeeklyPlanCommentTargetArguments,
+} from "@/utils/weeklyPlanDiscussionTarget";
 import { weeklyPlanWorkCounts } from "@/utils/weeklyPlanWizard";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -41,6 +44,9 @@ export default function WeeklyPlanWizardSubmit() {
     null,
   );
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
+  const [commentTargetError, setCommentTargetError] = useState<string | null>(
+    null,
+  );
 
   if (!plan) {
     return (
@@ -51,6 +57,37 @@ export default function WeeklyPlanWizardSubmit() {
   const counts = weeklyPlanWorkCounts(plan);
   const submitted =
     plan.status !== "DRAFT" && plan.status !== "CHANGES_REQUESTED";
+
+  const handleAddComment = () => {
+    const target = resolveWeeklyPlanCommentTargetArguments(plan, {
+      selectedEmployeeId,
+      selectedEntryId,
+    });
+    if (!target.valid) {
+      if (
+        !isWeeklyPlanDiscussionEmployeeConsistent(plan, {
+          selectedEmployeeId,
+        })
+      ) {
+        setSelectedEmployeeId(null);
+      }
+      setSelectedEntryId(null);
+      setCommentTargetError(discussionLabel("targetChanged"));
+      return;
+    }
+
+    setCommentTargetError(null);
+    void perform(async () => {
+      const result = await addWeeklyPlanComment(
+        plan.id,
+        comment.trim(),
+        target.assigneeId,
+        target.entryId,
+      );
+      setComment("");
+      return result;
+    });
+  };
 
   return (
     <WeeklyPlanWizardLayout step="submit">
@@ -156,6 +193,7 @@ export default function WeeklyPlanWizardSubmit() {
                   onChange={(target) => {
                     setSelectedEmployeeId(target.selectedEmployeeId);
                     setSelectedEntryId(target.selectedEntryId);
+                    setCommentTargetError(null);
                   }}
                   disabled={busy}
                 />
@@ -172,29 +210,18 @@ export default function WeeklyPlanWizardSubmit() {
                     disabled={busy}
                   />
                 </div>
+                {commentTargetError && (
+                  <p role="alert" className="text-theme-sm text-error-500">
+                    {commentTargetError}
+                  </p>
+                )}
               </div>
               <div className="flex justify-end">
                 <Button
                   type="button"
                   disabled={busy || !comment.trim()}
                   className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
-                  onClick={() =>
-                    void perform(async () => {
-                      const { assigneeId, entryId } =
-                        resolveWeeklyPlanCommentTargetArguments(plan, {
-                          selectedEmployeeId,
-                          selectedEntryId,
-                        });
-                      const result = await addWeeklyPlanComment(
-                        plan.id,
-                        comment.trim(),
-                        assigneeId,
-                        entryId,
-                      );
-                      setComment("");
-                      return result;
-                    })
-                  }
+                  onClick={handleAddComment}
                 >
                   {t("submit.addComment")}
                 </Button>

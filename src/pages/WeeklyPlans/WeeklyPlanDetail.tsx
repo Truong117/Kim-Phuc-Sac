@@ -45,7 +45,10 @@ import type {
 } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
 import { formatWeeklyPlanCommentTimestamp } from "@/utils/weeklyPlanCommentContext";
-import { resolveWeeklyPlanCommentTargetArguments } from "@/utils/weeklyPlanDiscussionTarget";
+import {
+  isWeeklyPlanDiscussionEmployeeConsistent,
+  resolveWeeklyPlanCommentTargetArguments,
+} from "@/utils/weeklyPlanDiscussionTarget";
 import { hasRemainingGoogleDocsTabs as hasRemainingTabs } from "@/utils/weeklyPlanSourceSelection";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -68,6 +71,9 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
     null,
   );
   const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
+  const [commentTargetError, setCommentTargetError] = useState<string | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showAssignmentConfirm, setShowAssignmentConfirm] = useState(false);
@@ -208,6 +214,37 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
   const hasRemainingGoogleDocsTabs =
     plan.source_type !== "GOOGLE_DOCS" ||
     hasRemainingTabs(plan.source_document.google_docs?.remaining_tab_ids ?? []);
+
+  const handleAddComment = () => {
+    const target = resolveWeeklyPlanCommentTargetArguments(plan, {
+      selectedEmployeeId,
+      selectedEntryId,
+    });
+    if (!target.valid) {
+      if (
+        !isWeeklyPlanDiscussionEmployeeConsistent(plan, {
+          selectedEmployeeId,
+        })
+      ) {
+        setSelectedEmployeeId(null);
+      }
+      setSelectedEntryId(null);
+      setCommentTargetError(t("discussion.targetChanged"));
+      return;
+    }
+
+    setCommentTargetError(null);
+    void perform(async () => {
+      const next = await addWeeklyPlanComment(
+        plan.id,
+        comment.trim(),
+        target.assigneeId,
+        target.entryId,
+      );
+      setComment("");
+      return next;
+    });
+  };
 
   return (
     <>
@@ -611,6 +648,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
                     onChange={(target) => {
                       setSelectedEmployeeId(target.selectedEmployeeId);
                       setSelectedEntryId(target.selectedEntryId);
+                      setCommentTargetError(null);
                     }}
                     disabled={busy}
                   />
@@ -627,29 +665,18 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
                       disabled={busy}
                     />
                   </div>
+                  {commentTargetError && (
+                    <p role="alert" className="text-theme-sm text-error-500">
+                      {commentTargetError}
+                    </p>
+                  )}
                 </div>
                 <div className="flex justify-end">
                   <Button
                     type="button"
                     disabled={busy || !comment.trim()}
                     className="bg-kps-primary hover:bg-kps-primary-hover"
-                    onClick={() =>
-                      void perform(async () => {
-                        const { assigneeId, entryId } =
-                          resolveWeeklyPlanCommentTargetArguments(plan, {
-                            selectedEmployeeId,
-                            selectedEntryId,
-                          });
-                        const next = await addWeeklyPlanComment(
-                          plan.id,
-                          comment.trim(),
-                          assigneeId,
-                          entryId,
-                        );
-                        setComment("");
-                        return next;
-                      })
-                    }
+                    onClick={handleAddComment}
                   >
                     {t("detail.addComment")}
                   </Button>

@@ -6,6 +6,7 @@ import {
   createWeeklyPlanDiscussionEmployeeOptions,
   createWeeklyPlanDiscussionWorkOptions,
   filterWeeklyPlanDiscussionOptions,
+  isWeeklyPlanDiscussionEmployeeConsistent,
   isWeeklyPlanDiscussionEntryConsistent,
   type WeeklyPlanDiscussionOption,
   type WeeklyPlanDiscussionTarget,
@@ -204,6 +205,10 @@ export default function WeeklyPlanDiscussionTargetFields({
   );
 
   useEffect(() => {
+    if (!isWeeklyPlanDiscussionEmployeeConsistent(plan, value)) {
+      onChange({ selectedEmployeeId: null, selectedEntryId: null });
+      return;
+    }
     if (isWeeklyPlanDiscussionEntryConsistent(plan, value)) return;
     onChange({ ...value, selectedEntryId: null });
   }, [onChange, plan, value]);

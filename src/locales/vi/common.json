@@ -855,6 +855,7 @@
       "noWorks": "Không tìm thấy công việc phù hợp.",
       "contentLabel": "Nội dung ghi chú",
       "contentPlaceholder": "Nhập nội dung trao đổi hoặc lưu ý cho OWNER...",
+      "targetChanged": "Công việc đã thay đổi. Vui lòng chọn lại công việc trước khi thêm trao đổi.",
       "unavailableEmployee": "Nhân viên không còn khả dụng",
       "unavailableWork": "Công việc không còn khả dụng"
     },

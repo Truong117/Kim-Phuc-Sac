@@ -10,6 +10,7 @@ import {
   createWeeklyPlanDiscussionEmployeeOptions,
   createWeeklyPlanDiscussionWorkOptions,
   filterWeeklyPlanDiscussionOptions,
+  isWeeklyPlanDiscussionEmployeeConsistent,
   isWeeklyPlanDiscussionEntryConsistent,
   resolveWeeklyPlanCommentTargetArguments,
 } from "../src/utils/weeklyPlanDiscussionTarget.ts";
@@ -643,21 +644,21 @@ test("discussion target payload maps plan, employee, work, and stale work safely
       selectedEmployeeId: null,
       selectedEntryId: null,
     }),
-    { assigneeId: undefined, entryId: undefined },
+    { valid: true, assigneeId: undefined, entryId: undefined },
   );
   assert.deepEqual(
     resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
       selectedEmployeeId: 7,
       selectedEntryId: null,
     }),
-    { assigneeId: 7, entryId: undefined },
+    { valid: true, assigneeId: 7, entryId: undefined },
   );
   assert.deepEqual(
     resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
       selectedEmployeeId: 7,
       selectedEntryId: 90002,
     }),
-    { assigneeId: undefined, entryId: 90002 },
+    { valid: true, assigneeId: undefined, entryId: 90002 },
   );
   const staleTarget = { selectedEmployeeId: 8, selectedEntryId: 90002 };
   assert.equal(
@@ -666,7 +667,32 @@ test("discussion target payload maps plan, employee, work, and stale work safely
   );
   assert.deepEqual(
     resolveWeeklyPlanCommentTargetArguments(discussionPlan, staleTarget),
-    { assigneeId: 8, entryId: undefined },
+    { valid: false, assigneeId: undefined, entryId: undefined },
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
+      selectedEmployeeId: 7,
+      selectedEntryId: 99999,
+    }),
+    { valid: false, assigneeId: undefined, entryId: undefined },
+  );
+  const unavailableEmployeeTarget = {
+    selectedEmployeeId: 99,
+    selectedEntryId: null,
+  };
+  assert.equal(
+    isWeeklyPlanDiscussionEmployeeConsistent(
+      discussionPlan,
+      unavailableEmployeeTarget,
+    ),
+    false,
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(
+      discussionPlan,
+      unavailableEmployeeTarget,
+    ),
+    { valid: false, assigneeId: undefined, entryId: undefined },
   );
 });
 
@@ -740,6 +766,7 @@ test("HR and OWNER reuse the hierarchical accessible discussion controls", async
   assert.match(picker, /value\.selectedEmployeeId !== null/);
   assert.match(targetUtility, /entry\.assignee\?\.id === selectedEmployeeId/);
   assert.match(picker, /selectedEntryId: null/);
+  assert.match(picker, /selectedEmployeeId: null, selectedEntryId: null/);
   assert.match(picker, /aria-haspopup="listbox"/);
   assert.match(picker, /aria-expanded={isOpen}/);
   assert.match(picker, /role="listbox"/);
@@ -756,5 +783,32 @@ test("HR and OWNER reuse the hierarchical accessible discussion controls", async
     "Tất cả công việc của nhân viên",
   );
   assert.equal(copy.discussion.contentLabel, "Nội dung ghi chú");
+  assert.match(copy.discussion.targetChanged, /Vui lòng chọn lại công việc/);
   assert.doesNotMatch(JSON.stringify(copy.discussion), /Công việc #\{id\}/);
+
+  for (const consumer of [submit, detail]) {
+    const invalidTargetCheck = consumer.indexOf("if (!target.valid)");
+    const invalidReturn = consumer.indexOf("return;", invalidTargetCheck);
+    const apiCall = consumer.indexOf(
+      "await addWeeklyPlanComment",
+      invalidReturn,
+    );
+    const commentClear = consumer.indexOf(
+      'setComment("");',
+      invalidTargetCheck,
+    );
+
+    assert.ok(invalidTargetCheck >= 0);
+    assert.ok(invalidReturn > invalidTargetCheck);
+    assert.ok(apiCall > invalidReturn);
+    assert.ok(commentClear > invalidReturn);
+    assert.match(
+      consumer.slice(invalidTargetCheck, invalidReturn),
+      /setSelectedEntryId\(null\)/,
+    );
+    assert.doesNotMatch(
+      consumer.slice(invalidTargetCheck, invalidReturn),
+      /setComment\(/,
+    );
+  }
 });

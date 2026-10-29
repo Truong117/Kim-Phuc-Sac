@@ -12,10 +12,17 @@ export type WeeklyPlanDiscussionOption = {
   label: string;
 };
 
-export type WeeklyPlanCommentTargetArguments = {
-  assigneeId: number | undefined;
-  entryId: number | undefined;
-};
+export type WeeklyPlanCommentTargetResolution =
+  | {
+      valid: true;
+      assigneeId: number | undefined;
+      entryId: number | undefined;
+    }
+  | {
+      valid: false;
+      assigneeId: undefined;
+      entryId: undefined;
+    };
 
 export const normalizeWeeklyPlanDiscussionSearch = (value: string): string =>
   value
@@ -77,23 +84,38 @@ export const isWeeklyPlanDiscussionEntryConsistent = (
         entry.assignee?.id === target.selectedEmployeeId,
     ));
 
+export const isWeeklyPlanDiscussionEmployeeConsistent = (
+  plan: DiscussionTargetPlan,
+  target: Pick<WeeklyPlanDiscussionTarget, "selectedEmployeeId">,
+): boolean =>
+  target.selectedEmployeeId === null ||
+  createWeeklyPlanDiscussionEmployeeOptions(plan).some(
+    (option) => option.value === target.selectedEmployeeId,
+  );
+
 export const resolveWeeklyPlanCommentTargetArguments = (
-  plan: Pick<WeeklyPlan, "entries">,
+  plan: DiscussionTargetPlan,
   target: WeeklyPlanDiscussionTarget,
-): WeeklyPlanCommentTargetArguments => {
-  if (
-    target.selectedEntryId !== null &&
-    isWeeklyPlanDiscussionEntryConsistent(plan, target)
-  ) {
-    return { assigneeId: undefined, entryId: target.selectedEntryId };
+): WeeklyPlanCommentTargetResolution => {
+  if (!isWeeklyPlanDiscussionEmployeeConsistent(plan, target)) {
+    return { valid: false, assigneeId: undefined, entryId: undefined };
   }
 
-  if (target.selectedEmployeeId !== null) {
+  if (target.selectedEntryId !== null) {
+    if (!isWeeklyPlanDiscussionEntryConsistent(plan, target)) {
+      return { valid: false, assigneeId: undefined, entryId: undefined };
+    }
+
     return {
-      assigneeId: target.selectedEmployeeId,
-      entryId: undefined,
+      valid: true,
+      assigneeId: undefined,
+      entryId: target.selectedEntryId,
     };
   }
 
-  return { assigneeId: undefined, entryId: undefined };
+  return {
+    valid: true,
+    assigneeId: target.selectedEmployeeId ?? undefined,
+    entryId: undefined,
+  };
 };
