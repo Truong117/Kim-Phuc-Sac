@@ -2,12 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
+  addGoogleDocsAiReviewItem,
   buildGoogleDocsAiApplyAllEntries,
   createGoogleDocsAiReviewDrafts,
   googleDocsAiPriority,
   groupGoogleDocsAiReviewDrafts,
+  moveGoogleDocsAiReviewItem,
+  removeGoogleDocsAiReviewItem,
   submitGoogleDocsAiApplyAll,
   updateGoogleDocsAiReviewDraft,
+  updateGoogleDocsAiReviewItem,
 } from "../src/utils/weeklyPlanGoogleDocsAiReview.ts";
 import {
   allSelectedGoogleDocsTabsVerified,
@@ -129,6 +133,7 @@ test("Google Docs AI review is employee-grouped and keeps DOCX review separate",
   assert.match(preview, /<WeeklyPlanGoogleDocsAiReview/);
   assert.match(preview, /onReview\(suggestion, passageIds, index\)/);
   assert.match(googleReview, /groupGoogleDocsAiReviewDrafts/);
+  assert.match(googleReview, /initialGroups\.length === 1/);
   assert.match(reviewGroup, /group\.employee\?\.name/);
   assert.match(reviewGroup, /group\.tabTitles\.join/);
   assert.match(reviewGroup, /verifiedBadge/);
@@ -180,10 +185,57 @@ test("structured AI items stay nested in the single atomic Apply All request", (
 
   assert.equal(built.entries.length, 1);
   assert.equal(drafts[0].groupingBasis, "SOURCE_STRUCTURE");
+  assert.equal(built.entries[0].content, "Content");
+  assert.equal(built.entries[0].expected_result, "Expected result");
+  assert.equal(built.entries[0].note, "Note");
   assert.deepEqual(built.entries[0].items, [
     { title: "Child A", content: null, source_passage_ids: [11] },
     { title: "Child B", content: "Details", source_passage_ids: [12] },
   ]);
+});
+
+test("compact review keeps add, edit, move, and remove item behavior intact", () => {
+  const passages = [
+    passage(11, "google-docs:tab-a:1"),
+    passage(12, "google-docs:tab-a:2"),
+  ];
+  let drafts = createGoogleDocsAiReviewDrafts(
+    [
+      suggestion({
+        sourceKeys: ["google-docs:tab-a:1", "google-docs:tab-a:2"],
+        groupingBasis: "AI_GROUPED",
+        items: [
+          {
+            title: "First",
+            content: null,
+            source_keys: ["google-docs:tab-a:1"],
+          },
+          {
+            title: "Second",
+            content: "Details",
+            source_keys: ["google-docs:tab-a:2"],
+          },
+        ],
+      }),
+    ],
+    passages,
+  );
+
+  drafts = addGoogleDocsAiReviewItem(drafts, 0);
+  drafts = updateGoogleDocsAiReviewItem(drafts, 0, 2, {
+    title: "Third",
+    content: "Third details",
+  });
+  drafts = moveGoogleDocsAiReviewItem(drafts, 0, 2, -1);
+  drafts = removeGoogleDocsAiReviewItem(drafts, 0, 0);
+
+  assert.deepEqual(
+    drafts[0].items.map(({ title, content }) => ({ title, content })),
+    [
+      { title: "Third", content: "Third details" },
+      { title: "Second", content: "Details" },
+    ],
+  );
 });
 
 test("employee groups are stable by trusted assignee and retain tab labels", () => {
@@ -395,8 +447,14 @@ test("AI details render safely while source evidence and dates stay out of Googl
 
   assert.deepEqual(drafts[0].detailSuggestions, details);
   assert.equal(withoutDetails[0].detailSuggestions, null);
-  assert.match(googleReview, /detailSuggestionKeys/);
+  assert.match(googleReview, /primaryDetailKeys/);
+  assert.match(googleReview, /secondaryDetailKeys/);
   assert.match(googleReview, /detail\.basis/);
+  assert.match(googleReview, /generalInfoOpen/);
+  assert.match(googleReview, /aiDetailsOpen/);
+  assert.match(googleReview, /compactFields/);
+  assert.match(googleReview, /className="sr-only"/);
+  assert.match(googleReview, /removeItemAria/);
   assert.doesNotMatch(googleReview, /KpsDatePicker/);
   assert.doesNotMatch(googleReview, /draft\.evidence/);
   assert.doesNotMatch(googleReview, /draft\.provenance/);

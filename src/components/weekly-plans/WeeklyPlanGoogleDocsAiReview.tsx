@@ -56,8 +56,8 @@ export default function WeeklyPlanGoogleDocsAiReview({
   );
   const [expandedGroupKeys, setExpandedGroupKeys] = useState<Set<string>>(
     () => {
-      const firstGroup = groupGoogleDocsAiReviewDrafts(drafts)[0];
-      return new Set(firstGroup ? [firstGroup.key] : []);
+      const initialGroups = groupGoogleDocsAiReviewDrafts(drafts);
+      return new Set(initialGroups.length === 1 ? [initialGroups[0].key] : []);
     },
   );
   const [expandedJobKeys, setExpandedJobKeys] = useState<Set<string>>(
