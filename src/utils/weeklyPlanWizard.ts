@@ -3,7 +3,10 @@ import type {
   WeeklyPlanEntry,
   WeeklyPlanEvent,
   WeeklyPlanGoogleDocsEmployeeMappings,
+  WeeklyPlanSuggestion,
 } from "@/types/weeklyPlanning";
+
+export const WEEKLY_PLAN_RULE_ANALYZER_VERSION = "RULE_BASED_V2";
 
 export const weeklyPlanWizardSteps = [
   "source",
@@ -82,14 +85,28 @@ const latestEventId = (events: WeeklyPlanEvent[], types: string[]): number =>
 export const weeklyPlanAnalysisState = (
   events: WeeklyPlanEvent[],
 ): WeeklyPlanAnalysisState => {
-  const analyzedId = latestEventId(events, ["ANALYZED"]);
-  if (analyzedId === 0) return "NOT_RUN";
+  const latestAnalysis = events
+    .filter((event) => event.type === "ANALYZED")
+    .reduce<WeeklyPlanEvent | null>(
+      (latest, event) => (!latest || event.id > latest.id ? event : latest),
+      null,
+    );
+  if (!latestAnalysis) return "NOT_RUN";
+  if (latestAnalysis.metadata?.analyzer !== WEEKLY_PLAN_RULE_ANALYZER_VERSION) {
+    return "STALE";
+  }
   const invalidatedId = latestEventId(events, [
     "SUGGESTIONS_INVALIDATED",
     "PLAN_RESET",
   ]);
-  return invalidatedId > analyzedId ? "STALE" : "CURRENT";
+  return invalidatedId > latestAnalysis.id ? "STALE" : "CURRENT";
 };
+
+export const currentWeeklyPlanSuggestions = (
+  events: WeeklyPlanEvent[],
+  suggestions: WeeklyPlanSuggestion[],
+): WeeklyPlanSuggestion[] =>
+  weeklyPlanAnalysisState(events) === "CURRENT" ? suggestions : [];
 
 export type WeeklyPlanEmployeeWorkGroup = {
   key: string;

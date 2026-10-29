@@ -7,12 +7,14 @@ import {
   splitGoogleDocsAiReviewDraft,
 } from "../src/utils/weeklyPlanGoogleDocsAiReview.ts";
 import {
+  currentWeeklyPlanSuggestions,
   googleDocsSourceReady,
   groupWeeklyPlanEntriesByEmployee,
   guardWeeklyPlanWizardStep,
   inferWeeklyPlanWizardStep,
   weeklyPlanAnalysisState,
   weeklyPlanSubmissionReadiness,
+  WEEKLY_PLAN_RULE_ANALYZER_VERSION,
   weeklyPlanWizardSteps,
   weeklyPlanWorkCounts,
 } from "../src/utils/weeklyPlanWizard.ts";
@@ -192,25 +194,95 @@ test("Google Docs readiness requires every tab resolved and at least one relevan
   );
 });
 
-test("analysis state distinguishes missing, current, and invalidated review", () => {
+test("analysis state fails closed for legacy, unknown, and missing analyzer versions", () => {
   assert.equal(weeklyPlanAnalysisState([]), "NOT_RUN");
   assert.equal(
-    weeklyPlanAnalysisState([{ id: 4, type: "ANALYZED" }]),
+    weeklyPlanAnalysisState([
+      {
+        id: 10,
+        type: "ANALYZED",
+        metadata: { analyzer: "RULE_BASED_V1" },
+      },
+    ]),
+    "STALE",
+  );
+  assert.equal(
+    weeklyPlanAnalysisState([{ id: 10, type: "ANALYZED", metadata: null }]),
+    "STALE",
+  );
+  assert.equal(
+    weeklyPlanAnalysisState([
+      { id: 10, type: "ANALYZED", metadata: { suggestion_count: 2 } },
+    ]),
+    "STALE",
+  );
+  assert.equal(
+    weeklyPlanAnalysisState([
+      {
+        id: 10,
+        type: "ANALYZED",
+        metadata: { analyzer: "RULE_BASED_UNKNOWN" },
+      },
+    ]),
+    "STALE",
+  );
+});
+
+test("analysis state uses the latest V2 analysis by id and honors later invalidation", () => {
+  const v2Analysis = {
+    id: 10,
+    type: "ANALYZED",
+    metadata: { analyzer: WEEKLY_PLAN_RULE_ANALYZER_VERSION },
+  };
+  assert.equal(weeklyPlanAnalysisState([v2Analysis]), "CURRENT");
+  assert.equal(
+    weeklyPlanAnalysisState([
+      v2Analysis,
+      { id: 11, type: "SUGGESTIONS_INVALIDATED", metadata: null },
+    ]),
+    "STALE",
+  );
+  assert.equal(
+    weeklyPlanAnalysisState([
+      v2Analysis,
+      { id: 12, type: "PLAN_RESET", metadata: null },
+    ]),
+    "STALE",
+  );
+  assert.equal(
+    weeklyPlanAnalysisState([
+      {
+        id: 9,
+        type: "ANALYZED",
+        metadata: { analyzer: WEEKLY_PLAN_RULE_ANALYZER_VERSION },
+      },
+      {
+        id: 5,
+        type: "ANALYZED",
+        metadata: { analyzer: "RULE_BASED_V1" },
+      },
+    ]),
     "CURRENT",
   );
-  assert.equal(
-    weeklyPlanAnalysisState([
-      { id: 4, type: "ANALYZED" },
-      { id: 5, type: "SUGGESTIONS_INVALIDATED" },
-    ]),
-    "STALE",
-  );
-  assert.equal(
-    weeklyPlanAnalysisState([
-      { id: 4, type: "ANALYZED" },
-      { id: 6, type: "PLAN_RESET" },
-    ]),
-    "STALE",
+});
+
+test("legacy V1 suggestions are excluded from current Quick Check warning groups", () => {
+  const legacyEvents = [
+    {
+      id: 10,
+      type: "ANALYZED",
+      metadata: { analyzer: "RULE_BASED_V1" },
+    },
+  ];
+  const legacySuggestions = [
+    { id: 1, type: "DEADLINE_CONCENTRATION" },
+    { id: 2, type: "MISSING_EXPECTED_RESULT" },
+  ];
+
+  assert.equal(weeklyPlanAnalysisState(legacyEvents), "STALE");
+  assert.deepEqual(
+    currentWeeklyPlanSuggestions(legacyEvents, legacySuggestions),
+    [],
   );
 });
 

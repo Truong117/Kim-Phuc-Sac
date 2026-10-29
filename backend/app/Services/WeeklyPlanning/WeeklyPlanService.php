@@ -1122,7 +1122,7 @@ class WeeklyPlanService
             $this->assertSourceProcessingComplete($locked);
             if (! $locked->entries()->exists()) {
                 throw ValidationException::withMessages([
-                    'plan' => ['Kế hoạch phải có ít nhất một đầu việc trước khi phân tích.'],
+                    'plan' => ['Kế hoạch phải có ít nhất một công việc trước khi kiểm tra.'],
                 ]);
             }
 

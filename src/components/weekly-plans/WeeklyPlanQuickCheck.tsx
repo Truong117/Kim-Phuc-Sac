@@ -2,6 +2,7 @@ import ComponentCard from "@/components/common/ComponentCard";
 import Button from "@/components/ui/button/Button";
 import type { WeeklyPlan, WeeklyPlanSuggestion } from "@/types/weeklyPlanning";
 import {
+  currentWeeklyPlanSuggestions,
   weeklyPlanAnalysisState,
   weeklyPlanSubmissionReadiness,
 } from "@/utils/weeklyPlanWizard";
@@ -28,16 +29,20 @@ export default function WeeklyPlanQuickCheck({ plan, busy, onAnalyze }: Props) {
     [plan.entries],
   );
   const analysisState = weeklyPlanAnalysisState(plan.events);
+  const currentSuggestions = useMemo(
+    () => currentWeeklyPlanSuggestions(plan.events, plan.suggestions),
+    [plan.events, plan.suggestions],
+  );
   const warningGroups = useMemo<WarningGroup[]>(() => {
     const grouped = new Map<string, WeeklyPlanSuggestion[]>();
-    for (const suggestion of plan.suggestions) {
+    for (const suggestion of currentSuggestions) {
       grouped.set(suggestion.type, [
         ...(grouped.get(suggestion.type) ?? []),
         suggestion,
       ]);
     }
     return [...grouped].map(([type, suggestions]) => ({ type, suggestions }));
-  }, [plan.suggestions]);
+  }, [currentSuggestions]);
   const entryById = useMemo(
     () => new Map(plan.entries.map((entry) => [entry.id, entry])),
     [plan.entries],
@@ -138,7 +143,7 @@ export default function WeeklyPlanQuickCheck({ plan, busy, onAnalyze }: Props) {
               {analysisState === "CURRENT"
                 ? warningGroups.length === 0
                   ? t("warnings.clean")
-                  : t("warnings.found", { count: plan.suggestions.length })
+                  : t("warnings.found", { count: currentSuggestions.length })
                 : analysisState === "STALE"
                   ? t("warnings.stale")
                   : t("warnings.notRun")}
