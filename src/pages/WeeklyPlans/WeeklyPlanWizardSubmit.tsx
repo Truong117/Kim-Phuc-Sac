@@ -2,13 +2,16 @@ import ComponentCard from "@/components/common/ComponentCard";
 import TextArea from "@/components/form/input/TextArea";
 import Label from "@/components/form/Label";
 import Button from "@/components/ui/button/Button";
-import WeeklyPlanDiscussionScopePicker from "@/components/weekly-plans/WeeklyPlanDiscussionScopePicker";
+import WeeklyPlanCommentContext from "@/components/weekly-plans/WeeklyPlanCommentContext";
+import WeeklyPlanDiscussionTargetFields from "@/components/weekly-plans/WeeklyPlanDiscussionTargetFields";
 import WeeklyPlanWizardLayout from "@/components/weekly-plans/WeeklyPlanWizardLayout";
 import { useWeeklyPlanWizard } from "@/context/WeeklyPlanWizardContext";
 import {
   addWeeklyPlanComment,
   submitWeeklyPlan,
 } from "@/services/weeklyPlanningService";
+import { formatWeeklyPlanCommentTimestamp } from "@/utils/weeklyPlanCommentContext";
+import { resolveWeeklyPlanCommentTargetArguments } from "@/utils/weeklyPlanDiscussionTarget";
 import { weeklyPlanWorkCounts } from "@/utils/weeklyPlanWizard";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -28,10 +31,16 @@ export default function WeeklyPlanWizardSubmit() {
   const { t: eventLabel } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.events",
   });
+  const { t: discussionLabel } = useTranslation("common", {
+    keyPrefix: "weeklyPlanning.discussion",
+  });
   const { plan, busy, perform } = useWeeklyPlanWizard();
   const navigate = useNavigate();
   const [comment, setComment] = useState("");
-  const [commentTarget, setCommentTarget] = useState("plan");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(
+    null,
+  );
+  const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
 
   if (!plan) {
     return (
@@ -112,9 +121,18 @@ export default function WeeklyPlanWizardSubmit() {
               key={item.id}
               className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800/60"
             >
-              <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
-                {item.author.name}
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                  {item.author.name}
+                  {formatWeeklyPlanCommentTimestamp(item.created_at) && (
+                    <span className="font-normal text-gray-500 dark:text-gray-400">
+                      {" · "}
+                      {formatWeeklyPlanCommentTimestamp(item.created_at)}
+                    </span>
+                  )}
+                </p>
+                <WeeklyPlanCommentContext plan={plan} comment={item} />
+              </div>
               <p className="mt-1 text-theme-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300">
                 {item.content}
               </p>
@@ -127,24 +145,34 @@ export default function WeeklyPlanWizardSubmit() {
           )}
           {plan.actions.can_comment && (
             <>
-              <div>
-                <Label htmlFor="wizard-comment-target">
+              <div className="space-y-4">
+                <p className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
                   {t("submit.commentTarget")}
-                </Label>
-                <WeeklyPlanDiscussionScopePicker
-                  id="wizard-comment-target"
+                </p>
+                <WeeklyPlanDiscussionTargetFields
+                  idPrefix="wizard-comment-target"
                   plan={plan}
-                  value={commentTarget}
-                  onChange={setCommentTarget}
+                  value={{ selectedEmployeeId, selectedEntryId }}
+                  onChange={(target) => {
+                    setSelectedEmployeeId(target.selectedEmployeeId);
+                    setSelectedEntryId(target.selectedEntryId);
+                  }}
                   disabled={busy}
                 />
+                <div>
+                  <Label htmlFor="wizard-comment-content">
+                    {discussionLabel("contentLabel")}
+                  </Label>
+                  <TextArea
+                    id="wizard-comment-content"
+                    rows={3}
+                    value={comment}
+                    placeholder={discussionLabel("contentPlaceholder")}
+                    onChange={setComment}
+                    disabled={busy}
+                  />
+                </div>
               </div>
-              <TextArea
-                rows={3}
-                value={comment}
-                placeholder={t("submit.commentPlaceholder")}
-                onChange={setComment}
-              />
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -152,14 +180,16 @@ export default function WeeklyPlanWizardSubmit() {
                   className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                   onClick={() =>
                     void perform(async () => {
-                      const [targetType, targetId] = commentTarget.split(":");
+                      const { assigneeId, entryId } =
+                        resolveWeeklyPlanCommentTargetArguments(plan, {
+                          selectedEmployeeId,
+                          selectedEntryId,
+                        });
                       const result = await addWeeklyPlanComment(
                         plan.id,
                         comment.trim(),
-                        targetType === "employee"
-                          ? Number(targetId)
-                          : undefined,
-                        targetType === "entry" ? Number(targetId) : undefined,
+                        assigneeId,
+                        entryId,
                       );
                       setComment("");
                       return result;

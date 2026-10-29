@@ -430,8 +430,8 @@ test("Vietnamese weekly translations interpolate actual values with single brace
     "Tuần 26/10/2026 – 31/10/2026",
   );
   assert.equal(
-    instance.t("weeklyPlanning.detail.commentEmployee", { name: "Nguyễn An" }),
-    "Nhân viên: Nguyễn An",
+    instance.t("weeklyPlanning.discussion.allEmployeeWorks"),
+    "Toàn bộ công việc",
   );
   assert.equal(
     instance.t("weeklyPlanning.review.confirmDescription", {
