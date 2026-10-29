@@ -104,8 +104,9 @@ The complete expected index sets include the deterministic TiDB/MySQL child-FK i
 
 - migration 16 source table: `weekly_google_sources_actor_foreign`, `weekly_google_sources_folder_foreign`;
 - migration 17 mapping table: `weekly_gdoc_tab_maps_assignee_foreign`, `weekly_gdoc_tab_maps_verifier_foreign`;
-- migration 17 event table: `weekly_gdoc_tab_events_actor_foreign`, `weekly_gdoc_tab_events_new_user_foreign`, `weekly_gdoc_tab_events_old_user_foreign`, `weekly_gdoc_tab_events_plan_foreign`.
-- migration 18 item-source-passage table: `weekly_item_passage_passage_foreign`; its first child FK is covered by the composite primary key.
+- migration 17 event table: `weekly_gdoc_tab_events_actor_foreign`, `weekly_gdoc_tab_events_new_user_foreign`, `weekly_gdoc_tab_events_old_user_foreign`, `weekly_gdoc_tab_events_plan_foreign`;
+- migration 18 item table: `weekly_plan_entry_items_weekly_plan_entry_id_foreign`;
+- migration 18 item-source-passage table: `weekly_item_passage_passage_foreign`; its first child FK is already covered by the composite primary key.
 
 Unexpected indexes or an unsupported metadata representation fail closed as partial schema. Parent FK prerequisites require a compatible unsigned bigint and a referenceable single-column PRIMARY/UNIQUE key.
 

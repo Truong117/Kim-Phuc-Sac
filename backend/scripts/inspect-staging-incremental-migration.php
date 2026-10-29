@@ -572,6 +572,9 @@ function incrementalMigration18SchemaStateFromMetadata(
             'sort_order',
             'id',
         ]),
+        'weekly_plan_entry_items_weekly_plan_entry_id_foreign' => incrementalExpectedIndex(1, [
+            'weekly_plan_entry_id',
+        ]),
     ]) && StagingIncrementalSchema::indexesMatch($passageIndexes, [
         'PRIMARY' => incrementalExpectedIndex(0, [
             'weekly_plan_entry_item_id',

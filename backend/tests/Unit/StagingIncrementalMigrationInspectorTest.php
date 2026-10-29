@@ -155,6 +155,23 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
             'missing exact index' => static function (array &$metadata): void {
                 unset($metadata['item_indexes']['weekly_entry_items_entry_sort_index']);
             },
+            'missing FK support index' => static function (array &$metadata): void {
+                unset($metadata['item_indexes']['weekly_plan_entry_items_weekly_plan_entry_id_foreign']);
+            },
+            'wrong FK support index name' => static function (array &$metadata): void {
+                $metadata['item_indexes']['wrong_weekly_plan_entry_index'] =
+                    $metadata['item_indexes']['weekly_plan_entry_items_weekly_plan_entry_id_foreign'];
+                unset($metadata['item_indexes']['weekly_plan_entry_items_weekly_plan_entry_id_foreign']);
+            },
+            'wrong FK support index column' => static function (array &$metadata): void {
+                $metadata['item_indexes']['weekly_plan_entry_items_weekly_plan_entry_id_foreign']['columns'][0]['name'] = 'sort_order';
+            },
+            'unique FK support index' => static function (array &$metadata): void {
+                $metadata['item_indexes']['weekly_plan_entry_items_weekly_plan_entry_id_foreign']['non_unique'] = 0;
+            },
+            'unexpected extra item index' => static function (array &$metadata): void {
+                $metadata['item_indexes']['unexpected_item_index'] = $metadata['item_indexes']['PRIMARY'];
+            },
             'wrong composite primary key' => static function (array &$metadata): void {
                 $metadata['passage_indexes']['PRIMARY']['columns'] = [[
                     'name' => 'weekly_plan_entry_item_id',
@@ -237,6 +254,9 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
                     'weekly_plan_entry_id',
                     'sort_order',
                     'id',
+                ]),
+                'weekly_plan_entry_items_weekly_plan_entry_id_foreign' => $this->actualIndex(1, [
+                    'weekly_plan_entry_id',
                 ]),
             ],
             'item_foreign_keys' => [
