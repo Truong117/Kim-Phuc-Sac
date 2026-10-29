@@ -6,6 +6,11 @@ import WeeklyPlanStatusBadge from "@/components/weekly-plans/WeeklyPlanStatusBad
 import { ChevronDownIcon, SearchIcon } from "@/icons";
 import type { WeeklyPlanEntry, WeeklyPlanReview } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
+import {
+  initialExpandedEmployeeKey,
+  reconcileExpandedEmployeeKey,
+  toggleExpandedEmployeeKey,
+} from "@/utils/weeklyPlanEmployeeAccordion";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -31,11 +36,59 @@ type EmployeeGroup = {
   entries: WeeklyPlanEntry[];
 };
 
+type EntryFilters = {
+  query: string;
+  employee: string;
+  validation: string;
+  completeness: string;
+};
+
 const needsMoreInformation = (entry: WeeklyPlanEntry) =>
   entry.validation_status === "INVALID" ||
   !entry.expected_result?.trim() ||
   !entry.start_date ||
   !entry.due_date;
+
+const filterEmployeeGroups = (
+  groups: EmployeeGroup[],
+  filters: EntryFilters,
+): EmployeeGroup[] => {
+  const normalizedQuery = filters.query.trim().toLocaleLowerCase("vi");
+
+  return groups
+    .filter(
+      (group) => filters.employee === "all" || filters.employee === group.key,
+    )
+    .map((group) => ({
+      ...group,
+      entries: group.entries.filter((entry) => {
+        const searchText = [
+          group.name,
+          entry.employee_name,
+          entry.title,
+          entry.content,
+          entry.expected_result,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("vi");
+        const matchesCompleteness =
+          filters.completeness === "all" ||
+          (filters.completeness === "missing-result" &&
+            !entry.expected_result?.trim()) ||
+          (filters.completeness === "missing-date" &&
+            (!entry.start_date || !entry.due_date));
+
+        return (
+          (!normalizedQuery || searchText.includes(normalizedQuery)) &&
+          (filters.validation === "all" ||
+            entry.validation_status === filters.validation) &&
+          matchesCompleteness
+        );
+      }),
+    }))
+    .filter((group) => group.entries.length > 0);
+};
 
 export default function WeeklyPlanEntries({
   entries,
@@ -54,8 +107,6 @@ export default function WeeklyPlanEntries({
   const [employeeFilter, setEmployeeFilter] = useState("all");
   const [validationFilter, setValidationFilter] = useState("all");
   const [completenessFilter, setCompletenessFilter] = useState("all");
-  const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
-
   const groups = useMemo(
     () =>
       Object.values(
@@ -82,50 +133,23 @@ export default function WeeklyPlanEntries({
       ),
     [entries, t],
   );
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(() =>
+    initialExpandedEmployeeKey(groups.map((group) => group.key)),
+  );
 
-  const normalizedQuery = query.trim().toLocaleLowerCase("vi");
+  const filters = useMemo<EntryFilters>(
+    () => ({
+      query,
+      employee: employeeFilter,
+      validation: validationFilter,
+      completeness: completenessFilter,
+    }),
+    [completenessFilter, employeeFilter, query, validationFilter],
+  );
+  const normalizedQuery = filters.query.trim().toLocaleLowerCase("vi");
   const visibleGroups = useMemo(
-    () =>
-      groups
-        .filter(
-          (group) => employeeFilter === "all" || employeeFilter === group.key,
-        )
-        .map((group) => ({
-          ...group,
-          entries: group.entries.filter((entry) => {
-            const searchText = [
-              group.name,
-              entry.employee_name,
-              entry.title,
-              entry.content,
-              entry.expected_result,
-            ]
-              .filter(Boolean)
-              .join(" ")
-              .toLocaleLowerCase("vi");
-            const matchesCompleteness =
-              completenessFilter === "all" ||
-              (completenessFilter === "missing-result" &&
-                !entry.expected_result?.trim()) ||
-              (completenessFilter === "missing-date" &&
-                (!entry.start_date || !entry.due_date));
-
-            return (
-              (!normalizedQuery || searchText.includes(normalizedQuery)) &&
-              (validationFilter === "all" ||
-                entry.validation_status === validationFilter) &&
-              matchesCompleteness
-            );
-          }),
-        }))
-        .filter((group) => group.entries.length > 0),
-    [
-      completenessFilter,
-      employeeFilter,
-      groups,
-      normalizedQuery,
-      validationFilter,
-    ],
+    () => filterEmployeeGroups(groups, filters),
+    [filters, groups],
   );
 
   const acceptedEmployees = reviews.filter(
@@ -138,13 +162,32 @@ export default function WeeklyPlanEntries({
     validationFilter !== "all" ||
     completenessFilter !== "all";
 
+  const visibleGroupKeys = useMemo(
+    () => visibleGroups.map((group) => group.key),
+    [visibleGroups],
+  );
+  const activeExpandedGroupKey = reconcileExpandedEmployeeKey(
+    expandedGroupKey,
+    visibleGroupKeys,
+  );
+
+  const updateFilters = (changes: Partial<EntryFilters>) => {
+    const nextFilters = { ...filters, ...changes };
+    const nextVisibleKeys = filterEmployeeGroups(groups, nextFilters).map(
+      (group) => group.key,
+    );
+
+    setExpandedGroupKey((current) =>
+      reconcileExpandedEmployeeKey(current, nextVisibleKeys),
+    );
+    setQuery(nextFilters.query);
+    setEmployeeFilter(nextFilters.employee);
+    setValidationFilter(nextFilters.validation);
+    setCompletenessFilter(nextFilters.completeness);
+  };
+
   const toggleGroup = (key: string) => {
-    setCollapsedKeys((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    setExpandedGroupKey((current) => toggleExpandedEmployeeKey(current, key));
   };
 
   return (
@@ -190,7 +233,9 @@ export default function WeeklyPlanEntries({
                   value={query}
                   placeholder={t("filters.searchPlaceholder")}
                   className="ps-10"
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) =>
+                    updateFilters({ query: event.target.value })
+                  }
                 />
               </div>
             </div>
@@ -201,7 +246,7 @@ export default function WeeklyPlanEntries({
               <Select
                 id="weekly-entry-employee-filter"
                 value={employeeFilter}
-                onChange={setEmployeeFilter}
+                onChange={(employee) => updateFilters({ employee })}
                 options={[
                   { value: "all", label: t("filters.allEmployees") },
                   ...groups.map((group) => ({
@@ -218,7 +263,7 @@ export default function WeeklyPlanEntries({
               <Select
                 id="weekly-entry-validation-filter"
                 value={validationFilter}
-                onChange={setValidationFilter}
+                onChange={(validation) => updateFilters({ validation })}
                 options={[
                   { value: "all", label: t("filters.allValidation") },
                   { value: "VALID", label: t("validation.VALID") },
@@ -233,7 +278,7 @@ export default function WeeklyPlanEntries({
               <Select
                 id="weekly-entry-completeness-filter"
                 value={completenessFilter}
-                onChange={setCompletenessFilter}
+                onChange={(completeness) => updateFilters({ completeness })}
                 options={[
                   { value: "all", label: t("filters.allCompleteness") },
                   {
@@ -255,43 +300,23 @@ export default function WeeklyPlanEntries({
                 ),
               })}
             </p>
-            <div className="flex flex-wrap gap-2">
-              {hasFilters && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setQuery("");
-                    setEmployeeFilter("all");
-                    setValidationFilter("all");
-                    setCompletenessFilter("all");
-                  }}
-                >
-                  {t("filters.clear")}
-                </Button>
-              )}
+            {hasFilters && (
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => setCollapsedKeys(new Set())}
+                onClick={() => {
+                  updateFilters({
+                    query: "",
+                    employee: "all",
+                    validation: "all",
+                    completeness: "all",
+                  });
+                }}
               >
-                {t("expandAll")}
+                {t("filters.clear")}
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  setCollapsedKeys(
-                    new Set(visibleGroups.map((group) => group.key)),
-                  )
-                }
-              >
-                {t("collapseAll")}
-              </Button>
-            </div>
+            )}
           </div>
         </div>
       )}
@@ -309,7 +334,7 @@ export default function WeeklyPlanEntries({
           const review = reviews.find(
             (item) => item.assignee.id === group.assigneeId,
           );
-          const isCollapsed = collapsedKeys.has(group.key);
+          const isExpanded = activeExpandedGroupKey === group.key;
           const validCount = group.entries.filter(
             (entry) => entry.validation_status === "VALID",
           ).length;
@@ -320,23 +345,23 @@ export default function WeeklyPlanEntries({
           return (
             <section
               key={group.key}
-              className={`overflow-hidden rounded-xl border ${groupAttentionCount > 0 ? "border-warning-300 dark:border-warning-700" : "border-gray-200 dark:border-gray-700"}`}
+              className={`overflow-hidden rounded-2xl border bg-white transition-shadow dark:bg-gray-900 ${isExpanded ? "border-kps-primary/30 shadow-theme-sm dark:border-kps-primary/50" : "border-kps-primary/15 dark:border-kps-primary/30"}`}
             >
-              <div className="flex flex-col gap-3 bg-white p-4 sm:flex-row sm:items-center sm:justify-between dark:bg-gray-900">
-                <button
-                  type="button"
-                  aria-expanded={!isCollapsed}
-                  aria-controls={regionId}
-                  onClick={() => toggleGroup(group.key)}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-start focus-visible:ring-2 focus-visible:ring-kps-primary/40 focus-visible:outline-none"
-                >
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={regionId}
+                onClick={() => toggleGroup(group.key)}
+                className="flex w-full flex-col gap-3 border-s-4 border-s-kps-primary bg-kps-primary/[0.04] p-4 text-start transition-colors hover:bg-kps-primary/[0.07] focus-visible:ring-2 focus-visible:ring-kps-primary/40 focus-visible:outline-none focus-visible:ring-inset sm:flex-row sm:items-center sm:justify-between dark:bg-kps-primary/10 dark:hover:bg-kps-primary/15"
+              >
+                <span className="flex min-w-0 items-center gap-3">
                   <ChevronDownIcon
                     aria-hidden="true"
-                    className={`size-5 shrink-0 text-gray-500 transition-transform ${isCollapsed ? "-rotate-90 rtl:rotate-90" : ""}`}
+                    className={`size-5 shrink-0 text-kps-primary transition-transform dark:text-white ${isExpanded ? "" : "-rotate-90 rtl:rotate-90"}`}
                   />
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-gray-900 dark:text-white">
+                      <span className="text-base font-semibold text-gray-900 dark:text-white">
                         {group.name}
                       </span>
                       {group.assigneeId === null && (
@@ -354,9 +379,9 @@ export default function WeeklyPlanEntries({
                         : t("noDepartment")}
                     </span>
                   </span>
-                </button>
-                <div className="flex flex-wrap items-center gap-2 text-theme-xs">
-                  <span className="rounded-full bg-gray-100 px-2.5 py-1 font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                </span>
+                <span className="flex flex-wrap items-center gap-2 text-theme-xs sm:justify-end">
+                  <span className="rounded-full bg-white px-2.5 py-1 font-medium text-gray-700 shadow-theme-xs dark:bg-gray-800 dark:text-gray-300">
                     {t("groupCounts.total", { count: group.entries.length })}
                   </span>
                   <span className="rounded-full bg-success-50 px-2.5 py-1 font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
@@ -364,26 +389,28 @@ export default function WeeklyPlanEntries({
                   </span>
                   {groupAttentionCount > 0 && (
                     <span className="rounded-full bg-warning-50 px-2.5 py-1 font-semibold text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
-                      {t("groupCounts.missing", { count: groupAttentionCount })}
+                      {t("groupCounts.missing", {
+                        count: groupAttentionCount,
+                      })}
                     </span>
                   )}
-                </div>
-              </div>
+                </span>
+              </button>
 
-              {!isCollapsed && (
+              {isExpanded && (
                 <div
                   id={regionId}
-                  className="space-y-3 border-t border-gray-200 bg-gray-50/60 p-4 dark:border-gray-700 dark:bg-gray-800/30"
+                  className="space-y-3 border-t border-kps-primary/10 bg-gray-50/60 px-3 py-4 sm:px-4 dark:border-kps-primary/20 dark:bg-gray-800/30"
                 >
                   {group.entries.map((entry) => (
                     <article
                       key={entry.id}
-                      className="rounded-xl bg-white p-4 shadow-theme-xs dark:bg-gray-900"
+                      className="rounded-xl border border-gray-200 bg-white p-4 shadow-theme-xs dark:border-gray-700 dark:bg-gray-900"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
-                            <h4 className="font-semibold text-gray-900 dark:text-white">
+                            <h4 className="text-theme-sm font-semibold text-gray-900 dark:text-white">
                               {entry.title || t("untitled")}
                             </h4>
                             <span

@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import i18next from "i18next";
+import {
+  initialExpandedEmployeeKey,
+  reconcileExpandedEmployeeKey,
+  toggleExpandedEmployeeKey,
+} from "../src/utils/weeklyPlanEmployeeAccordion.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -235,10 +240,63 @@ test("weekly entries are grouped by stable user identity with an unresolved fall
   assert.match(entries, /entry\.validation_status === "VALID"/);
   assert.match(entries, /!entry\.expected_result\?\.trim\(\)/);
   assert.match(entries, /!entry\.start_date \|\| !entry\.due_date/);
-  assert.match(entries, /aria-expanded=\{!isCollapsed\}/);
-  assert.match(entries, /setCollapsedKeys\(new Set\(\)\)/);
+  assert.match(entries, /aria-expanded=\{isExpanded\}/);
+  assert.match(entries, /activeExpandedGroupKey === group\.key/);
+  assert.doesNotMatch(entries, /collapsedKeys|setCollapsedKeys/);
   assert.match(entries, /visibleGroups\.map/);
   assert.match(entries, /noFilteredEntries/);
+});
+
+test("employee accordion keeps one group open and reconciles filtered keys", () => {
+  assert.equal(initialExpandedEmployeeKey(["employee:a"]), "employee:a");
+  assert.equal(initialExpandedEmployeeKey(["employee:a", "employee:b"]), null);
+
+  assert.equal(toggleExpandedEmployeeKey(null, "employee:a"), "employee:a");
+  assert.equal(
+    toggleExpandedEmployeeKey("employee:a", "employee:b"),
+    "employee:b",
+  );
+  assert.equal(toggleExpandedEmployeeKey("employee:b", "employee:b"), null);
+
+  assert.equal(
+    reconcileExpandedEmployeeKey("employee:a", ["employee:b"]),
+    null,
+  );
+  assert.equal(
+    reconcileExpandedEmployeeKey("employee:a", ["employee:a", "employee:b"]),
+    "employee:a",
+  );
+  assert.equal(
+    reconcileExpandedEmployeeKey(null, ["employee:a"], true),
+    "employee:a",
+  );
+  assert.equal(reconcileExpandedEmployeeKey(null, ["employee:a"]), null);
+});
+
+test("employee hierarchy uses KPS structure while preserving work actions and semantic states", async () => {
+  const entries = await readSource(
+    "src/components/weekly-plans/WeeklyPlanEntries.tsx",
+  );
+
+  assert.match(entries, /rounded-2xl border bg-white/);
+  assert.match(entries, /border-kps-primary\/15/);
+  assert.match(entries, /border-s-4 border-s-kps-primary/);
+  assert.match(entries, /bg-kps-primary\/\[0\.04\]/);
+  assert.doesNotMatch(entries, /brand-pink|bg-pink|border-pink|text-pink/);
+  assert.match(entries, /bg-gray-50\/60 px-3 py-4/);
+  assert.match(
+    entries,
+    /rounded-xl border border-gray-200 bg-white p-4 shadow-theme-xs/,
+  );
+  assert.doesNotMatch(entries, /t\("expandAll"\)|t\("collapseAll"\)/);
+  assert.ok((entries.match(/<details/g) ?? []).length >= 2);
+  assert.match(entries, /onClick=\{\(\) => onEdit\(entry\)\}/);
+  assert.match(entries, /onClick=\{\(\) => onDelete\(entry\)\}/);
+  assert.match(entries, /<WeeklyPlanStatusBadge status=\{review\.status\}/);
+  assert.match(
+    entries,
+    /entry\.validation_status === "VALID"[\s\S]*?bg-success-50[\s\S]*?bg-warning-50/,
+  );
 });
 
 test("weekly entry filters preserve the external edit modal and actions stay opaque", async () => {
