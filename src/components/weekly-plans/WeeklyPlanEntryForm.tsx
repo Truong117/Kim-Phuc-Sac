@@ -21,6 +21,9 @@ type Props = {
   weekStart: string;
   weekEnd: string;
   reviewerEdit?: boolean;
+  lockAssignee?: boolean;
+  lockedAssignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email">;
+  assigneeSourceTitle?: string;
   serverErrors?: Record<string, string[]>;
   serverErrorVersion?: number;
   submitLabel?: string;
@@ -60,6 +63,9 @@ export default function WeeklyPlanEntryForm({
   weekStart,
   weekEnd,
   reviewerEdit = false,
+  lockAssignee = false,
+  lockedAssignee,
+  assigneeSourceTitle,
   serverErrors = {},
   serverErrorVersion = 0,
   submitLabel,
@@ -80,7 +86,14 @@ export default function WeeklyPlanEntryForm({
   >({});
   const errors = useMemo(() => {
     const result: Record<string, string> = {};
-    if (!values.assignee_id) result.assignee_id = t("assigneeRequired");
+    if (
+      !values.assignee_id ||
+      (lockAssignee && lockedAssignee?.id !== values.assignee_id)
+    ) {
+      result.assignee_id = lockAssignee
+        ? t("mappedAssigneeUnavailable")
+        : t("assigneeRequired");
+    }
     if (!values.title.trim()) result.title = t("titleRequired");
     if (!values.start_date) result.start_date = t("startRequired");
     if (!values.due_date) result.due_date = t("dueRequired");
@@ -92,7 +105,7 @@ export default function WeeklyPlanEntryForm({
       result.due_date = t("dateOrder");
     }
     return result;
-  }, [t, values]);
+  }, [lockAssignee, lockedAssignee?.id, t, values]);
   const visibleError = (field: string) =>
     (submitted || touched[field] ? errors[field] : undefined) ??
     (clearedServerErrors[field] === serverErrorVersion
@@ -122,28 +135,59 @@ export default function WeeklyPlanEntryForm({
     >
       <div>
         <Label htmlFor="weekly-entry-assignee">{t("assignee")}</Label>
-        <Select
-          id="weekly-entry-assignee"
-          value={String(values.assignee_id || "")}
-          disabled={reviewerEdit}
-          placeholder={t("assigneePlaceholder")}
-          options={employees.map((employee) => ({
-            value: String(employee.id),
-            label: employee.name + " — " + employee.email,
-          }))}
-          error={Boolean(visibleError("assignee_id"))}
-          hint={visibleError("assignee_id")}
-          onBlur={() =>
-            setTouched((current) => ({ ...current, assignee_id: true }))
-          }
-          onChange={(value) => {
-            clearServerError("assignee_id");
-            setValues((current) => ({
-              ...current,
-              assignee_id: Number(value),
-            }));
-          }}
-        />
+        {lockAssignee ? (
+          <div
+            id="weekly-entry-assignee"
+            role="textbox"
+            aria-readonly="true"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/60"
+          >
+            {lockedAssignee ? (
+              <>
+                <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                  {lockedAssignee.name}
+                </p>
+                <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+                  {lockedAssignee.email}
+                </p>
+                {assigneeSourceTitle && (
+                  <p className="mt-2 text-theme-xs font-medium text-kps-primary dark:text-sidebar-selected">
+                    {t("lockedAssigneeSource", {
+                      source: assigneeSourceTitle,
+                    })}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-theme-xs text-error-600 dark:text-error-400">
+                {t("mappedAssigneeUnavailable")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <Select
+            id="weekly-entry-assignee"
+            value={String(values.assignee_id || "")}
+            disabled={reviewerEdit}
+            placeholder={t("assigneePlaceholder")}
+            options={employees.map((employee) => ({
+              value: String(employee.id),
+              label: employee.name + " — " + employee.email,
+            }))}
+            error={Boolean(visibleError("assignee_id"))}
+            hint={visibleError("assignee_id")}
+            onBlur={() =>
+              setTouched((current) => ({ ...current, assignee_id: true }))
+            }
+            onChange={(value) => {
+              clearServerError("assignee_id");
+              setValues((current) => ({
+                ...current,
+                assignee_id: Number(value),
+              }));
+            }}
+          />
+        )}
       </div>
       <div>
         <Label htmlFor="weekly-entry-title">{t("title")}</Label>

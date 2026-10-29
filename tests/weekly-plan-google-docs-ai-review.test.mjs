@@ -15,6 +15,7 @@ import {
   remainingGoogleDocsPassages,
   selectedGoogleDocsTabs,
   sourceBlockSelectionState,
+  verifiedSingleGoogleDocsTab,
 } from "../src/utils/weeklyPlanSourceSelection.ts";
 
 const readSource = (relativePath) =>
@@ -581,6 +582,85 @@ test("multi-tab AI readiness requires every selected persisted mapping to be ver
   assert.equal(allSelectedGoogleDocsTabsVerified(verifiedTabs), true);
   assert.equal(allSelectedGoogleDocsTabsVerified(unresolvedTabs), false);
   assert.equal(unresolvedTabs[1].title, "Huyền My");
+});
+
+test("manual Google Docs assignment accepts only one verified mapped tab", () => {
+  const employee = {
+    id: 101,
+    name: "Employee A",
+    email: "a@example.test",
+  };
+  const verifiedTab = {
+    tab_id: "tab-a",
+    title: "Phương Anh",
+    status: "VERIFIED",
+    employee,
+  };
+
+  assert.equal(verifiedSingleGoogleDocsTab([verifiedTab])?.employee.id, 101);
+  assert.equal(
+    verifiedSingleGoogleDocsTab([
+      { ...verifiedTab, status: "NEEDS_REVIEW", employee: null },
+    ]),
+    null,
+  );
+  assert.equal(
+    verifiedSingleGoogleDocsTab([
+      verifiedTab,
+      { ...verifiedTab, tab_id: "tab-b", title: "Huyền My" },
+    ]),
+    null,
+  );
+  assert.equal(verifiedSingleGoogleDocsTab([]), null);
+});
+
+test("Google Docs drafts lock trusted mapped assignees and uploaded drafts keep the picker", async () => {
+  const [sourceDocument, entryForm, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanEntryForm.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.match(
+    sourceDocument,
+    /verifiedSingleGoogleDocsTab\(selectedGoogleTabs\)/,
+  );
+  assert.match(
+    sourceDocument,
+    /plan\.source_type === "GOOGLE_DOCS"[\s\S]*\? verifiedSingleGoogleDocsTab\(selectedGoogleTabs\)[\s\S]*: null/,
+  );
+  assert.match(
+    sourceDocument,
+    /assigneeId: verifiedGoogleDocsTab\?\.employee\.id \?\? null/,
+  );
+  assert.match(sourceDocument, /lockAssignee: verifiedGoogleDocsTab !== null/);
+  assert.match(
+    sourceDocument,
+    /!draft\.lockAssignee && draft\.assigneeId === null/,
+  );
+  assert.match(
+    sourceDocument,
+    /suggestion\.assignment_source ===[\s\S]*"VERIFIED_GOOGLE_DOCS_TAB_MAPPING"/,
+  );
+  assert.match(sourceDocument, /lockedAssignee\?\.id \?\? null/);
+  assert.match(
+    sourceDocument,
+    /hasTrustedGoogleDocsAssignment =[\s\S]*plan\.source_type === "GOOGLE_DOCS"/,
+  );
+  assert.match(entryForm, /lockAssignee \? \(/);
+  assert.match(entryForm, /aria-readonly="true"/);
+  assert.match(entryForm, /lockedAssignee\.name/);
+  assert.match(entryForm, /lockedAssignee\.email/);
+  assert.match(entryForm, /lockedAssigneeSource/);
+  assert.equal(
+    copy.sourceDocument.googleDocsMappingRequired,
+    "Vui lòng xác minh mapping nhân viên Google Docs trước khi tạo công việc.",
+  );
+  assert.equal(
+    copy.entryForm.lockedAssigneeSource,
+    "Được xác định từ mapping Google Docs: {source}",
+  );
 });
 
 test("AI failure preserves selected groups while successful Apply All clears them", async () => {

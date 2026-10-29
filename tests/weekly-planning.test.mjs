@@ -204,7 +204,11 @@ test("weekly entry filters preserve the external edit modal and actions stay opa
   assert.match(sourceDocument, /assignee_id: draft\.assigneeId/);
   assert.match(sourceDocument, /source_passage_ids: draft\.passageIds/);
   assert.match(sourceDocument, /key=\{draft\.requestId\}/);
-  assert.match(sourceDocument, /assigneeId: null/);
+  assert.match(sourceDocument, /assigneeId: lockedAssignee\?\.id \?\? null/);
+  assert.match(
+    sourceDocument,
+    /assigneeId: verifiedGoogleDocsTab\?\.employee\.id \?\? null/,
+  );
   assert.match(sourceDocument, /aiSuggestionIndex: index/);
   assert.match(aiPreview, /suggestion\.source_keys/);
   assert.match(aiPreview, /suggestion\.evidence/);
