@@ -66,7 +66,7 @@ test("weekly AI preview treats an empty suggestion list as a successful empty st
     sourceDocument,
     /const suggestions =[\s\S]*?await onAiExtract\(\)/,
   );
-  assert.match(sourceDocument, /setAiSuggestions\(suggestions\)/);
+  assert.match(sourceDocument, /setAiSuggestions\(normalized\.suggestions\)/);
   assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
   assert.match(aiPreview, /suggestions\.length === 0/);
   assert.match(aiPreview, /\{t\("empty"\)\}/);
@@ -221,9 +221,13 @@ test("weekly entry filters preserve the external edit modal and actions stay opa
 });
 
 test("weekly entry form uses date-only picker and interaction-gated validation", async () => {
-  const form = await readSource(
-    "src/components/weekly-plans/WeeklyPlanEntryForm.tsx",
-  );
+  const [form, textArea, googleJobRow] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanEntryForm.tsx"),
+    readSource("src/components/form/input/TextArea.tsx"),
+    readSource(
+      "src/components/weekly-plans/WeeklyPlanGoogleDocsAiReviewJobRow.tsx",
+    ),
+  ]);
 
   assert.match(form, /KpsDatePicker/);
   assert.doesNotMatch(form, /type=["']date["']/);
@@ -239,6 +243,12 @@ test("weekly entry form uses date-only picker and interaction-gated validation",
   assert.match(form, /serverErrors\[`entries\.0\.\$\{field\}`\]/);
   assert.match(form, /clearServerError\("assignee_id"\)/);
   assert.match(form, /clearServerError\("due_date"\)/);
+  assert.match(textArea, /containerClassName/);
+  assert.match(form, /grid items-stretch gap-4 md:grid-cols-2/);
+  assert.match(form, /containerClassName="flex flex-1"/);
+  assert.match(form, /className="h-full min-h-32"/);
+  assert.match(googleJobRow, /grid items-stretch gap-4 md:grid-cols-2/);
+  assert.match(googleJobRow, /containerClassName="flex flex-1"/);
 });
 
 test("weekly UI groups entries by employee and consumes opaque action flags", async () => {

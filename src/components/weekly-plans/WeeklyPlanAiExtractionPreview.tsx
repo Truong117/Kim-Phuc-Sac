@@ -1,5 +1,6 @@
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
+import WeeklyPlanAiPreviewErrorBoundary from "@/components/weekly-plans/WeeklyPlanAiPreviewErrorBoundary";
 import WeeklyPlanGoogleDocsAiReview from "@/components/weekly-plans/WeeklyPlanGoogleDocsAiReview";
 import type {
   WeeklyPlanAiSuggestion,
@@ -19,6 +20,7 @@ type Props = {
   reviewVersion: number;
   busy: boolean;
   onClose: () => void;
+  onRetry: () => void;
   onReview: (
     suggestion: WeeklyPlanAiSuggestion,
     passageIds: number[],
@@ -44,6 +46,7 @@ export default function WeeklyPlanAiExtractionPreview({
   reviewVersion,
   busy,
   onClose,
+  onRetry,
   onReview,
   onApplyAll,
   onApplied,
@@ -88,16 +91,25 @@ export default function WeeklyPlanAiExtractionPreview({
           {t("empty")}
         </p>
       ) : sourceType === "GOOGLE_DOCS" ? (
-        <WeeklyPlanGoogleDocsAiReview
+        <WeeklyPlanAiPreviewErrorBoundary
           key={`google-docs-ai-review-${reviewVersion}`}
-          suggestions={suggestions}
-          passages={passages}
-          weekStart={weekStart}
-          weekEnd={weekEnd}
-          busy={busy}
-          onApplyAll={onApplyAll}
-          onApplied={onApplied}
-        />
+          title={t("renderError.title")}
+          description={t("renderError.description")}
+          closeLabel={t("close")}
+          retryLabel={t("renderError.retry")}
+          onClose={onClose}
+          onRetry={onRetry}
+        >
+          <WeeklyPlanGoogleDocsAiReview
+            suggestions={suggestions}
+            passages={passages}
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+            busy={busy}
+            onApplyAll={onApplyAll}
+            onApplied={onApplied}
+          />
+        </WeeklyPlanAiPreviewErrorBoundary>
       ) : (
         <div className="mt-5 space-y-4">
           {suggestions.map((suggestion, index) => {

@@ -204,12 +204,14 @@ export default function WeeklyPlanEntryForm({
           }}
         />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
+      <div className="grid items-stretch gap-4 md:grid-cols-2">
+        <div className="flex h-full flex-col">
           <Label htmlFor="weekly-entry-content">{t("content")}</Label>
           <TextArea
             id="weekly-entry-content"
             rows={3}
+            containerClassName="flex flex-1"
+            className="h-full min-h-32"
             value={values.content ?? ""}
             onChange={(value) => {
               clearServerError("content");
@@ -219,11 +221,13 @@ export default function WeeklyPlanEntryForm({
             hint={visibleError("content")}
           />
         </div>
-        <div>
+        <div className="flex h-full flex-col">
           <Label htmlFor="weekly-entry-result">{t("expectedResult")}</Label>
           <TextArea
             id="weekly-entry-result"
             rows={3}
+            containerClassName="flex flex-1"
+            className="h-full min-h-32"
             value={values.expected_result ?? ""}
             onChange={(value) => {
               clearServerError("expected_result");

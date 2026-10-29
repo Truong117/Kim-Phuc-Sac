@@ -11,12 +11,15 @@ import {
 } from "../src/utils/weeklyPlanGoogleDocsAiReview.ts";
 import {
   allSelectedGoogleDocsTabsVerified,
+  googleDocsSelectionActionState,
   hasRemainingGoogleDocsTabs,
   remainingGoogleDocsPassages,
   selectedGoogleDocsTabs,
+  sourcePassageIdsForAi,
   sourceBlockSelectionState,
   verifiedSingleGoogleDocsTab,
 } from "../src/utils/weeklyPlanSourceSelection.ts";
+import { normalizeWeeklyPlanAiSuggestions } from "../src/utils/weeklyPlanAiSuggestions.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -510,7 +513,7 @@ test("source block selection exposes strong full and partial states", async () =
   assert.equal(copy.blockSelectedCount, "{selected}/{total} đoạn đã chọn");
 });
 
-test("Google Docs selection summary and single versus multi-tab actions stay explicit", async () => {
+test("Google Docs selection summary and one-or-more-tab AI actions stay explicit", async () => {
   const [sourceDocument, translationsSource] = await Promise.all([
     readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
     readSource("src/locales/vi/common.json"),
@@ -519,11 +522,14 @@ test("Google Docs selection summary and single versus multi-tab actions stay exp
 
   assert.match(sourceDocument, /selectedGoogleTabs\.length/);
   assert.match(sourceDocument, /googleDocsSelectionSummary/);
-  assert.match(sourceDocument, /!hasMultipleSelectedGoogleTabs/);
-  assert.match(sourceDocument, /hasMultipleSelectedGoogleTabs &&/);
+  assert.match(sourceDocument, /googleDocsSelectionActions\.canAnalyzeWithAi/);
+  assert.match(sourceDocument, /hasSingleVerifiedGoogleDocsTab/);
   assert.match(sourceDocument, /createManualEntry/);
   assert.match(sourceDocument, /extractSelectedGroupsWithAi/);
-  assert.match(sourceDocument, /runAiExtraction\([\s\S]*selectedPassages\.map/);
+  assert.match(
+    sourceDocument,
+    /runAiExtraction\([\s\S]*sourcePassageIdsForAi\(selectedPassages\)/,
+  );
   const selectionSummary = sourceDocument.slice(
     sourceDocument.indexOf("googleDocsSelectionSummary"),
     sourceDocument.indexOf("<WeeklyPlanAiExtractionPreview"),
@@ -538,7 +544,13 @@ test("Google Docs selection summary and single versus multi-tab actions stay exp
   assert.doesNotMatch(selectionSummary, /\.join\(" · "\)/);
   assert.match(selectionSummary, /whitespace-nowrap/);
   assert.match(selectionSummary, /bg-kps-primary/);
+  assert.match(selectionSummary, /variant=[\s\S]*"outline"/);
   assert.equal(copy.createManualEntry, "Tạo công việc thủ công");
+  assert.equal(
+    copy.analyzeRemainingGoogleDocsWithAi,
+    "Phân tích tất cả nhóm còn lại bằng AI",
+  );
+  assert.match(copy.manualPassageLimit, /\{selected\}.*\{limit\}/);
   assert.equal(
     copy.extractSelectedGroupsWithAi,
     "Phân tích {count} nhóm đã chọn bằng AI",
@@ -546,6 +558,85 @@ test("Google Docs selection summary and single versus multi-tab actions stay exp
   assert.equal(
     copy.googleDocsSelectionSummary,
     "Đã chọn {passages} đoạn từ {groups} nhóm",
+  );
+});
+
+test("single 32-passage and multi-group 50-passage selections keep AI enabled without weakening the manual limit", () => {
+  const verifiedTab = (tabId, employeeId) => ({
+    tab_id: tabId,
+    title: tabId,
+    status: "VERIFIED",
+    employee: {
+      id: employeeId,
+      name: `Employee ${employeeId}`,
+      email: `${employeeId}@example.test`,
+    },
+  });
+  const single = googleDocsSelectionActionState({
+    selectedPassageCount: 32,
+    selectedTabs: [verifiedTab("tab-huyen-my", 101)],
+    maxPassagesPerEntry: 20,
+    canAiExtractSelectedSource: true,
+  });
+  const multiple = googleDocsSelectionActionState({
+    selectedPassageCount: 50,
+    selectedTabs: [
+      verifiedTab("tab-phuong-anh", 101),
+      verifiedTab("tab-huyen-my", 202),
+    ],
+    maxPassagesPerEntry: 20,
+    canAiExtractSelectedSource: true,
+  });
+
+  assert.deepEqual(single, {
+    canAnalyzeWithAi: true,
+    canCreateManually: false,
+    manualLimitExceeded: true,
+  });
+  assert.deepEqual(multiple, {
+    canAnalyzeWithAi: true,
+    canCreateManually: false,
+    manualLimitExceeded: false,
+  });
+  assert.deepEqual(
+    sourcePassageIdsForAi(
+      Array.from({ length: 32 }, (_, index) => ({ id: index + 1 })),
+    ),
+    Array.from({ length: 32 }, (_, index) => index + 1),
+  );
+  assert.equal(
+    sourcePassageIdsForAi(
+      Array.from({ length: 50 }, (_, index) => ({ id: index + 1 })),
+    ).length,
+    50,
+  );
+});
+
+test("runtime AI normalization defaults optional collections but rejects untrusted Google identity", () => {
+  const trusted = normalizeWeeklyPlanAiSuggestions(
+    [
+      {
+        title: "Safe task",
+        source_tab: { tab_id: "tab-a", title: "Phương Anh" },
+        assignee: { id: 101, name: "Employee A", email: "a@example.test" },
+        assignment_source: "VERIFIED_GOOGLE_DOCS_TAB_MAPPING",
+        items: [{ title: "Child" }],
+      },
+    ],
+    "GOOGLE_DOCS",
+  );
+  assert.equal(trusted.ok, true);
+  assert.deepEqual(trusted.suggestions[0].source_keys, []);
+  assert.deepEqual(trusted.suggestions[0].verification_fields, []);
+  assert.deepEqual(trusted.suggestions[0].items[0].source_keys, []);
+  assert.equal(trusted.suggestions[0].content, "");
+  assert.equal(trusted.suggestions[0].expected_result, "");
+  assert.equal(trusted.suggestions[0].note, "");
+  assert.equal(trusted.suggestions[0].detail_suggestions, null);
+
+  assert.deepEqual(
+    normalizeWeeklyPlanAiSuggestions([{ title: "Unsafe" }], "GOOGLE_DOCS"),
+    { ok: false, reason: "UNTRUSTED_GOOGLE_ASSIGNMENT" },
   );
 });
 
@@ -664,9 +755,13 @@ test("Google Docs drafts lock trusted mapped assignees and uploaded drafts keep 
 });
 
 test("AI failure preserves selected groups while successful Apply All clears them", async () => {
-  const sourceDocument = await readSource(
-    "src/components/weekly-plans/WeeklyPlanSourceDocument.tsx",
-  );
+  const [sourceDocument, preview, errorBoundary] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanAiExtractionPreview.tsx"),
+    readSource(
+      "src/components/weekly-plans/WeeklyPlanAiPreviewErrorBoundary.tsx",
+    ),
+  ]);
   const extractionFlow = sourceDocument.slice(
     sourceDocument.indexOf("const runAiExtraction"),
     sourceDocument.indexOf("const reviewAiSuggestion"),
@@ -688,6 +783,11 @@ test("AI failure preserves selected groups while successful Apply All clears the
     sourceDocument,
     /onApplied=\{\(\) => \{[\s\S]*setAiSuggestions\(\[\]\);[\s\S]*setAiPreviewOpen\(false\);[\s\S]*setSelectedIds\(\[\]\);/,
   );
+  assert.match(sourceDocument, /normalizeWeeklyPlanAiSuggestions/);
+  assert.match(sourceDocument, /onRetry=\{\(\) =>/);
+  assert.match(preview, /WeeklyPlanAiPreviewErrorBoundary/);
+  assert.match(errorBoundary, /getDerivedStateFromError/);
+  assert.match(errorBoundary, /this\.props\.onRetry/);
 });
 
 test("authoritative remaining tab ids filter source cards and hide the completed workflow", async () => {
