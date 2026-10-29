@@ -48,7 +48,7 @@ export default function WeeklyPlanWizardStepper({
                 onClick={() => navigate(`/weekly-plans/${plan.id}/${step}`)}
                 className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-start transition ${
                   current
-                    ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+                    ? "bg-kps-primary/[0.08] text-kps-primary dark:bg-kps-primary/20 dark:text-white"
                     : completed
                       ? "text-success-700 hover:bg-success-50 dark:text-success-400 dark:hover:bg-success-500/10"
                       : "cursor-not-allowed text-gray-400 dark:text-gray-600"

@@ -143,6 +143,7 @@ export default function WeeklyPlanWizardSource() {
             <Button
               type="button"
               disabled={!weeklyPlanSourceReady(plan, mappings)}
+              className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
               onClick={() => navigate(`/weekly-plans/${plan.id}/structure`)}
             >
               {t("source.continue")}

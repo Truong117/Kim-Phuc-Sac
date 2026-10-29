@@ -11,7 +11,7 @@ export default function WeeklyPlanWizardHeader({ plan }: { plan: WeeklyPlan }) {
   return (
     <header className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800 dark:bg-white/3">
       <div>
-        <p className="text-theme-xs font-semibold tracking-wide text-brand-600 uppercase dark:text-brand-400">
+        <p className="text-theme-xs font-semibold tracking-wide text-kps-primary uppercase dark:text-white">
           {t("eyebrow")}
         </p>
         <h1 className="mt-1 text-title-sm font-semibold text-gray-900 dark:text-white">

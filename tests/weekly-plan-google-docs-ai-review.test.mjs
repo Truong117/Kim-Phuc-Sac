@@ -500,7 +500,9 @@ test("source block selection exposes strong full and partial states", async () =
   assert.equal(sourceBlockSelectionState([1, 2], new Set([1, 2])), "ALL");
   assert.match(sourceDocument, /data-selection-state={selectionState}/);
   assert.match(sourceDocument, /aria-pressed={allSelected}/);
-  assert.match(sourceDocument, /border-brand-500/);
+  assert.match(sourceDocument, /border-kps-primary\/50/);
+  assert.match(sourceDocument, /bg-kps-primary/);
+  assert.doesNotMatch(sourceDocument, /border-brand-|bg-brand-|ring-brand-/);
   assert.match(sourceDocument, /border-warning-400/);
   assert.match(sourceDocument, /focus-visible:ring-2/);
   assert.equal(copy.selectedGroup, "✓ Đã chọn nhóm");
@@ -521,6 +523,20 @@ test("Google Docs selection summary and single versus multi-tab actions stay exp
   assert.match(sourceDocument, /createManualEntry/);
   assert.match(sourceDocument, /extractSelectedGroupsWithAi/);
   assert.match(sourceDocument, /runAiExtraction\([\s\S]*selectedPassages\.map/);
+  const selectionSummary = sourceDocument.slice(
+    sourceDocument.indexOf("googleDocsSelectionSummary"),
+    sourceDocument.indexOf("<WeeklyPlanAiExtractionPreview"),
+  );
+  assert.match(sourceDocument, /lg:grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(selectionSummary, /<ul className="[^"]*flex-wrap/);
+  assert.match(selectionSummary, /selectedGoogleTabs\.map\(\(tab\)/);
+  assert.match(selectionSummary, /title={fullLabel}/);
+  assert.match(selectionSummary, /aria-label={fullLabel}/);
+  assert.match(selectionSummary, /max-w-full/);
+  assert.match(selectionSummary, /truncate/);
+  assert.doesNotMatch(selectionSummary, /\.join\(" · "\)/);
+  assert.match(selectionSummary, /whitespace-nowrap/);
+  assert.match(selectionSummary, /bg-kps-primary/);
   assert.equal(copy.createManualEntry, "Tạo công việc thủ công");
   assert.equal(
     copy.extractSelectedGroupsWithAi,

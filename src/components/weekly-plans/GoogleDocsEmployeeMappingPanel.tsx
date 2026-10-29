@@ -326,7 +326,7 @@ export default function GoogleDocsEmployeeMappingPanel({
             })}
           </p>
           {pendingConfirmationCount > 0 && (
-            <p className="mt-2 text-theme-sm font-medium text-brand-600 dark:text-brand-400">
+            <p className="mt-2 text-theme-sm font-medium text-kps-primary dark:text-white">
               {t("pendingConfirmation", {
                 count: pendingConfirmationCount,
               })}
@@ -369,6 +369,7 @@ export default function GoogleDocsEmployeeMappingPanel({
             type="button"
             size="sm"
             disabled={refreshingConflicts || savingBatch}
+            className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
             onClick={() => void retryBatchConflictRefresh()}
           >
             {refreshingConflicts
@@ -428,7 +429,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                       })}
                     </p>
                     {draft.dirty && !draft.conflict && (
-                      <p className="mt-1 text-theme-xs font-medium text-brand-600 dark:text-brand-400">
+                      <p className="mt-1 text-theme-xs font-medium text-kps-primary dark:text-white">
                         {t("unsaved")}
                       </p>
                     )}
@@ -442,7 +443,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                         className={`mt-3 rounded-lg border px-3 py-2 text-theme-xs font-medium ${
                           draft.prefillBasis === "CONFIRMED_ALIAS"
                             ? "border-warning-300 bg-warning-50 text-warning-800 dark:border-warning-900/60 dark:bg-warning-500/10 dark:text-warning-300"
-                            : "border-brand-200 bg-brand-25 text-brand-700 dark:border-brand-900/50 dark:bg-brand-500/10 dark:text-brand-300"
+                            : "border-kps-primary/20 bg-kps-primary/[0.06] text-kps-primary dark:border-kps-primary/40 dark:bg-kps-primary/15 dark:text-white"
                         }`}
                       >
                         {t(
@@ -474,7 +475,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                             refreshingConflicts ||
                             draft.conflict
                           }
-                          className="text-theme-xs font-semibold text-brand-600 hover:text-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400"
+                          className="text-theme-xs font-semibold text-kps-primary hover:text-kps-primary-hover focus-visible:ring-2 focus-visible:ring-kps-primary/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:text-white"
                           onClick={() =>
                             updateDraft(tab.tab_id, {
                               status: "VERIFIED",
@@ -590,6 +591,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                                   type="button"
                                   size="sm"
                                   disabled={savingBatch || refreshingConflicts}
+                                  className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                                   onClick={() =>
                                     keepDraftAfterConflict(tab.tab_id)
                                   }

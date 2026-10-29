@@ -188,26 +188,23 @@ function WeeklyPlanSourceDocument({
   const [localError, setLocalError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formErrorVersion, setFormErrorVersion] = useState(0);
-  const orderedPassages = useMemo(
-    () => {
-      const passages =
-        plan.source_type === "GOOGLE_DOCS"
-          ? remainingGoogleDocsPassages(
-              plan.source_document.passages,
-              plan.source_document.google_docs?.remaining_tab_ids ?? [],
-            )
-          : plan.source_document.passages;
+  const orderedPassages = useMemo(() => {
+    const passages =
+      plan.source_type === "GOOGLE_DOCS"
+        ? remainingGoogleDocsPassages(
+            plan.source_document.passages,
+            plan.source_document.google_docs?.remaining_tab_ids ?? [],
+          )
+        : plan.source_document.passages;
 
-      return [...passages].sort(
-        (first, second) => first.sequence - second.sequence,
-      );
-    },
-    [
-      plan.source_document.google_docs?.remaining_tab_ids,
-      plan.source_document.passages,
-      plan.source_type,
-    ],
-  );
+    return [...passages].sort(
+      (first, second) => first.sequence - second.sequence,
+    );
+  }, [
+    plan.source_document.google_docs?.remaining_tab_ids,
+    plan.source_document.passages,
+    plan.source_type,
+  ]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedPassages = useMemo(
     () => orderedPassages.filter((passage) => selectedIdSet.has(passage.id)),
@@ -535,7 +532,7 @@ function WeeklyPlanSourceDocument({
                   data-selection-state={selectionState}
                   className={`overflow-hidden rounded-xl border transition ${
                     {
-                      ALL: "border-brand-500 bg-brand-25 shadow-theme-xs ring-1 ring-brand-500/30 dark:border-brand-400 dark:bg-brand-500/10 dark:ring-brand-400/30",
+                      ALL: "border-kps-primary/50 bg-kps-primary/[0.04] shadow-theme-xs ring-1 ring-kps-primary/15 dark:border-kps-primary dark:bg-kps-primary/10 dark:ring-kps-primary/25",
                       PARTIAL:
                         "border-warning-400 bg-warning-50/70 ring-1 ring-warning-400/20 dark:border-warning-500 dark:bg-warning-500/10 dark:ring-warning-400/20",
                       NONE: "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900",
@@ -561,7 +558,7 @@ function WeeklyPlanSourceDocument({
                             {block.title}
                           </span>
                           {allSelected && (
-                            <span className="rounded-full bg-brand-500 px-2 py-0.5 text-theme-xs font-semibold text-white dark:bg-brand-400 dark:text-gray-950">
+                            <span className="rounded-full bg-kps-primary px-2 py-0.5 text-theme-xs font-semibold text-white">
                               {t("selectedIndicator")}
                             </span>
                           )}
@@ -634,7 +631,7 @@ function WeeklyPlanSourceDocument({
                         disabled={busy || grouping}
                         className={
                           allSelected
-                            ? "border-brand-500 bg-brand-50 text-brand-700 hover:bg-brand-100 dark:border-brand-400 dark:bg-brand-500/15 dark:text-brand-300"
+                            ? "border-kps-primary/50 bg-kps-primary/[0.08] text-kps-primary hover:bg-kps-primary/15 focus-visible:ring-2 focus-visible:ring-kps-primary/30 dark:border-kps-primary dark:bg-kps-primary/15 dark:text-white"
                             : partiallySelected
                               ? "border-warning-400 bg-warning-50 text-warning-800 hover:bg-warning-100 dark:border-warning-500 dark:bg-warning-500/10 dark:text-warning-300"
                               : undefined
@@ -718,7 +715,7 @@ function WeeklyPlanSourceDocument({
             })}
 
             {canSelect && (
-              <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-end sm:justify-between dark:border-gray-700 dark:bg-gray-800/50">
+              <div className="grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end dark:border-gray-700 dark:bg-gray-800/50">
                 <div className="min-w-0">
                   <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
                     {plan.source_type === "GOOGLE_DOCS"
@@ -730,15 +727,36 @@ function WeeklyPlanSourceDocument({
                   </p>
                   {plan.source_type === "GOOGLE_DOCS" &&
                     selectedGoogleTabs.length > 0 && (
-                      <p className="mt-1 text-theme-xs text-gray-600 dark:text-gray-300">
-                        {selectedGoogleTabs
-                          .map((tab) =>
-                            tab.employee
-                              ? `${tab.title} — ${tab.employee.name}`
-                              : tab.title,
-                          )
-                          .join(" · ")}
-                      </p>
+                      <ul className="mt-2 flex min-w-0 flex-wrap gap-2">
+                        {selectedGoogleTabs.map((tab) => {
+                          const fullLabel = tab.employee
+                            ? `${tab.title} → ${tab.employee.name}`
+                            : tab.title;
+
+                          return (
+                            <li
+                              key={tab.tab_id}
+                              title={fullLabel}
+                              aria-label={fullLabel}
+                              className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-kps-primary/15 bg-kps-primary/[0.06] px-2.5 py-1 text-theme-xs font-medium text-kps-primary dark:border-kps-primary/40 dark:bg-kps-primary/15 dark:text-white"
+                            >
+                              <span className="min-w-0 break-words">
+                                {tab.title}
+                              </span>
+                              {tab.employee && (
+                                <>
+                                  <span aria-hidden="true" className="shrink-0">
+                                    →
+                                  </span>
+                                  <span className="min-w-0 truncate">
+                                    {tab.employee.name}
+                                  </span>
+                                </>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
                     )}
                   {hasMultipleSelectedGoogleTabs &&
                     unresolvedSelectedGoogleTabs.length > 0 && (
@@ -751,12 +769,13 @@ function WeeklyPlanSourceDocument({
                       </p>
                     )}
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:shrink-0">
                   {plan.actions.can_group_source && (
                     <Button
                       type="button"
                       variant="outline"
                       disabled={busy || grouping || selectedIds.length === 0}
+                      className="w-full whitespace-nowrap sm:w-auto"
                       onClick={openGroupDraft}
                     >
                       {t("assignGroup")}
@@ -770,7 +789,7 @@ function WeeklyPlanSourceDocument({
                           disabled={
                             busy || grouping || selectedIds.length === 0
                           }
-                          className="bg-kps-primary hover:bg-kps-primary-hover"
+                          className="w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
                           onClick={openDraft}
                         >
                           {plan.source_type === "GOOGLE_DOCS"
@@ -788,7 +807,7 @@ function WeeklyPlanSourceDocument({
                             !plan.actions.can_ai_extract_selected_source ||
                             !selectedGoogleTabsVerified
                           }
-                          className="bg-kps-primary hover:bg-kps-primary-hover"
+                          className="w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
                           onClick={() =>
                             void runAiExtraction(
                               selectedPassages.map((passage) => passage.id),
