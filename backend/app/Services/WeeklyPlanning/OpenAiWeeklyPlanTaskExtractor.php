@@ -125,18 +125,28 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             'For flat or fragmented source, related actions may be grouped into one manageable AI_GROUPED job with items. Never group unrelated domains merely to reduce the job count.',
             'Use ATOMIC with items=[] when one source work item is already a complete standalone job.',
             'Every item must use source_keys from the same selected tab as its parent, and item source_keys must be a subset of the parent job source_keys.',
+            'Never repeat a source_key inside one child item.',
             'Parent source_keys must be the union of evidence supporting the job and its items. Items must not include employee identity or assignee data.',
         ] : [];
+        $assignmentGuidance = $isGoogleDocs ? [
+            'For GOOGLE_DOCS, employee identity is never decided by AI and employee_identifier must never drive assignment.',
+            'For GOOGLE_DOCS, do not add assignee_id to verification_fields. The server injects the assignee from verified HR mapping; AI only analyzes work content.',
+            'Khi source_type là GOOGLE_DOCS, AI không quyết định danh tính nhân viên và employee_identifier không được dùng để chọn, suy luận, gợi ý hoặc thay đổi tài khoản KPS.',
+            'Khi source_type là GOOGLE_DOCS, không thêm assignee_id vào verification_fields; máy chủ gán người phụ trách từ mapping đã được HR xác minh và AI chỉ phân tích nội dung công việc.',
+        ] : [
+            'Không tự gán tài khoản KPS. employee_identifier chỉ ghi nhận định danh xuất hiện rõ trong nguồn; nếu mơ hồ phải trả null và thêm assignee_id vào verification_fields.',
+        ];
 
         return implode(' ', [
             "Return at most {$maxTasks} proposed jobs.",
             'Do not automatically create one job for every passage.',
             'Consolidate passages only when they describe the same actual job; one consolidated job may then reference multiple source_keys.',
+            'Never repeat a source_key inside one proposed job.',
             'Never combine unrelated work merely to stay below the job limit.',
             'Prefer explicit, actionable source work over duplicated wording, headings, continuation lines, explanatory text, or repeated passages.',
             'For GOOGLE_DOCS, every source_key referenced by one proposed job must belong to exactly one tab_id.',
             ...$googleDocsCoverage,
-            'Do not repeat values in verification_fields; include each required field at most once.',
+            'Do not repeat verification_fields values; include each required field at most once.',
             'For detail_suggestions only, you may use general operational reasoning to propose practical planning recommendations when the source task is too generic.',
             'Use SOURCE_DERIVED only when the exact detail is explicitly supported by the supplied passages. Every unsupported operational recommendation must use basis=AI_SUGGESTION and must never be represented as a source or company fact.',
             'AI_SUGGESTION must not invent employee identity, KPS account ownership, internal company facts, customer facts, source-document claims, credentials, identifiers, or dates outside week_start and week_end.',
@@ -146,8 +156,7 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             'Không được bổ sung dữ kiện rồi coi chúng là thông tin từ nguồn. Riêng detail_suggestions có thể dùng suy luận vận hành phổ quát để đề xuất chi tiết thực tế phù hợp với loại công việc; mọi chi tiết không được passages xác nhận rõ ràng phải mang basis=AI_SUGGESTION.',
             'Mỗi đề xuất phải có ít nhất một source_key đúng nguyên văn từ nguồn và evidence ngắn gọn có thể đối chiếu.',
             'Khi source_type là GOOGLE_DOCS, mỗi đề xuất chỉ được tham chiếu source_keys thuộc chính xác một tab_id; tuyệt đối không kết hợp nội dung từ nhiều tab trong một đầu việc.',
-            'Khi source_type là GOOGLE_DOCS, người phụ trách được máy chủ xác định từ mapping tab đã được HR xác minh; không dùng employee_identifier để chọn, suy luận, gợi ý hoặc thay đổi tài khoản KPS và không thêm assignee_id vào verification_fields.',
-            'Không tự gán tài khoản KPS. employee_identifier chỉ ghi nhận định danh xuất hiện rõ trong nguồn; nếu mơ hồ phải trả null và thêm assignee_id vào verification_fields.',
+            ...$assignmentGuidance,
             'Ngày phải nằm trong week_start và week_end. Nếu nguồn không nêu rõ, dùng null và đánh dấu trường đó là SUGGESTED hoặc INFERRED để HR xác nhận.',
             'verification_fields liệt kê mọi trường cần HR kiểm tra. provenance phải mô tả nguồn gốc từng trường theo VERBATIM, INFERRED hoặc SUGGESTED.',
             'Không tạo Task, không thay đổi người phụ trách, không phê duyệt và không phát hành kế hoạch.',
@@ -159,6 +168,12 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
     {
         $maxTasks = WeeklyPlanAiOutputLimits::maxTasks();
         $maxSourceKeysPerTask = WeeklyPlanAiOutputLimits::maxSourceKeysPerTask();
+        $boundedNullableString = static fn (int $maxLength): array => [
+            'anyOf' => [
+                ['type' => 'string', 'maxLength' => $maxLength],
+                ['type' => 'null'],
+            ],
+        ];
         $nullableString = [
             'anyOf' => [
                 ['type' => 'string'],
@@ -170,7 +185,11 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                 [
                     'type' => 'object',
                     'properties' => [
-                        'value' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 500],
+                        'value' => [
+                            'type' => 'string',
+                            'minLength' => 1,
+                            'maxLength' => WeeklyPlanAiOutputLimits::DETAIL_SUGGESTION_VALUE_MAX_LENGTH,
+                        ],
                         'basis' => [
                             'type' => 'string',
                             'enum' => ['SOURCE_DERIVED', 'AI_SUGGESTION'],
@@ -224,12 +243,26 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                                 'type' => 'array',
                                 'minItems' => 1,
                                 'maxItems' => $maxSourceKeysPerTask,
-                                'items' => ['type' => 'string'],
+                                'items' => [
+                                    'type' => 'string',
+                                    'minLength' => 1,
+                                    'maxLength' => WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH,
+                                ],
                             ],
-                            'title' => ['type' => 'string'],
-                            'content' => $nullableString,
-                            'expected_result' => $nullableString,
-                            'employee_identifier' => $nullableString,
+                            'title' => [
+                                'type' => 'string',
+                                'minLength' => 1,
+                                'maxLength' => WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH,
+                            ],
+                            'content' => $boundedNullableString(
+                                WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH,
+                            ),
+                            'expected_result' => $boundedNullableString(
+                                WeeklyPlanAiOutputLimits::EXPECTED_RESULT_MAX_LENGTH,
+                            ),
+                            'employee_identifier' => $boundedNullableString(
+                                WeeklyPlanAiOutputLimits::EMPLOYEE_IDENTIFIER_MAX_LENGTH,
+                            ),
                             'start_date' => $nullableString,
                             'due_date' => $nullableString,
                             'priority' => [
@@ -244,7 +277,9 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                                     ['type' => 'null'],
                                 ],
                             ],
-                            'note' => $nullableString,
+                            'note' => $boundedNullableString(
+                                WeeklyPlanAiOutputLimits::NOTE_MAX_LENGTH,
+                            ),
                             'detail_suggestions' => [
                                 'anyOf' => [
                                     [
@@ -266,7 +301,11 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                                     ],
                                 ],
                             ],
-                            'evidence' => ['type' => 'string'],
+                            'evidence' => [
+                                'type' => 'string',
+                                'minLength' => 1,
+                                'maxLength' => WeeklyPlanAiOutputLimits::EVIDENCE_MAX_LENGTH,
+                            ],
                             'provenance' => [
                                 'type' => 'object',
                                 'properties' => $provenanceProperties,
@@ -304,10 +343,17 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
             'items' => [
                 'type' => 'object',
                 'properties' => [
-                    'title' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255],
+                    'title' => [
+                        'type' => 'string',
+                        'minLength' => 1,
+                        'maxLength' => WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH,
+                    ],
                     'content' => [
                         'anyOf' => [
-                            ['type' => 'string', 'maxLength' => 10000],
+                            [
+                                'type' => 'string',
+                                'maxLength' => WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH,
+                            ],
                             ['type' => 'null'],
                         ],
                     ],
@@ -315,7 +361,11 @@ class OpenAiWeeklyPlanTaskExtractor implements RejectableWeeklyPlanTaskExtractor
                         'type' => 'array',
                         'minItems' => 1,
                         'maxItems' => WeeklyPlanAiOutputLimits::maxSourceKeysPerTask(),
-                        'items' => ['type' => 'string'],
+                        'items' => [
+                            'type' => 'string',
+                            'minLength' => 1,
+                            'maxLength' => WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH,
+                        ],
                     ],
                 ],
                 'required' => ['title', 'content', 'source_keys'],

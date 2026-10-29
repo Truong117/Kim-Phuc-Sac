@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanGoogleDocsSource;
 use App\Models\WeeklyPlanGoogleDocsTabMapping;
+use App\Support\WeeklyPlanAiOutputLimits;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -167,9 +168,13 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
-            $schema = data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.detail_suggestions');
-
+            $providerSchema = data_get($payload, 'text.format.schema');
+            $taskSchema = data_get($providerSchema, 'properties.tab_results.items.properties.tasks.items');
+            $itemSchema = data_get($taskSchema, 'properties.items.items');
+            $schema = data_get($taskSchema, 'properties.detail_suggestions');
             $instructions = (string) ($payload['instructions'] ?? '');
+
+            $this->assertSame([], $this->schemaKeywordPaths($providerSchema, 'uniqueItems'));
 
             return data_get($payload, 'text.format.name') === 'kps_weekly_plan_google_docs_tab_results_v5'
                 && data_get($payload, 'text.format.strict') === true
@@ -186,9 +191,14 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.maxItems') === 20
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.items.additionalProperties') === false
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.items.properties.source_keys.maxItems') === 20
+                && data_get($itemSchema, 'properties.title.maxLength') === WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH
+                && data_get($itemSchema, 'properties.content.anyOf.0.maxLength') === WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH
+                && ! array_key_exists('uniqueItems', data_get($itemSchema, 'properties.source_keys'))
+                && data_get($itemSchema, 'properties.source_keys.items.minLength') === 1
+                && data_get($itemSchema, 'properties.source_keys.items.maxLength') === WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH
                 && data_get($schema, 'anyOf.0.additionalProperties') === false
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.minLength') === 1
-                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === 500
+                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === WeeklyPlanAiOutputLimits::DETAIL_SUGGESTION_VALUE_MAX_LENGTH
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.basis.enum')
                     === ['SOURCE_DERIVED', 'AI_SUGGESTION']
                 && str_contains($instructions, 'you may use general operational reasoning')
@@ -203,6 +213,15 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && str_contains($instructions, 'HR must classify a tab as NOT_APPLICABLE before AI extraction')
                 && str_contains($instructions, 'at most 20 proposed jobs in total across all selected tabs')
                 && str_contains($instructions, 'never silently omit a selected tab')
+                && str_contains($instructions, 'employee identity is never decided by AI')
+                && str_contains($instructions, 'employee_identifier must never drive assignment')
+                && str_contains($instructions, 'do not add assignee_id to verification_fields')
+                && str_contains($instructions, 'server injects the assignee from verified HR mapping')
+                && str_contains($instructions, 'AI only analyzes work content')
+                && str_contains($instructions, 'Never repeat a source_key inside one proposed job.')
+                && str_contains($instructions, 'Never repeat a source_key inside one child item.')
+                && str_contains($instructions, 'Do not repeat verification_fields values')
+                && ! str_contains($instructions, 'nếu mơ hồ phải trả null và thêm assignee_id')
                 && ! str_contains($instructions, 'không dùng kiến thức bên ngoài và không tạo dữ kiện');
         });
         $this->assertDatabaseCount('weekly_plan_entries', 0);
@@ -982,6 +1001,45 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_entries', 0);
     }
 
+    public function test_duplicate_item_source_keys_are_rejected_by_backend_validation(): void
+    {
+        [$hr, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId, 'Employee A');
+        $plan = $this->googlePlan($organizationId, $hr, [
+            $this->tab('tab-a', 'Tab A', WeeklyPlanGoogleDocsMappingStatus::VERIFIED, $employee->id),
+        ]);
+        $sourceKey = $plan->sourcePassages()->firstOrFail()->source_key;
+        $task = $this->validSuggestion($sourceKey);
+        $task['grouping_basis'] = 'AI_GROUPED';
+        $task['items'] = [[
+            'title' => 'Grouped item',
+            'content' => null,
+            'source_keys' => [$sourceKey, $sourceKey],
+        ]];
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$task]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'Kết quả trích xuất không đáp ứng hợp đồng dữ liệu an toàn.',
+            );
+
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_RESULT_REJECTED',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
     public function test_item_limits_are_enforced_from_centralized_config(): void
     {
         [$hr, $organizationId] = $this->manager();
@@ -1329,6 +1387,25 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
             'objective' => null,
             'notes' => null,
         ];
+    }
+
+    /** @return list<string> */
+    private function schemaKeywordPaths(mixed $node, string $keyword, string $path = '$'): array
+    {
+        if (! is_array($node)) {
+            return [];
+        }
+
+        $matches = [];
+        foreach ($node as $key => $value) {
+            $childPath = $path.'.'.$key;
+            if ($key === $keyword) {
+                $matches[] = $childPath;
+            }
+            $matches = [...$matches, ...$this->schemaKeywordPaths($value, $keyword, $childPath)];
+        }
+
+        return $matches;
     }
 
     /** @return array<string, mixed> */

@@ -4,6 +4,22 @@ namespace App\Support;
 
 final class WeeklyPlanAiOutputLimits
 {
+    public const TITLE_MAX_LENGTH = 255;
+
+    public const CONTENT_MAX_LENGTH = 10000;
+
+    public const EXPECTED_RESULT_MAX_LENGTH = 10000;
+
+    public const EMPLOYEE_IDENTIFIER_MAX_LENGTH = 255;
+
+    public const NOTE_MAX_LENGTH = 5000;
+
+    public const EVIDENCE_MAX_LENGTH = 5000;
+
+    public const SOURCE_KEY_MAX_LENGTH = 128;
+
+    public const DETAIL_SUGGESTION_VALUE_MAX_LENGTH = 500;
+
     private const DEFAULT_LIMIT = 20;
 
     private const DEFAULT_TOTAL_ITEMS_LIMIT = 100;
