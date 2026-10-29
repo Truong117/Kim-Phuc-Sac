@@ -16,6 +16,7 @@ use App\Models\WeeklyPlanGoogleDocsSource;
 use App\Models\WeeklyPlanGoogleDocsTabMapping;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -230,12 +231,117 @@ class WeeklyPlanningResetTest extends TestCase
         ]);
     }
 
+    public function test_partial_google_docs_source_blocks_analysis_and_submission_and_deleted_evidence_reopens_it(): void
+    {
+        [$manager, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId);
+        $plan = $this->googlePlan($manager, $organizationId, $employee);
+        $passages = $plan->sourcePassages->keyBy(
+            fn ($passage): string => (string) data_get($passage->metadata, 'tab_id'),
+        );
+        $workEntry = $plan->entries()->create($this->entryAttributes($employee));
+        $workEntry->sourcePassages()->attach($passages->get('tab-work')->id);
+        WeeklyPlanGoogleDocsTabMapping::query()
+            ->where('weekly_plan_id', $plan->id)
+            ->where('tab_id_sha256', hash('sha256', 'tab-note'))
+            ->update([
+                'status' => WeeklyPlanGoogleDocsMappingStatus::VERIFIED,
+                'assignee_user_id' => $employee->id,
+            ]);
+
+        $this->actingAs($manager)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.google_docs.remaining_tab_ids', ['tab-note'])
+            ->assertJsonPath('data.actions.can_analyze', false)
+            ->assertJsonPath('data.actions.can_submit', false);
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/analyze")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('plan');
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('plan');
+
+        $noteEntry = $plan->entries()->create([
+            ...$this->entryAttributes($employee),
+            'title' => 'Second tab work',
+            'sort_order' => 2,
+        ]);
+        $noteEntry->sourcePassages()->attach($passages->get('tab-note')->id);
+        $this->actingAs($manager)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.google_docs.remaining_tab_ids', [])
+            ->assertJsonPath('data.actions.can_analyze', true)
+            ->assertJsonPath('data.actions.can_submit', true);
+
+        $noteEntry->delete();
+        $this->actingAs($manager)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.google_docs.remaining_tab_ids', ['tab-note'])
+            ->assertJsonPath('data.actions.can_analyze', false)
+            ->assertJsonPath('data.actions.can_submit', false);
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('plan');
+    }
+
+    public function test_not_applicable_tabs_do_not_block_google_docs_analysis_or_submission(): void
+    {
+        [$manager, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId);
+        $plan = $this->googlePlan($manager, $organizationId, $employee);
+        $passage = $plan->sourcePassages()->where('sequence', 1)->firstOrFail();
+        $entry = $plan->entries()->create($this->entryAttributes($employee));
+        $entry->sourcePassages()->attach($passage->id);
+
+        $this->actingAs($manager)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.google_docs.remaining_tab_ids', [])
+            ->assertJsonPath('data.actions.can_analyze', true)
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/analyze")
+            ->assertOk();
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', WeeklyPlanStatus::SUBMITTED->value);
+    }
+
+    #[DataProvider('uploadedSourceExtensions')]
+    public function test_uploaded_plan_analysis_and_submission_remain_unchanged(string $extension): void
+    {
+        [$manager, $organizationId] = $this->manager();
+        $employee = $this->employee($organizationId);
+        $plan = $this->plan($manager, $organizationId);
+        $plan->forceFill([
+            'original_filename' => "plan.{$extension}",
+            'source_extension' => $extension,
+        ])->save();
+        $plan->entries()->create($this->entryAttributes($employee));
+
+        $this->actingAs($manager)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_analyze', true)
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/analyze")
+            ->assertOk();
+        $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', WeeklyPlanStatus::SUBMITTED->value);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function uploadedSourceExtensions(): iterable
+    {
+        yield 'DOCX' => ['docx'];
+        yield 'XLSX' => ['xlsx'];
+    }
+
     /** @return array{User, int} */
     private function manager(): array
     {
         return $this->userWithPermissions([
             'weekly_plans.view',
             'weekly_plans.manage_draft',
+            'weekly_plans.submit',
         ]);
     }
 

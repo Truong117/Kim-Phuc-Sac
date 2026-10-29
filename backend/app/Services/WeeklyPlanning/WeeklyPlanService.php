@@ -1019,6 +1019,7 @@ class WeeklyPlanService
                 ->lockForUpdate()
                 ->findOrFail($planId);
             $this->assertEditable($plan);
+            $this->assertSourceProcessingComplete($plan);
 
             if (! $plan->entries()->exists()) {
                 throw ValidationException::withMessages(['plan' => ['Kế hoạch phải có ít nhất một đầu việc.']]);
@@ -1047,6 +1048,7 @@ class WeeklyPlanService
         DB::transaction(function () use ($actor, $plan): void {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
             $this->assertEditable($locked);
+            $this->assertSourceProcessingComplete($locked);
             if (! $locked->entries()->exists()) {
                 throw ValidationException::withMessages([
                     'plan' => ['Kế hoạch phải có ít nhất một đầu việc trước khi phân tích.'],
@@ -1694,8 +1696,9 @@ class WeeklyPlanService
         $googleDocsProcessing = $isGoogleDocs
             ? $this->googleDocsAiAssignments->processingState($plan)
             : null;
-        $hasRemainingGoogleDocsTabs = ! $isGoogleDocs
-            || ($googleDocsProcessing['remaining_tab_ids'] ?? []) !== [];
+        $sourceProcessingComplete = ! $isGoogleDocs
+            || ($googleDocsProcessing['remaining_tab_ids'] ?? []) === [];
+        $sourceWorkAvailable = ! $isGoogleDocs || ! $sourceProcessingComplete;
         $plan->setAttribute('google_docs_processing', $googleDocsProcessing);
         $plan->setAttribute('source_document', [
             'status' => $sourceStatus,
@@ -1734,9 +1737,11 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_analyze' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $plan->entries->isNotEmpty()
+                && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_submit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $hasValidEntries
+                && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.submit'),
             'can_review' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
@@ -1768,31 +1773,47 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_apply_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
-                && $hasRemainingGoogleDocsTabs
+                && $sourceWorkAvailable
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_group_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
-                && $hasRemainingGoogleDocsTabs
+                && $sourceWorkAvailable
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_ai_extract_source' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
                 && $googleDocsAiReady
-                && $hasRemainingGoogleDocsTabs
+                && $sourceWorkAvailable
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_ai_extract_selected_source' => $isGoogleDocs
                 && in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $sourceStatus === 'EXTRACTED'
                 && $aiStatus['configured']
-                && $hasRemainingGoogleDocsTabs
+                && $sourceWorkAvailable
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_manage_google_docs_mappings' => $isGoogleDocs
                 && $plan->status === WeeklyPlanStatus::DRAFT
-                && $hasRemainingGoogleDocsTabs
+                && $sourceWorkAvailable
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
         ]);
 
         return $plan;
+    }
+
+    private function assertSourceProcessingComplete(WeeklyPlan $plan): void
+    {
+        if ($plan->source_type !== WeeklyPlanSourceType::GOOGLE_DOCS) {
+            return;
+        }
+
+        $processing = $this->googleDocsAiAssignments->processingState($plan);
+        if (($processing['remaining_tab_ids'] ?? []) !== []) {
+            throw ValidationException::withMessages([
+                'plan' => [
+                    'Vẫn còn nhóm Google Docs chưa được xử lý. Vui lòng hoàn tất bước Phân tích công việc trước khi tiếp tục.',
+                ],
+            ]);
+        }
     }
 
     private function commentPermissionFor(User $viewer): ?string

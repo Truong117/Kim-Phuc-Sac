@@ -95,6 +95,71 @@ test("wizard default inference and guards enforce source, structure, work, and s
   );
 });
 
+test("partial Google Docs processing blocks every downstream wizard step", () => {
+  const ready = mappings([tab("VERIFIED"), tab("VERIFIED", "tab-b")]);
+  const partial = plan({
+    entries: [{ id: 1 }],
+    source_document: {
+      status: "EXTRACTED",
+      google_docs: {
+        remaining_tab_ids: ["tab-b"],
+        processed_tab_count: 1,
+      },
+    },
+  });
+
+  for (const requested of ["work", "quality", "submit"]) {
+    assert.equal(
+      guardWeeklyPlanWizardStep(requested, partial, ready),
+      "structure",
+    );
+  }
+
+  const completed = {
+    ...partial,
+    source_document: {
+      ...partial.source_document,
+      google_docs: {
+        remaining_tab_ids: [],
+        processed_tab_count: 2,
+      },
+    },
+  };
+  for (const requested of ["work", "quality", "submit"]) {
+    assert.equal(
+      guardWeeklyPlanWizardStep(requested, completed, ready),
+      requested,
+    );
+  }
+});
+
+test("view-only draft viewers use loaded mappings and reach the work screen", async () => {
+  const ready = mappings([tab("VERIFIED")]);
+  const viewOnly = plan({
+    actions: { can_edit: false, can_reset: false },
+    entries: [{ id: 1 }],
+    source_document: {
+      status: "EXTRACTED",
+      google_docs: { remaining_tab_ids: [], processed_tab_count: 1 },
+    },
+  });
+
+  assert.equal(inferWeeklyPlanWizardStep(viewOnly, ready), "work");
+  assert.equal(guardWeeklyPlanWizardStep("work", viewOnly, ready), "work");
+
+  const [provider, work] = await Promise.all([
+    readSource("src/context/WeeklyPlanWizardContext.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
+  ]);
+  assert.match(provider, /if \(nextPlan\.source_type === "GOOGLE_DOCS"\)/);
+  assert.doesNotMatch(
+    provider,
+    /source_type === "GOOGLE_DOCS" && nextPlan\.actions\.can_edit/,
+  );
+  assert.match(work, /plan\.actions\.can_reset &&/);
+  assert.match(work, /plan\.actions\.can_edit &&/);
+});
+
 test("Google Docs readiness requires every tab resolved and at least one relevant verified tab", () => {
   assert.equal(
     googleDocsSourceReady(

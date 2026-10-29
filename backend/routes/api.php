@@ -115,7 +115,7 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
             ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::get('/{id}/google-docs/employee-mappings', [GoogleDocsEmployeeMappingController::class, 'index'])
             ->whereNumber('id')
-            ->middleware('permission:weekly_plans.manage_draft,organization');
+            ->middleware('permission:weekly_plans.view,organization');
         Route::put('/{id}/google-docs/employee-mappings', [GoogleDocsEmployeeMappingController::class, 'update'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');

@@ -68,6 +68,7 @@ export const guardWeeklyPlanWizardStep = (
   if (requested === "source") return "source";
   if (!weeklyPlanSourceReady(plan, mappings)) return "source";
   if (requested === "structure") return "structure";
+  if (hasRemainingSourceWork(plan)) return "structure";
   if (plan.entries.length === 0) return "structure";
   return requested;
 };

@@ -28,6 +28,39 @@ class GoogleDocsEmployeeMappingTest extends TestCase
     use AuthorizationFixtures;
     use RefreshDatabase;
 
+    public function test_view_only_owner_and_admin_can_read_but_not_update_mappings(): void
+    {
+        [$hr, $organizationId] = $this->manager(roleCode: 'HR_MANAGER');
+        $employee = $this->employee($organizationId, 'Nhân viên');
+        $plan = $this->googlePlan(
+            $organizationId,
+            $hr,
+            'document-view-only',
+            [$this->tab('tab-a', 'Tab A')],
+        );
+
+        foreach ([
+            ['OWNER', DataScope::ORGANIZATION],
+            ['ADMIN', DataScope::ALL],
+        ] as [$roleCode, $scope]) {
+            $viewer = $this->viewer($roleCode, $scope);
+
+            $this->actingAs($viewer)
+                ->getJson("/api/weekly-plans/{$plan->id}/google-docs/employee-mappings")
+                ->assertOk()
+                ->assertJsonPath('data.actions.can_update', false);
+            $this->map($viewer, $plan, 'tab-a', 'VERIFIED', $employee->id, 0)
+                ->assertForbidden();
+        }
+
+        $this->actingAs($hr)
+            ->getJson("/api/weekly-plans/{$plan->id}/google-docs/employee-mappings")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_update', true);
+        $this->map($hr, $plan, 'tab-a', 'VERIFIED', $employee->id, 0)
+            ->assertOk();
+    }
+
     public function test_batch_request_enforces_shape_status_employee_version_identity_and_tab_bound(): void
     {
         [$hr, $organizationId] = $this->manager();
@@ -819,19 +852,36 @@ class GoogleDocsEmployeeMappingTest extends TestCase
     }
 
     /** @return array{User, int} */
-    private function manager(string $organizationCode = 'KPS'): array
+    private function manager(string $organizationCode = 'KPS', ?string $roleCode = null): array
     {
         $user = User::factory()->create();
         $membership = $this->createMembership($user, organizationCode: $organizationCode);
-        $roleId = $this->createRole();
+        $roleId = $this->createRole($roleCode);
+        $this->attachRole($membership['membership_id'], $roleId, true);
+        foreach (['weekly_plans.view', 'weekly_plans.manage_draft'] as $permission) {
+            $this->grantPermission(
+                $roleId,
+                $this->createPermission($permission),
+                DataScope::ORGANIZATION->value,
+            );
+        }
+
+        return [$user, $membership['organization_id']];
+    }
+
+    private function viewer(string $roleCode, DataScope $scope): User
+    {
+        $user = User::factory()->create();
+        $membership = $this->createMembership($user);
+        $roleId = $this->createRole($roleCode, $roleCode);
         $this->attachRole($membership['membership_id'], $roleId, true);
         $this->grantPermission(
             $roleId,
-            $this->createPermission('weekly_plans.manage_draft'),
-            DataScope::ORGANIZATION->value,
+            $this->createPermission('weekly_plans.view'),
+            $scope->value,
         );
 
-        return [$user, $membership['organization_id']];
+        return $user;
     }
 
     private function employee(int $organizationId, string $name): User

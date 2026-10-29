@@ -80,7 +80,7 @@ export function WeeklyPlanWizardProvider({
         getWeeklyPlanReferences(controller.signal),
       ]);
       let nextMappings: WeeklyPlanGoogleDocsEmployeeMappings | null = null;
-      if (nextPlan.source_type === "GOOGLE_DOCS" && nextPlan.actions.can_edit) {
+      if (nextPlan.source_type === "GOOGLE_DOCS") {
         nextMappings = await getWeeklyPlanGoogleDocsEmployeeMappings(
           nextPlan.id,
           controller.signal,
