@@ -28,7 +28,7 @@ export default function WeeklyPlanWizardStructure() {
           {plan.source_type === "GOOGLE_DOCS" &&
             plan.source_document.google_docs &&
             plan.source_document.google_docs.remaining_tab_ids.length > 0 && (
-              <p className="rounded-xl bg-brand-50 px-4 py-3 text-theme-sm font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+              <p className="rounded-xl border border-kps-primary/10 bg-kps-primary/[0.06] px-4 py-3 text-theme-sm font-semibold text-kps-primary dark:border-kps-primary/30 dark:bg-kps-primary/15 dark:text-white">
                 {t("structure.progress", {
                   processed:
                     plan.source_document.google_docs.processed_tab_count,
@@ -111,6 +111,7 @@ export default function WeeklyPlanWizardStructure() {
               <div className="flex justify-end">
                 <Button
                   type="button"
+                  className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                   onClick={() => navigate(`/weekly-plans/${plan.id}/work`)}
                 >
                   {t("structure.continue")}

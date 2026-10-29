@@ -358,3 +358,28 @@ test("routes, reset confirmation, reset navigation, and grouping labels are wire
     ATOMIC: "Công việc độc lập",
   });
 });
+
+test("wizard active states and primary actions use the KPS palette", async () => {
+  const [stepper, structure, source, work, quality, submit] = await Promise.all(
+    [
+      readSource("src/components/weekly-plans/WeeklyPlanWizardStepper.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardStructure.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSource.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardQuality.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+    ],
+  );
+
+  assert.match(stepper, /bg-kps-primary\/\[0\.08\]/);
+  assert.match(stepper, /text-kps-primary/);
+  assert.doesNotMatch(stepper, /brand-/);
+  assert.match(structure, /border-kps-primary\/10/);
+  assert.match(structure, /bg-kps-primary\/\[0\.06\]/);
+  assert.doesNotMatch(structure, /brand-/);
+  for (const wizardScreen of [source, work, quality, submit]) {
+    assert.match(wizardScreen, /bg-kps-primary/);
+    assert.match(wizardScreen, /hover:bg-kps-primary-hover/);
+    assert.doesNotMatch(wizardScreen, /brand-/);
+  }
+});

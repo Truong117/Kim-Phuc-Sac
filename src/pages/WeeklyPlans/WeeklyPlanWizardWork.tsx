@@ -76,7 +76,7 @@ export default function WeeklyPlanWizardWork() {
                       })}
                     </p>
                   )}
-                  <p className="mt-2 text-theme-xs font-medium text-brand-600 dark:text-brand-400">
+                  <p className="mt-2 text-theme-xs font-medium text-kps-primary dark:text-white">
                     {t("work.groupCounts", {
                       entries: group.entries.length,
                       items: group.itemCount,
@@ -103,6 +103,7 @@ export default function WeeklyPlanWizardWork() {
                 <Button
                   type="button"
                   disabled={busy}
+                  className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                   onClick={() => {
                     setEntryErrors({});
                     setEditing("new");
@@ -134,6 +135,7 @@ export default function WeeklyPlanWizardWork() {
           <div className="flex justify-end">
             <Button
               type="button"
+              className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
               onClick={() => navigate(`/weekly-plans/${plan.id}/quality`)}
             >
               {t("work.continue")}

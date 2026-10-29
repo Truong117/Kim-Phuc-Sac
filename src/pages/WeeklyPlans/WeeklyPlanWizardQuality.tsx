@@ -64,6 +64,7 @@ export default function WeeklyPlanWizardQuality() {
                 <Button
                   type="button"
                   disabled={busy}
+                  className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                   onClick={() => void perform(() => analyzeWeeklyPlan(plan.id))}
                 >
                   {analysisState === "CURRENT"
@@ -117,6 +118,7 @@ export default function WeeklyPlanWizardQuality() {
                             type="button"
                             size="sm"
                             disabled={busy}
+                            className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                             onClick={() =>
                               void perform(() =>
                                 decideWeeklyPlanSuggestion(
@@ -141,6 +143,7 @@ export default function WeeklyPlanWizardQuality() {
             <Button
               type="button"
               disabled={analysisState !== "CURRENT"}
+              className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
               onClick={() => navigate(`/weekly-plans/${plan.id}/submit`)}
             >
               {t("quality.continue")}

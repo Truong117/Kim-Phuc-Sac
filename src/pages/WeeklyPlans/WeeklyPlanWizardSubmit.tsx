@@ -101,6 +101,7 @@ export default function WeeklyPlanWizardSubmit() {
               <Button
                 type="button"
                 disabled={busy || analysisState !== "CURRENT"}
+                className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                 onClick={() => void perform(() => submitWeeklyPlan(plan.id))}
               >
                 {t("submit.action")}
@@ -183,6 +184,7 @@ export default function WeeklyPlanWizardSubmit() {
                 <Button
                   type="button"
                   disabled={busy || !comment.trim()}
+                  className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                   onClick={() =>
                     void perform(async () => {
                       const [targetType, targetId] = commentTarget.split(":");
