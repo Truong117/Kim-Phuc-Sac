@@ -21,6 +21,7 @@ use App\Services\WeeklyPlanning\WeeklyPlanService;
 use App\Services\WeeklyPlanning\WeeklyPlanTemplateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class WeeklyPlanController extends Controller
@@ -83,6 +84,15 @@ class WeeklyPlanController extends Controller
         $user = $request->user();
 
         return new WeeklyPlanResource($this->plans->findVisible($user, $id));
+    }
+
+    public function destroy(Request $request, int $id): Response
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $this->plans->deleteDraft($user, $id);
+
+        return response()->noContent();
     }
 
     public function reset(Request $request, int $id): WeeklyPlanResource

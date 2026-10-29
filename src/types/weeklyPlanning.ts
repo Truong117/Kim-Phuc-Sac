@@ -143,6 +143,7 @@ export type WeeklyPlanEvent = {
 export type WeeklyPlanActions = {
   can_edit: boolean;
   can_reset: boolean;
+  can_delete: boolean;
   can_analyze: boolean;
   can_submit: boolean;
   can_review: boolean;
@@ -269,7 +270,7 @@ export type WeeklyPlanListItem = Pick<
   | "source_file"
   | "creator"
   | "entries_count"
->;
+> & { actions: Pick<WeeklyPlanActions, "can_delete"> };
 
 export type WeeklyPlanListResponse = {
   data: WeeklyPlanListItem[];

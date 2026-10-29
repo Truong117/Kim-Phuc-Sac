@@ -54,6 +54,65 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/ai-extract/);
 });
 
+test("weekly draft deletion is backend-authorized, confirmed, single-flight, and safely refreshed", async () => {
+  const [list, service, types, translationsSource] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
+    readSource("src/services/weeklyPlanningService.ts"),
+    readSource("src/types/weeklyPlanning.ts"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.match(types, /can_delete:\s*boolean/);
+  assert.match(types, /actions:\s*Pick<WeeklyPlanActions, "can_delete">/);
+  assert.match(list, /\{plan\.actions\.can_delete && \(/);
+  assert.doesNotMatch(list, /plan\.status\s*===\s*["']DRAFT["']/);
+  assert.match(
+    list,
+    /setSelectedPlan\(plan\)[\s\S]*?deleteModal\.openModal\(\)/,
+  );
+  assert.match(list, /onClick=\{closeDeleteModal\}/);
+  assert.match(
+    list,
+    /if \(!selectedPlan \|\| deleteInFlightRef\.current\) return/,
+  );
+  assert.match(list, /deleteInFlightRef\.current = true/);
+  assert.match(list, /deleteInFlightRef\.current = false/);
+  assert.match(list, /disabled=\{deleting\}/);
+  assert.match(list, /await deleteWeeklyPlan\(selectedPlan\.id\)/);
+  assert.match(list, /result\?\.data\.length === 1 && page > 1/);
+  assert.match(list, /setPage\(\(current\) => current - 1\)/);
+  assert.match(list, /setVersion\(\(current\) => current \+ 1\)/);
+  assert.match(list, /catch \(nextError: unknown\)[\s\S]*?setDeleteError/);
+  assert.doesNotMatch(
+    list.match(/catch \(nextError: unknown\)[\s\S]*?finally/)?.[0] ?? "",
+    /setResult/,
+  );
+  assert.match(
+    service,
+    /deleteWeeklyPlan[\s\S]*?apiRequest<void>[\s\S]*?method: "DELETE"/,
+  );
+  assert.equal(copy.list.delete.cancel, "Hủy");
+  assert.equal(copy.list.delete.confirm, "Xóa kế hoạch");
+});
+
+test("weekly employee-count summaries use Nhân viên without changing unique-count wiring", async () => {
+  const [structure, work, submit, translationsSource] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardStructure.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.equal(copy.wizard.counts.employees, "Nhân viên");
+  assert.notEqual(copy.wizard.counts.employees, "Tài khoản KPS");
+  assert.match(structure, /t\("counts\.employees"\)/);
+  assert.match(structure, /plan\.summary\.matched_employee_count/);
+  assert.match(work, /\[t\("counts\.employees"\), counts\.employeeCount\]/);
+  assert.match(submit, /\[t\("counts\.employees"\), counts\.employeeCount\]/);
+});
+
 test("weekly AI preview treats an empty suggestion list as a successful empty state", async () => {
   const [sourceDocument, aiPreview, translationsSource] = await Promise.all([
     readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
