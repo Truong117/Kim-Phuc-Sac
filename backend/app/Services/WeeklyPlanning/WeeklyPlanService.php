@@ -964,6 +964,53 @@ class WeeklyPlanService
         return $this->findVisible($actor, $planId);
     }
 
+    public function resetDraft(User $actor, int $planId): WeeklyPlan
+    {
+        $this->assertPermission($actor, 'weekly_plans.manage_draft');
+
+        DB::transaction(function () use ($actor, $planId): void {
+            $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
+                ->lockForUpdate()
+                ->findOrFail($planId);
+
+            if ($plan->status !== WeeklyPlanStatus::DRAFT) {
+                throw new ConflictHttpException('Chỉ có thể đặt lại kế hoạch đang ở trạng thái nháp.');
+            }
+
+            $entryIds = WeeklyPlanEntry::query()
+                ->where('weekly_plan_id', $plan->id)
+                ->lockForUpdate()
+                ->pluck('id');
+
+            if ($entryIds->isNotEmpty()
+                && DB::table('tasks')->whereIn('weekly_plan_entry_id', $entryIds)->exists()) {
+                throw new ConflictHttpException(
+                    'Kế hoạch đã có Task được phát hành; hệ thống từ chối đặt lại để tránh mất dữ liệu.',
+                );
+            }
+
+            $counts = [
+                'entry_count' => $entryIds->count(),
+                'item_count' => DB::table('weekly_plan_entry_items')
+                    ->whereIn('weekly_plan_entry_id', $entryIds)
+                    ->count(),
+                'suggestion_count' => $plan->suggestions()->count(),
+                'employee_review_count' => $plan->employeeReviews()->count(),
+                'entry_comment_count' => $plan->comments()
+                    ->whereNotNull('weekly_plan_entry_id')
+                    ->count(),
+            ];
+
+            $this->invalidateSuggestions($plan, $actor, 'PLAN_RESET');
+            $plan->suggestions()->delete();
+            $plan->employeeReviews()->delete();
+            $plan->entries()->delete();
+            $this->record($plan, $actor, 'PLAN_RESET', $counts);
+        });
+
+        return $this->findVisible($actor, $planId);
+    }
+
     public function submit(User $actor, int $planId): WeeklyPlan
     {
         $this->assertPermission($actor, 'weekly_plans.submit');
@@ -1620,7 +1667,7 @@ class WeeklyPlanService
             'creator:id,name',
             'entries.assignee:id,name,email',
             'entries.sourcePassages',
-            'entries.items',
+            'entries.items.sourcePassages',
             'employeeReviews.assignee:id,name',
             'comments.author:id,name',
             'suggestions',
@@ -1682,6 +1729,8 @@ class WeeklyPlanService
 
         $plan->setAttribute('actions', [
             'can_edit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_reset' => $plan->status === WeeklyPlanStatus::DRAFT
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_analyze' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $plan->entries->isNotEmpty()

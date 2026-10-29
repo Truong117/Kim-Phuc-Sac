@@ -43,6 +43,14 @@ const initialValues = (
   due_date: initialInput.due_date ?? entry?.due_date ?? weekEnd,
   priority: initialInput.priority ?? entry?.priority ?? "MEDIUM",
   note: initialInput.note ?? entry?.note ?? "",
+  items:
+    initialInput.items ??
+    entry?.items.map((item) => ({
+      title: item.title,
+      content: item.content,
+      source_passage_ids: [...item.source_passage_ids],
+    })) ??
+    [],
 });
 
 export default function WeeklyPlanEntryForm({
@@ -262,6 +270,135 @@ export default function WeeklyPlanEntryForm({
           error={Boolean(visibleError("note"))}
           hint={visibleError("note")}
         />
+      </div>
+      <div className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-white">
+              {t("itemsTitle")}
+            </p>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+              {t("itemsDescription")}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setValues((current) => ({
+                ...current,
+                items: [...(current.items ?? []), { title: "", content: null }],
+              }))
+            }
+          >
+            {t("addItem")}
+          </Button>
+        </div>
+        {(values.items ?? []).map((item, index) => (
+          <div
+            key={`entry-item-${index}`}
+            className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60"
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label htmlFor={`weekly-entry-item-title-${index}`}>
+                  {t("itemTitle", { index: index + 1 })}
+                </Label>
+                <Input
+                  id={`weekly-entry-item-title-${index}`}
+                  value={item.title}
+                  maxLength={255}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      items: (current.items ?? []).map(
+                        (currentItem, itemIndex) =>
+                          itemIndex === index
+                            ? { ...currentItem, title: event.target.value }
+                            : currentItem,
+                      ),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor={`weekly-entry-item-content-${index}`}>
+                  {t("itemContent")}
+                </Label>
+                <TextArea
+                  id={`weekly-entry-item-content-${index}`}
+                  rows={2}
+                  value={item.content ?? ""}
+                  onChange={(content) =>
+                    setValues((current) => ({
+                      ...current,
+                      items: (current.items ?? []).map(
+                        (currentItem, itemIndex) =>
+                          itemIndex === index
+                            ? { ...currentItem, content }
+                            : currentItem,
+                      ),
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={index === 0}
+                onClick={() =>
+                  setValues((current) => {
+                    const items = [...(current.items ?? [])];
+                    [items[index - 1], items[index]] = [
+                      items[index],
+                      items[index - 1],
+                    ];
+                    return { ...current, items };
+                  })
+                }
+              >
+                {t("moveUp")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={index === (values.items?.length ?? 0) - 1}
+                onClick={() =>
+                  setValues((current) => {
+                    const items = [...(current.items ?? [])];
+                    [items[index], items[index + 1]] = [
+                      items[index + 1],
+                      items[index],
+                    ];
+                    return { ...current, items };
+                  })
+                }
+              >
+                {t("moveDown")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setValues((current) => ({
+                    ...current,
+                    items: (current.items ?? []).filter(
+                      (_, itemIndex) => itemIndex !== index,
+                    ),
+                  }))
+                }
+              >
+                {t("removeItem")}
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
       <div className="flex justify-end gap-3">
         <Button type="button" variant="outline" onClick={onCancel}>

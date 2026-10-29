@@ -254,6 +254,14 @@ export const deleteWeeklyPlanEntry = async (
   return response.data;
 };
 
+export const resetWeeklyPlan = async (id: number): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    `/api/weekly-plans/${id}/reset`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return response.data;
+};
+
 const planAction = async (id: number, action: string): Promise<WeeklyPlan> => {
   const response = await apiRequest<WeeklyPlanResponse>(
     "/api/weekly-plans/" + id + "/" + action,

@@ -57,7 +57,10 @@ export type WeeklyPlanEntry = {
   validation_errors: string[];
   items: WeeklyPlanEntryItem[];
   source_passages: Array<
-    Pick<WeeklyPlanSourcePassage, "id" | "source_key" | "kind" | "text">
+    Pick<
+      WeeklyPlanSourcePassage,
+      "id" | "source_key" | "kind" | "text" | "source_context" | "source_group"
+    >
   >;
 };
 
@@ -66,6 +69,15 @@ export type WeeklyPlanEntryItem = {
   title: string;
   content: string | null;
   sort_order: number;
+  source_passage_ids: number[];
+};
+
+export type WeeklyPlanResetCounts = {
+  entry_count: number;
+  item_count: number;
+  suggestion_count: number;
+  employee_review_count: number;
+  entry_comment_count: number;
 };
 
 export type WeeklyPlanSourcePassage = {
@@ -130,6 +142,7 @@ export type WeeklyPlanEvent = {
 
 export type WeeklyPlanActions = {
   can_edit: boolean;
+  can_reset: boolean;
   can_analyze: boolean;
   can_submit: boolean;
   can_review: boolean;

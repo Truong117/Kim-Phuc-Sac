@@ -125,6 +125,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::get('/{id}', [WeeklyPlanController::class, 'show'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.view,organization');
+        Route::post('/{id}/reset', [WeeklyPlanController::class, 'reset'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/reparse', [WeeklyPlanController::class, 'reparse'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');

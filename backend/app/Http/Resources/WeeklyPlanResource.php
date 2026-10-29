@@ -124,6 +124,9 @@ class WeeklyPlanResource extends JsonResource
                             'title' => $item->title,
                             'content' => $item->content,
                             'sort_order' => $item->sort_order,
+                            'source_passage_ids' => $item->relationLoaded('sourcePassages')
+                                ? $item->sourcePassages->pluck('id')->values()
+                                : [],
                         ])->values()
                         : [],
                     'source_passages' => $entry->relationLoaded('sourcePassages')

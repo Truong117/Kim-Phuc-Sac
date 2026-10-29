@@ -5,6 +5,7 @@ import type {
   GoogleDocsAiReviewDraft,
   GoogleDocsAiReviewErrors,
   GoogleDocsAiReviewGroup,
+  GoogleDocsAiReviewItem,
 } from "@/utils/weeklyPlanGoogleDocsAiReview";
 import { useTranslation } from "react-i18next";
 
@@ -19,6 +20,19 @@ type Props = {
   onToggle: () => void;
   onToggleJob: (key: string) => void;
   onChange: (index: number, changes: GoogleDocsAiReviewChanges) => void;
+  onItemChange: (
+    draftIndex: number,
+    itemIndex: number,
+    changes: Partial<Pick<GoogleDocsAiReviewItem, "title" | "content">>,
+  ) => void;
+  onAddItem: (draftIndex: number) => void;
+  onRemoveItem: (draftIndex: number, itemIndex: number) => void;
+  onMoveItem: (
+    draftIndex: number,
+    itemIndex: number,
+    direction: -1 | 1,
+  ) => void;
+  onSplit: (draftIndex: number) => void;
 };
 
 export default function WeeklyPlanGoogleDocsAiReviewGroup({
@@ -32,6 +46,11 @@ export default function WeeklyPlanGoogleDocsAiReviewGroup({
   onToggle,
   onToggleJob,
   onChange,
+  onItemChange,
+  onAddItem,
+  onRemoveItem,
+  onMoveItem,
+  onSplit,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.sourceDocument.aiPreview",
@@ -45,6 +64,10 @@ export default function WeeklyPlanGoogleDocsAiReviewGroup({
     ({ draft, errors: draftErrors }) =>
       draft.included && Object.keys(draftErrors).length === 0,
   ).length;
+  const itemCount = groupDrafts.reduce(
+    (total, { draft }) => total + draft.items.length,
+    0,
+  );
   const regionId = `google-ai-group-${group.draftIndexes[0]}`;
 
   return (
@@ -74,6 +97,9 @@ export default function WeeklyPlanGoogleDocsAiReviewGroup({
             </span>
             <span className="rounded-full bg-kps-primary/10 px-2.5 py-1 text-theme-xs font-semibold text-kps-primary dark:bg-kps-primary/20 dark:text-sidebar-selected">
               {t("googleDocs.jobCount", { count: group.draftIndexes.length })}
+            </span>
+            <span className="rounded-full bg-gray-100 px-2.5 py-1 text-theme-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+              {t("googleDocs.itemCount", { count: itemCount })}
             </span>
           </span>
           {group.tabTitles.length > 0 && (
@@ -114,6 +140,15 @@ export default function WeeklyPlanGoogleDocsAiReviewGroup({
                 applying={applying}
                 onToggle={() => onToggleJob(draft.key)}
                 onChange={(changes) => onChange(index, changes)}
+                onItemChange={(itemIndex, changes) =>
+                  onItemChange(index, itemIndex, changes)
+                }
+                onAddItem={() => onAddItem(index)}
+                onRemoveItem={(itemIndex) => onRemoveItem(index, itemIndex)}
+                onMoveItem={(itemIndex, direction) =>
+                  onMoveItem(index, itemIndex, direction)
+                }
+                onSplit={() => onSplit(index)}
               />
             ),
           )}

@@ -2,12 +2,14 @@ import Input from "@/components/form/input/InputField";
 import TextArea from "@/components/form/input/TextArea";
 import Label from "@/components/form/Label";
 import Select from "@/components/form/Select";
+import Button from "@/components/ui/button/Button";
 import { CheckCircleIcon, ChevronDownIcon } from "@/icons";
 import type { WeeklyPlanAiDetailSuggestions } from "@/types/weeklyPlanning";
 import type {
   GoogleDocsAiReviewChanges,
   GoogleDocsAiReviewDraft,
   GoogleDocsAiReviewErrors,
+  GoogleDocsAiReviewItem,
   GoogleDocsAiReviewPriority,
 } from "@/utils/weeklyPlanGoogleDocsAiReview";
 import { useTranslation } from "react-i18next";
@@ -22,6 +24,14 @@ type Props = {
   applying: boolean;
   onToggle: () => void;
   onChange: (changes: GoogleDocsAiReviewChanges) => void;
+  onItemChange: (
+    itemIndex: number,
+    changes: Partial<Pick<GoogleDocsAiReviewItem, "title" | "content">>,
+  ) => void;
+  onAddItem: () => void;
+  onRemoveItem: (itemIndex: number) => void;
+  onMoveItem: (itemIndex: number, direction: -1 | 1) => void;
+  onSplit: () => void;
 };
 
 const detailSuggestionKeys = [
@@ -44,6 +54,11 @@ export default function WeeklyPlanGoogleDocsAiReviewJobRow({
   applying,
   onToggle,
   onChange,
+  onItemChange,
+  onAddItem,
+  onRemoveItem,
+  onMoveItem,
+  onSplit,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.sourceDocument.aiPreview",
@@ -184,6 +199,125 @@ export default function WeeklyPlanGoogleDocsAiReviewJobRow({
               disabled={busy || applying || !draft.included}
               onChange={(note) => onChange({ note })}
             />
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                  {t("googleDocs.itemsTitle")}
+                </p>
+                <span className="rounded-full bg-kps-primary/10 px-2 py-0.5 text-theme-xs font-semibold text-kps-primary dark:bg-kps-primary/20 dark:text-sidebar-selected">
+                  {t(`googleDocs.groupingBasis.${draft.groupingBasis}`)}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {draft.groupingBasis !== "ATOMIC" && draft.items.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || applying || !draft.included}
+                    onClick={onSplit}
+                  >
+                    {t("googleDocs.splitGroup")}
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || applying || !draft.included}
+                  onClick={onAddItem}
+                >
+                  {t("googleDocs.addItem")}
+                </Button>
+              </div>
+            </div>
+            {draft.items.length === 0 ? (
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                {t("googleDocs.noItems")}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {draft.items.map((item, itemIndex) => (
+                  <div
+                    key={`${draft.key}:item:${itemIndex}`}
+                    className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60"
+                  >
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div>
+                        <Label
+                          htmlFor={`google-ai-item-title-${index}-${itemIndex}`}
+                        >
+                          {t("googleDocs.itemTitle", { index: itemIndex + 1 })}
+                        </Label>
+                        <Input
+                          id={`google-ai-item-title-${index}-${itemIndex}`}
+                          value={item.title}
+                          maxLength={255}
+                          disabled={busy || applying || !draft.included}
+                          onChange={(event) =>
+                            onItemChange(itemIndex, {
+                              title: event.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div>
+                        <Label
+                          htmlFor={`google-ai-item-content-${index}-${itemIndex}`}
+                        >
+                          {t("googleDocs.itemContent")}
+                        </Label>
+                        <TextArea
+                          id={`google-ai-item-content-${index}-${itemIndex}`}
+                          rows={2}
+                          value={item.content ?? ""}
+                          disabled={busy || applying || !draft.included}
+                          onChange={(content) =>
+                            onItemChange(itemIndex, { content })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={busy || applying || itemIndex === 0}
+                        onClick={() => onMoveItem(itemIndex, -1)}
+                      >
+                        {t("googleDocs.moveItemUp")}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={
+                          busy ||
+                          applying ||
+                          itemIndex === draft.items.length - 1
+                        }
+                        onClick={() => onMoveItem(itemIndex, 1)}
+                      >
+                        {t("googleDocs.moveItemDown")}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={busy || applying}
+                        onClick={() => onRemoveItem(itemIndex)}
+                      >
+                        {t("googleDocs.removeItem")}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {details.length > 0 && (
