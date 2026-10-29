@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DataScope;
 use App\Models\User;
 use App\Models\WeeklyPlan;
+use App\Support\WeeklyPlanAiOutputLimits;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -117,6 +118,57 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
 
         $this->assertDatabaseCount('weekly_plan_entries', 1);
         $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_provider_schema_matches_backend_string_and_uniqueness_limits(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        $suggestion = $this->validSuggestion($plan->sourcePassages()->firstOrFail()->source_key);
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion]]),
+            ),
+        ]);
+
+        $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertOk();
+
+        Http::assertSent(function (Request $request) use ($suggestion): bool {
+            $task = data_get($request->data(), 'text.format.schema.properties.tasks.items');
+            $overlongTitle = str_repeat('T', WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH + 1);
+            $overlongEvidence = str_repeat('E', WeeklyPlanAiOutputLimits::EVIDENCE_MAX_LENGTH + 1);
+            $duplicateSourceKeys = [$suggestion['source_keys'][0], $suggestion['source_keys'][0]];
+            $duplicateVerificationFields = ['title', 'title'];
+
+            $this->assertSame(1, data_get($task, 'properties.title.minLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH, data_get($task, 'properties.title.maxLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH, data_get($task, 'properties.content.anyOf.0.maxLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::EXPECTED_RESULT_MAX_LENGTH, data_get($task, 'properties.expected_result.anyOf.0.maxLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::EMPLOYEE_IDENTIFIER_MAX_LENGTH, data_get($task, 'properties.employee_identifier.anyOf.0.maxLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::NOTE_MAX_LENGTH, data_get($task, 'properties.note.anyOf.0.maxLength'));
+            $this->assertSame(1, data_get($task, 'properties.evidence.minLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::EVIDENCE_MAX_LENGTH, data_get($task, 'properties.evidence.maxLength'));
+            $this->assertTrue(data_get($task, 'properties.source_keys.uniqueItems'));
+            $this->assertSame(1, data_get($task, 'properties.source_keys.items.minLength'));
+            $this->assertSame(WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH, data_get($task, 'properties.source_keys.items.maxLength'));
+            $this->assertTrue(data_get($task, 'properties.verification_fields.uniqueItems'));
+
+            $this->assertGreaterThan(data_get($task, 'properties.title.maxLength'), mb_strlen($overlongTitle));
+            $this->assertGreaterThan(data_get($task, 'properties.evidence.maxLength'), mb_strlen($overlongEvidence));
+            $this->assertNotSame($duplicateSourceKeys, array_values(array_unique($duplicateSourceKeys)));
+            $this->assertNotSame($duplicateVerificationFields, array_values(array_unique($duplicateVerificationFields)));
+            $this->assertStringContainsString(
+                'nếu mơ hồ phải trả null và thêm assignee_id vào verification_fields',
+                (string) ($request->data()['instructions'] ?? ''),
+            );
+
+            return true;
+        });
     }
 
     public function test_weekly_plan_extraction_accepts_a_9000_token_runtime_limit_below_the_gateway_hard_cap(): void
@@ -578,6 +630,60 @@ class WeeklyPlanningOpenAiExtractionTest extends TestCase
                     ]]
                     && ! str_contains($serialized, $sensitiveMarker)
                     && ! str_contains($serialized, 'not_allowed');
+            }))
+            ->once();
+        $this->assertDatabaseHas('ai_usage_records', [
+            'organization_id' => $organizationId,
+            'feature' => 'weekly_plan_task_extraction',
+            'status' => 'rejected',
+            'error_code' => 'AI_RESULT_REJECTED',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_contract_length_failure_logs_only_safe_metadata_and_returns_generic_feedback(): void
+    {
+        [$hr, $organizationId] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $sensitiveMarker = 'private-overlong-ai-title';
+        $plan = $this->planWithPassage($hr, $organizationId, 'Công việc hợp lệ.');
+        $suggestion = $this->validSuggestion($plan->sourcePassages()->firstOrFail()->source_key);
+        $suggestion['title'] = str_repeat(
+            $sensitiveMarker,
+            (int) ceil((WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH + 1) / strlen($sensitiveMarker)),
+        );
+        Log::spy();
+        Http::fake([
+            'api.openai.test/v1/responses' => Http::response(
+                $this->completedResponse(['tasks' => [$suggestion]]),
+            ),
+        ]);
+
+        $response = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$plan->id}/source/ai-extract")
+            ->assertUnprocessable()
+            ->assertJsonPath(
+                'errors.extraction.0',
+                'Kết quả trích xuất không đáp ứng hợp đồng dữ liệu an toàn.',
+            );
+
+        $this->assertStringNotContainsString($sensitiveMarker, $response->getContent());
+        Log::shouldHaveReceived('warning')
+            ->with('weekly_plan_ai_result_validation_failed', Mockery::on(function (array $context) use ($sensitiveMarker): bool {
+                $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                return is_int($context['usage_record_id'] ?? null)
+                    && ($context['feature'] ?? null) === 'weekly_plan_task_extraction'
+                    && ($context['validation_type'] ?? null) === 'laravel_validator'
+                    && ($context['failures'] ?? null) === [[
+                        'task_index' => 0,
+                        'field' => 'title',
+                        'rule' => 'max',
+                    ]]
+                    && ! str_contains($serialized, $sensitiveMarker);
             }))
             ->once();
         $this->assertDatabaseHas('ai_usage_records', [

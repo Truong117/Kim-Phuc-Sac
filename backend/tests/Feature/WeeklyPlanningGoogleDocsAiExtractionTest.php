@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanGoogleDocsSource;
 use App\Models\WeeklyPlanGoogleDocsTabMapping;
+use App\Support\WeeklyPlanAiOutputLimits;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -167,9 +168,16 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
 
         Http::assertSent(function ($request): bool {
             $payload = $request->data();
+            $taskSchema = data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items');
+            $itemSchema = data_get($taskSchema, 'properties.items.items');
             $schema = data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.detail_suggestions');
-
             $instructions = (string) ($payload['instructions'] ?? '');
+            $duplicateItemSourceKeys = ['google-tab:tab-a:paragraph:1', 'google-tab:tab-a:paragraph:1'];
+
+            $this->assertNotSame(
+                $duplicateItemSourceKeys,
+                array_values(array_unique($duplicateItemSourceKeys)),
+            );
 
             return data_get($payload, 'text.format.name') === 'kps_weekly_plan_google_docs_tab_results_v5'
                 && data_get($payload, 'text.format.strict') === true
@@ -186,9 +194,14 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.maxItems') === 20
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.items.additionalProperties') === false
                 && data_get($payload, 'text.format.schema.properties.tab_results.items.properties.tasks.items.properties.items.items.properties.source_keys.maxItems') === 20
+                && data_get($itemSchema, 'properties.title.maxLength') === WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH
+                && data_get($itemSchema, 'properties.content.anyOf.0.maxLength') === WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH
+                && data_get($itemSchema, 'properties.source_keys.uniqueItems') === true
+                && data_get($itemSchema, 'properties.source_keys.items.minLength') === 1
+                && data_get($itemSchema, 'properties.source_keys.items.maxLength') === WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH
                 && data_get($schema, 'anyOf.0.additionalProperties') === false
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.minLength') === 1
-                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === 500
+                && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.value.maxLength') === WeeklyPlanAiOutputLimits::DETAIL_SUGGESTION_VALUE_MAX_LENGTH
                 && data_get($schema, 'anyOf.0.properties.channel.anyOf.0.properties.basis.enum')
                     === ['SOURCE_DERIVED', 'AI_SUGGESTION']
                 && str_contains($instructions, 'you may use general operational reasoning')
@@ -203,6 +216,12 @@ class WeeklyPlanningGoogleDocsAiExtractionTest extends TestCase
                 && str_contains($instructions, 'HR must classify a tab as NOT_APPLICABLE before AI extraction')
                 && str_contains($instructions, 'at most 20 proposed jobs in total across all selected tabs')
                 && str_contains($instructions, 'never silently omit a selected tab')
+                && str_contains($instructions, 'employee identity is never decided by AI')
+                && str_contains($instructions, 'employee_identifier must never drive assignment')
+                && str_contains($instructions, 'do not add assignee_id to verification_fields')
+                && str_contains($instructions, 'server injects the assignee from verified HR mapping')
+                && str_contains($instructions, 'AI only analyzes work content')
+                && ! str_contains($instructions, 'nếu mơ hồ phải trả null và thêm assignee_id')
                 && ! str_contains($instructions, 'không dùng kiến thức bên ngoài và không tạo dữ kiện');
         });
         $this->assertDatabaseCount('weekly_plan_entries', 0);

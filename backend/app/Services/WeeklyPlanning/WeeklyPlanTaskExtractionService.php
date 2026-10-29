@@ -323,18 +323,18 @@ class WeeklyPlanTaskExtractionService
         $rules = [
             'tasks' => ['present', 'array', 'max:'.WeeklyPlanAiOutputLimits::maxTasks()],
             'tasks.*.source_keys' => ['required', 'array', 'min:1', 'max:'.WeeklyPlanAiOutputLimits::maxSourceKeysPerTask()],
-            'tasks.*.source_keys.*' => ['required', 'string', 'distinct', 'max:128'],
-            'tasks.*.title' => ['required', 'string', 'max:255'],
-            'tasks.*.content' => ['nullable', 'string', 'max:10000'],
-            'tasks.*.expected_result' => ['nullable', 'string', 'max:10000'],
-            'tasks.*.employee_identifier' => ['nullable', 'string', 'max:255'],
+            'tasks.*.source_keys.*' => ['required', 'string', 'distinct', 'max:'.WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH],
+            'tasks.*.title' => ['required', 'string', 'max:'.WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH],
+            'tasks.*.content' => ['nullable', 'string', 'max:'.WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH],
+            'tasks.*.expected_result' => ['nullable', 'string', 'max:'.WeeklyPlanAiOutputLimits::EXPECTED_RESULT_MAX_LENGTH],
+            'tasks.*.employee_identifier' => ['nullable', 'string', 'max:'.WeeklyPlanAiOutputLimits::EMPLOYEE_IDENTIFIER_MAX_LENGTH],
             'tasks.*.start_date' => ['nullable', 'date_format:Y-m-d'],
             'tasks.*.due_date' => ['nullable', 'date_format:Y-m-d'],
             'tasks.*.priority' => ['nullable', Rule::enum(TaskPriority::class)],
-            'tasks.*.note' => ['nullable', 'string', 'max:5000'],
+            'tasks.*.note' => ['nullable', 'string', 'max:'.WeeklyPlanAiOutputLimits::NOTE_MAX_LENGTH],
             'tasks.*.detail_suggestions' => ['sometimes', 'nullable', 'array'],
             'tasks.*.verification_fields' => ['present', 'array'],
-            'tasks.*.evidence' => ['required', 'string', 'max:5000'],
+            'tasks.*.evidence' => ['required', 'string', 'max:'.WeeklyPlanAiOutputLimits::EVIDENCE_MAX_LENGTH],
             'tasks.*.provenance' => ['required', 'array', 'size:'.count($provenanceFields)],
         ];
         if ($googleDocsContext !== null) {
@@ -347,8 +347,8 @@ class WeeklyPlanTaskExtractionService
                 'array',
                 'max:'.WeeklyPlanAiOutputLimits::maxItemsPerTask(),
             ];
-            $rules['tasks.*.items.*.title'] = ['required', 'string', 'max:255'];
-            $rules['tasks.*.items.*.content'] = ['nullable', 'string', 'max:10000'];
+            $rules['tasks.*.items.*.title'] = ['required', 'string', 'max:'.WeeklyPlanAiOutputLimits::TITLE_MAX_LENGTH];
+            $rules['tasks.*.items.*.content'] = ['nullable', 'string', 'max:'.WeeklyPlanAiOutputLimits::CONTENT_MAX_LENGTH];
             $rules['tasks.*.items.*.source_keys'] = [
                 'required',
                 'array',
@@ -359,7 +359,7 @@ class WeeklyPlanTaskExtractionService
                 'required',
                 'string',
                 'distinct',
-                'max:128',
+                'max:'.WeeklyPlanAiOutputLimits::SOURCE_KEY_MAX_LENGTH,
             ];
         }
         foreach (array_keys($raw) as $taskIndex) {
@@ -381,7 +381,7 @@ class WeeklyPlanTaskExtractionService
                             'required',
                             'string',
                             'min:1',
-                            'max:500',
+                            'max:'.WeeklyPlanAiOutputLimits::DETAIL_SUGGESTION_VALUE_MAX_LENGTH,
                         ];
                         $rules["tasks.{$taskIndex}.detail_suggestions.{$field}.basis"] = [
                             'required',
