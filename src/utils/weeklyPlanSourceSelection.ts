@@ -75,6 +75,11 @@ export type GoogleDocsSelectedTab = Pick<
   "tab_id" | "title" | "status" | "employee"
 >;
 
+export type VerifiedGoogleDocsSelectedTab = GoogleDocsSelectedTab & {
+  status: "VERIFIED";
+  employee: NonNullable<GoogleDocsSelectedTab["employee"]>;
+};
+
 export const selectedGoogleDocsTabs = (
   passages: readonly WeeklyPlanSourcePassage[],
   mappings: WeeklyPlanGoogleDocsEmployeeMappings | null,
@@ -116,3 +121,16 @@ export const allSelectedGoogleDocsTabsVerified = (
 ): boolean =>
   tabs.length > 0 &&
   tabs.every((tab) => tab.status === "VERIFIED" && tab.employee !== null);
+
+export const verifiedSingleGoogleDocsTab = (
+  tabs: readonly GoogleDocsSelectedTab[],
+): VerifiedGoogleDocsSelectedTab | null => {
+  const tab = tabs.length === 1 ? tabs[0] : null;
+  if (tab?.status !== "VERIFIED" || tab.employee === null) return null;
+
+  return {
+    ...tab,
+    status: "VERIFIED",
+    employee: tab.employee,
+  };
+};

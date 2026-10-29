@@ -23,6 +23,7 @@ import {
   selectedGoogleDocsTabs,
   sourceBlockSelectionState,
   spansMultipleGoogleDocsTabs,
+  verifiedSingleGoogleDocsTab,
 } from "@/utils/weeklyPlanSourceSelection";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -176,6 +177,9 @@ function WeeklyPlanSourceDocument({
     passageIds: number[];
     initialInput: Partial<WeeklyPlanEntryInput>;
     assigneeId: number | null;
+    lockAssignee: boolean;
+    lockedAssignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email">;
+    assigneeSourceTitle?: string;
     aiSuggestionIndex?: number;
   } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -330,10 +334,16 @@ function WeeklyPlanSourceDocument({
       return;
     }
 
+    const verifiedGoogleDocsTab =
+      plan.source_type === "GOOGLE_DOCS"
+        ? verifiedSingleGoogleDocsTab(selectedGoogleTabs)
+        : null;
     if (
       plan.source_type === "GOOGLE_DOCS" &&
-      spansMultipleGoogleDocsTabs(selectedPassages)
+      (spansMultipleGoogleDocsTabs(selectedPassages) ||
+        verifiedGoogleDocsTab === null)
     ) {
+      setLocalError(t("googleDocsMappingRequired"));
       return;
     }
 
@@ -381,7 +391,10 @@ function WeeklyPlanSourceDocument({
         due_date: plan.week_end,
         priority: "MEDIUM",
       },
-      assigneeId: null,
+      assigneeId: verifiedGoogleDocsTab?.employee.id ?? null,
+      lockAssignee: verifiedGoogleDocsTab !== null,
+      lockedAssignee: verifiedGoogleDocsTab?.employee,
+      assigneeSourceTitle: verifiedGoogleDocsTab?.title,
     });
   };
 
@@ -412,6 +425,26 @@ function WeeklyPlanSourceDocument({
     index: number,
   ) => {
     setFormErrors({});
+    setLocalError(null);
+    const hasTrustedGoogleDocsAssignment =
+      plan.source_type === "GOOGLE_DOCS" &&
+      suggestion.assignment_source === "VERIFIED_GOOGLE_DOCS_TAB_MAPPING" &&
+      suggestion.assignee !== null &&
+      suggestion.assignee !== undefined &&
+      suggestion.source_tab !== null &&
+      suggestion.source_tab !== undefined;
+    if (plan.source_type === "GOOGLE_DOCS" && !hasTrustedGoogleDocsAssignment) {
+      setAiPreviewOpen(false);
+      setLocalError(t("googleDocsMappingRequired"));
+      return;
+    }
+
+    const lockedAssignee = hasTrustedGoogleDocsAssignment
+      ? (suggestion.assignee ?? undefined)
+      : undefined;
+    const assigneeSourceTitle = hasTrustedGoogleDocsAssignment
+      ? suggestion.source_tab?.title
+      : undefined;
     setAiPreviewOpen(false);
     setDraft({
       requestId: createRequestId(),
@@ -425,7 +458,10 @@ function WeeklyPlanSourceDocument({
         priority: suggestion.priority ?? "MEDIUM",
         note: suggestion.note,
       },
-      assigneeId: null,
+      assigneeId: lockedAssignee?.id ?? null,
+      lockAssignee: plan.source_type === "GOOGLE_DOCS",
+      lockedAssignee,
+      assigneeSourceTitle,
       aiSuggestionIndex: index,
     });
   };
@@ -944,7 +980,7 @@ function WeeklyPlanSourceDocument({
         <p className="mb-5 text-theme-sm text-gray-500 dark:text-gray-400">
           {t("draftDescription", { count: draft?.passageIds.length ?? 0 })}
         </p>
-        {draft && draft.assigneeId === null && (
+        {draft && !draft.lockAssignee && draft.assigneeId === null && (
           <div className="space-y-5">
             <div>
               <Label htmlFor="weekly-source-assignee">
@@ -1000,6 +1036,9 @@ function WeeklyPlanSourceDocument({
             serverErrors={formErrors}
             serverErrorVersion={formErrorVersion}
             submitLabel={t("applyToDraft")}
+            lockAssignee={draft.lockAssignee}
+            lockedAssignee={draft.lockedAssignee}
+            assigneeSourceTitle={draft.assigneeSourceTitle}
             onCancel={() => {
               const returnToAiPreview = draft.aiSuggestionIndex !== undefined;
               setDraft(null);
