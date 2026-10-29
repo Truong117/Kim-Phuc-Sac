@@ -154,6 +154,195 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 1);
     }
 
+    public function test_submit_readiness_requires_expected_results_without_requiring_analysis(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx([
+                ['Email', 'Nội dung công việc', 'Ngày bắt đầu', 'Hạn hoàn thành'],
+                [$assignee->email, 'Công việc thiếu kết quả', '2026-10-26', '2026-10-31'],
+            ]),
+        ])->assertCreated()
+            ->assertJsonPath('data.entries.0.validation_status', 'VALID')
+            ->assertJsonPath('data.actions.can_submit', false);
+
+        $planId = (int) $response->json('data.id');
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('expected_result');
+
+        $entryId = (int) $response->json('data.entries.0.id');
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/entries/{$entryId}", [
+            'assignee_id' => $assignee->id,
+            'title' => 'Công việc thiếu kết quả',
+            'content' => null,
+            'expected_result' => 'Bàn giao kết quả hoàn chỉnh',
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'priority' => 'MEDIUM',
+            'note' => null,
+        ])->assertOk()
+            ->assertJsonPath('data.actions.can_submit', true);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'SUBMITTED');
+        $this->assertDatabaseMissing('weekly_plan_events', [
+            'weekly_plan_id' => $planId,
+            'event_type' => 'ANALYZED',
+        ]);
+    }
+
+    public function test_submit_readiness_fails_closed_for_assignee_dates_and_validation_status(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $planId = $this->importValidPlan($hr, $assignee);
+        $entryId = (int) WeeklyPlan::query()->findOrFail($planId)->entries()->value('id');
+        $baseline = [
+            'assignee_id' => $assignee->id,
+            'expected_result' => 'Kết quả rõ ràng',
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'validation_status' => 'VALID',
+            'validation_errors' => null,
+        ];
+        $cases = [
+            ['changes' => ['assignee_id' => null], 'error' => 'assignee'],
+            ['changes' => ['start_date' => null], 'error' => 'dates'],
+            ['changes' => ['due_date' => null], 'error' => 'dates'],
+            [
+                'changes' => [
+                    'validation_status' => 'INVALID',
+                    'validation_errors' => json_encode(['invalid'], JSON_THROW_ON_ERROR),
+                ],
+                'error' => 'entries',
+            ],
+        ];
+
+        foreach ($cases as $case) {
+            DB::table('weekly_plan_entries')->where('id', $entryId)->update([
+                ...$baseline,
+                ...$case['changes'],
+                'updated_at' => now(),
+            ]);
+
+            $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+                ->assertOk()
+                ->assertJsonPath('data.actions.can_submit', false);
+            $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors($case['error']);
+            $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'DRAFT']);
+        }
+    }
+
+    public function test_unresolved_advisory_suggestions_never_block_submit(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx([
+                ['Email', 'Nội dung công việc', 'Kết quả cần đạt', 'Ngày bắt đầu', 'Hạn hoàn thành'],
+                [$assignee->email, str_repeat('W', 181), 'Kết quả rõ ràng', '2026-10-26', '2026-10-31'],
+            ]),
+        ])->assertCreated();
+        $planId = (int) $response->json('data.id');
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.type', 'LARGE_WORK_ITEM')
+            ->assertJsonPath('data.suggestions.0.status', 'PENDING')
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'SUBMITTED');
+    }
+
+    public function test_stale_analysis_never_blocks_an_otherwise_complete_plan(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $planId = $this->importValidPlan($hr, $assignee);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
+            ->assertOk();
+        $entry = WeeklyPlan::query()->findOrFail($planId)->entries()->firstOrFail();
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/entries/{$entry->id}", [
+            'assignee_id' => $assignee->id,
+            'title' => $entry->title,
+            'content' => $entry->content,
+            'expected_result' => $entry->expected_result,
+            'start_date' => $entry->start_date->toDateString(),
+            'due_date' => $entry->due_date->toDateString(),
+            'priority' => $entry->priority->value,
+            'note' => 'Thay đổi sau khi kiểm tra',
+        ])->assertOk()
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->assertDatabaseHas('weekly_plan_events', [
+            'weekly_plan_id' => $planId,
+            'event_type' => 'SUGGESTIONS_INVALIDATED',
+        ]);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'SUBMITTED');
+    }
+
+    public function test_rule_engine_v2_omits_deadline_and_missing_result_noise_but_keeps_advisories(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $rows = [
+            ['Email', 'Nội dung công việc', 'Kết quả cần đạt', 'Ngày bắt đầu', 'Hạn hoàn thành'],
+        ];
+        for ($index = 0; $index < 10; $index++) {
+            $title = $index < 2
+                ? 'Công việc trùng'
+                : ($index === 9 ? str_repeat('L', 181) : "Công việc {$index}");
+            $rows[] = [
+                $assignee->email,
+                $title,
+                $index === 8 ? '' : "Kết quả {$index}",
+                '2026-10-26',
+                '2026-10-31',
+            ];
+        }
+
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx($rows),
+        ])->assertCreated();
+        $planId = (int) $response->json('data.id');
+        $analyzed = $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
+            ->assertOk();
+        $types = collect($analyzed->json('data.suggestions'))->pluck('type');
+
+        $this->assertSame(2, $types->filter(fn (string $type): bool => $type === 'POSSIBLE_DUPLICATE')->count());
+        $this->assertSame(1, $types->filter(fn (string $type): bool => $type === 'LARGE_WORK_ITEM')->count());
+        $this->assertFalse($types->contains('MISSING_EXPECTED_RESULT'));
+        $this->assertFalse($types->contains('DEADLINE_CONCENTRATION'));
+        $this->assertCount(3, $types);
+    }
+
     public function test_first_import_uses_tidb_compatible_assignee_query_and_second_import_conflicts(): void
     {
         [$hr, $membershipId] = $this->userWithPermissions([
@@ -1176,7 +1365,7 @@ class WeeklyPlanningTest extends TestCase
         $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'file' => $this->xlsx([
                 ['Người thực hiện', 'Việc dự kiến', 'Khởi động', 'Kết thúc'],
-                [$assignee->email, 'Đầu việc cần ánh xạ', '2026-10-26', '2026-10-31'],
+                [$assignee->email, str_repeat('A', 181), '2026-10-26', '2026-10-31'],
             ]),
         ])->assertCreated()
             ->assertJsonPath('data.parse_status', 'NEEDS_MAPPING')
@@ -1200,13 +1389,37 @@ class WeeklyPlanningTest extends TestCase
         $entryBefore = WeeklyPlan::query()->findOrFail($planId)->entries()->firstOrFail()->only([
             'assignee_id', 'title', 'content', 'expected_result', 'start_date', 'due_date', 'priority',
         ]);
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        $fingerprint = hash('sha256', $plan->entries()
+            ->orderBy('sort_order')
+            ->get([
+                'assignee_id', 'title', 'content', 'expected_result', 'start_date',
+                'due_date', 'priority', 'note', 'sort_order',
+            ])->toJson());
+        $plan->events()->create([
+            'actor_id' => $hr->id,
+            'event_type' => 'ANALYZED',
+            'metadata' => [
+                'analyzer' => 'RULE_BASED_V1',
+                'suggestion_count' => 0,
+                'content_fingerprint' => $fingerprint,
+                'reused' => false,
+            ],
+        ]);
+
         $analyzed = $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
             ->assertOk()
-            ->assertJsonPath('data.suggestions.0.type', 'MISSING_EXPECTED_RESULT');
+            ->assertJsonPath('data.suggestions.0.type', 'LARGE_WORK_ITEM');
+        $latestAnalysis = $plan->events()->where('event_type', 'ANALYZED')->reorder()->latest('id')->firstOrFail();
+        $this->assertSame('RULE_BASED_V2', $latestAnalysis->metadata['analyzer']);
+        $this->assertFalse($latestAnalysis->metadata['reused']);
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
             ->assertOk()
             ->assertJsonCount(1, 'data.suggestions');
+        $this->assertTrue(
+            $plan->events()->where('event_type', 'ANALYZED')->reorder()->latest('id')->firstOrFail()->metadata['reused'],
+        );
         $this->assertDatabaseCount('weekly_plan_suggestions', 1);
         $this->assertEquals(
             $entryBefore,
@@ -1433,7 +1646,7 @@ class WeeklyPlanningTest extends TestCase
         $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'file' => $this->xlsx([
                 ['Email', 'Nội dung công việc', 'Ngày bắt đầu', 'Hạn hoàn thành', 'Mức độ ưu tiên'],
-                [$assignee->email, 'Công việc cần ADMIN kiểm tra', '2026-10-26', '2026-10-31', 'Cao'],
+                [$assignee->email, str_repeat('B', 181), '2026-10-26', '2026-10-31', 'Cao'],
             ]),
         ])->assertCreated();
         $planId = (int) $response->json('data.id');
@@ -1442,7 +1655,7 @@ class WeeklyPlanningTest extends TestCase
         $analyzed = $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$planId}/analyze")
             ->assertOk()
-            ->assertJsonPath('data.suggestions.0.type', 'MISSING_EXPECTED_RESULT');
+            ->assertJsonPath('data.suggestions.0.type', 'LARGE_WORK_ITEM');
         $suggestionId = (int) $analyzed->json('data.suggestions.0.id');
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/comments", [

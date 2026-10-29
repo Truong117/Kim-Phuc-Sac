@@ -991,8 +991,7 @@
       "steps": {
         "source": "Nguồn & nhân viên",
         "structure": "Phân tích công việc",
-        "work": "Hoàn thiện kế hoạch",
-        "quality": "Rà soát kế hoạch",
+        "work": "Hoàn thiện & kiểm tra",
         "submit": "Gửi xét duyệt"
       },
       "counts": {
@@ -1035,7 +1034,8 @@
         "addEntry": "Thêm công việc",
         "editEntry": "Chỉnh sửa công việc",
         "deleteEntry": "Xóa công việc này khỏi bản nháp?",
-        "continue": "Tiếp tục: Rà soát kế hoạch →"
+        "continue": "Tiếp tục: Gửi xét duyệt →",
+        "continueBlocked": "Hoàn thiện các vấn đề trong Kiểm tra nhanh trước khi tiếp tục."
       },
       "reset": {
         "action": "Đặt lại kế hoạch",
@@ -1044,34 +1044,42 @@
         "cancel": "Hủy",
         "confirm": "Đặt lại kế hoạch"
       },
-      "quality": {
-        "title": "Rà soát kế hoạch",
-        "description": "Kiểm tra bản nháp bằng bộ quy tắc RULE_BASED_V1.",
-        "issueCountLabel": "Vấn đề cần xem xét",
-        "affectedCountLabel": "Công việc bị ảnh hưởng",
-        "stale": "Kết quả rà soát đã cũ",
-        "notRun": "Chưa rà soát",
-        "clean": "Không phát hiện vấn đề theo bộ quy tắc hiện tại.",
-        "run": "Rà soát kế hoạch",
-        "runAgain": "Rà soát lại kế hoạch",
-        "suggestionsTitle": "Kết quả rà soát",
-        "reject": "Bỏ qua",
-        "accept": "Đã xử lý",
-        "continue": "Tiếp tục: Gửi xét duyệt →",
-        "status": {
-          "PENDING": "Đang chờ",
-          "ACCEPTED": "Đã xử lý",
-          "REJECTED": "Đã bỏ qua"
+      "quickCheck": {
+        "title": "Kiểm tra nhanh",
+        "description": "Xác nhận điều kiện bắt buộc và kiểm tra nhanh bằng quy tắc hệ thống trước khi gửi.",
+        "ready": "✓ Kế hoạch đã đủ điều kiện gửi xét duyệt",
+        "blocked": "{count} vấn đề cần xử lý trước khi gửi",
+        "checks": {
+          "validEntries": "Công việc hợp lệ",
+          "assignedEmployees": "Nhân viên được phân công",
+          "expectedResults": "Có kết quả cần đạt",
+          "dates": "Có đủ thời gian"
+        },
+        "blockers": {
+          "noEntries": "Chưa có công việc nào",
+          "missingAssignee": "{count} công việc chưa có nhân viên phụ trách",
+          "invalidEntries": "{count} công việc chưa hợp lệ",
+          "missingExpectedResult": "{count} công việc chưa có kết quả cần đạt",
+          "missingDates": "{count} công việc chưa đủ ngày bắt đầu hoặc hạn hoàn thành"
+        },
+        "warnings": {
+          "title": "Nội dung nên kiểm tra",
+          "notRun": "Chưa kiểm tra cảnh báo bổ sung.",
+          "stale": "Kế hoạch đã thay đổi từ lần kiểm tra gần nhất.",
+          "clean": "Không phát hiện cảnh báo theo quy tắc hiện tại.",
+          "found": "Phát hiện {count} cảnh báo tham khảo. Mở từng nhóm để xem chi tiết.",
+          "run": "Kiểm tra kế hoạch",
+          "runAgain": "Kiểm tra lại",
+          "unassigned": "Chưa phân công",
+          "types": {
+            "POSSIBLE_DUPLICATE": "Công việc có thể trùng lặp",
+            "LARGE_WORK_ITEM": "Công việc có nội dung dài"
+          }
         }
       },
       "submit": {
         "title": "Gửi xét duyệt",
         "description": "Kiểm tra tóm tắt cuối trước khi gửi OWNER xét duyệt.",
-        "reviewTitle": "Rà soát",
-        "reviewCurrent": "✓ Đã chạy rà soát hiện tại",
-        "reviewStale": "Kết quả rà soát đã cũ",
-        "reviewMissing": "Chưa rà soát",
-        "reviewCounts": "{pending} cảnh báo đang chờ · {resolved} cảnh báo đã xử lý",
         "action": "Gửi OWNER xét duyệt",
         "submitted": "✓ Đã gửi OWNER xét duyệt",
         "openReview": "Mở màn hình OWNER xét duyệt",

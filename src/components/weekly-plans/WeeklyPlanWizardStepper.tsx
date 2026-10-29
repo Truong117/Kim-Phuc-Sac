@@ -32,7 +32,7 @@ export default function WeeklyPlanWizardStepper({
       aria-label={t("stepperLabel")}
       className="no-scrollbar overflow-x-auto rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-white/3"
     >
-      <ol className="flex min-w-max items-center gap-2 lg:grid lg:min-w-0 lg:grid-cols-5">
+      <ol className="flex min-w-max items-center gap-2 lg:grid lg:min-w-0 lg:grid-cols-4">
         {weeklyPlanWizardSteps.map((step, index) => {
           const completed = index < currentIndex;
           const current = step === currentStep;

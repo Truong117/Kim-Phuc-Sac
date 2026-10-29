@@ -1077,11 +1077,26 @@ class WeeklyPlanService
             $this->assertEditable($plan);
             $this->assertSourceProcessingComplete($plan);
 
-            if (! $plan->entries()->exists()) {
-                throw ValidationException::withMessages(['plan' => ['Kế hoạch phải có ít nhất một đầu việc.']]);
-            }
-            if ($plan->entries()->where('validation_status', '!=', 'VALID')->exists()) {
-                throw ValidationException::withMessages(['plan' => ['Kế hoạch còn đầu việc chưa hợp lệ.']]);
+            $readiness = $this->submissionReadiness($plan);
+            if (! $readiness['ready']) {
+                $errors = [];
+                if ($readiness['no_entries'] > 0) {
+                    $errors['entries'][] = 'Kế hoạch phải có ít nhất một công việc.';
+                }
+                if ($readiness['missing_assignee'] > 0) {
+                    $errors['assignee'][] = 'Mỗi công việc phải có nhân viên phụ trách.';
+                }
+                if ($readiness['invalid_entries'] > 0) {
+                    $errors['entries'][] = 'Kế hoạch còn công việc chưa hợp lệ.';
+                }
+                if ($readiness['missing_expected_result'] > 0) {
+                    $errors['expected_result'][] = 'Mỗi công việc phải có kết quả cần đạt.';
+                }
+                if ($readiness['missing_dates'] > 0) {
+                    $errors['dates'][] = 'Mỗi công việc phải có ngày bắt đầu và hạn hoàn thành.';
+                }
+
+                throw ValidationException::withMessages($errors);
             }
 
             $this->syncReviews($plan);
@@ -1107,7 +1122,7 @@ class WeeklyPlanService
             $this->assertSourceProcessingComplete($locked);
             if (! $locked->entries()->exists()) {
                 throw ValidationException::withMessages([
-                    'plan' => ['Kế hoạch phải có ít nhất một đầu việc trước khi phân tích.'],
+                    'plan' => ['Kế hoạch phải có ít nhất một công việc trước khi kiểm tra.'],
                 ]);
             }
 
@@ -1119,6 +1134,7 @@ class WeeklyPlanService
                 ])->toJson());
             $latestAnalysis = $locked->events()
                 ->where('event_type', 'ANALYZED')
+                ->reorder()
                 ->latest('id')
                 ->first();
             $latestInvalidationId = $locked->events()
@@ -1126,12 +1142,13 @@ class WeeklyPlanService
                 ->max('id');
             $canReuse = $latestAnalysis !== null
                 && ($latestInvalidationId === null || $latestAnalysis->id > $latestInvalidationId)
+                && ($latestAnalysis->metadata['analyzer'] ?? null) === WeeklyPlanSuggestionGenerator::ANALYZER_VERSION
                 && ($latestAnalysis->metadata['content_fingerprint'] ?? null) === $fingerprint;
             $suggestionCount = $canReuse
                 ? $locked->suggestions()->count()
                 : $this->suggestions->regenerate($locked);
             $this->record($locked, $actor, 'ANALYZED', [
-                'analyzer' => 'RULE_BASED_V1',
+                'analyzer' => WeeklyPlanSuggestionGenerator::ANALYZER_VERSION,
                 'suggestion_count' => $suggestionCount,
                 'content_fingerprint' => $fingerprint,
                 'reused' => $canReuse,
@@ -1719,6 +1736,50 @@ class WeeklyPlanService
         }
     }
 
+    /**
+     * @return array{
+     *     ready: bool,
+     *     no_entries: int,
+     *     missing_assignee: int,
+     *     invalid_entries: int,
+     *     missing_expected_result: int,
+     *     missing_dates: int
+     * }
+     */
+    private function submissionReadiness(WeeklyPlan $plan): array
+    {
+        /** @var Collection<int, WeeklyPlanEntry> $entries */
+        $entries = $plan->relationLoaded('entries')
+            ? $plan->entries
+            : $plan->entries()->get();
+        $noEntries = $entries->isEmpty() ? 1 : 0;
+        $missingAssignee = $entries->filter(
+            fn (WeeklyPlanEntry $entry): bool => $entry->assignee_id === null,
+        )->count();
+        $invalidEntries = $entries->filter(
+            fn (WeeklyPlanEntry $entry): bool => $entry->validation_status !== 'VALID',
+        )->count();
+        $missingExpectedResult = $entries->filter(
+            fn (WeeklyPlanEntry $entry): bool => blank($entry->expected_result),
+        )->count();
+        $missingDates = $entries->filter(
+            fn (WeeklyPlanEntry $entry): bool => $entry->start_date === null || $entry->due_date === null,
+        )->count();
+
+        return [
+            'ready' => $noEntries === 0
+                && $missingAssignee === 0
+                && $invalidEntries === 0
+                && $missingExpectedResult === 0
+                && $missingDates === 0,
+            'no_entries' => $noEntries,
+            'missing_assignee' => $missingAssignee,
+            'invalid_entries' => $invalidEntries,
+            'missing_expected_result' => $missingExpectedResult,
+            'missing_dates' => $missingDates,
+        ];
+    }
+
     private function load(WeeklyPlan $plan, User $viewer): WeeklyPlan
     {
         $plan->load([
@@ -1769,6 +1830,7 @@ class WeeklyPlanService
             && $plan->entries->every(
                 fn (WeeklyPlanEntry $entry): bool => $entry->validation_status === 'VALID',
             );
+        $submissionReadiness = $this->submissionReadiness($plan);
         $assigneeIds = $plan->entries
             ->pluck('assignee_id')
             ->filter()
@@ -1798,7 +1860,7 @@ class WeeklyPlanService
                 && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_submit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
-                && $hasValidEntries
+                && $submissionReadiness['ready']
                 && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.submit'),
             'can_review' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
