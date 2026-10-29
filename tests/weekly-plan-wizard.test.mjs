@@ -594,10 +594,12 @@ test("discussion scope search filters Vietnamese employee names and work titles 
       employee_reviews: [
         { assignee: { id: 7, name: "Huyền My" } },
         { assignee: { id: 8, name: "Lê Hùng" } },
+        { assignee: { id: 9, name: "Đăng" } },
       ],
       entries: [
         { id: 21, title: "Bán hàng và theo dõi đơn hàng" },
         { id: 22, title: "Vận hành TikTok Kim Phúc Sắc" },
+        { id: 23, title: "Phối hợp với Đăng quay content" },
       ],
     },
     "Toàn bộ kế hoạch",
@@ -616,6 +618,24 @@ test("discussion scope search filters Vietnamese employee names and work titles 
   assert.deepEqual(
     workResult.works.map((option) => option.label),
     ["Bán hàng và theo dõi đơn hàng"],
+  );
+
+  const dStrokeResult = filterWeeklyPlanDiscussionScopes(groups, "dang");
+  assert.deepEqual(
+    dStrokeResult.employees.map((option) => option.label),
+    ["Đăng"],
+  );
+
+  const phraseResult = filterWeeklyPlanDiscussionScopes(groups, "dang quay");
+  assert.deepEqual(
+    phraseResult.works.map((option) => option.label),
+    ["Phối hợp với Đăng quay content"],
+  );
+
+  const tikTokResult = filterWeeklyPlanDiscussionScopes(groups, "TikTok");
+  assert.deepEqual(
+    tikTokResult.works.map((option) => option.label),
+    ["Vận hành TikTok Kim Phúc Sắc"],
   );
 
   const emptyResult = filterWeeklyPlanDiscussionScopes(groups, "không có");

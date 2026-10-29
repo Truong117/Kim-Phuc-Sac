@@ -33,6 +33,7 @@ const normalizeSearchText = (value: string): string =>
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .toLocaleLowerCase("vi-VN")
+    .replace(/đ/g, "d")
     .trim();
 
 export const filterWeeklyPlanDiscussionScopes = (
