@@ -9,7 +9,6 @@ export const weeklyPlanWizardSteps = [
   "source",
   "structure",
   "work",
-  "quality",
   "submit",
 ] as const;
 
@@ -145,6 +144,60 @@ export const weeklyPlanWorkCounts = (plan: WeeklyPlan) => ({
   ),
   processedTabCount: plan.source_document.google_docs?.processed_tab_count ?? 0,
 });
+
+export type WeeklyPlanSubmissionReadiness = {
+  ready: boolean;
+  totalBlocking: number;
+  noEntries: number;
+  missingAssignee: number;
+  invalidEntries: number;
+  missingExpectedResult: number;
+  missingDates: number;
+  validEntries: number;
+  assignedEmployees: number;
+};
+
+export const weeklyPlanSubmissionReadiness = (
+  entries: WeeklyPlanEntry[],
+): WeeklyPlanSubmissionReadiness => {
+  const missingAssignee = entries.filter((entry) => !entry.assignee).length;
+  const invalidEntries = entries.filter(
+    (entry) => entry.validation_status !== "VALID",
+  ).length;
+  const missingExpectedResult = entries.filter(
+    (entry) => !entry.expected_result?.trim(),
+  ).length;
+  const missingDates = entries.filter(
+    (entry) => !entry.start_date || !entry.due_date,
+  ).length;
+  const noEntries = entries.length === 0 ? 1 : 0;
+  const totalBlocking =
+    noEntries +
+    entries.filter(
+      (entry) =>
+        !entry.assignee ||
+        entry.validation_status !== "VALID" ||
+        !entry.expected_result?.trim() ||
+        !entry.start_date ||
+        !entry.due_date,
+    ).length;
+
+  return {
+    ready: totalBlocking === 0,
+    totalBlocking,
+    noEntries,
+    missingAssignee,
+    invalidEntries,
+    missingExpectedResult,
+    missingDates,
+    validEntries: entries.length - invalidEntries,
+    assignedEmployees: new Set(
+      entries
+        .map((entry) => entry.assignee?.id)
+        .filter((id): id is number => id !== undefined),
+    ).size,
+  };
+};
 
 export const groupingBasisTranslationKey = (
   basis: "SOURCE_STRUCTURE" | "AI_GROUPED" | "ATOMIC",

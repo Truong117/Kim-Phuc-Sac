@@ -12,6 +12,8 @@ import {
   guardWeeklyPlanWizardStep,
   inferWeeklyPlanWizardStep,
   weeklyPlanAnalysisState,
+  weeklyPlanSubmissionReadiness,
+  weeklyPlanWizardSteps,
   weeklyPlanWorkCounts,
 } from "../src/utils/weeklyPlanWizard.ts";
 
@@ -48,11 +50,20 @@ const tab = (status, tabId = "tab-a", mappedEmployee = employee) => ({
   employee: mappedEmployee,
 });
 
+test("wizard exposes exactly the four source, structure, work, and submit steps", () => {
+  assert.deepEqual(weeklyPlanWizardSteps, [
+    "source",
+    "structure",
+    "work",
+    "submit",
+  ]);
+});
+
 test("wizard default inference and guards enforce source, structure, work, and submit prerequisites", () => {
   const unresolved = mappings([tab("UNVERIFIED", "tab-a", null)]);
   assert.equal(inferWeeklyPlanWizardStep(plan(), unresolved), "source");
   assert.equal(
-    guardWeeklyPlanWizardStep("quality", plan(), unresolved),
+    guardWeeklyPlanWizardStep("submit", plan(), unresolved),
     "source",
   );
 
@@ -69,10 +80,7 @@ test("wizard default inference and guards enforce source, structure, work, and s
     },
   });
   assert.equal(inferWeeklyPlanWizardStep(completed, ready), "work");
-  assert.equal(
-    guardWeeklyPlanWizardStep("quality", completed, ready),
-    "quality",
-  );
+  assert.equal(guardWeeklyPlanWizardStep("submit", completed, ready), "submit");
   assert.equal(
     inferWeeklyPlanWizardStep(plan({ status: "SUBMITTED" }), null),
     "submit",
@@ -108,7 +116,7 @@ test("partial Google Docs processing blocks every downstream wizard step", () =>
     },
   });
 
-  for (const requested of ["work", "quality", "submit"]) {
+  for (const requested of ["work", "submit"]) {
     assert.equal(
       guardWeeklyPlanWizardStep(requested, partial, ready),
       "structure",
@@ -125,7 +133,7 @@ test("partial Google Docs processing blocks every downstream wizard step", () =>
       },
     },
   };
-  for (const requested of ["work", "quality", "submit"]) {
+  for (const requested of ["work", "submit"]) {
     assert.equal(
       guardWeeklyPlanWizardStep(requested, completed, ready),
       requested,
@@ -234,6 +242,46 @@ test("work counts and employee groups aggregate multiple source tabs under one K
   );
 });
 
+test("submission readiness counts blocking work once while preserving issue categories", () => {
+  const complete = {
+    id: 1,
+    assignee: employee,
+    validation_status: "VALID",
+    expected_result: "Hoàn tất",
+    start_date: "2026-10-26",
+    due_date: "2026-10-30",
+  };
+  assert.deepEqual(weeklyPlanSubmissionReadiness([]), {
+    ready: false,
+    totalBlocking: 1,
+    noEntries: 1,
+    missingAssignee: 0,
+    invalidEntries: 0,
+    missingExpectedResult: 0,
+    missingDates: 0,
+    validEntries: 0,
+    assignedEmployees: 0,
+  });
+
+  const result = weeklyPlanSubmissionReadiness([
+    complete,
+    {
+      ...complete,
+      id: 2,
+      assignee: null,
+      validation_status: "INVALID",
+      expected_result: " ",
+      start_date: null,
+    },
+  ]);
+  assert.equal(result.ready, false);
+  assert.equal(result.totalBlocking, 1);
+  assert.equal(result.missingAssignee, 1);
+  assert.equal(result.invalidEntries, 1);
+  assert.equal(result.missingExpectedResult, 1);
+  assert.equal(result.missingDates, 1);
+});
+
 test("split group promotes children locally with scoped evidence and preserves trusted assignment", () => {
   const sourceKeys = ["google:tab-a:1", "google:tab-a:2"];
   const drafts = createGoogleDocsAiReviewDrafts(
@@ -336,9 +384,13 @@ test("routes, reset confirmation, reset navigation, and grouping labels are wire
   ]);
   const copy = JSON.parse(translationsSource).weeklyPlanning;
 
-  for (const route of ["source", "structure", "work", "quality", "submit"]) {
+  for (const route of ["source", "structure", "work", "submit"]) {
     assert.match(app, new RegExp(`path="${route}"`));
   }
+  assert.match(
+    app,
+    /path="quality"\s+element={<Navigate to="\.\.\/work" replace \/>}/,
+  );
   assert.match(app, /path="\/weekly-plans\/:id\/review"/);
   assert.match(work, /isOpen={showReset}/);
   assert.match(work, /resetWeeklyPlan\(plan\.id\)/);
@@ -360,16 +412,15 @@ test("routes, reset confirmation, reset navigation, and grouping labels are wire
 });
 
 test("wizard active states and primary actions use the KPS palette", async () => {
-  const [stepper, structure, source, work, quality, submit] = await Promise.all(
-    [
+  const [stepper, structure, source, work, quickCheck, submit] =
+    await Promise.all([
       readSource("src/components/weekly-plans/WeeklyPlanWizardStepper.tsx"),
       readSource("src/pages/WeeklyPlans/WeeklyPlanWizardStructure.tsx"),
       readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSource.tsx"),
       readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
-      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardQuality.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanQuickCheck.tsx"),
       readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
-    ],
-  );
+    ]);
 
   assert.match(stepper, /bg-kps-primary\/\[0\.08\]/);
   assert.match(stepper, /text-kps-primary/);
@@ -377,9 +428,46 @@ test("wizard active states and primary actions use the KPS palette", async () =>
   assert.match(structure, /border-kps-primary\/10/);
   assert.match(structure, /bg-kps-primary\/\[0\.06\]/);
   assert.doesNotMatch(structure, /brand-/);
-  for (const wizardScreen of [source, work, quality, submit]) {
+  for (const wizardScreen of [source, work, submit]) {
     assert.match(wizardScreen, /bg-kps-primary/);
     assert.match(wizardScreen, /hover:bg-kps-primary-hover/);
     assert.doesNotMatch(wizardScreen, /brand-/);
   }
+  assert.match(quickCheck, /weeklyPlanSubmissionReadiness/);
+  assert.doesNotMatch(quickCheck, /decideWeeklyPlanSuggestion/);
+});
+
+test("quick check groups blockers and advisory warnings without becoming a navigation gate", async () => {
+  const [work, quickCheck, submit, stepper, translationsSource] =
+    await Promise.all([
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanQuickCheck.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanWizardStepper.tsx"),
+      readSource("src/locales/vi/common.json"),
+    ]);
+  const wizard = JSON.parse(translationsSource).weeklyPlanning.wizard;
+
+  assert.deepEqual(Object.keys(wizard.steps), [
+    "source",
+    "structure",
+    "work",
+    "submit",
+  ]);
+  assert.equal(wizard.steps.work, "Hoàn thiện & kiểm tra");
+  assert.match(stepper, /lg:grid-cols-4/);
+  assert.match(stepper, /index \+ 1/);
+  assert.match(work, /weekly-plans\/\$\{plan\.id\}\/submit/);
+  assert.match(work, /disabled={busy \|\| !readiness\.ready}/);
+  assert.doesNotMatch(work, /analysisState/);
+  assert.match(quickCheck, /blockers\s*\.filter/);
+  assert.match(quickCheck, /warningGroups\.map/);
+  assert.match(quickCheck, /<details/);
+  assert.doesNotMatch(quickCheck, /ACCEPTED|REJECTED|Bỏ qua|Đã xử lý/);
+  assert.doesNotMatch(
+    submit,
+    /weeklyPlanAnalysisState|reviewCounts|pending|resolved/,
+  );
+  assert.match(submit, /submit\.comments/);
+  assert.match(submit, /submit\.history/);
 });

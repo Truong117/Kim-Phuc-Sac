@@ -1,6 +1,7 @@
 import ComponentCard from "@/components/common/ComponentCard";
 import WeeklyPlanEntries from "@/components/weekly-plans/WeeklyPlanEntries";
 import WeeklyPlanEntryForm from "@/components/weekly-plans/WeeklyPlanEntryForm";
+import WeeklyPlanQuickCheck from "@/components/weekly-plans/WeeklyPlanQuickCheck";
 import WeeklyPlanWizardLayout from "@/components/weekly-plans/WeeklyPlanWizardLayout";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
@@ -8,6 +9,7 @@ import { useWeeklyPlanWizard } from "@/context/WeeklyPlanWizardContext";
 import type { ValidationErrors } from "@/services/apiClient";
 import {
   addWeeklyPlanEntry,
+  analyzeWeeklyPlan,
   deleteWeeklyPlanEntry,
   resetWeeklyPlan,
   updateWeeklyPlanEntry,
@@ -18,6 +20,7 @@ import type {
 } from "@/types/weeklyPlanning";
 import {
   groupWeeklyPlanEntriesByEmployee,
+  weeklyPlanSubmissionReadiness,
   weeklyPlanWorkCounts,
 } from "@/utils/weeklyPlanWizard";
 import { useMemo, useState } from "react";
@@ -39,6 +42,10 @@ export default function WeeklyPlanWizardWork() {
     [plan?.entries],
   );
   const counts = plan ? weeklyPlanWorkCounts(plan) : null;
+  const readiness = useMemo(
+    () => weeklyPlanSubmissionReadiness(plan?.entries ?? []),
+    [plan?.entries],
+  );
 
   return (
     <WeeklyPlanWizardLayout step="work">
@@ -132,11 +139,23 @@ export default function WeeklyPlanWizardWork() {
             />
           </ComponentCard>
 
-          <div className="flex justify-end">
+          <WeeklyPlanQuickCheck
+            plan={plan}
+            busy={busy}
+            onAnalyze={() => void perform(() => analyzeWeeklyPlan(plan.id))}
+          />
+
+          <div className="flex flex-col items-end gap-2">
+            {!readiness.ready && (
+              <p className="text-theme-sm text-error-600 dark:text-error-400">
+                {t("work.continueBlocked")}
+              </p>
+            )}
             <Button
               type="button"
+              disabled={busy || !readiness.ready}
               className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
-              onClick={() => navigate(`/weekly-plans/${plan.id}/quality`)}
+              onClick={() => navigate(`/weekly-plans/${plan.id}/submit`)}
             >
               {t("work.continue")}
             </Button>

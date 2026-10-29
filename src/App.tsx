@@ -24,7 +24,6 @@ import WeeklyPlanImport from "./pages/WeeklyPlans/WeeklyPlanImport";
 import WeeklyPlanList from "./pages/WeeklyPlans/WeeklyPlanList";
 import WeeklyPlanReview from "./pages/WeeklyPlans/WeeklyPlanReview";
 import WeeklyPlanWizardEntry from "./pages/WeeklyPlans/WeeklyPlanWizardEntry";
-import WeeklyPlanWizardQuality from "./pages/WeeklyPlans/WeeklyPlanWizardQuality";
 import WeeklyPlanWizardRoot from "./pages/WeeklyPlans/WeeklyPlanWizardRoot";
 import WeeklyPlanWizardSource from "./pages/WeeklyPlans/WeeklyPlanWizardSource";
 import WeeklyPlanWizardStructure from "./pages/WeeklyPlans/WeeklyPlanWizardStructure";
@@ -85,7 +84,10 @@ export default function App() {
                     element={<WeeklyPlanWizardStructure />}
                   />
                   <Route path="work" element={<WeeklyPlanWizardWork />} />
-                  <Route path="quality" element={<WeeklyPlanWizardQuality />} />
+                  <Route
+                    path="quality"
+                    element={<Navigate to="../work" replace />}
+                  />
                   <Route path="submit" element={<WeeklyPlanWizardSubmit />} />
                 </Route>
               </Route>

@@ -9,10 +9,7 @@ import {
   addWeeklyPlanComment,
   submitWeeklyPlan,
 } from "@/services/weeklyPlanningService";
-import {
-  weeklyPlanAnalysisState,
-  weeklyPlanWorkCounts,
-} from "@/utils/weeklyPlanWizard";
+import { weeklyPlanWorkCounts } from "@/utils/weeklyPlanWizard";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -43,11 +40,6 @@ export default function WeeklyPlanWizardSubmit() {
   }
 
   const counts = weeklyPlanWorkCounts(plan);
-  const analysisState = weeklyPlanAnalysisState(plan.events);
-  const pending = plan.suggestions.filter(
-    (suggestion) => suggestion.status === "PENDING",
-  ).length;
-  const resolved = plan.suggestions.length - pending;
   const submitted =
     plan.status !== "DRAFT" && plan.status !== "CHANGES_REQUESTED";
 
@@ -70,22 +62,6 @@ export default function WeeklyPlanWizardSubmit() {
           ))}
         </dl>
 
-        <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-          <p className="font-semibold text-gray-900 dark:text-white">
-            {t("submit.reviewTitle")}
-          </p>
-          <p className="mt-1 text-theme-sm text-gray-600 dark:text-gray-300">
-            {analysisState === "CURRENT"
-              ? t("submit.reviewCurrent")
-              : analysisState === "STALE"
-                ? t("submit.reviewStale")
-                : t("submit.reviewMissing")}
-          </p>
-          <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-            {t("submit.reviewCounts", { pending, resolved })}
-          </p>
-        </div>
-
         {submitted ? (
           <div className="rounded-xl bg-success-50 p-4 text-success-700 dark:bg-success-500/10 dark:text-success-400">
             <p className="font-semibold">{t("submit.submitted")}</p>
@@ -100,7 +76,7 @@ export default function WeeklyPlanWizardSubmit() {
             <div className="flex justify-end">
               <Button
                 type="button"
-                disabled={busy || analysisState !== "CURRENT"}
+                disabled={busy}
                 className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
                 onClick={() => void perform(() => submitWeeklyPlan(plan.id))}
               >
