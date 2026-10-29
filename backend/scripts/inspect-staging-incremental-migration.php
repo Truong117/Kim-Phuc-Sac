@@ -624,6 +624,95 @@ function incrementalMigration18SchemaState(PDO $pdo): string
 }
 
 /**
+ * @param  list<array<string, mixed>>  $roundColumns
+ * @param  array<string, mixed>  $roundIndexes
+ * @param  array<string, mixed>  $roundForeignKeys
+ * @param  list<array<string, mixed>>  $decisionColumns
+ * @param  array<string, mixed>  $decisionIndexes
+ * @param  array<string, mixed>  $decisionForeignKeys
+ */
+function incrementalMigration19SchemaStateFromMetadata(
+    array $roundColumns,
+    array $roundIndexes,
+    array $roundForeignKeys,
+    array $decisionColumns,
+    array $decisionIndexes,
+    array $decisionForeignKeys,
+): string {
+    if ($roundColumns === [] && $roundIndexes === [] && $roundForeignKeys === []
+        && $decisionColumns === [] && $decisionIndexes === [] && $decisionForeignKeys === []) {
+        return 'absent';
+    }
+
+    $roundColumnsValid = incrementalColumnsMatch($roundColumns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'stage' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'round_number' => incrementalExpectedColumn('/^int(?:\(\d+\))? unsigned$/'),
+        'status' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'started_by' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', 'YES', key: 'MUL'),
+        'started_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+        'completed_by' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', 'YES', key: 'MUL'),
+        'completed_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'updated_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+    ]);
+    $decisionColumnsValid = incrementalColumnsMatch($decisionColumns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_review_round_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'assignee_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'status' => incrementalExpectedColumn('/^varchar\(32\)$/', default: 'PENDING'),
+        'reviewed_by' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', 'YES', key: 'MUL'),
+        'reviewed_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'updated_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+    ]);
+    $indexesValid = StagingIncrementalSchema::indexesMatch($roundIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_review_rounds_completed_by_index' => incrementalExpectedIndex(1, ['completed_by']),
+        'weekly_review_rounds_plan_stage_number_unique' => incrementalExpectedIndex(0, [
+            'weekly_plan_id', 'stage', 'round_number',
+        ]),
+        'weekly_review_rounds_plan_stage_status_index' => incrementalExpectedIndex(1, [
+            'weekly_plan_id', 'stage', 'status',
+        ]),
+        'weekly_review_rounds_started_by_index' => incrementalExpectedIndex(1, ['started_by']),
+    ]) && StagingIncrementalSchema::indexesMatch($decisionIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_review_decisions_assignee_index' => incrementalExpectedIndex(1, ['assignee_id']),
+        'weekly_review_decisions_reviewed_by_index' => incrementalExpectedIndex(1, ['reviewed_by']),
+        'weekly_review_decisions_round_assignee_unique' => incrementalExpectedIndex(0, [
+            'weekly_plan_review_round_id', 'assignee_id',
+        ]),
+    ]);
+    $foreignKeysValid = StagingIncrementalSchema::foreignKeysMatch($roundForeignKeys, [
+        'weekly_review_rounds_completed_by_foreign' => incrementalExpectedForeignKey(['completed_by'], 'users', ['id'], 'SET NULL'),
+        'weekly_review_rounds_plan_foreign' => incrementalExpectedForeignKey(['weekly_plan_id'], 'weekly_plans', ['id'], 'CASCADE'),
+        'weekly_review_rounds_started_by_foreign' => incrementalExpectedForeignKey(['started_by'], 'users', ['id'], 'SET NULL'),
+    ]) && StagingIncrementalSchema::foreignKeysMatch($decisionForeignKeys, [
+        'weekly_review_decisions_assignee_foreign' => incrementalExpectedForeignKey(['assignee_id'], 'users', ['id'], 'RESTRICT'),
+        'weekly_review_decisions_reviewer_foreign' => incrementalExpectedForeignKey(['reviewed_by'], 'users', ['id'], 'SET NULL'),
+        'weekly_review_decisions_round_foreign' => incrementalExpectedForeignKey(['weekly_plan_review_round_id'], 'weekly_plan_review_rounds', ['id'], 'CASCADE'),
+    ]);
+
+    return $roundColumnsValid && $decisionColumnsValid && $indexesValid && $foreignKeysValid
+        ? 'complete'
+        : 'partial';
+}
+
+function incrementalMigration19SchemaState(PDO $pdo): string
+{
+    return incrementalMigration19SchemaStateFromMetadata(
+        incrementalColumns($pdo, 'weekly_plan_review_rounds'),
+        incrementalIndexes($pdo, 'weekly_plan_review_rounds'),
+        incrementalForeignKeys($pdo, 'weekly_plan_review_rounds'),
+        incrementalColumns($pdo, 'weekly_plan_review_decisions'),
+        incrementalIndexes($pdo, 'weekly_plan_review_decisions'),
+        incrementalForeignKeys($pdo, 'weekly_plan_review_decisions'),
+    );
+}
+
+/**
  * @param  list<array<string, mixed>>  $entryColumns
  * @param  array<string, mixed>  $entryIndexes
  * @param  list<array<string, mixed>>  $passageColumns
@@ -671,7 +760,20 @@ function incrementalParentPrerequisitesVerified(
     string $migration16State,
     string $migration17State,
     array $migration18ParentEvidence,
+    string $migration18State = 'complete',
 ): bool {
+    if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_19) {
+        return $migration16State === 'complete'
+            && $migration17State === 'complete'
+            && $migration18State === 'complete'
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'weekly_plans')
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'users')
+            && incrementalColumnMatches($pdo, 'weekly_plans', 'status', '/^varchar\(32\)$/', 'NO')
+            && incrementalColumnMatches($pdo, 'weekly_plan_entries', 'weekly_plan_id', '/^bigint(?:\(\d+\))? unsigned$/', 'NO')
+            && incrementalColumnMatches($pdo, 'weekly_plan_entries', 'assignee_id', '/^bigint(?:\(\d+\))? unsigned$/', 'YES')
+            && incrementalColumnMatches($pdo, 'weekly_plan_employee_reviews', 'status', '/^varchar\(32\)$/', 'NO');
+    }
+
     if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_18) {
         return $migration16State === 'complete'
             && $migration17State === 'complete'
@@ -716,6 +818,9 @@ function incrementalCountRows(PDO $pdo, string $table, array $tables): ?int
         'weekly_plan_google_docs_tab_mapping_events',
         'weekly_plan_entry_items',
         'weekly_plan_entry_item_source_passage',
+        'weekly_plan_review_rounds',
+        'weekly_plan_review_decisions',
+        'weekly_plan_employee_reviews',
     ];
 
     if (! in_array($table, $allowed, true)) {
@@ -871,6 +976,22 @@ try {
         $pdo,
         'SELECT COUNT(*) AS aggregate FROM weekly_plan_entries',
     );
+    $legacyOwnerReviewPlanCountRows = incrementalQueryRows(
+        $pdo,
+        "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE status IN ('SUBMITTED', 'IN_REVIEW')",
+    );
+    $legacyOwnerChangesPlanCountRows = incrementalQueryRows(
+        $pdo,
+        "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE status = 'CHANGES_REQUESTED'",
+    );
+    $expectedReviewDecisionCountRows = incrementalQueryRows(
+        $pdo,
+        "SELECT COUNT(*) AS aggregate FROM (SELECT DISTINCT e.weekly_plan_id, e.assignee_id FROM weekly_plan_entries e INNER JOIN weekly_plans p ON p.id = e.weekly_plan_id WHERE p.status IN ('SUBMITTED', 'IN_REVIEW', 'CHANGES_REQUESTED') AND e.assignee_id IS NOT NULL) legacy_decisions",
+    );
+    $legacyEmployeeReviewCountRows = incrementalQueryRows(
+        $pdo,
+        'SELECT COUNT(*) AS aggregate FROM weekly_plan_employee_reviews',
+    );
     $auditIdentity = incrementalQueryRows(
         $auditPdo,
         'SELECT DATABASE() AS database_name, CURRENT_USER() AS authenticated_user, CONNECTION_ID() AS connection_id',
@@ -906,10 +1027,27 @@ $sessions = $auditProcessVisibilityVerified
 $migration16State = incrementalMigration16SchemaState($pdo);
 $migration17State = incrementalMigration17SchemaState($pdo);
 $migration18State = incrementalMigration18SchemaState($pdo);
+$migration19State = incrementalMigration19SchemaState($pdo);
 $migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);
 $weeklyPlanIdFingerprint = hash('sha256', implode(',', $weeklyPlanIds));
 $weeklyPlanEntryCount = (int) ($weeklyPlanEntryCountRows[0]['aggregate'] ?? -1);
+$legacyOwnerReviewPlanCount = (int) ($legacyOwnerReviewPlanCountRows[0]['aggregate'] ?? -1);
+$legacyOwnerChangesPlanCount = (int) ($legacyOwnerChangesPlanCountRows[0]['aggregate'] ?? -1);
+$expectedReviewDecisionCount = (int) ($expectedReviewDecisionCountRows[0]['aggregate'] ?? -1);
+$legacyEmployeeReviewCount = (int) ($legacyEmployeeReviewCountRows[0]['aggregate'] ?? -1);
+$legacyStatusPlanCountRows = incrementalQueryRows(
+    $pdo,
+    "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE status IN ('SUBMITTED', 'IN_REVIEW', 'CHANGES_REQUESTED')",
+);
+$ownerReviewPlanCountRows = incrementalQueryRows(
+    $pdo,
+    "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE status = 'OWNER_REVIEW'",
+);
+$ownerChangesPlanCountRows = incrementalQueryRows(
+    $pdo,
+    "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE status = 'OWNER_CHANGES_REQUESTED'",
+);
 $uploadedFilePlanCount = null;
 
 if ($migration16State === 'complete') {
@@ -944,12 +1082,14 @@ $state = [
     'migration_16_schema_state' => $migration16State,
     'migration_17_schema_state' => $migration17State,
     'migration_18_schema_state' => $migration18State,
+    'migration_19_schema_state' => $migration19State,
     'parent_prerequisites_verified' => incrementalParentPrerequisitesVerified(
         $pdo,
         $migrationFile,
         $migration16State,
         $migration17State,
         $migration18ParentEvidence,
+        $migration18State,
     ),
     'source_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_sources', $tables),
     'mapping_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_tab_mappings', $tables),
@@ -960,6 +1100,12 @@ $state = [
         'weekly_plan_entry_item_source_passage',
         $tables,
     ),
+    'review_round_count' => incrementalCountRows($pdo, 'weekly_plan_review_rounds', $tables),
+    'review_decision_count' => incrementalCountRows($pdo, 'weekly_plan_review_decisions', $tables),
+    'legacy_employee_review_count' => $legacyEmployeeReviewCount,
+    'legacy_status_plan_count' => (int) ($legacyStatusPlanCountRows[0]['aggregate'] ?? -1),
+    'owner_review_plan_count' => (int) ($ownerReviewPlanCountRows[0]['aggregate'] ?? -1),
+    'owner_changes_plan_count' => (int) ($ownerChangesPlanCountRows[0]['aggregate'] ?? -1),
     'weekly_plan_count' => $weeklyPlanCount,
     'weekly_plan_id_fingerprint' => $weeklyPlanIdFingerprint,
     'weekly_plan_entry_count' => $weeklyPlanEntryCount,
@@ -970,10 +1116,26 @@ if ($mode === 'postflight') {
     $expectedWeeklyPlanCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT');
     $expectedWeeklyPlanIdFingerprint = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT');
     $expectedWeeklyPlanEntryCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT');
+    $expectedLegacyOwnerReviewPlanCount = null;
+    $expectedLegacyOwnerChangesPlanCount = null;
+    $expectedReviewDecisionCountBaseline = null;
+    $expectedLegacyEmployeeReviewCount = null;
+
+    if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_19) {
+        $expectedLegacyOwnerReviewPlanCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_LEGACY_OWNER_REVIEW_PLAN_COUNT');
+        $expectedLegacyOwnerChangesPlanCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_LEGACY_OWNER_CHANGES_PLAN_COUNT');
+        $expectedReviewDecisionCountBaseline = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_REVIEW_DECISION_COUNT');
+        $expectedLegacyEmployeeReviewCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_LEGACY_EMPLOYEE_REVIEW_COUNT');
+    }
 
     if (! ctype_digit($expectedWeeklyPlanCount)
         || ! ctype_digit($expectedWeeklyPlanEntryCount)
-        || preg_match('/^[a-f0-9]{64}$/', $expectedWeeklyPlanIdFingerprint) !== 1) {
+        || preg_match('/^[a-f0-9]{64}$/', $expectedWeeklyPlanIdFingerprint) !== 1
+        || ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_19
+            && (! ctype_digit((string) $expectedLegacyOwnerReviewPlanCount)
+                || ! ctype_digit((string) $expectedLegacyOwnerChangesPlanCount)
+                || ! ctype_digit((string) $expectedReviewDecisionCountBaseline)
+                || ! ctype_digit((string) $expectedLegacyEmployeeReviewCount)))) {
         incrementalFinish(['status' => 'FAIL', 'reason' => 'invalid_postflight_baseline'], 2);
     }
 
@@ -983,6 +1145,10 @@ if ($mode === 'postflight') {
         (int) $expectedWeeklyPlanCount,
         $expectedWeeklyPlanIdFingerprint,
         (int) $expectedWeeklyPlanEntryCount,
+        $expectedLegacyOwnerReviewPlanCount === null ? null : (int) $expectedLegacyOwnerReviewPlanCount,
+        $expectedLegacyOwnerChangesPlanCount === null ? null : (int) $expectedLegacyOwnerChangesPlanCount,
+        $expectedReviewDecisionCountBaseline === null ? null : (int) $expectedReviewDecisionCountBaseline,
+        $expectedLegacyEmployeeReviewCount === null ? null : (int) $expectedLegacyEmployeeReviewCount,
     );
 } else {
     $violations = StagingIncrementalMigrationPlan::preflightViolations($migrationFile, $state);
@@ -1018,6 +1184,7 @@ incrementalFinish([
         'migration_16_state' => $migration16State,
         'migration_17_state' => $migration17State,
         'migration_18_state' => $migration18State,
+        'migration_19_state' => $migration19State,
         'parent_prerequisites_verified' => $state['parent_prerequisites_verified'],
         'migration_18_parent_prerequisites' => $migration18ParentEvidence,
         'source_row_count' => $state['source_row_count'],
@@ -1025,6 +1192,8 @@ incrementalFinish([
         'event_row_count' => $state['event_row_count'],
         'item_row_count' => $state['item_row_count'],
         'item_source_passage_row_count' => $state['item_source_passage_row_count'],
+        'review_round_count' => $state['review_round_count'],
+        'review_decision_count' => $state['review_decision_count'],
     ],
     'concurrency' => [
         'ddl_jobs_verified' => $state['ddl_jobs_verified'],
@@ -1036,6 +1205,10 @@ incrementalFinish([
         'weekly_plan_count' => $weeklyPlanCount,
         'weekly_plan_id_fingerprint' => $weeklyPlanIdFingerprint,
         'weekly_plan_entry_count' => $weeklyPlanEntryCount,
+        'legacy_owner_review_plan_count' => $legacyOwnerReviewPlanCount,
+        'legacy_owner_changes_plan_count' => $legacyOwnerChangesPlanCount,
+        'expected_review_decision_count' => $expectedReviewDecisionCount,
+        'legacy_employee_review_count' => $legacyEmployeeReviewCount,
     ],
     'plan' => [
         'artisan_command' => $command,

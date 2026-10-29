@@ -84,6 +84,10 @@ class WeeklyPlanningTest extends TestCase
             'tasks.manage',
             'tasks.view',
         ]);
+        [$assistant] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ]);
         [$assignee] = $this->userWithPermissions(['tasks.view', 'tasks.status.update']);
 
         $this->actingAs($hr)
@@ -112,22 +116,27 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED')
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
             ->assertJsonPath('data.actions.can_approve', false);
         $this->assertDatabaseCount('tasks', 0);
 
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
-            ->assertUnprocessable();
+            ->assertConflict();
         $this->assertDatabaseCount('tasks', 0);
 
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/employee-reviews", [
-            'assignee_id' => $assignee->id,
-            'status' => 'ACCEPTED',
-        ])->assertOk()
-            ->assertJsonPath('data.status', 'IN_REVIEW')
-            ->assertJsonPath('data.actions.can_approve_and_publish', true);
-
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($assistant)->postJson(
+            "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+            ['decision' => 'ACCEPTED'],
+        )->assertOk();
+        $this->actingAs($assistant)->postJson("/api/weekly-plans/{$planId}/finalize-assistant-review")
+            ->assertOk()->assertJsonPath('data.status', 'OWNER_REVIEW');
+        $this->actingAs($owner)->postJson(
+            "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+            ['decision' => 'ACCEPTED'],
+        )->assertOk()->assertJsonPath('data.actions.can_approve', true);
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve")
+            ->assertOk()->assertJsonPath('data.status', 'APPROVED');
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', 'PUBLISHED');
         $this->assertDatabaseCount('tasks', 1);
@@ -148,7 +157,7 @@ class WeeklyPlanningTest extends TestCase
             'event_type' => 'PUBLISHED',
         ]);
 
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', 'PUBLISHED');
         $this->assertDatabaseCount('tasks', 1);
@@ -192,7 +201,7 @@ class WeeklyPlanningTest extends TestCase
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED');
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
         $this->assertDatabaseMissing('weekly_plan_events', [
             'weekly_plan_id' => $planId,
             'event_type' => 'ANALYZED',
@@ -270,7 +279,7 @@ class WeeklyPlanningTest extends TestCase
             ->assertJsonPath('data.actions.can_submit', true);
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED');
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
     }
 
     public function test_stale_analysis_never_blocks_an_otherwise_complete_plan(): void
@@ -302,7 +311,7 @@ class WeeklyPlanningTest extends TestCase
         ]);
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED');
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
     }
 
     public function test_rule_engine_v2_omits_deadline_and_missing_result_noise_but_keeps_advisories(): void
@@ -1212,7 +1221,7 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
-    public function test_hr_can_fix_a_draft_and_requested_employee_is_reset_before_resubmission(): void
+    public function test_selective_revision_loop_remains_closed_until_the_follow_up_stack_lands(): void
     {
         [$hr] = $this->userWithPermissions([
             'weekly_plans.view',
@@ -1232,7 +1241,7 @@ class WeeklyPlanningTest extends TestCase
             'assignee_id' => $assignee->id,
             'status' => 'CHANGES_REQUESTED',
             'comment' => 'Cần làm rõ kết quả.',
-        ])->assertOk()->assertJsonPath('data.status', 'CHANGES_REQUESTED');
+        ])->assertConflict();
 
         $entryId = WeeklyPlan::query()->findOrFail($planId)->entries()->value('id');
         $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/entries/{$entryId}", [
@@ -1244,11 +1253,11 @@ class WeeklyPlanningTest extends TestCase
             'due_date' => '2026-10-31',
             'priority' => 'HIGH',
             'note' => null,
-        ])->assertOk()->assertJsonPath('data.employee_reviews.0.status', 'PENDING');
-
-        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
-            ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED');
+        ])->assertForbidden();
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $planId,
+            'status' => 'ASSISTANT_REVIEW',
+        ]);
     }
 
     public function test_security_boundaries_and_state_transitions_fail_closed(): void
@@ -1302,7 +1311,7 @@ class WeeklyPlanningTest extends TestCase
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")->assertOk();
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve")
-            ->assertUnprocessable();
+            ->assertConflict();
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
             ->assertForbidden();
 
@@ -1495,7 +1504,7 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
-    public function test_owner_can_comment_and_edit_review_fields_without_reassigning_or_changing_start_date(): void
+    public function test_owner_comment_is_state_neutral_and_owner_edit_is_closed_during_assistant_review(): void
     {
         [$hr] = $this->userWithPermissions([
             'weekly_plans.view',
@@ -1523,17 +1532,14 @@ class WeeklyPlanningTest extends TestCase
             'due_date' => '2026-10-30',
             'priority' => 'URGENT',
             'note' => 'Cần ưu tiên',
-        ])->assertOk()
-            ->assertJsonPath('data.entries.0.assignee.id', $assignee->id)
-            ->assertJsonPath('data.entries.0.start_date', '2026-10-26')
-            ->assertJsonPath('data.entries.0.due_date', '2026-10-30')
-            ->assertJsonPath('data.entries.0.priority', 'URGENT');
+        ])->assertForbidden();
 
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/comments", [
             'content' => 'Nhận xét riêng cho đầu việc.',
             'entry_id' => $entryId,
             'assignee_id' => $assignee->id,
         ])->assertCreated()
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
             ->assertJsonPath('data.comments.0.entry_id', $entryId)
             ->assertJsonPath('data.comments.0.assignee_id', $assignee->id);
 
@@ -1559,6 +1565,10 @@ class WeeklyPlanningTest extends TestCase
             'tasks.manage',
             'tasks.view',
         ]);
+        [$assistant] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ]);
         [$first] = $this->userWithPermissions([]);
         [$second, $secondMembershipId] = $this->userWithPermissions([]);
 
@@ -1573,21 +1583,30 @@ class WeeklyPlanningTest extends TestCase
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")->assertOk();
         foreach ([$first, $second] as $assignee) {
-            $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/employee-reviews", [
-                'assignee_id' => $assignee->id,
-                'status' => 'ACCEPTED',
-            ])->assertOk();
+            $this->actingAs($assistant)->postJson(
+                "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+                ['decision' => 'ACCEPTED'],
+            )->assertOk();
         }
+        $this->actingAs($assistant)->postJson("/api/weekly-plans/{$planId}/finalize-assistant-review")
+            ->assertOk();
+        foreach ([$first, $second] as $assignee) {
+            $this->actingAs($owner)->postJson(
+                "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+                ['decision' => 'ACCEPTED'],
+            )->assertOk();
+        }
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve")->assertOk();
         DB::table('organization_memberships')->where('id', $secondMembershipId)->update([
             'is_active' => false,
             'updated_at' => now(),
         ]);
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertUnprocessable();
         $this->assertDatabaseCount('tasks', 0);
         $this->assertDatabaseCount('user_notifications', 0);
-        $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'IN_REVIEW']);
-        $this->assertDatabaseMissing('weekly_plan_events', [
+        $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'APPROVED']);
+        $this->assertDatabaseHas('weekly_plan_events', [
             'weekly_plan_id' => $planId,
             'event_type' => 'APPROVED',
         ]);
@@ -1596,7 +1615,7 @@ class WeeklyPlanningTest extends TestCase
             'is_active' => true,
             'updated_at' => now(),
         ]);
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', 'PUBLISHED');
         $this->assertDatabaseCount('tasks', 2);

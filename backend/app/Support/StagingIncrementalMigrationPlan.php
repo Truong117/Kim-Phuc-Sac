@@ -12,6 +12,8 @@ final class StagingIncrementalMigrationPlan
 
     public const MIGRATION_18 = '2026_10_28_000000_create_weekly_plan_entry_items_tables.php';
 
+    public const MIGRATION_19 = '2026_10_29_000000_create_weekly_plan_staged_review_tables.php';
+
     /** @var array<string, array{migration: string, before: int, after: int}> */
     private const ALLOWLIST = [
         self::MIGRATION_16 => [
@@ -28,6 +30,11 @@ final class StagingIncrementalMigrationPlan
             'migration' => '2026_10_28_000000_create_weekly_plan_entry_items_tables',
             'before' => 17,
             'after' => 18,
+        ],
+        self::MIGRATION_19 => [
+            'migration' => '2026_10_29_000000_create_weekly_plan_staged_review_tables',
+            'before' => 18,
+            'after' => 19,
         ],
     ];
 
@@ -90,9 +97,11 @@ final class StagingIncrementalMigrationPlan
         }
 
         if (! $state['parent_prerequisites_verified']) {
-            $violations[] = $migrationFile === self::MIGRATION_18
-                ? 'migration_18_parent_prerequisites_missing_or_incompatible'
-                : 'foreign_key_prerequisites_missing_or_incompatible';
+            $violations[] = match ($migrationFile) {
+                self::MIGRATION_18 => 'migration_18_parent_prerequisites_missing_or_incompatible',
+                self::MIGRATION_19 => 'migration_19_parent_prerequisites_missing_or_incompatible',
+                default => 'foreign_key_prerequisites_missing_or_incompatible',
+            };
         }
 
         if ($migrationFile === self::MIGRATION_16) {
@@ -107,6 +116,9 @@ final class StagingIncrementalMigrationPlan
             if ($state['migration_18_schema_state'] !== 'absent') {
                 $violations[] = 'migration_18_schema_exists_before_migration_16';
             }
+            if (($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_19_schema_exists_before_migration_16';
+            }
         } elseif ($migrationFile === self::MIGRATION_17) {
             if ($state['migration_16_schema_state'] !== 'complete') {
                 $violations[] = 'migration_16_schema_not_verified';
@@ -119,7 +131,10 @@ final class StagingIncrementalMigrationPlan
             if ($state['migration_18_schema_state'] !== 'absent') {
                 $violations[] = 'migration_18_schema_exists_before_migration_17';
             }
-        } else {
+            if (($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_19_schema_exists_before_migration_17';
+            }
+        } elseif ($migrationFile === self::MIGRATION_18) {
             if ($state['migration_16_schema_state'] !== 'complete') {
                 $violations[] = 'migration_16_schema_not_verified';
             }
@@ -130,6 +145,22 @@ final class StagingIncrementalMigrationPlan
 
             if ($state['migration_18_schema_state'] !== 'absent') {
                 $violations[] = 'migration_18_partial_or_existing_schema';
+            }
+            if (($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_19_schema_exists_before_migration_18';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete') {
+                $violations[] = 'migration_16_schema_not_verified';
+            }
+            if ($state['migration_17_schema_state'] !== 'complete') {
+                $violations[] = 'migration_17_schema_not_verified';
+            }
+            if ($state['migration_18_schema_state'] !== 'complete') {
+                $violations[] = 'migration_18_schema_not_verified';
+            }
+            if (($state['migration_19_schema_state'] ?? 'partial') !== 'absent') {
+                $violations[] = 'migration_19_partial_or_existing_schema';
             }
         }
 
@@ -173,6 +204,10 @@ final class StagingIncrementalMigrationPlan
         int $expectedWeeklyPlanCount,
         string $expectedWeeklyPlanIdFingerprint,
         ?int $expectedWeeklyPlanEntryCount = null,
+        ?int $expectedLegacyOwnerReviewPlanCount = null,
+        ?int $expectedLegacyOwnerChangesPlanCount = null,
+        ?int $expectedReviewDecisionCount = null,
+        ?int $expectedLegacyEmployeeReviewCount = null,
     ): array {
         $definition = self::definition($migrationFile);
         $violations = self::commonViolations($state);
@@ -198,7 +233,8 @@ final class StagingIncrementalMigrationPlan
         if ($migrationFile === self::MIGRATION_16) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'absent'
-                || $state['migration_18_schema_state'] !== 'absent') {
+                || $state['migration_18_schema_state'] !== 'absent'
+                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_16_postflight_schema_mismatch';
             }
 
@@ -212,17 +248,19 @@ final class StagingIncrementalMigrationPlan
         } elseif ($migrationFile === self::MIGRATION_17) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
-                || $state['migration_18_schema_state'] !== 'absent') {
+                || $state['migration_18_schema_state'] !== 'absent'
+                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_17_postflight_schema_mismatch';
             }
 
             if ($state['mapping_row_count'] !== 0 || $state['event_row_count'] !== 0) {
                 $violations[] = 'migration_17_tables_not_empty';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_18) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
-                || $state['migration_18_schema_state'] !== 'complete') {
+                || $state['migration_18_schema_state'] !== 'complete'
+                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_18_postflight_schema_mismatch';
             }
 
@@ -234,6 +272,33 @@ final class StagingIncrementalMigrationPlan
             if ($expectedWeeklyPlanEntryCount === null
                 || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
                 $violations[] = 'weekly_plan_entry_count_baseline_changed';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete'
+                || $state['migration_17_schema_state'] !== 'complete'
+                || $state['migration_18_schema_state'] !== 'complete'
+                || ($state['migration_19_schema_state'] ?? 'partial') !== 'complete') {
+                $violations[] = 'migration_19_postflight_schema_mismatch';
+            }
+
+            if ($expectedWeeklyPlanEntryCount === null
+                || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
+                $violations[] = 'weekly_plan_entry_count_baseline_changed';
+            }
+
+            if ($expectedLegacyOwnerReviewPlanCount === null
+                || $expectedLegacyOwnerChangesPlanCount === null
+                || $expectedReviewDecisionCount === null
+                || $expectedLegacyEmployeeReviewCount === null
+                || ($state['legacy_status_plan_count'] ?? -1) !== 0
+                || ($state['owner_review_plan_count'] ?? -1) !== $expectedLegacyOwnerReviewPlanCount
+                || ($state['owner_changes_plan_count'] ?? -1) !== $expectedLegacyOwnerChangesPlanCount
+                || ($state['review_round_count'] ?? -1) !== (
+                    $expectedLegacyOwnerReviewPlanCount + $expectedLegacyOwnerChangesPlanCount
+                )
+                || ($state['review_decision_count'] ?? -1) !== $expectedReviewDecisionCount
+                || ($state['legacy_employee_review_count'] ?? -1) !== $expectedLegacyEmployeeReviewCount) {
+                $violations[] = 'migration_19_legacy_normalization_mismatch';
             }
         }
 

@@ -29,6 +29,8 @@ class WeeklyPlanningMigrationTest extends TestCase
         'weekly_plan_entry_applications',
         'weekly_plan_entry_items',
         'weekly_plan_entry_item_source_passage',
+        'weekly_plan_review_rounds',
+        'weekly_plan_review_decisions',
     ];
 
     public function test_fresh_schema_contains_weekly_planning_tables_indexes_and_foreign_keys(): void
@@ -75,6 +77,8 @@ class WeeklyPlanningMigrationTest extends TestCase
         $this->assertUniqueIndex('weekly_plan_source_passages', 'weekly_passages_plan_source_sequence_unique');
         $this->assertUniqueIndex('weekly_plan_entry_applications', 'weekly_applications_plan_key_unique');
         $this->assertUniqueIndex('tasks', 'tasks_weekly_plan_entry_unique');
+        $this->assertUniqueIndex('weekly_plan_review_rounds', 'weekly_review_rounds_plan_stage_number_unique');
+        $this->assertUniqueIndex('weekly_plan_review_decisions', 'weekly_review_decisions_round_assignee_unique');
 
         $this->assertForeignKey('weekly_plans', 'organization_id', 'organizations', 'id', 'RESTRICT');
         $this->assertForeignKey('weekly_plans', 'created_by', 'users', 'id', 'RESTRICT');
@@ -109,6 +113,80 @@ class WeeklyPlanningMigrationTest extends TestCase
         $this->assertForeignKey('weekly_plan_entry_item_source_passage', 'weekly_plan_entry_item_id', 'weekly_plan_entry_items', 'id', 'CASCADE');
         $this->assertForeignKey('weekly_plan_entry_item_source_passage', 'weekly_plan_source_passage_id', 'weekly_plan_source_passages', 'id', 'CASCADE');
         $this->assertForeignKey('tasks', 'weekly_plan_entry_id', 'weekly_plan_entries', 'id', 'RESTRICT');
+        $this->assertForeignKey('weekly_plan_review_rounds', 'weekly_plan_id', 'weekly_plans', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_review_rounds', 'started_by', 'users', 'id', 'SET NULL');
+        $this->assertForeignKey('weekly_plan_review_rounds', 'completed_by', 'users', 'id', 'SET NULL');
+        $this->assertForeignKey('weekly_plan_review_decisions', 'weekly_plan_review_round_id', 'weekly_plan_review_rounds', 'id', 'CASCADE');
+        $this->assertForeignKey('weekly_plan_review_decisions', 'assignee_id', 'users', 'id', 'RESTRICT');
+        $this->assertForeignKey('weekly_plan_review_decisions', 'reviewed_by', 'users', 'id', 'SET NULL');
+    }
+
+    public function test_migration_19_normalizes_legacy_owner_plans_and_copies_reviews_without_fabricating_assistant_history(): void
+    {
+        $migration = $this->migration('2026_10_29_000000_create_weekly_plan_staged_review_tables.php');
+        $migration->down();
+
+        $plans = [];
+        foreach ([
+            'SUBMITTED' => 'LEGACY_SUBMITTED',
+            'IN_REVIEW' => 'LEGACY_IN_REVIEW',
+            'CHANGES_REQUESTED' => 'LEGACY_CHANGES',
+        ] as $status => $organizationCode) {
+            $user = User::factory()->create();
+            $membership = $this->createMembership($user, organizationCode: $organizationCode);
+            [$planId] = $this->insertPlanAndEntry($membership['organization_id'], $user->id);
+            DB::table('weekly_plans')->where('id', $planId)->update([
+                'status' => $status,
+                'submitted_by' => $user->id,
+                'submitted_at' => now(),
+            ]);
+            $plans[$status] = [$planId, $user];
+        }
+
+        [$reviewedPlanId, $reviewer] = $plans['IN_REVIEW'];
+        DB::table('weekly_plan_employee_reviews')->insert([
+            'weekly_plan_id' => $reviewedPlanId,
+            'assignee_id' => $reviewer->id,
+            'status' => 'ACCEPTED',
+            'reviewed_by' => $reviewer->id,
+            'reviewed_at' => now(),
+            'comment' => 'Legacy comment remains only on the legacy row.',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $migration->up();
+
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $plans['SUBMITTED'][0],
+            'status' => 'OWNER_REVIEW',
+        ]);
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $plans['IN_REVIEW'][0],
+            'status' => 'OWNER_REVIEW',
+        ]);
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $plans['CHANGES_REQUESTED'][0],
+            'status' => 'OWNER_CHANGES_REQUESTED',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_review_rounds', 3);
+        $this->assertDatabaseMissing('weekly_plan_review_rounds', ['stage' => 'ASSISTANT']);
+        $ownerRoundId = DB::table('weekly_plan_review_rounds')
+            ->where('weekly_plan_id', $reviewedPlanId)
+            ->where('stage', 'OWNER')
+            ->value('id');
+        $this->assertDatabaseHas('weekly_plan_review_decisions', [
+            'weekly_plan_review_round_id' => $ownerRoundId,
+            'assignee_id' => $reviewer->id,
+            'status' => 'ACCEPTED',
+            'reviewed_by' => $reviewer->id,
+        ]);
+        $this->assertDatabaseHas('weekly_plan_employee_reviews', [
+            'weekly_plan_id' => $reviewedPlanId,
+            'assignee_id' => $reviewer->id,
+            'status' => 'ACCEPTED',
+            'comment' => 'Legacy comment remains only on the legacy row.',
+        ]);
     }
 
     public function test_document_extraction_foreign_key_names_fit_tidb_identifier_limits(): void
@@ -175,8 +253,10 @@ class WeeklyPlanningMigrationTest extends TestCase
         $sourceMigration = $this->migration('2026_10_22_010001_add_weekly_plan_source_to_tasks_table.php');
         $documentMigration = $this->migration('2026_10_22_020000_create_weekly_plan_document_extraction_tables.php');
         $itemMigration = $this->migration('2026_10_28_000000_create_weekly_plan_entry_items_tables.php');
+        $stagedReviewMigration = $this->migration('2026_10_29_000000_create_weekly_plan_staged_review_tables.php');
         $weeklyMigration = $this->migration('2026_10_22_010000_create_weekly_planning_tables.php');
 
+        $stagedReviewMigration->down();
         $itemMigration->down();
         $documentMigration->down();
         $sourceMigration->down();
@@ -197,6 +277,7 @@ class WeeklyPlanningMigrationTest extends TestCase
         $sourceMigration->up();
         $documentMigration->up();
         $itemMigration->up();
+        $stagedReviewMigration->up();
 
         foreach (self::WEEKLY_TABLES as $table) {
             $this->assertTrue(Schema::hasTable($table), "Weekly planning table was not recreated: {$table}");

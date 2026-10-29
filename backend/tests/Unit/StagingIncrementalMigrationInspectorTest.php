@@ -234,6 +234,32 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
         $this->assertFalse($invalid['weekly_plan_entries_id_referenceable']);
     }
 
+    public function test_migration_19_schema_metadata_is_exact_and_fails_closed_on_mismatch(): void
+    {
+        $this->assertSame('absent', \incrementalMigration19SchemaStateFromMetadata(
+            [], [], [], [], [], [],
+        ));
+        $metadata = $this->migration19Metadata();
+        $this->assertSame('complete', \incrementalMigration19SchemaStateFromMetadata(
+            $metadata['round_columns'],
+            $metadata['round_indexes'],
+            $metadata['round_foreign_keys'],
+            $metadata['decision_columns'],
+            $metadata['decision_indexes'],
+            $metadata['decision_foreign_keys'],
+        ));
+
+        $metadata['decision_columns'][3]['COLUMN_TYPE'] = 'longtext';
+        $this->assertSame('partial', \incrementalMigration19SchemaStateFromMetadata(
+            $metadata['round_columns'],
+            $metadata['round_indexes'],
+            $metadata['round_foreign_keys'],
+            $metadata['decision_columns'],
+            $metadata['decision_indexes'],
+            $metadata['decision_foreign_keys'],
+        ));
+    }
+
     /** @return array<string, mixed> */
     private function migration18Metadata(): array
     {
@@ -295,6 +321,77 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
     }
 
     /** @return array<string, mixed> */
+    private function migration19Metadata(): array
+    {
+        return [
+            'round_columns' => [
+                $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+                $this->column('weekly_plan_id', 2, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('stage', 3, 'varchar(32)', 'NO'),
+                $this->column('round_number', 4, 'int unsigned', 'NO'),
+                $this->column('status', 5, 'varchar(32)', 'NO'),
+                $this->column('started_by', 6, 'bigint unsigned', 'YES', null, 'MUL'),
+                $this->column('started_at', 7, 'timestamp', 'NO'),
+                $this->column('completed_by', 8, 'bigint unsigned', 'YES', null, 'MUL'),
+                $this->column('completed_at', 9, 'timestamp', 'YES'),
+                $this->column('created_at', 10, 'timestamp', 'YES'),
+                $this->column('updated_at', 11, 'timestamp', 'YES'),
+            ],
+            'round_indexes' => [
+                'PRIMARY' => $this->actualIndex(0, ['id']),
+                'weekly_review_rounds_completed_by_index' => $this->actualIndex(1, ['completed_by']),
+                'weekly_review_rounds_plan_stage_number_unique' => $this->actualIndex(0, [
+                    'weekly_plan_id', 'stage', 'round_number',
+                ]),
+                'weekly_review_rounds_plan_stage_status_index' => $this->actualIndex(1, [
+                    'weekly_plan_id', 'stage', 'status',
+                ]),
+                'weekly_review_rounds_started_by_index' => $this->actualIndex(1, ['started_by']),
+            ],
+            'round_foreign_keys' => [
+                'weekly_review_rounds_completed_by_foreign' => $this->actualForeignKey(
+                    ['completed_by'], 'users', ['id'], 'SET NULL',
+                ),
+                'weekly_review_rounds_plan_foreign' => $this->actualForeignKey(
+                    ['weekly_plan_id'], 'weekly_plans', ['id'],
+                ),
+                'weekly_review_rounds_started_by_foreign' => $this->actualForeignKey(
+                    ['started_by'], 'users', ['id'], 'SET NULL',
+                ),
+            ],
+            'decision_columns' => [
+                $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+                $this->column('weekly_plan_review_round_id', 2, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('assignee_id', 3, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('status', 4, 'varchar(32)', 'NO', 'PENDING'),
+                $this->column('reviewed_by', 5, 'bigint unsigned', 'YES', null, 'MUL'),
+                $this->column('reviewed_at', 6, 'timestamp', 'YES'),
+                $this->column('created_at', 7, 'timestamp', 'YES'),
+                $this->column('updated_at', 8, 'timestamp', 'YES'),
+            ],
+            'decision_indexes' => [
+                'PRIMARY' => $this->actualIndex(0, ['id']),
+                'weekly_review_decisions_assignee_index' => $this->actualIndex(1, ['assignee_id']),
+                'weekly_review_decisions_reviewed_by_index' => $this->actualIndex(1, ['reviewed_by']),
+                'weekly_review_decisions_round_assignee_unique' => $this->actualIndex(0, [
+                    'weekly_plan_review_round_id', 'assignee_id',
+                ]),
+            ],
+            'decision_foreign_keys' => [
+                'weekly_review_decisions_assignee_foreign' => $this->actualForeignKey(
+                    ['assignee_id'], 'users', ['id'], 'RESTRICT',
+                ),
+                'weekly_review_decisions_reviewer_foreign' => $this->actualForeignKey(
+                    ['reviewed_by'], 'users', ['id'], 'SET NULL',
+                ),
+                'weekly_review_decisions_round_foreign' => $this->actualForeignKey(
+                    ['weekly_plan_review_round_id'], 'weekly_plan_review_rounds', ['id'],
+                ),
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
     private function column(
         string $name,
         int $position,
@@ -337,6 +434,7 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
         array $localColumns,
         string $referencedTable,
         array $referencedColumns,
+        string $deleteRule = 'CASCADE',
     ): array {
         return [
             'valid' => true,
@@ -346,7 +444,7 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
             'referenced_columns' => $referencedColumns,
             'referenced_positions' => range(1, count($referencedColumns)),
             'update_rule' => 'NO ACTION',
-            'delete_rule' => 'CASCADE',
+            'delete_rule' => $deleteRule,
         ];
     }
 

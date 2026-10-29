@@ -4,7 +4,8 @@ param(
     [ValidateSet(
         '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
         '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php',
-        '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
+        '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
+        '2026_10_29_000000_create_weekly_plan_staged_review_tables.php'
     )]
     [string]$Migration,
     [switch]$Status,
@@ -48,7 +49,8 @@ $ReceiptStoreRoot = Join-Path $env:LOCALAPPDATA 'KPS\incremental-migration-recei
 $AllowedMigrations = @(
     '2026_10_27_000000_add_google_docs_source_to_weekly_plans.php',
     '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php',
-    '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
+    '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
+    '2026_10_29_000000_create_weekly_plan_staged_review_tables.php'
 )
 
 if ($Migration -notin $AllowedMigrations -or [IO.Path]::GetFileName($Migration) -cne $Migration) {
@@ -612,7 +614,11 @@ function Invoke-Inspector {
         'KPS_PRODUCTION_USERNAME_PREFIX_FINGERPRINT',
         'KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT',
         'KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT',
-        'KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT'
+        'KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT',
+        'KPS_STAGING_EXPECTED_LEGACY_OWNER_REVIEW_PLAN_COUNT',
+        'KPS_STAGING_EXPECTED_LEGACY_OWNER_CHANGES_PLAN_COUNT',
+        'KPS_STAGING_EXPECTED_REVIEW_DECISION_COUNT',
+        'KPS_STAGING_EXPECTED_LEGACY_EMPLOYEE_REVIEW_COUNT'
     )
     $processResult = Invoke-IsolatedPhpProcess `
         -ScriptPath $InspectorScript `
@@ -875,6 +881,12 @@ function Invoke-KpsStagingIncrementalRunner {
             $postflightEnvironment['KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT'] = [string]$finalPreflight.Result.baseline.weekly_plan_count
             $postflightEnvironment['KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT'] = [string]$finalPreflight.Result.baseline.weekly_plan_id_fingerprint
             $postflightEnvironment['KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT'] = [string]$finalPreflight.Result.baseline.weekly_plan_entry_count
+            if ($Migration -ceq '2026_10_29_000000_create_weekly_plan_staged_review_tables.php') {
+                $postflightEnvironment['KPS_STAGING_EXPECTED_LEGACY_OWNER_REVIEW_PLAN_COUNT'] = [string]$finalPreflight.Result.baseline.legacy_owner_review_plan_count
+                $postflightEnvironment['KPS_STAGING_EXPECTED_LEGACY_OWNER_CHANGES_PLAN_COUNT'] = [string]$finalPreflight.Result.baseline.legacy_owner_changes_plan_count
+                $postflightEnvironment['KPS_STAGING_EXPECTED_REVIEW_DECISION_COUNT'] = [string]$finalPreflight.Result.baseline.expected_review_decision_count
+                $postflightEnvironment['KPS_STAGING_EXPECTED_LEGACY_EMPLOYEE_REVIEW_COUNT'] = [string]$finalPreflight.Result.baseline.legacy_employee_review_count
+            }
             $postflight = Invoke-Inspector $postflightEnvironment
             $outputLines.Add($postflight.Json)
 

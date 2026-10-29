@@ -61,6 +61,10 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
             'database/migrations/2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
             $payload['migration_18_path'],
         );
+        $this->assertSame(
+            'database/migrations/2026_10_29_000000_create_weekly_plan_staged_review_tables.php',
+            $payload['migration_19_path'],
+        );
         $this->assertTrue($payload['unknown_migration_rejected']);
         $this->assertSame(0, $payload['kernel_handle_call_count']);
     }
@@ -131,6 +135,9 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
                 $migration18Input = runnerMigrationInput(
                     '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
                 );
+                $migration19Input = runnerMigrationInput(
+                    '2026_10_29_000000_create_weekly_plan_staged_review_tables.php',
+                );
                 $unknownMigrationRejected = false;
                 try {
                     runnerMigrationInput('2099_01_01_000000_unknown.php');
@@ -164,6 +171,7 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
                         'interactive' => $input->isInteractive(),
                     ],
                     'migration_18_path' => $migration18Input->getParameterOption('--path'),
+                    'migration_19_path' => $migration19Input->getParameterOption('--path'),
                     'unknown_migration_rejected' => $unknownMigrationRejected,
                     'kernel_handle_call_count' => 0,
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);

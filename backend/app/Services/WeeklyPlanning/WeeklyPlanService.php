@@ -3,6 +3,7 @@
 namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanParseStatus;
+use App\Enums\WeeklyPlanReviewStage;
 use App\Enums\WeeklyPlanReviewStatus;
 use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
@@ -11,12 +12,12 @@ use App\Models\OrganizationMembership;
 use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanComment;
-use App\Models\WeeklyPlanEmployeeReview;
 use App\Models\WeeklyPlanEntry;
 use App\Models\WeeklyPlanEntryApplication;
 use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanGoogleDocsTabMapping;
 use App\Models\WeeklyPlanGoogleDocsTabMappingEvent;
+use App\Models\WeeklyPlanReviewRound;
 use App\Models\WeeklyPlanSourcePassage;
 use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsAiAssignmentService;
 use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsSourceException;
@@ -49,6 +50,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanEntryValidator $validator,
         private readonly WeeklyPlanSuggestionGenerator $suggestions,
         private readonly WeeklyPlanPublisher $publisher,
+        private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -1099,14 +1101,7 @@ class WeeklyPlanService
                 throw ValidationException::withMessages($errors);
             }
 
-            $this->syncReviews($plan);
-            $now = CarbonImmutable::now('UTC');
-            $plan->forceFill([
-                'status' => WeeklyPlanStatus::SUBMITTED,
-                'submitted_by' => $actor->id,
-                'submitted_at' => $now,
-            ])->save();
-            $this->record($plan, $actor, 'SUBMITTED');
+            $this->reviewWorkflow->startAssistantReview($plan, $actor);
         });
 
         return $this->findVisible($actor, $planId);
@@ -1170,39 +1165,18 @@ class WeeklyPlanService
             throw ValidationException::withMessages(['status' => ['Trạng thái xét duyệt không hợp lệ.']]);
         }
 
-        DB::transaction(function () use ($actor, $assigneeId, $comment, $planId, $status): void {
-            $plan = $this->scope->queryFor($actor, 'weekly_plans.review')
-                ->lockForUpdate()
-                ->findOrFail($planId);
-            if (! in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)) {
-                throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể xét duyệt.');
-            }
-            if (! $plan->entries()->where('assignee_id', $assigneeId)->exists()) {
-                throw ValidationException::withMessages(['assignee_id' => ['Nhân viên không thuộc kế hoạch này.']]);
-            }
+        $plan = $this->scope->queryFor($actor, 'weekly_plans.review')->findOrFail($planId);
+        if (! in_array($plan->status, [
+            WeeklyPlanStatus::OWNER_REVIEW,
+            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED,
+        ], true)) {
+            throw new ConflictHttpException('Kế hoạch không ở giai đoạn OWNER có thể xét duyệt.');
+        }
 
-            $review = WeeklyPlanEmployeeReview::query()->updateOrCreate(
-                ['weekly_plan_id' => $plan->id, 'assignee_id' => $assigneeId],
-                [
-                    'status' => $status,
-                    'reviewed_by' => $actor->id,
-                    'reviewed_at' => CarbonImmutable::now('UTC'),
-                    'comment' => $comment,
-                ],
-            );
-
-            $plan->forceFill([
-                'status' => $status === WeeklyPlanReviewStatus::CHANGES_REQUESTED
-                    ? WeeklyPlanStatus::CHANGES_REQUESTED
-                    : WeeklyPlanStatus::IN_REVIEW,
-            ])->save();
-            $this->record($plan, $actor, $status === WeeklyPlanReviewStatus::ACCEPTED
-                ? 'EMPLOYEE_ACCEPTED'
-                : 'EMPLOYEE_CHANGES_REQUESTED', [
-                    'assignee_id' => $assigneeId,
-                    'review_id' => $review->id,
-                ]);
-        });
+        $this->reviewWorkflow->decide($actor, $planId, $assigneeId, $status);
+        if (is_string($comment) && trim($comment) !== '') {
+            $this->addComment($actor, $planId, trim($comment), null, $assigneeId);
+        }
 
         return $this->findVisible($actor, $planId);
     }
@@ -1214,18 +1188,13 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.approve')
                 ->lockForUpdate()
                 ->findOrFail($planId);
-            if (! in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)) {
+            if ($plan->status !== WeeklyPlanStatus::OWNER_REVIEW) {
                 throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể phê duyệt.');
             }
-            $this->syncReviews($plan);
-            if ($plan->employeeReviews()->where('status', '!=', WeeklyPlanReviewStatus::ACCEPTED->value)->exists()) {
-                throw ValidationException::withMessages([
-                    'plan' => ['Tất cả nhân viên phải được chấp nhận trước khi phê duyệt cuối.'],
-                ]);
-            }
-            if ($plan->entries()->where('validation_status', '!=', 'VALID')->exists()) {
+            if (! $this->submissionReadiness($plan)['ready']) {
                 throw ValidationException::withMessages(['plan' => ['Kế hoạch còn dữ liệu chưa hợp lệ.']]);
             }
+            $this->reviewWorkflow->completeOwnerReviewForApproval($plan, $actor);
 
             $plan->forceFill([
                 'status' => WeeklyPlanStatus::APPROVED,
@@ -1788,6 +1757,10 @@ class WeeklyPlanService
             'entries.sourcePassages',
             'entries.items.sourcePassages',
             'employeeReviews.assignee:id,name',
+            'reviewRounds.decisions.assignee:id,name',
+            'reviewRounds.decisions.reviewer:id,name',
+            'reviewRounds.starter:id,name',
+            'reviewRounds.completer:id,name',
             'comments.author:id,name',
             'suggestions',
             'events.actor:id,name',
@@ -1831,22 +1804,32 @@ class WeeklyPlanService
                 fn (WeeklyPlanEntry $entry): bool => $entry->validation_status === 'VALID',
             );
         $submissionReadiness = $this->submissionReadiness($plan);
-        $assigneeIds = $plan->entries
-            ->pluck('assignee_id')
-            ->filter()
-            ->unique()
-            ->sort()
-            ->values();
-        $reviewAssigneeIds = $plan->employeeReviews
-            ->pluck('assignee_id')
-            ->unique()
-            ->sort()
-            ->values();
-        $allEmployeesAccepted = $assigneeIds->isNotEmpty()
-            && $reviewAssigneeIds->all() === $assigneeIds->all()
-            && $plan->employeeReviews->every(
-                fn (WeeklyPlanEmployeeReview $review): bool => $review->status === WeeklyPlanReviewStatus::ACCEPTED,
+        $assistantRound = $plan->reviewRounds
+            ->where('stage', WeeklyPlanReviewStage::ASSISTANT)
+            ->sortByDesc('round_number')
+            ->first();
+        $ownerRound = $plan->reviewRounds
+            ->where('stage', WeeklyPlanReviewStage::OWNER)
+            ->sortByDesc('round_number')
+            ->first();
+        $allAssistantDecisionsAccepted = $assistantRound instanceof WeeklyPlanReviewRound
+            && $assistantRound->decisions->isNotEmpty()
+            && $assistantRound->decisions->every(
+                fn ($decision): bool => $decision->status === WeeklyPlanReviewStatus::ACCEPTED,
             );
+        $allOwnerDecisionsAccepted = $ownerRound instanceof WeeklyPlanReviewRound
+            && $ownerRound->decisions->isNotEmpty()
+            && $ownerRound->decisions->every(
+                fn ($decision): bool => $decision->status === WeeklyPlanReviewStatus::ACCEPTED,
+            );
+        $assistantReviewStatus = in_array($plan->status, [
+            WeeklyPlanStatus::ASSISTANT_REVIEW,
+            WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED,
+        ], true);
+        $ownerReviewStatus = in_array($plan->status, [
+            WeeklyPlanStatus::OWNER_REVIEW,
+            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED,
+        ], true);
 
         $plan->setAttribute('actions', [
             'can_edit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
@@ -1863,22 +1846,24 @@ class WeeklyPlanService
                 && $submissionReadiness['ready']
                 && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.submit'),
-            'can_review' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
+            'can_assistant_review' => $assistantReviewStatus
+                && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
+            'can_finalize_assistant_review' => $assistantReviewStatus
+                && $allAssistantDecisionsAccepted
+                && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
+            'can_owner_review' => $ownerReviewStatus
+                && $this->scope->allows($viewer, 'weekly_plans.review'),
+            'can_review' => $ownerReviewStatus
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
             'can_review_edit' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
-            'can_approve' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
+            'can_approve' => $plan->status === WeeklyPlanStatus::OWNER_REVIEW
                 && $hasValidEntries
-                && $allEmployeesAccepted
+                && $allOwnerDecisionsAccepted
                 && $this->scope->allows($viewer, 'weekly_plans.approve'),
             'can_publish' => $plan->status === WeeklyPlanStatus::APPROVED
                 && $this->scope->allows($viewer, 'weekly_plans.publish'),
-            'can_approve_and_publish' => (
-                ($plan->status === WeeklyPlanStatus::APPROVED)
-                || (in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
-                    && $hasValidEntries
-                    && $allEmployeesAccepted)
-            )
+            'can_approve_and_publish' => $plan->status === WeeklyPlanStatus::APPROVED
                 && $this->scope->allows($viewer, 'weekly_plans.approve')
                 && $this->scope->allows($viewer, 'weekly_plans.publish'),
             'can_comment' => $this->commentPermissionFor($viewer) !== null,
@@ -1967,7 +1952,7 @@ class WeeklyPlanService
 
     private function commentPermissionFor(User $viewer): ?string
     {
-        foreach (['weekly_plans.manage_draft', 'weekly_plans.review'] as $permission) {
+        foreach (['weekly_plans.manage_draft', 'weekly_plans.assistant_review', 'weekly_plans.review'] as $permission) {
             if ($this->scope->allows($viewer, $permission)) {
                 return $permission;
             }

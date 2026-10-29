@@ -7,6 +7,7 @@ use App\Enums\WeeklyPlanSuggestionStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\WeeklyPlanning\ApplyWeeklyPlanSourceEntriesRequest;
 use App\Http\Requests\WeeklyPlanning\AssignWeeklyPlanSourceGroupRequest;
+use App\Http\Requests\WeeklyPlanning\DecideWeeklyPlanReviewRequest;
 use App\Http\Requests\WeeklyPlanning\DecideWeeklyPlanSuggestionRequest;
 use App\Http\Requests\WeeklyPlanning\ExtractWeeklyPlanSourceWithAiRequest;
 use App\Http\Requests\WeeklyPlanning\ImportWeeklyPlanRequest;
@@ -17,6 +18,7 @@ use App\Http\Requests\WeeklyPlanning\StoreWeeklyPlanCommentRequest;
 use App\Http\Requests\WeeklyPlanning\WeeklyPlanEntryRequest;
 use App\Http\Resources\WeeklyPlanResource;
 use App\Models\User;
+use App\Services\WeeklyPlanning\WeeklyPlanReviewWorkflowService;
 use App\Services\WeeklyPlanning\WeeklyPlanService;
 use App\Services\WeeklyPlanning\WeeklyPlanTemplateService;
 use Illuminate\Http\JsonResponse;
@@ -26,7 +28,10 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class WeeklyPlanController extends Controller
 {
-    public function __construct(private readonly WeeklyPlanService $plans) {}
+    public function __construct(
+        private readonly WeeklyPlanService $plans,
+        private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -239,6 +244,32 @@ class WeeklyPlanController extends Controller
             WeeklyPlanReviewStatus::from($validated['status']),
             $validated['comment'] ?? null,
         ));
+    }
+
+    public function decideReview(
+        DecideWeeklyPlanReviewRequest $request,
+        int $id,
+        int $assigneeId,
+    ): WeeklyPlanResource {
+        /** @var User $user */
+        $user = $request->user();
+        $this->reviewWorkflow->decide(
+            $user,
+            $id,
+            $assigneeId,
+            WeeklyPlanReviewStatus::from($request->validated('decision')),
+        );
+
+        return new WeeklyPlanResource($this->plans->findVisible($user, $id));
+    }
+
+    public function finalizeAssistantReview(Request $request, int $id): WeeklyPlanResource
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $this->reviewWorkflow->finalizeAssistantReview($user, $id);
+
+        return new WeeklyPlanResource($this->plans->findVisible($user, $id));
     }
 
     public function approve(Request $request, int $id): WeeklyPlanResource
