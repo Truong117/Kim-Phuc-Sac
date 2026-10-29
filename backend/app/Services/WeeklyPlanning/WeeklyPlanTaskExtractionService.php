@@ -121,6 +121,12 @@ class WeeklyPlanTaskExtractionService
         if ($selectionFingerprint !== null) {
             $fingerprintParts[] = $selectionFingerprint;
         }
+        $latestResetEventId = $plan->events()
+            ->where('event_type', 'PLAN_RESET')
+            ->max('id');
+        if ($latestResetEventId !== null) {
+            $fingerprintParts[] = 'reset-cycle:'.$latestResetEventId;
+        }
         $context['_request'] = [
             'organization_id' => (int) $plan->organization_id,
             'requested_by_user_id' => (int) $actor->id,

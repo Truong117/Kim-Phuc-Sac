@@ -29,7 +29,7 @@ final class GoogleDocsEmployeeMappingService
     /** @return array<string, mixed> */
     public function overview(User $actor, int $planId): array
     {
-        $plan = $this->planFor($actor, $planId);
+        $plan = $this->viewablePlanFor($actor, $planId);
 
         return $this->buildOverview($plan, $actor);
     }
@@ -65,7 +65,7 @@ final class GoogleDocsEmployeeMappingService
             );
         }
 
-        $plan = $this->planFor($actor, $planId);
+        $plan = $this->editablePlanFor($actor, $planId);
         $initialManifest = $plan->googleDocsSource?->tab_manifest;
         $seenTabIds = [];
         foreach ($updates as $update) {
@@ -286,7 +286,7 @@ final class GoogleDocsEmployeeMappingService
             }
         });
 
-        return $this->buildOverview($this->planFor($actor, $planId), $actor);
+        return $this->buildOverview($this->editablePlanFor($actor, $planId), $actor);
     }
 
     private function lockAuthorizedMembership(
@@ -321,7 +321,17 @@ final class GoogleDocsEmployeeMappingService
         return $grant === null ? null : $membership;
     }
 
-    private function planFor(User $actor, int $planId): WeeklyPlan
+    private function viewablePlanFor(User $actor, int $planId): WeeklyPlan
+    {
+        $plan = $this->scope->queryFor($actor, 'weekly_plans.view')
+            ->with('googleDocsSource')
+            ->findOrFail($planId);
+        $this->assertGoogleDocs($plan);
+
+        return $plan;
+    }
+
+    private function editablePlanFor(User $actor, int $planId): WeeklyPlan
     {
         $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
             ->with('googleDocsSource')

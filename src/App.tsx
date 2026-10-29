@@ -20,10 +20,16 @@ import ReportHistory from "./pages/Reports/ReportHistory";
 import TaskCreate from "./pages/Tasks/TaskCreate";
 import TaskDetail from "./pages/Tasks/TaskDetail";
 import TaskList from "./pages/Tasks/TaskList";
-import WeeklyPlanDetail from "./pages/WeeklyPlans/WeeklyPlanDetail";
 import WeeklyPlanImport from "./pages/WeeklyPlans/WeeklyPlanImport";
 import WeeklyPlanList from "./pages/WeeklyPlans/WeeklyPlanList";
 import WeeklyPlanReview from "./pages/WeeklyPlans/WeeklyPlanReview";
+import WeeklyPlanWizardEntry from "./pages/WeeklyPlans/WeeklyPlanWizardEntry";
+import WeeklyPlanWizardQuality from "./pages/WeeklyPlans/WeeklyPlanWizardQuality";
+import WeeklyPlanWizardRoot from "./pages/WeeklyPlans/WeeklyPlanWizardRoot";
+import WeeklyPlanWizardSource from "./pages/WeeklyPlans/WeeklyPlanWizardSource";
+import WeeklyPlanWizardStructure from "./pages/WeeklyPlans/WeeklyPlanWizardStructure";
+import WeeklyPlanWizardSubmit from "./pages/WeeklyPlans/WeeklyPlanWizardSubmit";
+import WeeklyPlanWizardWork from "./pages/WeeklyPlans/WeeklyPlanWizardWork";
 
 export default function App() {
   return (
@@ -56,14 +62,32 @@ export default function App() {
                 <Route path="/tasks/new" element={<TaskCreate />} />
                 <Route path="/tasks/:id" element={<TaskDetail />} />
               </Route>
-              <Route element={<AuthorizationRoute navigationKey="weekly-plans" />}>
+              <Route
+                element={<AuthorizationRoute navigationKey="weekly-plans" />}
+              >
                 <Route path="/weekly-plans" element={<WeeklyPlanList />} />
-                <Route path="/weekly-plans/new" element={<WeeklyPlanImport />} />
-                <Route path="/weekly-plans/:id" element={<WeeklyPlanDetail />} />
+                <Route
+                  path="/weekly-plans/new"
+                  element={<WeeklyPlanImport />}
+                />
                 <Route
                   path="/weekly-plans/:id/review"
                   element={<WeeklyPlanReview />}
                 />
+                <Route
+                  path="/weekly-plans/:id"
+                  element={<WeeklyPlanWizardRoot />}
+                >
+                  <Route index element={<WeeklyPlanWizardEntry />} />
+                  <Route path="source" element={<WeeklyPlanWizardSource />} />
+                  <Route
+                    path="structure"
+                    element={<WeeklyPlanWizardStructure />}
+                  />
+                  <Route path="work" element={<WeeklyPlanWizardWork />} />
+                  <Route path="quality" element={<WeeklyPlanWizardQuality />} />
+                  <Route path="submit" element={<WeeklyPlanWizardSubmit />} />
+                </Route>
               </Route>
               <Route element={<AuthorizationRoute navigationKey="customers" />}>
                 <Route

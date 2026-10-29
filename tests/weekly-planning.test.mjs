@@ -19,7 +19,7 @@ test("weekly planning stays route-guarded but is exposed as an authorized work t
 
   assert.match(
     app,
-    /AuthorizationRoute navigationKey="weekly-plans"[\s\S]*?path="\/weekly-plans"[\s\S]*?path="\/weekly-plans\/new"[\s\S]*?path="\/weekly-plans\/:id"[\s\S]*?path="\/weekly-plans\/:id\/review"/,
+    /AuthorizationRoute navigationKey="weekly-plans"[\s\S]*?path="\/weekly-plans"[\s\S]*?path="\/weekly-plans\/new"[\s\S]*?path="\/weekly-plans\/:id\/review"[\s\S]*?path="\/weekly-plans\/:id"/,
   );
   assert.doesNotMatch(sidebar, /navigationKey:\s*"weekly-plans"/);
   assert.match(
@@ -72,7 +72,7 @@ test("weekly AI preview treats an empty suggestion list as a successful empty st
   assert.match(aiPreview, /\{t\("empty"\)\}/);
   assert.equal(
     translations.weeklyPlanning.sourceDocument.aiPreview.empty,
-    "AI không tìm thấy đầu việc có đủ căn cứ trong tài liệu này.",
+    "AI không tìm thấy công việc có đủ căn cứ trong tài liệu này.",
   );
 });
 
@@ -355,14 +355,14 @@ test("Vietnamese weekly translations interpolate actual values with single brace
   );
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.entryGroupSelectionRequired"),
-    "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo đầu việc.",
+    "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo công việc.",
   );
   assert.equal(
     instance.t("weeklyPlanning.detail.filters.resultCount", {
       groups: 2,
       entries: 5,
     }),
-    "Hiển thị 5 đầu việc trong 2 nhóm",
+    "Hiển thị 5 công việc trong 2 nhóm",
   );
   assert.equal(
     instance.t("weeklyPlanning.detail.groupCounts.missing", { count: 3 }),

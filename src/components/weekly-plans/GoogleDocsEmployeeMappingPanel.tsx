@@ -33,12 +33,14 @@ import { useTranslation } from "react-i18next";
 type Props = {
   planId: number;
   mappings: WeeklyPlanGoogleDocsEmployeeMappings | null;
+  readOnlyTabIds?: string[];
   onMappingsChange: (mappings: WeeklyPlanGoogleDocsEmployeeMappings) => void;
 };
 
 export default function GoogleDocsEmployeeMappingPanel({
   planId,
   mappings,
+  readOnlyTabIds = [],
   onMappingsChange,
 }: Props) {
   const { t } = useTranslation("common", {
@@ -387,6 +389,7 @@ export default function GoogleDocsEmployeeMappingPanel({
           {mappings?.tabs.map((tab) => {
             const draft = drafts[tab.tab_id];
             if (!draft) return null;
+            const isReadOnly = readOnlyTabIds.includes(tab.tab_id);
             const employeeOptions = mappings.employees.map((employee) => ({
               value: String(employee.id),
               label: employee.department
@@ -412,6 +415,11 @@ export default function GoogleDocsEmployeeMappingPanel({
                       <span className="rounded-full bg-gray-100 px-2.5 py-1 text-theme-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                         {t(`statuses.${tab.status}`)}
                       </span>
+                      {isReadOnly && (
+                        <span className="rounded-full bg-success-50 px-2.5 py-1 text-theme-xs font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
+                          {t("processedReadonly")}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
                       {t("tabPosition", {
@@ -460,6 +468,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                           type="button"
                           disabled={
                             !mappings.actions.can_update ||
+                            isReadOnly ||
                             writeBlocked ||
                             savingBatch ||
                             refreshingConflicts ||
@@ -489,6 +498,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                         value={draft.status}
                         disabled={
                           !mappings.actions.can_update ||
+                          isReadOnly ||
                           writeBlocked ||
                           savingBatch ||
                           refreshingConflicts ||
@@ -530,6 +540,7 @@ export default function GoogleDocsEmployeeMappingPanel({
                         value={draft.employeeId}
                         disabled={
                           !mappings.actions.can_update ||
+                          isReadOnly ||
                           writeBlocked ||
                           savingBatch ||
                           refreshingConflicts ||

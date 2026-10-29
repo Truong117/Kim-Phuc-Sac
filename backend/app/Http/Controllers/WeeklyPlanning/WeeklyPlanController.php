@@ -85,6 +85,14 @@ class WeeklyPlanController extends Controller
         return new WeeklyPlanResource($this->plans->findVisible($user, $id));
     }
 
+    public function reset(Request $request, int $id): WeeklyPlanResource
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        return new WeeklyPlanResource($this->plans->resetDraft($user, $id));
+    }
+
     public function reparse(ReparseWeeklyPlanRequest $request, int $id): WeeklyPlanResource
     {
         /** @var User $user */

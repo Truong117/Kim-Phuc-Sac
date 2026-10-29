@@ -6,11 +6,16 @@ import type {
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
 import {
+  addGoogleDocsAiReviewItem,
   buildGoogleDocsAiApplyAllEntries,
   createGoogleDocsAiReviewDrafts,
   groupGoogleDocsAiReviewDrafts,
+  moveGoogleDocsAiReviewItem,
+  removeGoogleDocsAiReviewItem,
+  splitGoogleDocsAiReviewDraft,
   submitGoogleDocsAiApplyAll,
   updateGoogleDocsAiReviewDraft,
+  updateGoogleDocsAiReviewItem,
   type GoogleDocsAiReviewChanges,
 } from "@/utils/weeklyPlanGoogleDocsAiReview";
 import { useMemo, useState } from "react";
@@ -221,6 +226,41 @@ export default function WeeklyPlanGoogleDocsAiReview({
             onToggle={() => toggleKey(setExpandedGroupKeys, group.key)}
             onToggleJob={(key) => toggleKey(setExpandedJobKeys, key)}
             onChange={updateDraft}
+            onItemChange={(draftIndex, itemIndex, changes) =>
+              setDrafts((current) =>
+                updateGoogleDocsAiReviewItem(
+                  current,
+                  draftIndex,
+                  itemIndex,
+                  changes,
+                ),
+              )
+            }
+            onAddItem={(draftIndex) =>
+              setDrafts((current) =>
+                addGoogleDocsAiReviewItem(current, draftIndex),
+              )
+            }
+            onRemoveItem={(draftIndex, itemIndex) =>
+              setDrafts((current) =>
+                removeGoogleDocsAiReviewItem(current, draftIndex, itemIndex),
+              )
+            }
+            onMoveItem={(draftIndex, itemIndex, direction) =>
+              setDrafts((current) =>
+                moveGoogleDocsAiReviewItem(
+                  current,
+                  draftIndex,
+                  itemIndex,
+                  direction,
+                ),
+              )
+            }
+            onSplit={(draftIndex) =>
+              setDrafts((current) =>
+                splitGoogleDocsAiReviewDraft(current, draftIndex),
+              )
+            }
           />
         ))}
       </div>

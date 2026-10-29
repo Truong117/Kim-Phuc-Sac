@@ -437,11 +437,39 @@ export default function WeeklyPlanEntries({
                               {entry.note}
                             </p>
                           )}
-                          {entry.source_passages.length > 0 && (
-                            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
-                              <p className="text-theme-xs font-semibold text-gray-700 dark:text-gray-300">
-                                {t("sourceReferences")}
+                          <details className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
+                            <summary className="cursor-pointer text-theme-xs font-semibold text-gray-700 dark:text-gray-300">
+                              {t("items", { count: entry.items.length })}
+                            </summary>
+                            {entry.items.length > 0 ? (
+                              <ol className="mt-2 list-decimal space-y-2 ps-5">
+                                {entry.items.map((item) => (
+                                  <li
+                                    key={item.id}
+                                    className="text-theme-sm text-gray-700 dark:text-gray-300"
+                                  >
+                                    <span className="font-medium">
+                                      {item.title}
+                                    </span>
+                                    {item.content && (
+                                      <p className="mt-1 text-theme-xs whitespace-pre-wrap text-gray-500 dark:text-gray-400">
+                                        {item.content}
+                                      </p>
+                                    )}
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : (
+                              <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                                {t("noItems")}
                               </p>
+                            )}
+                          </details>
+                          {entry.source_passages.length > 0 && (
+                            <details className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/60">
+                              <summary className="cursor-pointer text-theme-xs font-semibold text-gray-700 dark:text-gray-300">
+                                {t("sourceReferences")}
+                              </summary>
                               <ul className="mt-2 space-y-2">
                                 {entry.source_passages.map((passage) => (
                                   <li
@@ -452,7 +480,7 @@ export default function WeeklyPlanEntries({
                                   </li>
                                 ))}
                               </ul>
-                            </div>
+                            </details>
                           )}
                           {entry.validation_errors.length > 0 && (
                             <div className="mt-3 rounded-lg bg-warning-50 px-3 py-2 dark:bg-warning-500/10">
