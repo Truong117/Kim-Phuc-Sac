@@ -7,10 +7,14 @@ import {
   splitGoogleDocsAiReviewDraft,
 } from "../src/utils/weeklyPlanGoogleDocsAiReview.ts";
 import {
-  createWeeklyPlanDiscussionScopes,
-  filterWeeklyPlanDiscussionScopes,
-  findWeeklyPlanDiscussionScope,
-} from "../src/utils/weeklyPlanDiscussionScope.ts";
+  createWeeklyPlanDiscussionEmployeeOptions,
+  createWeeklyPlanDiscussionWorkOptions,
+  filterWeeklyPlanDiscussionOptions,
+  isWeeklyPlanDiscussionEmployeeConsistent,
+  isWeeklyPlanDiscussionEntryConsistent,
+  resolveWeeklyPlanCommentTargetArguments,
+} from "../src/utils/weeklyPlanDiscussionTarget.ts";
+import { resolveWeeklyPlanCommentContext } from "../src/utils/weeklyPlanCommentContext.ts";
 import {
   currentWeeklyPlanSuggestions,
   googleDocsSourceReady,
@@ -549,140 +553,262 @@ test("quick check groups blockers and advisory warnings without becoming a navig
   assert.match(submit, /submit\.history/);
 });
 
-test("discussion scope options keep internal ids out of visible employee and work labels", () => {
-  const groups = createWeeklyPlanDiscussionScopes(
+const discussionPlan = {
+  employee_reviews: [
+    { assignee: { id: 7, name: "Huyền My" } },
+    { assignee: { id: 8, name: "Lê Hùng" } },
+    { assignee: { id: 9, name: "Đăng" } },
+  ],
+  entries: [
     {
-      employee_reviews: [
-        { assignee: { id: 7, name: "Huyền My" } },
-        { assignee: { id: 8, name: "Lê Hùng" } },
-      ],
-      entries: [
-        { id: 90001, title: "Chăm sóc và tư vấn khách hàng" },
-        { id: 90002, title: "Bán hàng và theo dõi đơn hàng" },
-      ],
+      id: 90001,
+      title: "Chăm sóc và tư vấn khách hàng",
+      assignee: { id: 7, name: "Huyền My" },
     },
-    "Toàn bộ kế hoạch",
-  );
+    {
+      id: 90002,
+      title: "Bán hàng và theo dõi đơn hàng",
+      assignee: { id: 7, name: "Huyền My" },
+    },
+    {
+      id: 90003,
+      title: "Vận hành TikTok Kim Phúc Sắc",
+      assignee: { id: 8, name: "Lê Hùng" },
+    },
+    {
+      id: 90004,
+      title: "Phối hợp với Đăng quay content",
+      assignee: { id: 9, name: "Đăng" },
+    },
+  ],
+};
 
-  assert.deepEqual(groups.plan, {
-    value: "plan",
-    label: "Toàn bộ kế hoạch",
-  });
-  assert.deepEqual(groups.employees[0], {
-    value: "employee:7",
-    label: "Huyền My",
-  });
-  assert.deepEqual(groups.works[0], {
-    value: "entry:90001",
-    label: "Chăm sóc và tư vấn khách hàng",
-  });
-  assert.doesNotMatch(groups.works[0].label, /90001|#/);
-  assert.equal(
-    findWeeklyPlanDiscussionScope(groups, "employee:8").label,
-    "Lê Hùng",
+test("discussion target options follow employee ownership and keep ids out of labels", () => {
+  const employees = createWeeklyPlanDiscussionEmployeeOptions(discussionPlan);
+  const huyenWorks = createWeeklyPlanDiscussionWorkOptions(discussionPlan, 7);
+
+  assert.deepEqual(
+    employees.map(({ label }) => label),
+    ["Huyền My", "Lê Hùng", "Đăng"],
   );
-  assert.equal(
-    findWeeklyPlanDiscussionScope(groups, "entry:90002").label,
-    "Bán hàng và theo dõi đơn hàng",
+  assert.deepEqual(
+    huyenWorks.map(({ label }) => label),
+    ["Chăm sóc và tư vấn khách hàng", "Bán hàng và theo dõi đơn hàng"],
   );
-  assert.equal(findWeeklyPlanDiscussionScope(groups, "unknown").value, "plan");
+  assert.doesNotMatch(JSON.stringify(huyenWorks), /Vận hành TikTok/);
+  huyenWorks.forEach(({ label }) => assert.doesNotMatch(label, /9000\d|#/));
 });
 
-test("discussion scope search filters Vietnamese employee names and work titles locally", () => {
-  const groups = createWeeklyPlanDiscussionScopes(
-    {
-      employee_reviews: [
-        { assignee: { id: 7, name: "Huyền My" } },
-        { assignee: { id: 8, name: "Lê Hùng" } },
-        { assignee: { id: 9, name: "Đăng" } },
-      ],
-      entries: [
-        { id: 21, title: "Bán hàng và theo dõi đơn hàng" },
-        { id: 22, title: "Vận hành TikTok Kim Phúc Sắc" },
-        { id: 23, title: "Phối hợp với Đăng quay content" },
-      ],
-    },
-    "Toàn bộ kế hoạch",
-  );
+test("discussion employee and work search remains Vietnamese diacritic-insensitive", () => {
+  const employees = createWeeklyPlanDiscussionEmployeeOptions(discussionPlan);
+  const works = discussionPlan.entries.map(({ id: value, title: label }) => ({
+    value,
+    label,
+  }));
 
-  const employeeResult = filterWeeklyPlanDiscussionScopes(groups, "huyen");
   assert.deepEqual(
-    employeeResult.employees.map((option) => option.label),
+    filterWeeklyPlanDiscussionOptions(employees, "huyen").map(
+      ({ label }) => label,
+    ),
     ["Huyền My"],
   );
-  assert.deepEqual(employeeResult.works, []);
-  assert.equal(employeeResult.plan.value, "plan");
-
-  const workResult = filterWeeklyPlanDiscussionScopes(groups, "BÁN HÀNG");
-  assert.deepEqual(workResult.employees, []);
   assert.deepEqual(
-    workResult.works.map((option) => option.label),
+    filterWeeklyPlanDiscussionOptions(works, "BÁN HÀNG").map(
+      ({ label }) => label,
+    ),
     ["Bán hàng và theo dõi đơn hàng"],
   );
-
-  const dStrokeResult = filterWeeklyPlanDiscussionScopes(groups, "dang");
   assert.deepEqual(
-    dStrokeResult.employees.map((option) => option.label),
+    filterWeeklyPlanDiscussionOptions(employees, "dang").map(
+      ({ label }) => label,
+    ),
     ["Đăng"],
   );
-
-  const phraseResult = filterWeeklyPlanDiscussionScopes(groups, "dang quay");
   assert.deepEqual(
-    phraseResult.works.map((option) => option.label),
+    filterWeeklyPlanDiscussionOptions(works, "dang quay").map(
+      ({ label }) => label,
+    ),
     ["Phối hợp với Đăng quay content"],
   );
-
-  const tikTokResult = filterWeeklyPlanDiscussionScopes(groups, "TikTok");
   assert.deepEqual(
-    tikTokResult.works.map((option) => option.label),
+    filterWeeklyPlanDiscussionOptions(works, "TikTok").map(
+      ({ label }) => label,
+    ),
     ["Vận hành TikTok Kim Phúc Sắc"],
   );
-
-  const emptyResult = filterWeeklyPlanDiscussionScopes(groups, "không có");
-  assert.deepEqual(emptyResult.employees, []);
-  assert.deepEqual(emptyResult.works, []);
-  assert.equal(emptyResult.plan.label, "Toàn bộ kế hoạch");
 });
 
-test("submit discussion and history stay collapsed while the picker remains accessible and payload-compatible", async () => {
-  const [submit, picker, translationsSource] = await Promise.all([
-    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
-    readSource(
-      "src/components/weekly-plans/WeeklyPlanDiscussionScopePicker.tsx",
+test("discussion target payload maps plan, employee, work, and stale work safely", () => {
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
+      selectedEmployeeId: null,
+      selectedEntryId: null,
+    }),
+    { valid: true, assigneeId: undefined, entryId: undefined },
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
+      selectedEmployeeId: 7,
+      selectedEntryId: null,
+    }),
+    { valid: true, assigneeId: 7, entryId: undefined },
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
+      selectedEmployeeId: 7,
+      selectedEntryId: 90002,
+    }),
+    { valid: true, assigneeId: undefined, entryId: 90002 },
+  );
+  const staleTarget = { selectedEmployeeId: 8, selectedEntryId: 90002 };
+  assert.equal(
+    isWeeklyPlanDiscussionEntryConsistent(discussionPlan, staleTarget),
+    false,
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(discussionPlan, staleTarget),
+    { valid: false, assigneeId: undefined, entryId: undefined },
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(discussionPlan, {
+      selectedEmployeeId: 7,
+      selectedEntryId: 99999,
+    }),
+    { valid: false, assigneeId: undefined, entryId: undefined },
+  );
+  const unavailableEmployeeTarget = {
+    selectedEmployeeId: 99,
+    selectedEntryId: null,
+  };
+  assert.equal(
+    isWeeklyPlanDiscussionEmployeeConsistent(
+      discussionPlan,
+      unavailableEmployeeTarget,
     ),
-    readSource("src/locales/vi/common.json"),
-  ]);
-  const copy = JSON.parse(translationsSource).weeklyPlanning.wizard.submit;
+    false,
+  );
+  assert.deepEqual(
+    resolveWeeklyPlanCommentTargetArguments(
+      discussionPlan,
+      unavailableEmployeeTarget,
+    ),
+    { valid: false, assigneeId: undefined, entryId: undefined },
+  );
+});
+
+test("comment context resolves plan, employee, entry, and deleted entry without ids", () => {
+  const labels = {
+    wholePlan: "Toàn bộ kế hoạch",
+    allEmployeeWorks: "Toàn bộ công việc",
+    unavailableEmployee: "Nhân viên không còn khả dụng",
+    unavailableWork: "Công việc không còn khả dụng",
+  };
+  const resolve = (comment) =>
+    resolveWeeklyPlanCommentContext(discussionPlan, comment, labels);
+
+  assert.equal(
+    resolve({ assignee_id: null, entry_id: null }).label,
+    "Toàn bộ kế hoạch",
+  );
+  assert.equal(
+    resolve({ assignee_id: 7, entry_id: null }).label,
+    "Huyền My · Toàn bộ công việc",
+  );
+  assert.equal(
+    resolve({ assignee_id: 8, entry_id: 90002 }).label,
+    "Huyền My › Bán hàng và theo dõi đơn hàng",
+  );
+  assert.equal(
+    resolve({ assignee_id: 8, entry_id: 99999 }).label,
+    "Công việc không còn khả dụng",
+  );
+  assert.doesNotMatch(
+    JSON.stringify([
+      resolve({ assignee_id: 7, entry_id: null }),
+      resolve({ assignee_id: 8, entry_id: 90002 }),
+      resolve({ assignee_id: 8, entry_id: 99999 }),
+    ]),
+    /#90002|#99999|Công việc #/,
+  );
+});
+
+test("HR and OWNER reuse the hierarchical accessible discussion controls", async () => {
+  const [submit, detail, picker, targetUtility, translationsSource] =
+    await Promise.all([
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+      readSource(
+        "src/components/weekly-plans/WeeklyPlanDiscussionTargetFields.tsx",
+      ),
+      readSource("src/utils/weeklyPlanDiscussionTarget.ts"),
+      readSource("src/locales/vi/common.json"),
+    ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
 
   assert.match(submit, /<details\s+data-section="weekly-plan-discussion"/);
   assert.match(submit, /<details\s+data-section="weekly-plan-history"/);
   assert.doesNotMatch(submit, /<details[^>]*\sopen(?:=|\s|>)/);
-  assert.match(
-    submit,
-    /data-section="weekly-plan-discussion"[\s\S]*WeeklyPlanDiscussionScopePicker/,
-  );
-  assert.doesNotMatch(submit, /import Select|<Select/);
-  assert.match(submit, /useState\("plan"\)/);
-  assert.match(submit, /commentTarget\.split\(":"\)/);
-  assert.match(submit, /targetType === "employee"/);
-  assert.match(submit, /targetType === "entry"/);
+  assert.match(submit, /WeeklyPlanDiscussionTargetFields/);
+  assert.match(detail, /WeeklyPlanDiscussionTargetFields/);
+  assert.match(submit, /WeeklyPlanCommentContext/);
+  assert.match(detail, /WeeklyPlanCommentContext/);
+  assert.match(submit, /formatWeeklyPlanCommentTimestamp\(item\.created_at\)/);
+  assert.match(detail, /formatWeeklyPlanCommentTimestamp\(item\.created_at\)/);
+  assert.doesNotMatch(submit, /import Select|<Select|commentTarget\.split/);
+  assert.doesNotMatch(detail, /import Select|<Select|commentTarget\.split/);
+  assert.doesNotMatch(detail, /Công việc #|commentForEntry|commentEntry/);
+  assert.match(submit, /resolveWeeklyPlanCommentTargetArguments/);
+  assert.match(detail, /resolveWeeklyPlanCommentTargetArguments/);
   assert.match(submit, /disabled={busy \|\| !comment\.trim\(\)}/);
+  assert.match(detail, /plan\.actions\.can_comment/);
   assert.match(submit, /submitWeeklyPlan\(plan\.id\)/);
-  assert.match(submit, /plan\.comments\.map/);
-  assert.match(submit, /plan\.events\.map/);
 
+  assert.match(picker, /value\.selectedEmployeeId !== null/);
+  assert.match(targetUtility, /entry\.assignee\?\.id === selectedEmployeeId/);
+  assert.match(picker, /selectedEntryId: null/);
+  assert.match(picker, /selectedEmployeeId: null, selectedEntryId: null/);
   assert.match(picker, /aria-haspopup="listbox"/);
   assert.match(picker, /aria-expanded={isOpen}/);
   assert.match(picker, /role="listbox"/);
   assert.match(picker, /role="option"/);
   assert.match(picker, /event\.key !== "Escape"/);
-  assert.match(picker, /max-h-80/);
+  assert.match(picker, /max-h-72/);
   assert.match(picker, /overflow-y-auto/);
   assert.doesNotMatch(picker, /brand-|text-(?:pink|rose)-/);
 
-  assert.equal(copy.commentScopePlanGroup, "Toàn bộ kế hoạch");
-  assert.equal(copy.commentScopeEmployeeGroup, "Nhân viên");
-  assert.equal(copy.commentScopeWorkGroup, "Công việc");
-  assert.equal(copy.commentScopeEmpty, "Không tìm thấy phạm vi phù hợp.");
-  assert.doesNotMatch(JSON.stringify(copy), /Công việc #\{id\}/);
+  assert.equal(copy.discussion.employeeLabel, "Nhân viên");
+  assert.equal(copy.discussion.workLabel, "Công việc");
+  assert.equal(
+    copy.discussion.allEmployeeWorksOption,
+    "Tất cả công việc của nhân viên",
+  );
+  assert.equal(copy.discussion.contentLabel, "Nội dung ghi chú");
+  assert.match(copy.discussion.targetChanged, /Vui lòng chọn lại công việc/);
+  assert.doesNotMatch(JSON.stringify(copy.discussion), /Công việc #\{id\}/);
+
+  for (const consumer of [submit, detail]) {
+    const invalidTargetCheck = consumer.indexOf("if (!target.valid)");
+    const invalidReturn = consumer.indexOf("return;", invalidTargetCheck);
+    const apiCall = consumer.indexOf(
+      "await addWeeklyPlanComment",
+      invalidReturn,
+    );
+    const commentClear = consumer.indexOf(
+      'setComment("");',
+      invalidTargetCheck,
+    );
+
+    assert.ok(invalidTargetCheck >= 0);
+    assert.ok(invalidReturn > invalidTargetCheck);
+    assert.ok(apiCall > invalidReturn);
+    assert.ok(commentClear > invalidReturn);
+    assert.match(
+      consumer.slice(invalidTargetCheck, invalidReturn),
+      /setSelectedEntryId\(null\)/,
+    );
+    assert.doesNotMatch(
+      consumer.slice(invalidTargetCheck, invalidReturn),
+      /setComment\(/,
+    );
+  }
 });

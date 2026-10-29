@@ -2,8 +2,9 @@ import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import Label from "@/components/form/Label";
-import Select from "@/components/form/Select";
 import TextArea from "@/components/form/input/TextArea";
+import WeeklyPlanCommentContext from "@/components/weekly-plans/WeeklyPlanCommentContext";
+import WeeklyPlanDiscussionTargetFields from "@/components/weekly-plans/WeeklyPlanDiscussionTargetFields";
 import WeeklyPlanEntries from "@/components/weekly-plans/WeeklyPlanEntries";
 import WeeklyPlanEntryForm from "@/components/weekly-plans/WeeklyPlanEntryForm";
 import GoogleDocsEmployeeMappingPanel from "@/components/weekly-plans/GoogleDocsEmployeeMappingPanel";
@@ -43,6 +44,11 @@ import type {
   WeeklyPlanSourceEntryInput,
 } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
+import { formatWeeklyPlanCommentTimestamp } from "@/utils/weeklyPlanCommentContext";
+import {
+  isWeeklyPlanDiscussionEmployeeConsistent,
+  resolveWeeklyPlanCommentTargetArguments,
+} from "@/utils/weeklyPlanDiscussionTarget";
 import { hasRemainingGoogleDocsTabs as hasRemainingTabs } from "@/utils/weeklyPlanSourceSelection";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -61,7 +67,13 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
   );
   const [editing, setEditing] = useState<WeeklyPlanEntry | "new" | null>(null);
   const [comment, setComment] = useState("");
-  const [commentTarget, setCommentTarget] = useState("plan");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(
+    null,
+  );
+  const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
+  const [commentTargetError, setCommentTargetError] = useState<string | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [showAssignmentConfirm, setShowAssignmentConfirm] = useState(false);
@@ -201,9 +213,38 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
   const hasCurrentAnalysis = Boolean(latestAnalysisEvent) && !analysisIsStale;
   const hasRemainingGoogleDocsTabs =
     plan.source_type !== "GOOGLE_DOCS" ||
-    hasRemainingTabs(
-      plan.source_document.google_docs?.remaining_tab_ids ?? [],
-    );
+    hasRemainingTabs(plan.source_document.google_docs?.remaining_tab_ids ?? []);
+
+  const handleAddComment = () => {
+    const target = resolveWeeklyPlanCommentTargetArguments(plan, {
+      selectedEmployeeId,
+      selectedEntryId,
+    });
+    if (!target.valid) {
+      if (
+        !isWeeklyPlanDiscussionEmployeeConsistent(plan, {
+          selectedEmployeeId,
+        })
+      ) {
+        setSelectedEmployeeId(null);
+      }
+      setSelectedEntryId(null);
+      setCommentTargetError(t("discussion.targetChanged"));
+      return;
+    }
+
+    setCommentTargetError(null);
+    void perform(async () => {
+      const next = await addWeeklyPlanComment(
+        plan.id,
+        comment.trim(),
+        target.assigneeId,
+        target.entryId,
+      );
+      setComment("");
+      return next;
+    });
+  };
 
   return (
     <>
@@ -354,37 +395,38 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
 
         {["docx", "gdoc"].includes(plan.source_file.extension) &&
           hasRemainingGoogleDocsTabs && (
-          <WeeklyPlanSourceDocument
-            plan={plan}
-            employees={references.employees}
-            googleDocsMappings={googleDocsMappings}
-            busy={busy}
-            onExtract={() =>
-              void perform(() => extractWeeklyPlanSource(plan.id))
-            }
-            onAiExtract={(sourcePassageIds) =>
-              extractWeeklyPlanSourceWithAi(plan.id, sourcePassageIds)
-            }
-            onApply={async (
-              requestId: string,
-              entries: WeeklyPlanSourceEntryInput[],
-            ) => {
-              let validationErrors: ValidationErrors | undefined;
-              const succeeded = await perform(
-                () => applyWeeklyPlanSourceEntries(plan.id, requestId, entries),
-                (errors) => {
-                  validationErrors = errors;
-                },
-              );
-              return { succeeded, validationErrors };
-            }}
-            onAssignGroup={async (passageIds, groupTitle) =>
-              perform(() =>
-                assignWeeklyPlanSourceGroup(plan.id, passageIds, groupTitle),
-              )
-            }
-          />
-        )}
+            <WeeklyPlanSourceDocument
+              plan={plan}
+              employees={references.employees}
+              googleDocsMappings={googleDocsMappings}
+              busy={busy}
+              onExtract={() =>
+                void perform(() => extractWeeklyPlanSource(plan.id))
+              }
+              onAiExtract={(sourcePassageIds) =>
+                extractWeeklyPlanSourceWithAi(plan.id, sourcePassageIds)
+              }
+              onApply={async (
+                requestId: string,
+                entries: WeeklyPlanSourceEntryInput[],
+              ) => {
+                let validationErrors: ValidationErrors | undefined;
+                const succeeded = await perform(
+                  () =>
+                    applyWeeklyPlanSourceEntries(plan.id, requestId, entries),
+                  (errors) => {
+                    validationErrors = errors;
+                  },
+                );
+                return { succeeded, validationErrors };
+              }}
+              onAssignGroup={async (passageIds, groupTitle) =>
+                perform(() =>
+                  assignWeeklyPlanSourceGroup(plan.id, passageIds, groupTitle),
+                )
+              }
+            />
+          )}
 
         {plan.source_type === "GOOGLE_DOCS" &&
           hasRemainingGoogleDocsTabs &&
@@ -574,21 +616,14 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
                     {item.author.name}
+                    {formatWeeklyPlanCommentTimestamp(item.created_at) && (
+                      <span className="font-normal text-gray-500 dark:text-gray-400">
+                        {" · "}
+                        {formatWeeklyPlanCommentTimestamp(item.created_at)}
+                      </span>
+                    )}
                   </p>
-                  {(item.assignee_id || item.entry_id) && (
-                    <span className="rounded-full bg-gray-200 px-2 py-0.5 text-theme-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                      {item.entry_id
-                        ? t("detail.commentForEntry", { id: item.entry_id })
-                        : t("detail.commentForEmployee", {
-                            name:
-                              plan.employee_reviews.find(
-                                (review) =>
-                                  review.assignee.id === item.assignee_id,
-                              )?.assignee.name ??
-                              t("detail.unresolvedEmployee"),
-                          })}
-                    </span>
-                  )}
+                  <WeeklyPlanCommentContext plan={plan} comment={item} />
                 </div>
                 <p className="mt-1 text-theme-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300">
                   {item.content}
@@ -602,58 +637,46 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             )}
             {plan.actions.can_comment && (
               <>
-                <div>
-                  <Label htmlFor="weekly-comment-target">
+                <div className="space-y-4">
+                  <p className="text-theme-sm font-medium text-gray-700 dark:text-gray-300">
                     {t("detail.commentTarget")}
-                  </Label>
-                  <Select
-                    id="weekly-comment-target"
-                    value={commentTarget}
-                    onChange={setCommentTarget}
-                    options={[
-                      { value: "plan", label: t("detail.commentWholePlan") },
-                      ...plan.employee_reviews.map((review) => ({
-                        value: "employee:" + review.assignee.id,
-                        label: t("detail.commentEmployee", {
-                          name: review.assignee.name,
-                        }),
-                      })),
-                      ...plan.entries.map((entry) => ({
-                        value: "entry:" + entry.id,
-                        label: t("detail.commentEntry", {
-                          id: entry.id,
-                          title: entry.title,
-                        }),
-                      })),
-                    ]}
+                  </p>
+                  <WeeklyPlanDiscussionTargetFields
+                    idPrefix="weekly-comment-target"
+                    plan={plan}
+                    value={{ selectedEmployeeId, selectedEntryId }}
+                    onChange={(target) => {
+                      setSelectedEmployeeId(target.selectedEmployeeId);
+                      setSelectedEntryId(target.selectedEntryId);
+                      setCommentTargetError(null);
+                    }}
+                    disabled={busy}
                   />
+                  <div>
+                    <Label htmlFor="weekly-comment-content">
+                      {t("discussion.contentLabel")}
+                    </Label>
+                    <TextArea
+                      id="weekly-comment-content"
+                      rows={3}
+                      value={comment}
+                      placeholder={t("discussion.contentPlaceholder")}
+                      onChange={setComment}
+                      disabled={busy}
+                    />
+                  </div>
+                  {commentTargetError && (
+                    <p role="alert" className="text-theme-sm text-error-500">
+                      {commentTargetError}
+                    </p>
+                  )}
                 </div>
-                <TextArea
-                  rows={3}
-                  value={comment}
-                  placeholder={t("detail.commentPlaceholder")}
-                  onChange={setComment}
-                />
                 <div className="flex justify-end">
                   <Button
                     type="button"
                     disabled={busy || !comment.trim()}
                     className="bg-kps-primary hover:bg-kps-primary-hover"
-                    onClick={() =>
-                      void perform(async () => {
-                        const [targetType, targetId] = commentTarget.split(":");
-                        const next = await addWeeklyPlanComment(
-                          plan.id,
-                          comment.trim(),
-                          targetType === "employee"
-                            ? Number(targetId)
-                            : undefined,
-                          targetType === "entry" ? Number(targetId) : undefined,
-                        );
-                        setComment("");
-                        return next;
-                      })
-                    }
+                    onClick={handleAddComment}
                   >
                     {t("detail.addComment")}
                   </Button>
