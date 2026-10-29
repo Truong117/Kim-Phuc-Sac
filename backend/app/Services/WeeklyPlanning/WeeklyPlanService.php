@@ -15,6 +15,8 @@ use App\Models\WeeklyPlanEmployeeReview;
 use App\Models\WeeklyPlanEntry;
 use App\Models\WeeklyPlanEntryApplication;
 use App\Models\WeeklyPlanEvent;
+use App\Models\WeeklyPlanGoogleDocsTabMapping;
+use App\Models\WeeklyPlanGoogleDocsTabMappingEvent;
 use App\Models\WeeklyPlanSourcePassage;
 use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsAiAssignmentService;
 use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsSourceException;
@@ -22,7 +24,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -52,11 +56,24 @@ class WeeklyPlanService
     /** @return LengthAwarePaginator<WeeklyPlan> */
     public function paginate(User $viewer, int $perPage): LengthAwarePaginator
     {
-        return $this->scope->queryFor($viewer)
+        $paginator = $this->scope->queryFor($viewer)
             ->with('creator:id,name')
             ->withCount(['entries', 'employeeReviews'])
             ->orderByDesc('week_start')
             ->paginate($perPage);
+
+        $canManageDrafts = $this->scope->allows($viewer, 'weekly_plans.manage_draft');
+        $paginator->setCollection($paginator->getCollection()->map(
+            function (WeeklyPlan $plan) use ($canManageDrafts): WeeklyPlan {
+                $plan->setAttribute('actions', [
+                    'can_delete' => $canManageDrafts && $plan->status === WeeklyPlanStatus::DRAFT,
+                ]);
+
+                return $plan;
+            },
+        ));
+
+        return $paginator;
     }
 
     /** @return array<string, mixed> */
@@ -977,17 +994,7 @@ class WeeklyPlanService
                 throw new ConflictHttpException('Chỉ có thể đặt lại kế hoạch đang ở trạng thái nháp.');
             }
 
-            $entryIds = WeeklyPlanEntry::query()
-                ->where('weekly_plan_id', $plan->id)
-                ->lockForUpdate()
-                ->pluck('id');
-
-            if ($entryIds->isNotEmpty()
-                && DB::table('tasks')->whereIn('weekly_plan_entry_id', $entryIds)->exists()) {
-                throw new ConflictHttpException(
-                    'Kế hoạch đã có Task được phát hành; hệ thống từ chối đặt lại để tránh mất dữ liệu.',
-                );
-            }
+            $entryIds = $this->lockedEntryIdsWithoutTasks($plan);
 
             $counts = [
                 'entry_count' => $entryIds->count(),
@@ -1009,6 +1016,55 @@ class WeeklyPlanService
         });
 
         return $this->findVisible($actor, $planId);
+    }
+
+    public function deleteDraft(User $actor, int $planId): void
+    {
+        $this->assertPermission($actor, 'weekly_plans.manage_draft');
+
+        /** @var array{disk: string, path: string}|null $sourceFile */
+        $sourceFile = DB::transaction(function () use ($actor, $planId): ?array {
+            $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
+                ->lockForUpdate()
+                ->findOrFail($planId);
+
+            if ($plan->status !== WeeklyPlanStatus::DRAFT) {
+                throw new ConflictHttpException('Chỉ có thể xóa kế hoạch đang ở trạng thái nháp.');
+            }
+
+            $this->lockedEntryIdsWithoutTasks($plan);
+
+            $sourceFile = $plan->source_type === WeeklyPlanSourceType::UPLOADED_FILE
+                && is_string($plan->source_disk)
+                && $plan->source_disk !== ''
+                && is_string($plan->source_path)
+                && $plan->source_path !== ''
+                    ? ['disk' => $plan->source_disk, 'path' => $plan->source_path]
+                    : null;
+
+            WeeklyPlanGoogleDocsTabMappingEvent::query()
+                ->where('weekly_plan_id', $plan->id)
+                ->delete();
+            WeeklyPlanGoogleDocsTabMapping::query()
+                ->where('weekly_plan_id', $plan->id)
+                ->delete();
+            $plan->delete();
+
+            return $sourceFile;
+        });
+
+        if ($sourceFile === null) {
+            return;
+        }
+
+        try {
+            $deleted = Storage::disk($sourceFile['disk'])->delete($sourceFile['path']);
+            if (! $deleted) {
+                $this->logSourceCleanupFailure($planId, $sourceFile, 'delete_returned_false');
+            }
+        } catch (\Throwable $exception) {
+            $this->logSourceCleanupFailure($planId, $sourceFile, $exception::class);
+        }
     }
 
     public function submit(User $actor, int $planId): WeeklyPlan
@@ -1735,6 +1791,8 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_reset' => $plan->status === WeeklyPlanStatus::DRAFT
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_delete' => $plan->status === WeeklyPlanStatus::DRAFT
+                && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_analyze' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $plan->entries->isNotEmpty()
                 && $sourceProcessingComplete
@@ -1814,6 +1872,35 @@ class WeeklyPlanService
                 ],
             ]);
         }
+    }
+
+    /** @return Collection<int, int> */
+    private function lockedEntryIdsWithoutTasks(WeeklyPlan $plan): Collection
+    {
+        $entryIds = WeeklyPlanEntry::query()
+            ->where('weekly_plan_id', $plan->id)
+            ->lockForUpdate()
+            ->pluck('id');
+
+        if ($entryIds->isNotEmpty()
+            && DB::table('tasks')->whereIn('weekly_plan_entry_id', $entryIds)->exists()) {
+            throw new ConflictHttpException(
+                'Kế hoạch đã có Task được phát hành; hệ thống từ chối thay đổi để tránh mất dữ liệu.',
+            );
+        }
+
+        return $entryIds;
+    }
+
+    /** @param array{disk: string, path: string} $sourceFile */
+    private function logSourceCleanupFailure(int $planId, array $sourceFile, string $reason): void
+    {
+        Log::warning('weekly_plan_source_cleanup_failed', [
+            'weekly_plan_id' => $planId,
+            'disk' => $sourceFile['disk'],
+            'path_sha256' => hash('sha256', $sourceFile['path']),
+            'reason' => $reason,
+        ]);
     }
 
     private function commentPermissionFor(User $viewer): ?string

@@ -853,6 +853,15 @@
       "period": "Tuần {start} – {end}",
       "summary": "Người tạo: {creator} · {count} công việc",
       "open": "Mở kế hoạch",
+      "delete": {
+        "action": "Xóa kế hoạch",
+        "title": "Xóa kế hoạch tuần?",
+        "description": "Bạn có chắc muốn xóa vĩnh viễn kế hoạch tuần {start} – {end}? Toàn bộ {count} công việc, đầu mục, nguồn và dữ liệu bản nháp của kế hoạch này sẽ bị xóa. Thao tác này không thể hoàn tác.",
+        "cancel": "Hủy",
+        "confirm": "Xóa kế hoạch",
+        "deleting": "Đang xóa...",
+        "error": "Không thể xóa kế hoạch. Danh sách hiện tại vẫn được giữ nguyên."
+      },
       "emptyTitle": "Chưa có kế hoạch tuần",
       "emptyDescription": "Các bản kế hoạch đã tạo sẽ xuất hiện tại đây."
     },
@@ -989,7 +998,7 @@
       "counts": {
         "entries": "Công việc",
         "items": "Đầu mục",
-        "employees": "Tài khoản KPS",
+        "employees": "Nhân viên",
         "processedTabs": "Nhóm Google Docs đã xử lý"
       },
       "groupingBasis": {

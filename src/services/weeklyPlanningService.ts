@@ -48,6 +48,11 @@ export const getWeeklyPlan = async (
   return response.data;
 };
 
+export const deleteWeeklyPlan = (id: string | number): Promise<void> =>
+  apiRequest<void>("/api/weekly-plans/" + encodeURIComponent(String(id)), {
+    method: "DELETE",
+  });
+
 export const previewWeeklyPlanGoogleDocs = (
   documentUrl: string,
   signal?: AbortSignal,
