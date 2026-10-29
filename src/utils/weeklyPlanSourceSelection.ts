@@ -134,3 +134,43 @@ export const verifiedSingleGoogleDocsTab = (
     employee: tab.employee,
   };
 };
+
+export type GoogleDocsSelectionActionState = {
+  canAnalyzeWithAi: boolean;
+  canCreateManually: boolean;
+  manualLimitExceeded: boolean;
+};
+
+export const googleDocsSelectionActionState = ({
+  selectedPassageCount,
+  selectedTabs,
+  maxPassagesPerEntry,
+  canAiExtractSelectedSource,
+}: {
+  selectedPassageCount: number;
+  selectedTabs: readonly GoogleDocsSelectedTab[];
+  maxPassagesPerEntry: number;
+  canAiExtractSelectedSource: boolean;
+}): GoogleDocsSelectionActionState => {
+  const hasSelection = selectedPassageCount > 0;
+  const allTabsVerified = allSelectedGoogleDocsTabsVerified(selectedTabs);
+  const hasSingleVerifiedTab =
+    verifiedSingleGoogleDocsTab(selectedTabs) !== null;
+  const manualLimitExceeded =
+    hasSingleVerifiedTab && selectedPassageCount > maxPassagesPerEntry;
+
+  return {
+    canAnalyzeWithAi:
+      hasSelection &&
+      selectedTabs.length > 0 &&
+      allTabsVerified &&
+      canAiExtractSelectedSource,
+    canCreateManually:
+      hasSelection && hasSingleVerifiedTab && !manualLimitExceeded,
+    manualLimitExceeded,
+  };
+};
+
+export const sourcePassageIdsForAi = (
+  passages: readonly Pick<WeeklyPlanSourcePassage, "id">[],
+): number[] => passages.map((passage) => passage.id);

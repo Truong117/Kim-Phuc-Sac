@@ -1221,7 +1221,7 @@ test("Google Docs multi-tab selection routes to scoped AI instead of the manual 
     sourceDocument,
     /setLocalError\(t\("multiTabAssignmentWarning"\)\)/,
   );
-  assert.match(sourceDocument, /hasMultipleSelectedGoogleTabs/);
+  assert.match(sourceDocument, /googleDocsSelectionActions\.canAnalyzeWithAi/);
   assert.match(sourceDocument, /extractSelectedGroupsWithAi/);
   assert.match(sourceDocument, /sourcePassageIds/);
   assert.match(sourceDocument, /setDraft\(\{/);

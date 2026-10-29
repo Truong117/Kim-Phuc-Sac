@@ -1189,8 +1189,11 @@
       "description": "Đọc các đoạn văn, danh sách và bảng trong file Word để HR kiểm tra trước khi tạo công việc.",
       "aiNotConnected": "Chưa kết nối AI",
       "extractWithAi": "Trích xuất bằng AI",
+      "analyzeRemainingGoogleDocsWithAi": "Phân tích tất cả nhóm còn lại bằng AI",
       "aiExtracting": "AI đang phân tích...",
       "aiFailed": "Không thể phân tích tài liệu bằng AI. Dữ liệu kế hoạch hiện tại không bị thay đổi.",
+      "aiInvalidResponse": "Kết quả phân tích AI không đúng định dạng an toàn. Không có thay đổi nào được áp dụng vào kế hoạch.",
+      "aiUntrustedAssignment": "Kết quả phân tích AI không có mapping nhân viên Google Docs đã xác minh. Không có thay đổi nào được áp dụng vào kế hoạch.",
       "aiPreview": {
         "title": "Bản đề xuất từ AI",
         "description": "AI chỉ tạo bản đề xuất từ nội dung đã lưu. HR phải kiểm tra, chọn đúng tài khoản KPS và xác nhận từng công việc trước khi áp dụng.",
@@ -1308,6 +1311,11 @@
             "verifiedMappingRequired": "Mapping tab đã xác minh không còn hợp lệ."
           }
         },
+        "renderError": {
+          "title": "Không thể hiển thị kết quả phân tích AI.",
+          "description": "Không có thay đổi nào được áp dụng vào kế hoạch.",
+          "retry": "Thử phân tích lại"
+        },
         "close": "Đóng"
       },
       "extract": "Đọc nội dung file Word",
@@ -1378,6 +1386,7 @@
       "applyToDraft": "Áp dụng vào bản nháp",
       "selectRequired": "Vui lòng chọn ít nhất một đoạn nguồn.",
       "googleDocsMappingRequired": "Vui lòng xác minh mapping nhân viên Google Docs trước khi tạo công việc.",
+      "manualPassageLimit": "Nhóm này có {selected} đoạn nguồn. Tạo thủ công chỉ hỗ trợ tối đa {limit} đoạn cho một công việc. Hãy dùng AI để phân tích thành nhiều công việc/đầu mục hoặc chọn ít đoạn hơn.",
       "entryGroupSelectionRequired": "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo công việc.",
       "multiTabAssignmentWarning": "Bạn đang chọn nội dung từ nhiều tab. Mỗi tab có thể thuộc một nhân viên khác nhau. Hãy xác minh nhân viên theo tab; việc phân tích thành công việc sẽ được thực hiện ở bước AI.",
       "selectionLimit": "Mỗi công việc chỉ được gắn tối đa {count} đoạn nguồn.",

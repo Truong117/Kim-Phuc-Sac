@@ -17,14 +17,16 @@ import type {
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
 import {
-  allSelectedGoogleDocsTabsVerified,
+  googleDocsSelectionActionState,
   googleDocsTabId,
   remainingGoogleDocsPassages,
   selectedGoogleDocsTabs,
+  sourcePassageIdsForAi,
   sourceBlockSelectionState,
   spansMultipleGoogleDocsTabs,
   verifiedSingleGoogleDocsTab,
 } from "@/utils/weeklyPlanSourceSelection";
+import { normalizeWeeklyPlanAiSuggestions } from "@/utils/weeklyPlanAiSuggestions";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -189,6 +191,9 @@ function WeeklyPlanSourceDocument({
   );
   const [aiPreviewVersion, setAiPreviewVersion] = useState(0);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [lastAiSourcePassageIds, setLastAiSourcePassageIds] = useState<
+    number[] | undefined
+  >(undefined);
   const [localError, setLocalError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formErrorVersion, setFormErrorVersion] = useState(0);
@@ -218,10 +223,14 @@ function WeeklyPlanSourceDocument({
     () => selectedGoogleDocsTabs(selectedPassages, googleDocsMappings),
     [googleDocsMappings, selectedPassages],
   );
-  const hasMultipleSelectedGoogleTabs =
-    plan.source_type === "GOOGLE_DOCS" && selectedGoogleTabs.length > 1;
-  const selectedGoogleTabsVerified =
-    allSelectedGoogleDocsTabsVerified(selectedGoogleTabs);
+  const googleDocsSelectionActions = googleDocsSelectionActionState({
+    selectedPassageCount: selectedPassages.length,
+    selectedTabs: selectedGoogleTabs,
+    maxPassagesPerEntry: plan.source_document.limits.max_passages_per_entry,
+    canAiExtractSelectedSource: plan.actions.can_ai_extract_selected_source,
+  });
+  const hasSingleVerifiedGoogleDocsTab =
+    verifiedSingleGoogleDocsTab(selectedGoogleTabs) !== null;
   const unresolvedSelectedGoogleTabs = selectedGoogleTabs.filter(
     (tab) => tab.status !== "VERIFIED" || tab.employee === null,
   );
@@ -245,7 +254,10 @@ function WeeklyPlanSourceDocument({
     [orderedPassages, t],
   );
   const canSelect =
-    plan.actions.can_apply_source || plan.actions.can_group_source;
+    plan.actions.can_apply_source ||
+    plan.actions.can_group_source ||
+    (plan.source_type === "GOOGLE_DOCS" &&
+      plan.actions.can_ai_extract_selected_source);
 
   const toggleBlock = (key: string) => {
     setExpandedBlockKeys((current) => {
@@ -400,6 +412,10 @@ function WeeklyPlanSourceDocument({
 
   const runAiExtraction = async (sourcePassageIds?: number[]) => {
     if (busy || aiLoading) return;
+    const requestPassageIds = sourcePassageIds
+      ? [...sourcePassageIds]
+      : undefined;
+    setLastAiSourcePassageIds(requestPassageIds);
     setAiLoading(true);
     setAiError(null);
     setAiSuggestions([]);
@@ -407,10 +423,22 @@ function WeeklyPlanSourceDocument({
     setAiPreviewVersion((current) => current + 1);
     try {
       const suggestions =
-        sourcePassageIds === undefined
+        requestPassageIds === undefined
           ? await onAiExtract()
-          : await onAiExtract(sourcePassageIds);
-      setAiSuggestions(suggestions);
+          : await onAiExtract(requestPassageIds);
+      const normalized = normalizeWeeklyPlanAiSuggestions(
+        suggestions,
+        plan.source_type,
+      );
+      if (!normalized.ok) {
+        setAiError(
+          normalized.reason === "UNTRUSTED_GOOGLE_ASSIGNMENT"
+            ? t("aiUntrustedAssignment")
+            : t("aiInvalidResponse"),
+        );
+        return;
+      }
+      setAiSuggestions(normalized.suggestions);
       setAiPreviewOpen(true);
     } catch (error) {
       setAiError(error instanceof Error ? error.message : t("aiFailed"));
@@ -503,7 +531,11 @@ function WeeklyPlanSourceDocument({
                 disabled={busy || aiLoading}
                 onClick={() => void runAiExtraction()}
               >
-                {aiLoading ? t("aiExtracting") : t("extractWithAi")}
+                {aiLoading
+                  ? t("aiExtracting")
+                  : plan.source_type === "GOOGLE_DOCS"
+                    ? t("analyzeRemainingGoogleDocsWithAi")
+                    : t("extractWithAi")}
               </Button>
             )}
           </div>
@@ -794,7 +826,7 @@ function WeeklyPlanSourceDocument({
                         })}
                       </ul>
                     )}
-                  {hasMultipleSelectedGoogleTabs &&
+                  {plan.source_type === "GOOGLE_DOCS" &&
                     unresolvedSelectedGoogleTabs.length > 0 && (
                       <p className="mt-2 text-theme-xs font-medium text-warning-700 dark:text-warning-400">
                         {t("unresolvedSelectedTabs", {
@@ -804,8 +836,72 @@ function WeeklyPlanSourceDocument({
                         })}
                       </p>
                     )}
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    googleDocsSelectionActions.manualLimitExceeded && (
+                      <p className="mt-3 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                        {t("manualPassageLimit", {
+                          selected: selectedPassages.length,
+                          limit:
+                            plan.source_document.limits.max_passages_per_entry,
+                        })}
+                      </p>
+                    )}
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:shrink-0">
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    plan.actions.can_ai_extract_selected_source &&
+                    selectedGoogleTabs.length > 0 && (
+                      <Button
+                        type="button"
+                        disabled={
+                          busy ||
+                          grouping ||
+                          aiLoading ||
+                          !googleDocsSelectionActions.canAnalyzeWithAi
+                        }
+                        className="w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
+                        onClick={() =>
+                          void runAiExtraction(
+                            sourcePassageIdsForAi(selectedPassages),
+                          )
+                        }
+                      >
+                        {aiLoading
+                          ? t("aiExtracting")
+                          : t("extractSelectedGroupsWithAi", {
+                              count: selectedGoogleTabs.length,
+                            })}
+                      </Button>
+                    )}
+                  {plan.actions.can_apply_source &&
+                    (plan.source_type !== "GOOGLE_DOCS" ||
+                      hasSingleVerifiedGoogleDocsTab) && (
+                      <Button
+                        type="button"
+                        variant={
+                          plan.source_type === "GOOGLE_DOCS"
+                            ? "outline"
+                            : undefined
+                        }
+                        disabled={
+                          busy ||
+                          grouping ||
+                          selectedIds.length === 0 ||
+                          (plan.source_type === "GOOGLE_DOCS" &&
+                            !googleDocsSelectionActions.canCreateManually)
+                        }
+                        className={
+                          plan.source_type === "GOOGLE_DOCS"
+                            ? "w-full whitespace-nowrap sm:w-auto"
+                            : "w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
+                        }
+                        onClick={openDraft}
+                      >
+                        {plan.source_type === "GOOGLE_DOCS"
+                          ? t("createManualEntry")
+                          : t("createFromSelection")}
+                      </Button>
+                    )}
                   {plan.actions.can_group_source && (
                     <Button
                       type="button"
@@ -816,48 +912,6 @@ function WeeklyPlanSourceDocument({
                     >
                       {t("assignGroup")}
                     </Button>
-                  )}
-                  {plan.actions.can_apply_source && (
-                    <>
-                      {!hasMultipleSelectedGoogleTabs && (
-                        <Button
-                          type="button"
-                          disabled={
-                            busy || grouping || selectedIds.length === 0
-                          }
-                          className="w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
-                          onClick={openDraft}
-                        >
-                          {plan.source_type === "GOOGLE_DOCS"
-                            ? t("createManualEntry")
-                            : t("createFromSelection")}
-                        </Button>
-                      )}
-                      {hasMultipleSelectedGoogleTabs && (
-                        <Button
-                          type="button"
-                          disabled={
-                            busy ||
-                            grouping ||
-                            aiLoading ||
-                            !plan.actions.can_ai_extract_selected_source ||
-                            !selectedGoogleTabsVerified
-                          }
-                          className="w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
-                          onClick={() =>
-                            void runAiExtraction(
-                              selectedPassages.map((passage) => passage.id),
-                            )
-                          }
-                        >
-                          {aiLoading
-                            ? t("aiExtracting")
-                            : t("extractSelectedGroupsWithAi", {
-                                count: selectedGoogleTabs.length,
-                              })}
-                        </Button>
-                      )}
-                    </>
                   )}
                 </div>
               </div>
@@ -880,6 +934,7 @@ function WeeklyPlanSourceDocument({
         reviewVersion={aiPreviewVersion}
         busy={busy}
         onClose={() => setAiPreviewOpen(false)}
+        onRetry={() => void runAiExtraction(lastAiSourcePassageIds)}
         onReview={reviewAiSuggestion}
         onApplyAll={onApply}
         onApplied={() => {

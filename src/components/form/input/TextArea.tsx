@@ -9,6 +9,7 @@ interface TextareaProps {
   onChange?: (value: string) => void; // Change handler
   onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
   className?: string; // Additional CSS classes
+  containerClassName?: string;
   disabled?: boolean; // Disabled state
   error?: boolean; // Error state
   hint?: string; // Hint text to display
@@ -23,6 +24,7 @@ const TextArea: React.FC<TextareaProps> = ({
   onChange, // Callback for changes
   onBlur,
   className = "", // Additional custom styles
+  containerClassName = "",
   disabled = false, // Disabled state
   error = false, // Error state
   hint = "", // Default hint text
@@ -44,7 +46,7 @@ const TextArea: React.FC<TextareaProps> = ({
   }
 
   return (
-    <div className="relative">
+    <div className={`relative ${containerClassName}`}>
       <textarea
         id={id}
         name={name}

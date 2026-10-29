@@ -162,26 +162,30 @@ export default function WeeklyPlanGoogleDocsAiReviewJobRow({
               onChange={(event) => onChange({ title: event.target.value })}
             />
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
+          <div className="grid items-stretch gap-4 md:grid-cols-2">
+            <div className="flex h-full flex-col">
               <Label htmlFor={`google-ai-content-${index}`}>
                 {t("fields.content")}
               </Label>
               <TextArea
                 id={`google-ai-content-${index}`}
                 rows={3}
+                containerClassName="flex flex-1"
+                className="h-full min-h-32"
                 value={draft.content}
                 disabled={busy || applying || !draft.included}
                 onChange={(content) => onChange({ content })}
               />
             </div>
-            <div>
+            <div className="flex h-full flex-col">
               <Label htmlFor={`google-ai-result-${index}`}>
                 {t("fields.expected_result")}
               </Label>
               <TextArea
                 id={`google-ai-result-${index}`}
                 rows={3}
+                containerClassName="flex flex-1"
+                className="h-full min-h-32"
                 value={draft.expectedResult}
                 disabled={busy || applying || !draft.included}
                 onChange={(expectedResult) => onChange({ expectedResult })}
