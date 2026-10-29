@@ -1088,8 +1088,11 @@
         "commentPlaceholder": "Nhập nội dung trao đổi...",
         "commentTarget": "Phạm vi trao đổi",
         "commentWholePlan": "Toàn bộ kế hoạch",
-        "commentEmployee": "Nhân viên: {name}",
-        "commentEntry": "Công việc #{id}: {title}",
+        "commentScopeSearch": "Tìm phạm vi trao đổi...",
+        "commentScopePlanGroup": "Toàn bộ kế hoạch",
+        "commentScopeEmployeeGroup": "Nhân viên",
+        "commentScopeWorkGroup": "Công việc",
+        "commentScopeEmpty": "Không tìm thấy phạm vi phù hợp.",
         "addComment": "Thêm trao đổi",
         "history": "Lịch sử hoạt động",
         "systemActor": "Hệ thống"

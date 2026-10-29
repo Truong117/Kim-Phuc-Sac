@@ -1,8 +1,8 @@
 import ComponentCard from "@/components/common/ComponentCard";
 import TextArea from "@/components/form/input/TextArea";
 import Label from "@/components/form/Label";
-import Select from "@/components/form/Select";
 import Button from "@/components/ui/button/Button";
+import WeeklyPlanDiscussionScopePicker from "@/components/weekly-plans/WeeklyPlanDiscussionScopePicker";
 import WeeklyPlanWizardLayout from "@/components/weekly-plans/WeeklyPlanWizardLayout";
 import { useWeeklyPlanWizard } from "@/context/WeeklyPlanWizardContext";
 import {
@@ -99,7 +99,10 @@ export default function WeeklyPlanWizardSubmit() {
         )}
       </ComponentCard>
 
-      <details className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
+      <details
+        data-section="weekly-plan-discussion"
+        className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3"
+      >
         <summary className="cursor-pointer font-semibold text-gray-900 dark:text-white">
           {t("submit.comments")}
         </summary>
@@ -128,26 +131,12 @@ export default function WeeklyPlanWizardSubmit() {
                 <Label htmlFor="wizard-comment-target">
                   {t("submit.commentTarget")}
                 </Label>
-                <Select
+                <WeeklyPlanDiscussionScopePicker
                   id="wizard-comment-target"
+                  plan={plan}
                   value={commentTarget}
                   onChange={setCommentTarget}
-                  options={[
-                    { value: "plan", label: t("submit.commentWholePlan") },
-                    ...plan.employee_reviews.map((review) => ({
-                      value: `employee:${review.assignee.id}`,
-                      label: t("submit.commentEmployee", {
-                        name: review.assignee.name,
-                      }),
-                    })),
-                    ...plan.entries.map((entry) => ({
-                      value: `entry:${entry.id}`,
-                      label: t("submit.commentEntry", {
-                        id: entry.id,
-                        title: entry.title,
-                      }),
-                    })),
-                  ]}
+                  disabled={busy}
                 />
               </div>
               <TextArea
@@ -185,7 +174,10 @@ export default function WeeklyPlanWizardSubmit() {
         </div>
       </details>
 
-      <details className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
+      <details
+        data-section="weekly-plan-history"
+        className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3"
+      >
         <summary className="cursor-pointer font-semibold text-gray-900 dark:text-white">
           {t("submit.history")}
         </summary>
