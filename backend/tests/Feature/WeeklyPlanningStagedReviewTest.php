@@ -17,7 +17,7 @@ class WeeklyPlanningStagedReviewTest extends TestCase
     use AuthorizationFixtures;
     use RefreshDatabase;
 
-    public function test_list_actions_identify_only_the_active_stage_reviewer(): void
+    public function test_list_and_detail_actions_keep_stage_reviewer_in_the_review_workspace(): void
     {
         [$hr, $organizationId] = $this->actor([
             'weekly_plans.view',
@@ -41,11 +41,37 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.status', 'ASSISTANT_REVIEW')
             ->assertJsonPath('data.0.actions.can_assistant_review', true)
-            ->assertJsonPath('data.0.actions.can_owner_review', false);
+            ->assertJsonPath('data.0.actions.can_owner_review', false)
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', true);
+        $this->actingAs($assistant)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_assistant_review', true)
+            ->assertJsonPath('data.actions.can_open_review_workspace', true);
         $this->actingAs($hr)->getJson('/api/weekly-plans')
             ->assertOk()
             ->assertJsonPath('data.0.actions.can_assistant_review', false)
-            ->assertJsonPath('data.0.actions.can_owner_review', false);
+            ->assertJsonPath('data.0.actions.can_owner_review', false)
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', false);
+
+        $plan->update(['status' => 'ASSISTANT_CHANGES_REQUESTED']);
+
+        $this->actingAs($assistant)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.status', 'ASSISTANT_CHANGES_REQUESTED')
+            ->assertJsonPath('data.0.actions.can_assistant_review', false)
+            ->assertJsonPath('data.0.actions.can_owner_review', false)
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', true);
+        $this->actingAs($assistant)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_assistant_review', false)
+            ->assertJsonPath('data.actions.can_owner_review', false)
+            ->assertJsonPath('data.actions.can_open_review_workspace', true);
+        $this->actingAs($owner)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', false);
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_open_review_workspace', false);
 
         $plan->update(['status' => 'OWNER_REVIEW']);
 
@@ -53,11 +79,37 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.status', 'OWNER_REVIEW')
             ->assertJsonPath('data.0.actions.can_assistant_review', false)
-            ->assertJsonPath('data.0.actions.can_owner_review', true);
+            ->assertJsonPath('data.0.actions.can_owner_review', true)
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', true);
+        $this->actingAs($owner)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_owner_review', true)
+            ->assertJsonPath('data.actions.can_open_review_workspace', true);
         $this->actingAs($hr)->getJson('/api/weekly-plans')
             ->assertOk()
             ->assertJsonPath('data.0.actions.can_assistant_review', false)
-            ->assertJsonPath('data.0.actions.can_owner_review', false);
+            ->assertJsonPath('data.0.actions.can_owner_review', false)
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', false);
+
+        $plan->update(['status' => 'OWNER_CHANGES_REQUESTED']);
+
+        $this->actingAs($owner)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.status', 'OWNER_CHANGES_REQUESTED')
+            ->assertJsonPath('data.0.actions.can_assistant_review', false)
+            ->assertJsonPath('data.0.actions.can_owner_review', false)
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', true);
+        $this->actingAs($owner)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_assistant_review', false)
+            ->assertJsonPath('data.actions.can_owner_review', false)
+            ->assertJsonPath('data.actions.can_open_review_workspace', true);
+        $this->actingAs($assistant)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', false);
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_open_review_workspace', false);
     }
 
     public function test_each_review_stage_resolves_every_employee_before_enabling_corrections(): void

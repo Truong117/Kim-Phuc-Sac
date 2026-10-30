@@ -199,6 +199,7 @@ export type WeeklyPlanActions = {
   can_assistant_review: boolean;
   can_finalize_assistant_review: boolean;
   can_owner_review: boolean;
+  can_open_review_workspace: boolean;
   can_approve: boolean;
   can_publish: boolean;
   can_approve_and_publish: boolean;
@@ -325,7 +326,10 @@ export type WeeklyPlanListItem = Pick<
 > & {
   actions: Pick<
     WeeklyPlanActions,
-    "can_delete" | "can_assistant_review" | "can_owner_review"
+    | "can_delete"
+    | "can_assistant_review"
+    | "can_owner_review"
+    | "can_open_review_workspace"
   >;
 };
 

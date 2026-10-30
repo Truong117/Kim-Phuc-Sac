@@ -63,13 +63,14 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/ai-extract/);
 });
 
-test("active reviewers receive direct list navigation and actor-relative status copy", async () => {
+test("stage reviewers receive direct list navigation while active labels stay action-specific", async () => {
   const ownerPlan = {
     id: 31,
     status: "OWNER_REVIEW",
     actions: {
       can_assistant_review: false,
       can_owner_review: true,
+      can_open_review_workspace: true,
     },
   };
   const hrPlan = {
@@ -77,6 +78,7 @@ test("active reviewers receive direct list navigation and actor-relative status 
     actions: {
       can_assistant_review: false,
       can_owner_review: false,
+      can_open_review_workspace: false,
     },
   };
   const assistantPlan = {
@@ -85,6 +87,25 @@ test("active reviewers receive direct list navigation and actor-relative status 
     actions: {
       can_assistant_review: true,
       can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const ownerWaitingForHr = {
+    ...ownerPlan,
+    status: "OWNER_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const assistantWaitingForHr = {
+    ...assistantPlan,
+    status: "ASSISTANT_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
     },
   };
 
@@ -112,6 +133,24 @@ test("active reviewers receive direct list navigation and actor-relative status 
     ),
     "weeklyPlanning.status.reviewRequired",
   );
+  assert.equal(
+    activeWeeklyPlanReviewPath(ownerWaitingForHr),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath(assistantWaitingForHr),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath({
+      ...ownerWaitingForHr,
+      actions: {
+        ...ownerWaitingForHr.actions,
+        can_open_review_workspace: false,
+      },
+    }),
+    null,
+  );
 
   const [list, types, translationsSource] = await Promise.all([
     readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
@@ -126,7 +165,7 @@ test("active reviewers receive direct list navigation and actor-relative status 
   assert.match(list, /t\(reviewPath \? "list\.review" : "list\.open"\)/);
   assert.match(
     types,
-    /"can_delete" \| "can_assistant_review" \| "can_owner_review"/,
+    /"can_delete"[\s\S]*?"can_assistant_review"[\s\S]*?"can_owner_review"[\s\S]*?"can_open_review_workspace"/,
   );
   assert.equal(copy.status.reviewRequired, "Cần xét duyệt");
   assert.equal(copy.status.OWNER_REVIEW, "Giám đốc đang xét duyệt");

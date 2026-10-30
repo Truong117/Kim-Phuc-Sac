@@ -63,6 +63,7 @@ const actions = (changes = {}) => ({
   can_assistant_review: true,
   can_finalize_assistant_review: false,
   can_owner_review: false,
+  can_open_review_workspace: true,
   can_approve: false,
   can_publish: false,
   can_approve_and_publish: false,

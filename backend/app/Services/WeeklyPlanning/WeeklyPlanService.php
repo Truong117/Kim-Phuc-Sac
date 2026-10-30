@@ -73,20 +73,28 @@ class WeeklyPlanService
             ->paginate($perPage);
 
         $canManageDrafts = $this->scope->allows($viewer, 'weekly_plans.manage_draft');
-        $canAssistantReview = $this->scope->allows($viewer, 'weekly_plans.assistant_review');
-        $canOwnerReview = $this->scope->allows($viewer, 'weekly_plans.review');
+        $hasAssistantReviewPermission = $this->scope->allows(
+            $viewer,
+            'weekly_plans.assistant_review',
+        );
+        $hasOwnerReviewPermission = $this->scope->allows($viewer, 'weekly_plans.review');
         $paginator->setCollection($paginator->getCollection()->map(
             function (WeeklyPlan $plan) use (
-                $canAssistantReview,
                 $canManageDrafts,
-                $canOwnerReview,
+                $hasAssistantReviewPermission,
+                $hasOwnerReviewPermission,
             ): WeeklyPlan {
                 $plan->setAttribute('actions', [
                     'can_delete' => $canManageDrafts && $plan->status === WeeklyPlanStatus::DRAFT,
-                    'can_assistant_review' => $canAssistantReview
+                    'can_assistant_review' => $hasAssistantReviewPermission
                         && $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW,
-                    'can_owner_review' => $canOwnerReview
+                    'can_owner_review' => $hasOwnerReviewPermission
                         && $plan->status === WeeklyPlanStatus::OWNER_REVIEW,
+                    'can_open_review_workspace' => $this->canOpenReviewWorkspace(
+                        $plan->status,
+                        $hasAssistantReviewPermission,
+                        $hasOwnerReviewPermission,
+                    ),
                 ]);
 
                 return $plan;
@@ -1869,10 +1877,13 @@ class WeeklyPlanService
             );
         $assistantReviewStatus = $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW;
         $ownerReviewStatus = $plan->status === WeeklyPlanStatus::OWNER_REVIEW;
-        $canAssistantReview = $assistantReviewStatus
-            && $this->scope->allows($viewer, 'weekly_plans.assistant_review');
-        $canOwnerReview = $ownerReviewStatus
-            && $this->scope->allows($viewer, 'weekly_plans.review');
+        $hasAssistantReviewPermission = $this->scope->allows(
+            $viewer,
+            'weekly_plans.assistant_review',
+        );
+        $hasOwnerReviewPermission = $this->scope->allows($viewer, 'weekly_plans.review');
+        $canAssistantReview = $assistantReviewStatus && $hasAssistantReviewPermission;
+        $canOwnerReview = $ownerReviewStatus && $hasOwnerReviewPermission;
         $currentReviewRound = match (true) {
             $assistantReviewStatus => $assistantRound,
             $ownerReviewStatus => $ownerRound,
@@ -1956,6 +1967,11 @@ class WeeklyPlanService
                 && $submissionReadiness['ready']
                 && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
             'can_owner_review' => $canOwnerReview,
+            'can_open_review_workspace' => $this->canOpenReviewWorkspace(
+                $plan->status,
+                $hasAssistantReviewPermission,
+                $hasOwnerReviewPermission,
+            ),
             'can_review' => $canOwnerReview,
             'can_review_edit' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
@@ -2005,6 +2021,20 @@ class WeeklyPlanService
         ]);
 
         return $plan;
+    }
+
+    private function canOpenReviewWorkspace(
+        WeeklyPlanStatus $status,
+        bool $hasAssistantReviewPermission,
+        bool $hasOwnerReviewPermission,
+    ): bool {
+        return match ($status) {
+            WeeklyPlanStatus::ASSISTANT_REVIEW,
+            WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED => $hasAssistantReviewPermission,
+            WeeklyPlanStatus::OWNER_REVIEW,
+            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED => $hasOwnerReviewPermission,
+            default => false,
+        };
     }
 
     private function assertSourceProcessingComplete(WeeklyPlan $plan): void
