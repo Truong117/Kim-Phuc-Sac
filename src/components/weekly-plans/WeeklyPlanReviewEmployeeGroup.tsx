@@ -10,7 +10,8 @@ import { useTranslation } from "react-i18next";
 type Props = {
   group: ReviewGroup;
   expanded: boolean;
-  canDecide: boolean;
+  canAccept: boolean;
+  canRequestChanges: boolean;
   busy: boolean;
   onToggle: () => void;
   onAccept: () => void;
@@ -193,7 +194,8 @@ function WorkCard({
 export default function WeeklyPlanReviewEmployeeGroup({
   group,
   expanded,
-  canDecide,
+  canAccept,
+  canRequestChanges,
   busy,
   onToggle,
   onAccept,
@@ -266,7 +268,7 @@ export default function WeeklyPlanReviewEmployeeGroup({
             ))
           )}
 
-          {canDecide && (
+          {(canAccept || canRequestChanges) && (
             <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
               <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
                 {t("decision.title")}
@@ -274,25 +276,34 @@ export default function WeeklyPlanReviewEmployeeGroup({
               <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
                 {t("decision.description")}
               </p>
+              {group.decision.status === "ACCEPTED" && canRequestChanges && (
+                <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-theme-xs text-gray-600 dark:bg-gray-800/60 dark:text-gray-300">
+                  {t("decision.currentAcceptedHelp")}
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap justify-end gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={onRequestChanges}
-                >
-                  {t("decision.requestChanges")}
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={busy}
-                  className="bg-kps-primary hover:bg-kps-primary-hover"
-                  onClick={onAccept}
-                >
-                  {t("decision.accept")}
-                </Button>
+                {canRequestChanges && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={onRequestChanges}
+                  >
+                    {t("decision.requestChanges")}
+                  </Button>
+                )}
+                {canAccept && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={busy}
+                    className="bg-kps-primary hover:bg-kps-primary-hover"
+                    onClick={onAccept}
+                  >
+                    {t("decision.accept")}
+                  </Button>
+                )}
               </div>
             </div>
           )}

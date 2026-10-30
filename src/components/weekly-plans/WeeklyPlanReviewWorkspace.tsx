@@ -30,7 +30,8 @@ import {
 import {
   activeWeeklyPlanReviewStage,
   activeWeeklyPlanReviewSummary,
-  canDecideWeeklyPlanReview,
+  canAcceptWeeklyPlanDecision,
+  canRequestChangesForWeeklyPlanDecision,
   createWeeklyPlanReviewEmployeeGroups,
   isWeeklyPlanWaitingForHr,
   submitWeeklyPlanChangeRequest,
@@ -357,9 +358,10 @@ export default function WeeklyPlanReviewWorkspace({
                   key={group.key}
                   group={group}
                   expanded={activeExpandedGroupKey === group.key}
-                  canDecide={canDecideWeeklyPlanReview(
+                  canAccept={canAcceptWeeklyPlanDecision(plan, group.decision)}
+                  canRequestChanges={canRequestChangesForWeeklyPlanDecision(
                     plan,
-                    group.decision.status,
+                    group.decision,
                   )}
                   busy={busy}
                   onToggle={() =>

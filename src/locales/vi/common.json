@@ -1535,6 +1535,7 @@
       "decision": {
         "title": "Quyết định xét duyệt chính thức",
         "description": "Quyết định này thay đổi trạng thái xét duyệt và hoàn toàn tách biệt với ghi chú.",
+        "currentAcceptedHelp": "Đã chấp nhận trong vòng xét duyệt này. Bạn vẫn có thể yêu cầu chỉnh sửa trước khi hoàn tất vòng.",
         "requestChanges": "Yêu cầu chỉnh sửa",
         "accept": "Chấp nhận"
       },
