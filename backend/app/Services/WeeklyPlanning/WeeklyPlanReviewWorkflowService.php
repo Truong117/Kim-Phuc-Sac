@@ -87,12 +87,6 @@ class WeeklyPlanReviewWorkflowService
                 throw new ConflictHttpException('Giai đoạn xét duyệt của kế hoạch đã thay đổi.');
             }
             $this->assertDecisionStageOpen($plan, $stage);
-            if (! $plan->entries()->where('assignee_id', $assigneeId)->exists()) {
-                throw ValidationException::withMessages([
-                    'assignee_id' => ['Nhân viên không thuộc kế hoạch này.'],
-                ]);
-            }
-
             $round = $this->lockedCurrentRound($plan, $stage);
             $reviewDecision = WeeklyPlanReviewDecision::query()
                 ->where('weekly_plan_review_round_id', $round->id)
@@ -100,6 +94,11 @@ class WeeklyPlanReviewWorkflowService
                 ->lockForUpdate()
                 ->first();
             if (! $reviewDecision instanceof WeeklyPlanReviewDecision) {
+                if (! $plan->entries()->where('assignee_id', $assigneeId)->exists()) {
+                    throw ValidationException::withMessages([
+                        'assignee_id' => ['Nhân viên không thuộc kế hoạch này.'],
+                    ]);
+                }
                 throw new ConflictHttpException('Nhân viên chưa có quyết định trong vòng xét duyệt hiện tại.');
             }
 
@@ -179,20 +178,24 @@ class WeeklyPlanReviewWorkflowService
             throw new ConflictHttpException('Vòng xét duyệt hiện tại không có yêu cầu chỉnh sửa.');
         }
 
-        $assigneeIds = $plan->entries()
+        $currentAssigneeIds = $plan->entries()
             ->whereNotNull('assignee_id')
             ->distinct()
             ->orderBy('assignee_id')
             ->pluck('assignee_id')
             ->map(fn (mixed $assigneeId): int => (int) $assigneeId);
-        if ($assigneeIds->isEmpty()) {
+        if ($currentAssigneeIds->isEmpty()) {
             throw new ConflictHttpException('Kế hoạch không có nhân viên hợp lệ để xét duyệt.');
         }
-        if ($assigneeIds->contains(
+        if ($currentAssigneeIds->contains(
             fn (int $assigneeId): bool => ! $previousDecisions->has($assigneeId),
         )) {
             throw new ConflictHttpException('Danh sách nhân viên đã thay đổi ngoài phạm vi chỉnh sửa.');
         }
+        $reviewAssigneeIds = $previousDecisions->keys()
+            ->map(fn (mixed $assigneeId): int => (int) $assigneeId)
+            ->sort()
+            ->values();
 
         $previousRound->forceFill([
             'status' => WeeklyPlanReviewRoundStatus::SUPERSEDED,
@@ -203,7 +206,7 @@ class WeeklyPlanReviewWorkflowService
             $actor,
             $previousRound,
             $previousDecisions,
-            $assigneeIds->all(),
+            $reviewAssigneeIds->all(),
         );
 
         $plan->forceFill([

@@ -234,6 +234,117 @@ class WeeklyPlanningStagedReviewTest extends TestCase
         }
     }
 
+    public function test_assistant_resubmission_keeps_removed_requested_employee_pending(): void
+    {
+        [$hr, $organizationId] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit',
+        ]);
+        [$assistant] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.assistant_review',
+        ]);
+        $firstEmployee = User::factory()->create();
+        $secondEmployee = User::factory()->create();
+        $plan = $this->plan($organizationId, $hr, [$firstEmployee, $secondEmployee]);
+        $secondEntry = $plan->entries()->where('assignee_id', $secondEmployee->id)->firstOrFail();
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")->assertOk();
+        $this->decide($assistant, $plan, $firstEmployee, 'ACCEPTED')->assertOk();
+        $this->decide($assistant, $plan, $secondEmployee, 'CHANGES_REQUESTED')->assertOk();
+        $this->actingAs($hr)->deleteJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$secondEntry->id}",
+        )->assertOk()->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED');
+        $this->assertDatabaseMissing('weekly_plan_entries', [
+            'weekly_plan_id' => $plan->id,
+            'assignee_id' => $secondEmployee->id,
+        ]);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 2)
+            ->assertJsonPath('data.review_workflow.current_round.decisions.1.assignee.id', $secondEmployee->id)
+            ->assertJsonPath('data.review_workflow.current_round.decisions.1.status', 'PENDING')
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', false);
+        $this->assertDatabaseHas('weekly_plan_review_rounds', [
+            'weekly_plan_id' => $plan->id,
+            'stage' => 'ASSISTANT',
+            'round_number' => 1,
+            'status' => 'SUPERSEDED',
+        ]);
+        $this->assertDecision($plan->id, 'ASSISTANT', 2, $firstEmployee->id, 'ACCEPTED');
+        $this->assertDecision($plan->id, 'ASSISTANT', 2, $secondEmployee->id, 'PENDING');
+
+        $this->decide($assistant, $plan, $secondEmployee, 'ACCEPTED')
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', true);
+        $this->actingAs($assistant)
+            ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'OWNER_REVIEW')
+            ->assertJsonPath('data.review_workflow.owner_summary.total', 1)
+            ->assertJsonPath('data.review_workflow.owner_summary.pending', 1);
+        $this->assertDatabaseMissing('weekly_plan_review_decisions', [
+            'weekly_plan_review_round_id' => $this->roundId($plan->id, 'OWNER', 1),
+            'assignee_id' => $secondEmployee->id,
+        ]);
+    }
+
+    public function test_owner_resubmission_keeps_removed_requested_employee_pending(): void
+    {
+        [$hr, $organizationId] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit',
+        ]);
+        [$assistant] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.assistant_review',
+        ]);
+        [$owner] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.review', 'weekly_plans.approve',
+        ]);
+        $firstEmployee = User::factory()->create();
+        $secondEmployee = User::factory()->create();
+        $plan = $this->plan($organizationId, $hr, [$firstEmployee, $secondEmployee]);
+        $secondEntry = $plan->entries()->where('assignee_id', $secondEmployee->id)->firstOrFail();
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")->assertOk();
+        $this->decide($assistant, $plan, $firstEmployee, 'ACCEPTED')->assertOk();
+        $this->decide($assistant, $plan, $secondEmployee, 'ACCEPTED')->assertOk();
+        $this->actingAs($assistant)
+            ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
+            ->assertOk();
+        $this->decide($owner, $plan, $firstEmployee, 'ACCEPTED')->assertOk();
+        $this->decide($owner, $plan, $secondEmployee, 'CHANGES_REQUESTED')->assertOk();
+        $this->actingAs($hr)->deleteJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$secondEntry->id}",
+        )->assertOk()->assertJsonPath('data.status', 'OWNER_CHANGES_REQUESTED');
+        $this->assertDatabaseMissing('weekly_plan_entries', [
+            'weekly_plan_id' => $plan->id,
+            'assignee_id' => $secondEmployee->id,
+        ]);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'OWNER_REVIEW')
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 2)
+            ->assertJsonPath('data.review_workflow.current_round.decisions.1.assignee.id', $secondEmployee->id)
+            ->assertJsonPath('data.review_workflow.current_round.decisions.1.status', 'PENDING')
+            ->assertJsonPath('data.actions.can_approve', false);
+        $this->assertDatabaseHas('weekly_plan_review_rounds', [
+            'weekly_plan_id' => $plan->id,
+            'stage' => 'OWNER',
+            'round_number' => 1,
+            'status' => 'SUPERSEDED',
+        ]);
+        $this->assertDecision($plan->id, 'OWNER', 2, $firstEmployee->id, 'ACCEPTED');
+        $this->assertDecision($plan->id, 'OWNER', 2, $secondEmployee->id, 'PENDING');
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/approve")
+            ->assertUnprocessable();
+
+        $this->decide($owner, $plan, $secondEmployee, 'ACCEPTED')
+            ->assertOk()->assertJsonPath('data.actions.can_approve', true);
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/approve")
+            ->assertOk()->assertJsonPath('data.status', 'APPROVED');
+    }
+
     public function test_review_and_correction_operations_fail_closed(): void
     {
         [$hr, $organizationId] = $this->actor([
