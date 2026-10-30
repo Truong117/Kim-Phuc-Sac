@@ -105,6 +105,13 @@ class WeeklyPlanReviewWorkflowService
                 throw new ConflictHttpException('Nhân viên chưa có quyết định trong vòng xét duyệt hiện tại.');
             }
 
+            $canUpdateDecision = $reviewDecision->status === WeeklyPlanReviewStatus::PENDING
+                || ($decision === WeeklyPlanReviewStatus::CHANGES_REQUESTED
+                    && $this->canRequestChangesForDecision($plan, $round, $reviewDecision, true));
+            if (! $canUpdateDecision) {
+                throw new ConflictHttpException('Quyết định xét duyệt của nhân viên đã được ghi nhận.');
+            }
+
             $reviewDecision->forceFill([
                 'status' => $decision,
                 'reviewed_by' => $actor->id,
@@ -114,13 +121,17 @@ class WeeklyPlanReviewWorkflowService
             $hasRequestedChanges = $round->decisions()
                 ->where('status', WeeklyPlanReviewStatus::CHANGES_REQUESTED->value)
                 ->exists();
+            $hasPendingDecisions = $round->decisions()
+                ->where('status', WeeklyPlanReviewStatus::PENDING->value)
+                ->exists();
+            $reviewCompleteWithChanges = ! $hasPendingDecisions && $hasRequestedChanges;
             $round->forceFill([
-                'status' => $hasRequestedChanges
+                'status' => $reviewCompleteWithChanges
                     ? WeeklyPlanReviewRoundStatus::CHANGES_REQUESTED
                     : WeeklyPlanReviewRoundStatus::OPEN,
             ])->save();
             $plan->forceFill([
-                'status' => $this->planStatusFor($stage, $hasRequestedChanges),
+                'status' => $this->planStatusFor($stage, $reviewCompleteWithChanges),
             ])->save();
 
             $prefix = $stage === WeeklyPlanReviewStage::ASSISTANT ? 'ASSISTANT' : 'OWNER';
@@ -135,6 +146,29 @@ class WeeklyPlanReviewWorkflowService
         });
 
         return $this->scope->queryFor($actor, 'weekly_plans.view')->findOrFail($planId);
+    }
+
+    public function canRequestChangesForDecision(
+        WeeklyPlan $plan,
+        WeeklyPlanReviewRound $round,
+        WeeklyPlanReviewDecision $decision,
+        bool $viewerCanReview,
+    ): bool {
+        if (! $viewerCanReview
+            || $round->status !== WeeklyPlanReviewRoundStatus::OPEN
+            || $plan->status !== $this->planStatusFor($round->stage, false)
+            || $decision->weekly_plan_review_round_id !== $round->id) {
+            return false;
+        }
+
+        if ($decision->status === WeeklyPlanReviewStatus::PENDING) {
+            return true;
+        }
+
+        return $decision->status === WeeklyPlanReviewStatus::ACCEPTED
+            && $decision->reviewed_by !== null
+            && $decision->reviewed_at !== null
+            && ! $this->wasAcceptedInPreviousRound($plan, $round, $decision->assignee_id);
     }
 
     public function assertAssigneeCanBeCorrected(WeeklyPlan $plan, int $assigneeId): void
@@ -431,6 +465,39 @@ class WeeklyPlanReviewWorkflowService
         }
 
         return $round;
+    }
+
+    private function wasAcceptedInPreviousRound(
+        WeeklyPlan $plan,
+        WeeklyPlanReviewRound $round,
+        int $assigneeId,
+    ): bool {
+        if ($round->round_number <= 1) {
+            return false;
+        }
+
+        if ($plan->relationLoaded('reviewRounds')) {
+            $previousRound = $plan->reviewRounds->first(
+                fn (WeeklyPlanReviewRound $candidate): bool => $candidate->stage === $round->stage
+                    && $candidate->round_number === $round->round_number - 1,
+            );
+            if ($previousRound instanceof WeeklyPlanReviewRound
+                && $previousRound->relationLoaded('decisions')) {
+                return $previousRound->decisions->contains(
+                    fn (WeeklyPlanReviewDecision $decision): bool => $decision->assignee_id === $assigneeId
+                        && $decision->status === WeeklyPlanReviewStatus::ACCEPTED,
+                );
+            }
+        }
+
+        return WeeklyPlanReviewDecision::query()
+            ->where('assignee_id', $assigneeId)
+            ->where('status', WeeklyPlanReviewStatus::ACCEPTED->value)
+            ->whereHas('round', fn ($query) => $query
+                ->where('weekly_plan_id', $round->weekly_plan_id)
+                ->where('stage', $round->stage->value)
+                ->where('round_number', $round->round_number - 1))
+            ->exists();
     }
 
     private function assertAllAccepted(WeeklyPlanReviewRound $round): void

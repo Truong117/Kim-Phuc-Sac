@@ -16,7 +16,6 @@ import {
   canAcceptWeeklyPlanDecision,
   canRequestChangesForWeeklyPlanDecision,
   createWeeklyPlanReviewEmployeeGroups,
-  isCarriedAcceptedDecision,
   submitWeeklyPlanChangeRequest,
   weeklyPlanSubmitStatusKey,
 } from "../src/utils/weeklyPlanReviewWorkspace.ts";
@@ -79,12 +78,18 @@ const actions = (changes = {}) => ({
 });
 
 const employee = (id, name) => ({ id, name });
-const decision = (id, assignee, status) => ({
+const decision = (
+  id,
+  assignee,
+  status,
+  canRequestChanges = status === "PENDING" || status === "ACCEPTED",
+) => ({
   id,
   assignee,
   status,
   reviewed_by: status === "PENDING" ? null : { id: 99, name: "Reviewer" },
   reviewed_at: status === "PENDING" ? null : "2026-11-01T08:00:00Z",
+  actions: { can_request_changes: canRequestChanges },
 });
 const entry = (id, assignee, title = `Work ${id}`) => ({
   id,
@@ -475,7 +480,7 @@ test("changes-requested workspace is read-only while waiting for HR", () => {
   assert.doesNotMatch(markup, /Quyết định xét duyệt chính thức/);
 });
 
-test("current-round accepted decision can reopen but cannot be accepted twice", () => {
+test("backend action allows an equal-timestamp current acceptance to reopen", () => {
   const value = plan({
     entries: [entry(1, assistantA)],
     actions: actions({ can_finalize_assistant_review: false }),
@@ -483,7 +488,7 @@ test("current-round accepted decision can reopen but cannot be accepted twice", 
       ...plan().review_workflow,
       current_round: {
         ...plan().review_workflow.current_round,
-        started_at: "2026-11-01T07:00:00Z",
+        started_at: "2026-11-01T08:00:00Z",
         decisions: [decision(1, assistantA, "ACCEPTED")],
       },
       assistant_summary: {
@@ -497,10 +502,6 @@ test("current-round accepted decision can reopen but cannot be accepted twice", 
   const [accepted] = value.review_workflow.current_round.decisions;
   assert.equal(canAcceptWeeklyPlanDecision(value, accepted), false);
   assert.equal(canRequestChangesForWeeklyPlanDecision(value, accepted), true);
-  assert.equal(
-    isCarriedAcceptedDecision(value.review_workflow.current_round, accepted),
-    false,
-  );
 
   const markup = renderWorkspace(value);
   assert.match(markup, />Yêu cầu chỉnh sửa<\/button>/);
@@ -508,20 +509,14 @@ test("current-round accepted decision can reopen but cannot be accepted twice", 
   assert.match(markup, /Đã chấp nhận trong vòng xét duyệt này/);
 });
 
-test("carried accepted decision remains accepted and locked in a resubmission round", () => {
+test("backend action locks an equal-timestamp carried acceptance", () => {
   const value = plan();
   value.review_workflow.current_round.round_number = 3;
-  value.review_workflow.current_round.started_at = "2026-11-02T07:00:00Z";
+  value.review_workflow.current_round.started_at = "2026-11-01T08:00:00Z";
+  value.review_workflow.current_round.decisions[0].actions.can_request_changes = false;
   const [accepted, pending] = createWeeklyPlanReviewEmployeeGroups(value);
   assert.equal(accepted.decision.status, "ACCEPTED");
   assert.equal(pending.decision.status, "PENDING");
-  assert.equal(
-    isCarriedAcceptedDecision(
-      value.review_workflow.current_round,
-      accepted.decision,
-    ),
-    true,
-  );
   assert.equal(canAcceptWeeklyPlanDecision(value, accepted.decision), false);
   assert.equal(
     canRequestChangesForWeeklyPlanDecision(value, accepted.decision),
@@ -542,20 +537,25 @@ test("carried accepted decision remains accepted and locked in a resubmission ro
   assert.doesNotMatch(markup, />Chấp nhận<\/button>/);
 });
 
-test("invalid or ambiguous accepted timestamps fail closed", () => {
+test("viewer and round authority still gate backend decision actions", () => {
   const value = plan();
   const round = value.review_workflow.current_round;
   const accepted = round.decisions[0];
 
-  for (const reviewed_at of [null, "not-a-timestamp", round.started_at]) {
-    const ambiguous = { ...accepted, reviewed_at };
-    round.decisions = [ambiguous];
-    assert.equal(canAcceptWeeklyPlanDecision(value, ambiguous), false);
-    assert.equal(
-      canRequestChangesForWeeklyPlanDecision(value, ambiguous),
-      false,
-    );
-  }
+  accepted.reviewed_at = round.started_at;
+  accepted.actions.can_request_changes = true;
+  assert.equal(canRequestChangesForWeeklyPlanDecision(value, accepted), true);
+
+  value.actions.can_assistant_review = false;
+  assert.equal(canRequestChangesForWeeklyPlanDecision(value, accepted), false);
+
+  value.actions.can_assistant_review = true;
+  round.status = "COMPLETED";
+  assert.equal(canRequestChangesForWeeklyPlanDecision(value, accepted), false);
+
+  round.status = "OPEN";
+  accepted.actions.can_request_changes = false;
+  assert.equal(canRequestChangesForWeeklyPlanDecision(value, accepted), false);
 });
 
 test("OWNER current-round acceptance can reopen when approval readiness still blocks", () => {
@@ -573,7 +573,7 @@ test("OWNER current-round acceptance can reopen when approval readiness still bl
       current_round: {
         ...plan().review_workflow.current_round,
         stage: "OWNER",
-        started_at: "2026-11-01T07:00:00Z",
+        started_at: "2026-11-01T08:00:00Z",
         decisions: [decision(1, assistantA, "ACCEPTED")],
       },
       owner_summary: {
