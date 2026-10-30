@@ -169,7 +169,7 @@ const renderWorkspace = (value) =>
 test("Assistant and OWNER workspaces derive their mode from staged workflow data", () => {
   const assistantMarkup = renderWorkspace(plan());
   assert.match(assistantMarkup, /Vòng Trợ lý Giám đốc/);
-  assert.match(assistantMarkup, /Trợ lý Giám đốc đang xét duyệt/);
+  assert.match(assistantMarkup, /Cần xét duyệt/);
 
   const ownerPlan = plan({
     status: "OWNER_REVIEW",
@@ -191,7 +191,7 @@ test("Assistant and OWNER workspaces derive their mode from staged workflow data
   });
   const ownerMarkup = renderWorkspace(ownerPlan);
   assert.match(ownerMarkup, /Vòng OWNER/);
-  assert.match(ownerMarkup, /Giám đốc đang xét duyệt/);
+  assert.match(ownerMarkup, /Cần xét duyệt/);
 });
 
 test("summary and employee groups use only the current staged round", () => {
@@ -611,17 +611,46 @@ test("all staged plan status badges resolve Vietnamese text without raw keys", (
     ),
     /Giám đốc đang xét duyệt/,
   );
+
+  assert.match(
+    renderToStaticMarkup(
+      React.createElement(StatusBadge, {
+        status: "OWNER_REVIEW",
+        actions: {
+          can_assistant_review: false,
+          can_owner_review: true,
+        },
+      }),
+    ),
+    /Cần xét duyệt/,
+  );
+  assert.match(
+    renderToStaticMarkup(
+      React.createElement(StatusBadge, {
+        status: "ASSISTANT_REVIEW",
+        actions: {
+          can_assistant_review: true,
+          can_owner_review: false,
+        },
+      }),
+    ),
+    /Cần xét duyệt/,
+  );
 });
 
-test("list and wizard headers share the fixed status badge render path", async () => {
-  const [list, wizardHeader, badge] = await Promise.all([
+test("list and review workspace headers share actor-relative status badges", async () => {
+  const [list, wizardHeader, reviewWorkspace, badge] = await Promise.all([
     readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
     readSource("src/components/weekly-plans/WeeklyPlanWizardHeader.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanReviewWorkspace.tsx"),
     readSource("src/components/weekly-plans/WeeklyPlanStatusBadge.tsx"),
   ]);
-  assert.match(list, /<WeeklyPlanStatusBadge status=\{plan\.status\}/);
+  assert.match(list, /<WeeklyPlanStatusBadge[\s\S]*?status=\{plan\.status\}/);
   assert.match(wizardHeader, /<WeeklyPlanStatusBadge status=\{plan\.status\}/);
+  assert.match(reviewWorkspace, /actions=\{plan\.actions\}/);
+  assert.match(list, /actions=\{plan\.actions\}/);
   assert.match(badge, /weeklyPlanning\.status\.\$\{status\}/);
+  assert.match(badge, /actorRelativeWeeklyPlanStatusKey\(status, actions\)/);
   assert.doesNotMatch(badge, /keyPrefix:\s*"weeklyPlanning\.status"/);
 });
 

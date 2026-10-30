@@ -72,10 +72,20 @@ class WeeklyPlanService
             ->paginate($perPage);
 
         $canManageDrafts = $this->scope->allows($viewer, 'weekly_plans.manage_draft');
+        $canAssistantReview = $this->scope->allows($viewer, 'weekly_plans.assistant_review');
+        $canOwnerReview = $this->scope->allows($viewer, 'weekly_plans.review');
         $paginator->setCollection($paginator->getCollection()->map(
-            function (WeeklyPlan $plan) use ($canManageDrafts): WeeklyPlan {
+            function (WeeklyPlan $plan) use (
+                $canAssistantReview,
+                $canManageDrafts,
+                $canOwnerReview,
+            ): WeeklyPlan {
                 $plan->setAttribute('actions', [
                     'can_delete' => $canManageDrafts && $plan->status === WeeklyPlanStatus::DRAFT,
+                    'can_assistant_review' => $canAssistantReview
+                        && $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW,
+                    'can_owner_review' => $canOwnerReview
+                        && $plan->status === WeeklyPlanStatus::OWNER_REVIEW,
                 ]);
 
                 return $plan;

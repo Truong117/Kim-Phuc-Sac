@@ -274,7 +274,10 @@ export default function WeeklyPlanReviewWorkspace({
                 {t(`stage.${stage}`)}
               </span>
             )}
-            <WeeklyPlanStatusBadge status={plan.status} />
+            <WeeklyPlanStatusBadge
+              status={plan.status}
+              actions={plan.actions}
+            />
           </div>
         </div>
       </section>

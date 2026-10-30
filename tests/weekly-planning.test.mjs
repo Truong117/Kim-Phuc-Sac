@@ -7,6 +7,10 @@ import {
   reconcileExpandedEmployeeKey,
   toggleExpandedEmployeeKey,
 } from "../src/utils/weeklyPlanEmployeeAccordion.ts";
+import {
+  activeWeeklyPlanReviewPath,
+  actorRelativeWeeklyPlanStatusKey,
+} from "../src/utils/weeklyPlanReviewer.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -59,6 +63,77 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/ai-extract/);
 });
 
+test("active reviewers receive direct list navigation and actor-relative status copy", async () => {
+  const ownerPlan = {
+    id: 31,
+    status: "OWNER_REVIEW",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: true,
+    },
+  };
+  const hrPlan = {
+    ...ownerPlan,
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+    },
+  };
+  const assistantPlan = {
+    ...ownerPlan,
+    status: "ASSISTANT_REVIEW",
+    actions: {
+      can_assistant_review: true,
+      can_owner_review: false,
+    },
+  };
+
+  assert.equal(
+    activeWeeklyPlanReviewPath(ownerPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(ownerPlan.status, ownerPlan.actions),
+    "weeklyPlanning.status.reviewRequired",
+  );
+  assert.equal(activeWeeklyPlanReviewPath(hrPlan), null);
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(hrPlan.status, hrPlan.actions),
+    null,
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath(assistantPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(
+      assistantPlan.status,
+      assistantPlan.actions,
+    ),
+    "weeklyPlanning.status.reviewRequired",
+  );
+
+  const [list, types, translationsSource] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
+    readSource("src/types/weeklyPlanning.ts"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.match(list, /const reviewPath = activeWeeklyPlanReviewPath\(plan\)/);
+  assert.match(list, /to=\{reviewPath \?\? "\/weekly-plans\/" \+ plan\.id\}/);
+  assert.match(list, /actions=\{plan\.actions\}/);
+  assert.match(list, /t\(reviewPath \? "list\.review" : "list\.open"\)/);
+  assert.match(
+    types,
+    /"can_delete" \| "can_assistant_review" \| "can_owner_review"/,
+  );
+  assert.equal(copy.status.reviewRequired, "Cần xét duyệt");
+  assert.equal(copy.status.OWNER_REVIEW, "Giám đốc đang xét duyệt");
+  assert.equal(copy.list.review, "Xét duyệt");
+  assert.equal(copy.list.open, "Mở kế hoạch");
+});
+
 test("weekly draft deletion is backend-authorized, confirmed, single-flight, and safely refreshed", async () => {
   const [list, service, types, translationsSource] = await Promise.all([
     readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
@@ -69,7 +144,7 @@ test("weekly draft deletion is backend-authorized, confirmed, single-flight, and
   const copy = JSON.parse(translationsSource).weeklyPlanning;
 
   assert.match(types, /can_delete:\s*boolean/);
-  assert.match(types, /actions:\s*Pick<WeeklyPlanActions, "can_delete">/);
+  assert.match(types, /actions:\s*Pick<[\s\S]*?"can_delete"/);
   assert.match(list, /\{plan\.actions\.can_delete && \(/);
   assert.doesNotMatch(list, /plan\.status\s*===\s*["']DRAFT["']/);
   assert.match(

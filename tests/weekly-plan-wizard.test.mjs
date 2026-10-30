@@ -28,6 +28,7 @@ import {
   weeklyPlanWizardSteps,
   weeklyPlanWorkCounts,
 } from "../src/utils/weeklyPlanWizard.ts";
+import { activeWeeklyPlanReviewPath } from "../src/utils/weeklyPlanReviewer.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -119,6 +120,44 @@ test("submit back navigation returns drafts to work and staged plans to the list
   );
   assert.match(layout, /onClick=\{\(\) => navigate\(backTarget\)\}/);
   assert.match(layout, /submitStepReturnsToList \? "backToPlanList" : "back"/);
+});
+
+test("active reviewers bypass wizard entry and submit while HR keeps wizard inference", async () => {
+  const reviewerPlan = {
+    ...plan({ status: "OWNER_REVIEW" }),
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: true,
+    },
+  };
+  const hrPlan = {
+    ...reviewerPlan,
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+    },
+  };
+
+  assert.equal(
+    activeWeeklyPlanReviewPath(reviewerPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(activeWeeklyPlanReviewPath(hrPlan), null);
+  assert.equal(inferWeeklyPlanWizardStep(hrPlan, null), "submit");
+
+  const [entry, submit] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardEntry.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+  ]);
+  assert.match(
+    entry,
+    /const reviewPath = activeWeeklyPlanReviewPath\(plan\);[\s\S]*?if \(reviewPath\) return <Navigate to=\{reviewPath\} replace \/>;[\s\S]*?inferWeeklyPlanWizardStep\(plan, mappings\)/,
+  );
+  assert.match(
+    submit,
+    /const reviewPath = activeWeeklyPlanReviewPath\(plan\);[\s\S]*?if \(reviewPath\) return <Navigate to=\{reviewPath\} replace \/>;[\s\S]*?const counts = weeklyPlanWorkCounts\(plan\)/,
+  );
+  assert.match(submit, /<WeeklyPlanWizardLayout step="submit">/);
 });
 
 test("wizard default inference and guards enforce source, structure, work, and submit prerequisites", () => {

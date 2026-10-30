@@ -16,6 +16,49 @@ class WeeklyPlanningStagedReviewTest extends TestCase
     use AuthorizationFixtures;
     use RefreshDatabase;
 
+    public function test_list_actions_identify_only_the_active_stage_reviewer(): void
+    {
+        [$hr, $organizationId] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assistant] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ]);
+        [$owner] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.review',
+        ]);
+        $employee = User::factory()->create();
+        $plan = $this->plan($organizationId, $hr, [$employee]);
+
+        $plan->update(['status' => 'ASSISTANT_REVIEW']);
+
+        $this->actingAs($assistant)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.status', 'ASSISTANT_REVIEW')
+            ->assertJsonPath('data.0.actions.can_assistant_review', true)
+            ->assertJsonPath('data.0.actions.can_owner_review', false);
+        $this->actingAs($hr)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.actions.can_assistant_review', false)
+            ->assertJsonPath('data.0.actions.can_owner_review', false);
+
+        $plan->update(['status' => 'OWNER_REVIEW']);
+
+        $this->actingAs($owner)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.status', 'OWNER_REVIEW')
+            ->assertJsonPath('data.0.actions.can_assistant_review', false)
+            ->assertJsonPath('data.0.actions.can_owner_review', true);
+        $this->actingAs($hr)->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.actions.can_assistant_review', false)
+            ->assertJsonPath('data.0.actions.can_owner_review', false);
+    }
+
     public function test_staged_review_corrections_create_new_same_stage_rounds(): void
     {
         [$hr, $organizationId] = $this->actor([

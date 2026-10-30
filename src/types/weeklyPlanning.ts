@@ -319,7 +319,12 @@ export type WeeklyPlanListItem = Pick<
   | "source_file"
   | "creator"
   | "entries_count"
-> & { actions: Pick<WeeklyPlanActions, "can_delete"> };
+> & {
+  actions: Pick<
+    WeeklyPlanActions,
+    "can_delete" | "can_assistant_review" | "can_owner_review"
+  >;
+};
 
 export type WeeklyPlanListResponse = {
   data: WeeklyPlanListItem[];
