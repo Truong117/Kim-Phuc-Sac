@@ -5,6 +5,7 @@ import Button from "@/components/ui/button/Button";
 import { useWeeklyPlanWizard } from "@/context/WeeklyPlanWizardContext";
 import {
   guardWeeklyPlanWizardStep,
+  isEditableWizardPlan,
   weeklyPlanWizardSteps,
   type WeeklyPlanWizardStep,
 } from "@/utils/weeklyPlanWizard";
@@ -54,6 +55,12 @@ export default function WeeklyPlanWizardLayout({
 
   const currentIndex = weeklyPlanWizardSteps.indexOf(step);
   const previousStep = weeklyPlanWizardSteps[Math.max(0, currentIndex - 1)];
+  const submitStepReturnsToList =
+    step === "submit" && !isEditableWizardPlan(plan);
+  const backTarget = submitStepReturnsToList
+    ? "/weekly-plans"
+    : `/weekly-plans/${plan.id}/${previousStep}`;
+  const backLabel = submitStepReturnsToList ? "backToPlanList" : "back";
 
   return (
     <>
@@ -75,10 +82,10 @@ export default function WeeklyPlanWizardLayout({
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => navigate(`/weekly-plans/${plan.id}/${previousStep}`)}
+            onClick={() => navigate(backTarget)}
           >
             <span className="rtl:rotate-180">←</span>
-            {t("back")}
+            {t(backLabel)}
           </Button>
         )}
         {children}

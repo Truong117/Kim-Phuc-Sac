@@ -21,6 +21,7 @@ import {
   groupWeeklyPlanEntriesByEmployee,
   guardWeeklyPlanWizardStep,
   inferWeeklyPlanWizardStep,
+  isEditableWizardPlan,
   weeklyPlanAnalysisState,
   weeklyPlanSubmissionReadiness,
   WEEKLY_PLAN_RULE_ANALYZER_VERSION,
@@ -68,6 +69,56 @@ test("wizard exposes exactly the four source, structure, work, and submit steps"
     "work",
     "submit",
   ]);
+});
+
+test("submit back navigation returns drafts to work and staged plans to the list", async () => {
+  const [layout, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanWizardLayout.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const wizardCopy = JSON.parse(translationsSource).weeklyPlanning.wizard;
+  const backNavigation = (status) => {
+    const value = plan({ status });
+    const returnsToList = !isEditableWizardPlan(value);
+
+    return {
+      target: returnsToList
+        ? "/weekly-plans"
+        : `/weekly-plans/${value.id}/work`,
+      label: returnsToList ? wizardCopy.backToPlanList : wizardCopy.back,
+    };
+  };
+
+  assert.deepEqual(backNavigation("DRAFT"), {
+    target: "/weekly-plans/31/work",
+    label: "Quay lại",
+  });
+  assert.deepEqual(backNavigation("CHANGES_REQUESTED"), {
+    target: "/weekly-plans/31/work",
+    label: "Quay lại",
+  });
+
+  for (const status of [
+    "ASSISTANT_REVIEW",
+    "ASSISTANT_CHANGES_REQUESTED",
+    "OWNER_REVIEW",
+    "OWNER_CHANGES_REQUESTED",
+    "APPROVED",
+    "PUBLISHED",
+  ]) {
+    assert.deepEqual(backNavigation(status), {
+      target: "/weekly-plans",
+      label: "Quay lại danh sách kế hoạch",
+    });
+  }
+
+  assert.match(layout, /step === "submit" && !isEditableWizardPlan\(plan\)/);
+  assert.match(
+    layout,
+    /submitStepReturnsToList\s*\? "\/weekly-plans"\s*: `\/weekly-plans\/\$\{plan\.id\}\/\$\{previousStep\}`/,
+  );
+  assert.match(layout, /onClick=\{\(\) => navigate\(backTarget\)\}/);
+  assert.match(layout, /submitStepReturnsToList \? "backToPlanList" : "back"/);
 });
 
 test("wizard default inference and guards enforce source, structure, work, and submit prerequisites", () => {
