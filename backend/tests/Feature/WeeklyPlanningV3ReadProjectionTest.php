@@ -65,6 +65,10 @@ class WeeklyPlanningV3ReadProjectionTest extends TestCase
         [$published] = $this->actor([], name: 'Published Employee');
         [$noWork] = $this->actor([], name: 'Zero Work Employee');
         $plan = $this->plan($organizationId, $hr, WeeklyPlanWorkflowVersion::V3);
+        $plan->forceFill([
+            'status' => WeeklyPlanStatus::IN_REVIEW,
+            'submitted_at' => now()->subMinute(),
+        ])->save();
 
         $this->workflow($plan, $awaiting, WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT);
         $this->workflow($plan, $staged, WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER);

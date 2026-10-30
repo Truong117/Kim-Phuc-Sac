@@ -5,7 +5,6 @@ namespace App\Services\WeeklyPlanning;
 use App\Enums\WeeklyPlanEmployeeWorkflowAction;
 use App\Enums\WeeklyPlanReviewStage;
 use App\Enums\WeeklyPlanReviewStatus;
-use App\Enums\WeeklyPlanStatus;
 use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\User;
 use App\Models\WeeklyPlan;
@@ -29,6 +28,7 @@ final class WeeklyPlanV3AssistantBatchService
         private readonly WeeklyPlanEmployeeWorkflowIntegrityService $integrity,
         private readonly WeeklyPlanEmployeeLifecycleService $lifecycle,
         private readonly WeeklyPlanV3ContentSnapshotService $snapshots,
+        private readonly WeeklyPlanV3AssistantEligibilityService $eligibility,
     ) {}
 
     /**
@@ -288,7 +288,7 @@ final class WeeklyPlanV3AssistantBatchService
 
     private function assertReviewable(WeeklyPlan $plan): void
     {
-        if ($plan->status !== WeeklyPlanStatus::ASSISTANT_REVIEW || $plan->submitted_at === null) {
+        if (! $this->eligibility->planAllowsReview($plan)) {
             throw new WeeklyPlanV3BatchException(
                 'PLAN_NOT_REVIEWABLE',
                 'Kế hoạch không ở trạng thái Trợ lý có thể xét duyệt.',

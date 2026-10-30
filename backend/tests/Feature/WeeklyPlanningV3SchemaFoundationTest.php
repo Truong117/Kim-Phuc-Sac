@@ -191,7 +191,7 @@ class WeeklyPlanningV3SchemaFoundationTest extends TestCase
             ],
         )->assertConflict();
 
-        $plan->forceFill(['status' => WeeklyPlanStatus::ASSISTANT_REVIEW])->save();
+        $plan->forceFill(['status' => WeeklyPlanStatus::IN_REVIEW])->save();
         $this->actingAs($actor)->postJson(
             "/api/weekly-plans/{$plan->id}/review-decisions/{$employee->id}",
             ['decision' => 'ACCEPTED'],

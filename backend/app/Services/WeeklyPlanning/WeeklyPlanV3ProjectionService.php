@@ -3,7 +3,6 @@
 namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
-use App\Enums\WeeklyPlanStatus;
 use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEmployeeWorkflow;
@@ -17,6 +16,7 @@ final class WeeklyPlanV3ProjectionService
         private readonly WeeklyPlanScopeService $scope,
         private readonly WeeklyPlanEmployeeWorkflowIntegrityService $integrity,
         private readonly WeeklyPlanV3SummaryService $summaries,
+        private readonly WeeklyPlanV3AssistantEligibilityService $assistantEligibility,
     ) {}
 
     /**
@@ -59,9 +59,7 @@ final class WeeklyPlanV3ProjectionService
             ->filter(fn ($entry): bool => $entry->assignee_id !== null)
             ->groupBy(fn ($entry): int => (int) $entry->assignee_id);
         $viewerContext = $this->viewerContextPermissions($viewer);
-        $assistantActionsEnabled = (bool) config('weekly_plans.workflow_v3_enabled', false)
-            && $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW
-            && $plan->submitted_at !== null
+        $assistantActionsEnabled = $this->assistantEligibility->planAllowsReview($plan)
             && $viewerContext['assistant'];
 
         return [

@@ -149,6 +149,113 @@ class WeeklyPlanningV3AssistantBatchTest extends TestCase
         $this->assertTrue($workflows[$unselected->id]['actions']['can_request_changes']);
     }
 
+    public function test_mixed_employee_states_expose_and_mutate_only_awaiting_assistant_work(): void
+    {
+        [$assistant, $organizationId] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ], name: 'Mixed State Assistant');
+        [$awaiting] = $this->actor([], name: 'Awaiting Assistant Employee');
+        [$staged] = $this->actor([], name: 'Staged Owner Employee');
+        [$correction] = $this->actor([], name: 'HR Correction Employee');
+        [$published] = $this->actor([], name: 'Published Employee');
+        $plan = $this->plan($organizationId, $assistant);
+        $awaitingWorkflow = $this->workflow($plan, $awaiting, stateVersion: 2, contentVersion: 3);
+        $stagedWorkflow = $this->workflow(
+            $plan,
+            $staged,
+            WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER,
+            stateVersion: 4,
+            contentVersion: 5,
+        );
+        $correctionWorkflow = $this->workflow(
+            $plan,
+            $correction,
+            WeeklyPlanEmployeeWorkflowState::HR_CORRECTION,
+            stateVersion: 6,
+            contentVersion: 7,
+        );
+        $correctionWorkflow->forceFill([
+            'correction_origin_stage' => WeeklyPlanReviewStage::OWNER,
+        ])->save();
+        $publishedWorkflow = $this->workflow(
+            $plan,
+            $published,
+            WeeklyPlanEmployeeWorkflowState::PUBLISHED,
+            stateVersion: 8,
+            contentVersion: 9,
+        );
+        $publishedWorkflow->forceFill([
+            'published_by' => $assistant->id,
+            'published_at' => now()->subMinute(),
+            'published_task_count' => 1,
+        ])->save();
+        $this->entry($plan, $awaiting, 1, 1);
+        $this->entry($plan, $staged, 1, 2);
+        $this->entry($plan, $correction, 1, 3);
+        $this->entry($plan, $published, 1, 4);
+
+        $before = collect([$stagedWorkflow, $correctionWorkflow, $publishedWorkflow])
+            ->mapWithKeys(fn (WeeklyPlanEmployeeWorkflow $workflow): array => [
+                $workflow->id => $workflow->fresh()->only([
+                    'state',
+                    'state_version',
+                    'content_version',
+                    'correction_origin_stage',
+                    'published_by',
+                    'published_at',
+                    'published_task_count',
+                    'updated_at',
+                ]),
+            ]);
+
+        $projection = $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'IN_REVIEW');
+        $actions = collect($projection->json('data.employee_workflows'))
+            ->mapWithKeys(fn (array $workflow): array => [
+                $workflow['assignee']['id'] => $workflow['actions'],
+            ]);
+        $this->assertTrue($actions[$awaiting->id]['can_accept']);
+        $this->assertTrue($actions[$awaiting->id]['can_request_changes']);
+        foreach ([$staged->id, $correction->id, $published->id] as $assigneeId) {
+            $this->assertFalse($actions[$assigneeId]['can_accept']);
+            $this->assertFalse($actions[$assigneeId]['can_request_changes']);
+        }
+
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-mixed-states-001')
+            ->postJson("/api/weekly-plans/{$plan->id}/assistant-review-batches", [
+                'decisions' => [$this->decision($awaitingWorkflow, 'ACCEPTED')],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.plan.status', 'IN_REVIEW')
+            ->assertJsonPath('data.batch.accepted', 1)
+            ->assertJsonCount(1, 'data.results')
+            ->assertJsonPath('data.results.0.assignee_id', $awaiting->id)
+            ->assertJsonPath('data.results.0.to_state', 'STAGED_FOR_OWNER');
+
+        $this->assertSame(
+            WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER,
+            $awaitingWorkflow->fresh()->state,
+        );
+        $this->assertSame(3, $awaitingWorkflow->fresh()->state_version);
+        $this->assertSame(3, $awaitingWorkflow->fresh()->content_version);
+        foreach ($before as $workflowId => $attributes) {
+            $this->assertEquals(
+                $attributes,
+                WeeklyPlanEmployeeWorkflow::query()->findOrFail($workflowId)->only(
+                    array_keys($attributes),
+                ),
+            );
+        }
+        $this->assertDatabaseCount('weekly_plan_v3_review_batches', 1);
+        $this->assertDatabaseCount('weekly_plan_v3_review_decisions', 1);
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseCount('user_notifications', 0);
+    }
+
     public function test_invalid_employee_rolls_back_the_entire_batch(): void
     {
         [$assistant, $organizationId] = $this->actor([
@@ -342,18 +449,61 @@ class WeeklyPlanningV3AssistantBatchTest extends TestCase
             ->postJson("/api/weekly-plans/{$v2->id}/assistant-review-batches", $payload)
             ->assertConflict()
             ->assertJsonPath('code', 'INVALID_WORKFLOW_VERSION');
+        $this->assertSame(WeeklyPlanStatus::IN_REVIEW, $v2->fresh()->status);
+        $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$v2->id}")
+            ->assertOk()
+            ->assertJsonMissingPath('data.workflow_version')
+            ->assertJsonMissingPath('data.employee_workflows');
 
         $notReviewable = $this->plan($organizationId, $assistant);
         $notReviewable->forceFill([
             'status' => WeeklyPlanStatus::DRAFT,
             'submitted_at' => null,
         ])->save();
+        $draftWorkflow = $this->workflow($notReviewable, $employee);
+        $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$notReviewable->id}")
+            ->assertOk()
+            ->assertJsonPath('data.employee_workflows.0.actions.can_accept', false)
+            ->assertJsonPath('data.employee_workflows.0.actions.can_request_changes', false);
         $this->actingAs($assistant)
             ->withHeader('Idempotency-Key', 'assistant-not-ready-001')
             ->postJson(
                 "/api/weekly-plans/{$notReviewable->id}/assistant-review-batches",
-                $payload,
+                ['decisions' => [$this->decision($draftWorkflow, 'ACCEPTED')]],
             )
+            ->assertConflict()
+            ->assertJsonPath('code', 'PLAN_NOT_REVIEWABLE');
+
+        $unsubmitted = $this->plan($organizationId, $assistant);
+        $unsubmitted->forceFill(['submitted_at' => null])->save();
+        $unsubmittedWorkflow = $this->workflow($unsubmitted, $employee);
+        $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$unsubmitted->id}")
+            ->assertOk()
+            ->assertJsonPath('data.employee_workflows.0.actions.can_accept', false);
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-unsubmitted-001')
+            ->postJson("/api/weekly-plans/{$unsubmitted->id}/assistant-review-batches", [
+                'decisions' => [$this->decision($unsubmittedWorkflow, 'ACCEPTED')],
+            ])
+            ->assertConflict()
+            ->assertJsonPath('code', 'PLAN_NOT_REVIEWABLE');
+
+        $publishedPlan = $this->plan($organizationId, $assistant);
+        $publishedPlan->forceFill(['status' => WeeklyPlanStatus::PUBLISHED])->save();
+        $publishedPlanWorkflow = $this->workflow($publishedPlan, $employee);
+        $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$publishedPlan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.employee_workflows.0.actions.can_accept', false)
+            ->assertJsonPath('data.employee_workflows.0.actions.can_request_changes', false);
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-published-001')
+            ->postJson("/api/weekly-plans/{$publishedPlan->id}/assistant-review-batches", [
+                'decisions' => [$this->decision($publishedPlanWorkflow, 'ACCEPTED')],
+            ])
             ->assertConflict()
             ->assertJsonPath('code', 'PLAN_NOT_REVIEWABLE');
 
@@ -526,7 +676,7 @@ class WeeklyPlanningV3AssistantBatchTest extends TestCase
             'created_by' => $creator->id,
             'week_start' => $weekStart->toDateString(),
             'week_end' => $weekStart->addDays(5)->toDateString(),
-            'status' => WeeklyPlanStatus::ASSISTANT_REVIEW,
+            'status' => WeeklyPlanStatus::IN_REVIEW,
             'workflow_version' => $version,
             'source_type' => 'UPLOADED_FILE',
             'original_filename' => 'v3-assistant-batch.xlsx',

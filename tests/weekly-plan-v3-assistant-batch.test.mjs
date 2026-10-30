@@ -121,7 +121,7 @@ const plan = (workflowChanges = []) => {
     workflow_version: 3,
     week_start: "2027-01-04",
     week_end: "2027-01-09",
-    status: "ASSISTANT_REVIEW",
+    status: "IN_REVIEW",
     creator: { id: 1, name: "HR" },
     entries: employeeWorkflows.map((item) => entry(item.id, item.assignee)),
     employee_workflows: employeeWorkflows,
@@ -285,6 +285,10 @@ test("V3 workspace is isolated while discussion notes and V2 rendering stay unch
   assert.match(
     v3Markup,
     new RegExp(translations.weeklyPlanning.reviewWorkspace.v3Assistant.title),
+  );
+  assert.match(
+    v3Markup,
+    new RegExp(translations.weeklyPlanning.reviewWorkspace.v3Assistant.accept),
   );
   assert.match(
     v3Markup,
