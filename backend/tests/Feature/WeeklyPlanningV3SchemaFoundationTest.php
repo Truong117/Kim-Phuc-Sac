@@ -5,8 +5,8 @@ namespace Tests\Feature;
 use App\Enums\DataScope;
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
 use App\Enums\WeeklyPlanReviewStage;
-use App\Enums\WeeklyPlanReviewStatus;
 use App\Enums\WeeklyPlanStatus;
+use App\Enums\WeeklyPlanV3ReviewDecisionType;
 use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\User;
 use App\Models\WeeklyPlan;
@@ -70,7 +70,7 @@ class WeeklyPlanningV3SchemaFoundationTest extends TestCase
             'weekly_plan_v3_review_batch_id' => $batch->id,
             'weekly_plan_employee_workflow_id' => $workflow->id,
             'assignee_id' => $employee->id,
-            'decision' => WeeklyPlanReviewStatus::ACCEPTED,
+            'decision' => WeeklyPlanV3ReviewDecisionType::ACCEPTED,
             'from_state' => WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT,
             'to_state' => WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER,
             'expected_state_version' => 4,
@@ -82,7 +82,7 @@ class WeeklyPlanningV3SchemaFoundationTest extends TestCase
         $this->assertSame(WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT, $workflow->state);
         $this->assertSame(WeeklyPlanReviewStage::OWNER, $workflow->correction_origin_stage);
         $this->assertSame(WeeklyPlanReviewStage::ASSISTANT, $batch->stage);
-        $this->assertSame(WeeklyPlanReviewStatus::ACCEPTED, $decision->decision);
+        $this->assertSame(WeeklyPlanV3ReviewDecisionType::ACCEPTED, $decision->decision);
         $this->assertSame(WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER, $decision->to_state);
         $this->assertSame($snapshot, $decision->content_snapshot);
         $this->assertTrue($plan->employeeWorkflows()->whereKey($workflow->id)->exists());
@@ -114,7 +114,7 @@ class WeeklyPlanningV3SchemaFoundationTest extends TestCase
             'weekly_plan_v3_review_batch_id' => $batch->id,
             'weekly_plan_employee_workflow_id' => $workflow->id,
             'assignee_id' => $employee->id,
-            'decision' => WeeklyPlanReviewStatus::ACCEPTED,
+            'decision' => WeeklyPlanV3ReviewDecisionType::ACCEPTED,
             'from_state' => WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT,
             'to_state' => WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER,
             'expected_state_version' => 1,

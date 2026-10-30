@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
-use App\Enums\WeeklyPlanReviewStatus;
+use App\Enums\WeeklyPlanV3ReviewDecisionType;
 use App\Models\Concerns\HasImmutableRecords;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -30,7 +30,7 @@ class WeeklyPlanV3ReviewDecision extends Model
     protected function casts(): array
     {
         return [
-            'decision' => WeeklyPlanReviewStatus::class,
+            'decision' => WeeklyPlanV3ReviewDecisionType::class,
             'from_state' => WeeklyPlanEmployeeWorkflowState::class,
             'to_state' => WeeklyPlanEmployeeWorkflowState::class,
             'expected_state_version' => 'integer',

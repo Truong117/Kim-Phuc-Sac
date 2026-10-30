@@ -481,7 +481,7 @@ class WeeklyPlanningV3CorrectionTest extends TestCase
 
         $this->assertFalse($project($hr)[$correctionEmployee->id]['viewer_context']['read_only']);
         $this->assertFalse($project($assistant)[$assistantEmployee->id]['viewer_context']['read_only']);
-        $this->assertTrue($project($owner)[$ownerEmployee->id]['viewer_context']['read_only']);
+        $this->assertFalse($project($owner)[$ownerEmployee->id]['viewer_context']['read_only']);
         foreach ($project($observer) as $projection) {
             $this->assertTrue($projection['viewer_context']['read_only']);
         }

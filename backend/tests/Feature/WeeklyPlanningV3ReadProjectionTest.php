@@ -336,6 +336,7 @@ class WeeklyPlanningV3ReadProjectionTest extends TestCase
             'can_correct' => false,
             'can_resubmit' => false,
             'can_publish' => false,
+            'can_approve_no_work' => false,
         ];
 
         foreach ($projections as $projection) {

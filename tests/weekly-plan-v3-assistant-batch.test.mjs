@@ -58,6 +58,7 @@ const workflow = (id, name, changes = {}) => ({
     can_correct: false,
     can_resubmit: false,
     can_publish: false,
+    can_approve_no_work: false,
   },
   ...changes,
 });
@@ -214,6 +215,33 @@ test("read-only backend actions are never added to a confirmation batch", () => 
   const markup = renderWorkspace(value);
   assert.doesNotMatch(markup, />Chấp nhận<\/button>/);
   assert.doesNotMatch(markup, /Xem lại lô \(/);
+});
+
+test("OWNER projection actions cannot enter the Assistant confirmation endpoint", () => {
+  const ownerWorkflow = {
+    state: "STAGED_FOR_OWNER",
+    viewer_context: { mode: "OWNER_REVIEW", read_only: false },
+    actions: {
+      can_accept: true,
+      can_request_changes: true,
+      can_correct: false,
+      can_resubmit: false,
+      can_publish: true,
+      can_approve_no_work: false,
+    },
+  };
+  const value = plan([ownerWorkflow, ownerWorkflow]);
+
+  assert.deepEqual(
+    buildWeeklyPlanV3AssistantBatch(value, {
+      11: "ACCEPTED",
+      22: "CHANGES_REQUESTED",
+    }),
+    [],
+  );
+  const markup = renderWorkspace(value);
+  assert.doesNotMatch(markup, />Chấp nhận<\/button>/);
+  assert.doesNotMatch(markup, />Yêu cầu chỉnh sửa<\/button>/);
 });
 
 test("confirmation request sends versions and one opaque idempotency key", async () => {
