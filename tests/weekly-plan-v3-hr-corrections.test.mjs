@@ -100,6 +100,65 @@ const employee = (assigneeId, stateVersion, contentVersion) => ({
   expected_content_version: contentVersion,
 });
 
+class ApiServiceError extends Error {
+  constructor(status) {
+    super(`API request failed with status ${status}`);
+    this.name = "ApiServiceError";
+    this.status = status;
+  }
+}
+
+test("ApiServiceError with status 0 is ambiguous", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(new ApiServiceError(0)),
+    "AMBIGUOUS",
+  );
+});
+
+test("ApiServiceError with a 5xx status is ambiguous", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(new ApiServiceError(503)),
+    "AMBIGUOUS",
+  );
+});
+
+test("ApiServiceError with status 409 is stale", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(new ApiServiceError(409)),
+    "STALE",
+  );
+});
+
+test("ApiServiceError with another explicit 4xx status is validation", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(new ApiServiceError(422)),
+    "VALIDATION",
+  );
+});
+
+test("response parsing errors are ambiguous", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(new SyntaxError("Invalid JSON")),
+    "AMBIGUOUS",
+  );
+});
+
+test("aborted requests are ambiguous", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(
+      new DOMException("The request was aborted", "AbortError"),
+    ),
+    "AMBIGUOUS",
+  );
+});
+
+test("generic errors without a status are ambiguous", () => {
+  assert.equal(
+    weeklyPlanV3CorrectionFailureMode(new Error("Unknown request failure")),
+    "AMBIGUOUS",
+  );
+});
+
 test("ambiguous network failure keeps one immutable request for an exact retry", () => {
   let sequence = 0;
   const createRequestId = () => `request-${++sequence}`;
@@ -118,19 +177,16 @@ test("ambiguous network failure keeps one immutable request for an exact retry",
   );
 
   assert.equal(first.confirmation.requestId, "request-1");
-  assert.equal(weeklyPlanV3CorrectionFailureMode({ status: 0 }), "AMBIGUOUS");
-  assert.equal(weeklyPlanV3CorrectionFailureMode({ status: 503 }), "AMBIGUOUS");
   assert.equal(retry.confirmation, first.confirmation);
+  assert.equal(retry.confirmation.planId, first.confirmation.planId);
+  assert.equal(retry.confirmation.requestId, first.confirmation.requestId);
+  assert.deepEqual(retry.confirmation.employees, first.confirmation.employees);
+  assert.equal(
+    retry.confirmation.payloadFingerprint,
+    first.confirmation.payloadFingerprint,
+  );
   assert.equal(retry.reconciliationRequired, false);
   assert.equal(sequence, 1);
-});
-
-test("definitive stale and validation failures preserve drafts but release the request key", () => {
-  assert.equal(weeklyPlanV3CorrectionFailureMode({ status: 409 }), "STALE");
-  assert.equal(
-    weeklyPlanV3CorrectionFailureMode({ status: 422 }),
-    "VALIDATION",
-  );
 });
 
 test("changed selection reconciles the failed payload before identifying a new batch", () => {
