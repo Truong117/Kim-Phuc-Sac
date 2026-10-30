@@ -11,6 +11,7 @@ import WeeklyPlanReviewFinalModal, {
   type WeeklyPlanReviewFinalAction,
 } from "@/components/weekly-plans/WeeklyPlanReviewFinalModal";
 import WeeklyPlanStatusBadge from "@/components/weekly-plans/WeeklyPlanStatusBadge";
+import WeeklyPlanV3AssistantBatchReview from "@/components/weekly-plans/WeeklyPlanV3AssistantBatchReview";
 import { useModal } from "@/hooks/useModal";
 import { ApiServiceError } from "@/services/apiClient";
 import {
@@ -88,6 +89,8 @@ export default function WeeklyPlanReviewWorkspace({
   const stage = activeWeeklyPlanReviewStage(plan);
   const summary = activeWeeklyPlanReviewSummary(plan);
   const waitingForHr = isWeeklyPlanWaitingForHr(plan.status);
+  const isV3 =
+    plan.workflow_version === 3 && Array.isArray(plan.employee_workflows);
   const activeExpandedGroupKey =
     expandedGroupKey && groupKeys.includes(expandedGroupKey)
       ? expandedGroupKey
@@ -302,7 +305,12 @@ export default function WeeklyPlanReviewWorkspace({
         </section>
       )}
 
-      {plan.review_workflow?.current_round ? (
+      {isV3 ? (
+        <WeeklyPlanV3AssistantBatchReview
+          plan={plan}
+          onPlanChange={onPlanChange}
+        />
+      ) : plan.review_workflow?.current_round ? (
         <>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -479,50 +487,52 @@ export default function WeeklyPlanReviewWorkspace({
         )}
       </section>
 
-      <section className="rounded-2xl border border-kps-primary/20 bg-kps-primary/[0.04] p-5 dark:border-kps-primary/30 dark:bg-kps-primary/10">
-        <h2 className="font-semibold text-gray-900 dark:text-white">
-          {t("final.title")}
-        </h2>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          {plan.actions.can_finalize_assistant_review && (
-            <Button
-              type="button"
-              disabled={busy}
-              className="bg-kps-primary hover:bg-kps-primary-hover"
-              onClick={() => openFinalModal("FINALIZE_ASSISTANT")}
-            >
-              {t("final.finalizeAssistant")}
-            </Button>
-          )}
-          {plan.actions.can_approve && (
-            <Button
-              type="button"
-              disabled={busy}
-              className="bg-kps-primary hover:bg-kps-primary-hover"
-              onClick={() => openFinalModal("APPROVE")}
-            >
-              {t("final.approve")}
-            </Button>
-          )}
-          {plan.actions.can_publish && (
-            <Button
-              type="button"
-              disabled={busy}
-              className="bg-kps-primary hover:bg-kps-primary-hover"
-              onClick={() => openFinalModal("PUBLISH")}
-            >
-              {t("final.publish")}
-            </Button>
-          )}
-          {!plan.actions.can_finalize_assistant_review &&
-            !plan.actions.can_approve &&
-            !plan.actions.can_publish && (
-              <p className="text-theme-sm text-gray-600 dark:text-gray-300">
-                {t("final.unavailable")}
-              </p>
+      {!isV3 && (
+        <section className="rounded-2xl border border-kps-primary/20 bg-kps-primary/[0.04] p-5 dark:border-kps-primary/30 dark:bg-kps-primary/10">
+          <h2 className="font-semibold text-gray-900 dark:text-white">
+            {t("final.title")}
+          </h2>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {plan.actions.can_finalize_assistant_review && (
+              <Button
+                type="button"
+                disabled={busy}
+                className="bg-kps-primary hover:bg-kps-primary-hover"
+                onClick={() => openFinalModal("FINALIZE_ASSISTANT")}
+              >
+                {t("final.finalizeAssistant")}
+              </Button>
             )}
-        </div>
-      </section>
+            {plan.actions.can_approve && (
+              <Button
+                type="button"
+                disabled={busy}
+                className="bg-kps-primary hover:bg-kps-primary-hover"
+                onClick={() => openFinalModal("APPROVE")}
+              >
+                {t("final.approve")}
+              </Button>
+            )}
+            {plan.actions.can_publish && (
+              <Button
+                type="button"
+                disabled={busy}
+                className="bg-kps-primary hover:bg-kps-primary-hover"
+                onClick={() => openFinalModal("PUBLISH")}
+              >
+                {t("final.publish")}
+              </Button>
+            )}
+            {!plan.actions.can_finalize_assistant_review &&
+              !plan.actions.can_approve &&
+              !plan.actions.can_publish && (
+                <p className="text-theme-sm text-gray-600 dark:text-gray-300">
+                  {t("final.unavailable")}
+                </p>
+              )}
+          </div>
+        </section>
+      )}
 
       <details className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
         <summary className="cursor-pointer font-semibold text-gray-900 dark:text-white">

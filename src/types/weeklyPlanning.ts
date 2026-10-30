@@ -17,6 +17,51 @@ export type WeeklyPlanReviewStatus =
 
 export type WeeklyPlanReviewStage = "ASSISTANT" | "OWNER";
 
+export type WeeklyPlanEmployeeWorkflowState =
+  | "AWAITING_ASSISTANT"
+  | "STAGED_FOR_OWNER"
+  | "HR_CORRECTION"
+  | "PUBLISHED"
+  | "NO_WORK_APPROVED";
+
+export type WeeklyPlanEmployeeWorkflow = {
+  id: number;
+  assignee: { id: number; name: string };
+  state: WeeklyPlanEmployeeWorkflowState;
+  state_version: number;
+  content_version: number;
+  correction_origin_stage: WeeklyPlanReviewStage | null;
+  active_entry_count: number;
+  active_child_item_count: number;
+  publication: {
+    published_by: { id: number; name: string } | null;
+    published_at: string | null;
+    task_count: number;
+  };
+  viewer_context: {
+    mode: "ASSISTANT_REVIEW" | "OWNER_REVIEW" | "HR_CORRECTION" | "OBSERVER";
+    read_only: boolean;
+  };
+  actions: {
+    can_accept: boolean;
+    can_request_changes: boolean;
+    can_correct: boolean;
+    can_resubmit: boolean;
+    can_publish: boolean;
+  };
+};
+
+export type WeeklyPlanPublicationSummary = {
+  total: number;
+  awaiting_assistant: number;
+  staged_for_owner: number;
+  hr_correction: number;
+  published: number;
+  no_work_approved: number;
+  phase:
+    "NOT_STARTED" | "IN_REVIEW" | "PARTIALLY_PUBLISHED" | "FULLY_PUBLISHED";
+};
+
 export type WeeklyPlanReviewRoundStatus =
   "OPEN" | "CHANGES_REQUESTED" | "COMPLETED" | "SUPERSEDED";
 
@@ -310,7 +355,33 @@ export type WeeklyPlan = {
   submitted_at: string | null;
   approved_at: string | null;
   published_at: string | null;
+  workflow_version?: 3;
+  employee_workflows?: WeeklyPlanEmployeeWorkflow[];
+  publication_summary?: WeeklyPlanPublicationSummary;
   actions: WeeklyPlanActions;
+};
+
+export type WeeklyPlanV3AssistantBatchDecisionInput = {
+  assignee_id: number;
+  decision: Exclude<WeeklyPlanReviewStatus, "PENDING">;
+  expected_state_version: number;
+  expected_content_version: number;
+};
+
+export type WeeklyPlanV3AssistantBatchResult = {
+  plan: WeeklyPlan;
+  batch: {
+    id: number;
+    stage: "ASSISTANT";
+    confirmed_at: string;
+    accepted: number;
+    changes_requested: number;
+    affected_employee_ids: number[];
+  };
+  results: Array<{
+    assignee_id: number;
+    to_state: "STAGED_FOR_OWNER" | "HR_CORRECTION";
+  }>;
 };
 
 export type WeeklyPlanListItem = Pick<

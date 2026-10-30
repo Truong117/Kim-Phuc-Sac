@@ -5,6 +5,18 @@ return [
     // Schema and model support may land before V3 business behavior. Keep all
     // creation and mutation paths on V2 until a later rollout explicitly opts in.
     'workflow_v3_enabled' => (bool) env('WEEKLY_PLAN_WORKFLOW_V3_ENABLED', false),
+    'v3_review_max_decisions_per_batch' => (int) env(
+        'WEEKLY_PLAN_V3_REVIEW_MAX_DECISIONS_PER_BATCH',
+        100,
+    ),
+    'v3_review_max_employee_snapshot_bytes' => (int) env(
+        'WEEKLY_PLAN_V3_REVIEW_MAX_EMPLOYEE_SNAPSHOT_BYTES',
+        524288,
+    ),
+    'v3_review_max_batch_snapshot_bytes' => (int) env(
+        'WEEKLY_PLAN_V3_REVIEW_MAX_BATCH_SNAPSHOT_BYTES',
+        2097152,
+    ),
     'storage_disk' => env('WEEKLY_PLAN_STORAGE_DISK', 'local'),
     'max_file_kb' => (int) env('WEEKLY_PLAN_MAX_FILE_KB', 5120),
     'max_archive_entries' => (int) env('WEEKLY_PLAN_MAX_ARCHIVE_ENTRIES', 250),
