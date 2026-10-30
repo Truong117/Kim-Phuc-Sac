@@ -105,6 +105,16 @@ class WeeklyPlanReviewWorkflowService
                 throw new ConflictHttpException('Nhân viên chưa có quyết định trong vòng xét duyệt hiện tại.');
             }
 
+            $isCurrentRoundAcceptance = $reviewDecision->status === WeeklyPlanReviewStatus::ACCEPTED
+                && $reviewDecision->reviewed_at !== null
+                && $round->started_at !== null
+                && $reviewDecision->reviewed_at->greaterThanOrEqualTo($round->started_at);
+            $canUpdateDecision = $reviewDecision->status === WeeklyPlanReviewStatus::PENDING
+                || ($isCurrentRoundAcceptance && $decision === WeeklyPlanReviewStatus::CHANGES_REQUESTED);
+            if (! $canUpdateDecision) {
+                throw new ConflictHttpException('Quyết định xét duyệt của nhân viên đã được ghi nhận.');
+            }
+
             $reviewDecision->forceFill([
                 'status' => $decision,
                 'reviewed_by' => $actor->id,
@@ -114,13 +124,17 @@ class WeeklyPlanReviewWorkflowService
             $hasRequestedChanges = $round->decisions()
                 ->where('status', WeeklyPlanReviewStatus::CHANGES_REQUESTED->value)
                 ->exists();
+            $hasPendingDecisions = $round->decisions()
+                ->where('status', WeeklyPlanReviewStatus::PENDING->value)
+                ->exists();
+            $reviewCompleteWithChanges = ! $hasPendingDecisions && $hasRequestedChanges;
             $round->forceFill([
-                'status' => $hasRequestedChanges
+                'status' => $reviewCompleteWithChanges
                     ? WeeklyPlanReviewRoundStatus::CHANGES_REQUESTED
                     : WeeklyPlanReviewRoundStatus::OPEN,
             ])->save();
             $plan->forceFill([
-                'status' => $this->planStatusFor($stage, $hasRequestedChanges),
+                'status' => $this->planStatusFor($stage, $reviewCompleteWithChanges),
             ])->save();
 
             $prefix = $stage === WeeklyPlanReviewStage::ASSISTANT ? 'ASSISTANT' : 'OWNER';
