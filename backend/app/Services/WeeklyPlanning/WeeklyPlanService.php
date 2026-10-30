@@ -18,6 +18,7 @@ use App\Models\WeeklyPlanEntryApplication;
 use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanGoogleDocsTabMapping;
 use App\Models\WeeklyPlanGoogleDocsTabMappingEvent;
+use App\Models\WeeklyPlanReviewDecision;
 use App\Models\WeeklyPlanReviewRound;
 use App\Models\WeeklyPlanSourcePassage;
 use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsAiAssignmentService;
@@ -1868,6 +1869,36 @@ class WeeklyPlanService
             );
         $assistantReviewStatus = $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW;
         $ownerReviewStatus = $plan->status === WeeklyPlanStatus::OWNER_REVIEW;
+        $canAssistantReview = $assistantReviewStatus
+            && $this->scope->allows($viewer, 'weekly_plans.assistant_review');
+        $canOwnerReview = $ownerReviewStatus
+            && $this->scope->allows($viewer, 'weekly_plans.review');
+        $currentReviewRound = match (true) {
+            $assistantReviewStatus => $assistantRound,
+            $ownerReviewStatus => $ownerRound,
+            default => null,
+        };
+        $viewerCanReviewCurrentRound = $assistantReviewStatus
+            ? $canAssistantReview
+            : ($ownerReviewStatus && $canOwnerReview);
+        if ($currentReviewRound instanceof WeeklyPlanReviewRound) {
+            $currentReviewRound->decisions->each(
+                function (WeeklyPlanReviewDecision $decision) use (
+                    $currentReviewRound,
+                    $plan,
+                    $viewerCanReviewCurrentRound,
+                ): void {
+                    $decision->setAttribute('actions', [
+                        'can_request_changes' => $this->reviewWorkflow->canRequestChangesForDecision(
+                            $plan,
+                            $currentReviewRound,
+                            $decision,
+                            $viewerCanReviewCurrentRound,
+                        ),
+                    ]);
+                },
+            );
+        }
         $correctionRound = match ($plan->status) {
             WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED => $assistantRound,
             WeeklyPlanStatus::OWNER_CHANGES_REQUESTED => $ownerRound,
@@ -1919,16 +1950,13 @@ class WeeklyPlanService
                 && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.submit'))
                 || $canResubmitChanges,
-            'can_assistant_review' => $assistantReviewStatus
-                && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
+            'can_assistant_review' => $canAssistantReview,
             'can_finalize_assistant_review' => $assistantReviewStatus
                 && $allAssistantDecisionsAccepted
                 && $submissionReadiness['ready']
                 && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
-            'can_owner_review' => $ownerReviewStatus
-                && $this->scope->allows($viewer, 'weekly_plans.review'),
-            'can_review' => $ownerReviewStatus
-                && $this->scope->allows($viewer, 'weekly_plans.review'),
+            'can_owner_review' => $canOwnerReview,
+            'can_review' => $canOwnerReview,
             'can_review_edit' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
             'can_approve' => $plan->status === WeeklyPlanStatus::OWNER_REVIEW

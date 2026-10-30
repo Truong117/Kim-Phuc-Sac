@@ -105,12 +105,9 @@ class WeeklyPlanReviewWorkflowService
                 throw new ConflictHttpException('Nhân viên chưa có quyết định trong vòng xét duyệt hiện tại.');
             }
 
-            $isCurrentRoundAcceptance = $reviewDecision->status === WeeklyPlanReviewStatus::ACCEPTED
-                && $reviewDecision->reviewed_by !== null
-                && $reviewDecision->reviewed_at !== null
-                && ! $this->wasAcceptedInPreviousRound($round, $assigneeId);
             $canUpdateDecision = $reviewDecision->status === WeeklyPlanReviewStatus::PENDING
-                || ($isCurrentRoundAcceptance && $decision === WeeklyPlanReviewStatus::CHANGES_REQUESTED);
+                || ($decision === WeeklyPlanReviewStatus::CHANGES_REQUESTED
+                    && $this->canRequestChangesForDecision($plan, $round, $reviewDecision, true));
             if (! $canUpdateDecision) {
                 throw new ConflictHttpException('Quyết định xét duyệt của nhân viên đã được ghi nhận.');
             }
@@ -149,6 +146,29 @@ class WeeklyPlanReviewWorkflowService
         });
 
         return $this->scope->queryFor($actor, 'weekly_plans.view')->findOrFail($planId);
+    }
+
+    public function canRequestChangesForDecision(
+        WeeklyPlan $plan,
+        WeeklyPlanReviewRound $round,
+        WeeklyPlanReviewDecision $decision,
+        bool $viewerCanReview,
+    ): bool {
+        if (! $viewerCanReview
+            || $round->status !== WeeklyPlanReviewRoundStatus::OPEN
+            || $plan->status !== $this->planStatusFor($round->stage, false)
+            || $decision->weekly_plan_review_round_id !== $round->id) {
+            return false;
+        }
+
+        if ($decision->status === WeeklyPlanReviewStatus::PENDING) {
+            return true;
+        }
+
+        return $decision->status === WeeklyPlanReviewStatus::ACCEPTED
+            && $decision->reviewed_by !== null
+            && $decision->reviewed_at !== null
+            && ! $this->wasAcceptedInPreviousRound($plan, $round, $decision->assignee_id);
     }
 
     public function assertAssigneeCanBeCorrected(WeeklyPlan $plan, int $assigneeId): void
@@ -448,11 +468,26 @@ class WeeklyPlanReviewWorkflowService
     }
 
     private function wasAcceptedInPreviousRound(
+        WeeklyPlan $plan,
         WeeklyPlanReviewRound $round,
         int $assigneeId,
     ): bool {
         if ($round->round_number <= 1) {
             return false;
+        }
+
+        if ($plan->relationLoaded('reviewRounds')) {
+            $previousRound = $plan->reviewRounds->first(
+                fn (WeeklyPlanReviewRound $candidate): bool => $candidate->stage === $round->stage
+                    && $candidate->round_number === $round->round_number - 1,
+            );
+            if ($previousRound instanceof WeeklyPlanReviewRound
+                && $previousRound->relationLoaded('decisions')) {
+                return $previousRound->decisions->contains(
+                    fn (WeeklyPlanReviewDecision $decision): bool => $decision->assignee_id === $assigneeId
+                        && $decision->status === WeeklyPlanReviewStatus::ACCEPTED,
+                );
+            }
         }
 
         return WeeklyPlanReviewDecision::query()

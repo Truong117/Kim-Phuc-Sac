@@ -2,7 +2,6 @@ import type {
   WeeklyPlan,
   WeeklyPlanEntry,
   WeeklyPlanReviewDecision,
-  WeeklyPlanReviewRound,
   WeeklyPlanReviewStage,
   WeeklyPlanStatus,
 } from "@/types/weeklyPlanning";
@@ -67,38 +66,6 @@ export const createWeeklyPlanReviewEmployeeGroups = (
   });
 };
 
-const ISO_TIMESTAMP_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-
-const safeTimestamp = (value: string | null | undefined): number | null => {
-  if (!value || !ISO_TIMESTAMP_PATTERN.test(value)) return null;
-  const timestamp = Date.parse(value);
-
-  return Number.isFinite(timestamp) ? timestamp : null;
-};
-
-export const isCarriedAcceptedDecision = (
-  round: WeeklyPlanReviewRound,
-  decision: WeeklyPlanReviewDecision,
-): boolean => {
-  if (decision.status !== "ACCEPTED") return false;
-  const startedAt = safeTimestamp(round.started_at);
-  const reviewedAt = safeTimestamp(decision.reviewed_at);
-
-  return startedAt !== null && reviewedAt !== null && reviewedAt < startedAt;
-};
-
-const isCurrentRoundAcceptedDecision = (
-  round: WeeklyPlanReviewRound,
-  decision: WeeklyPlanReviewDecision,
-): boolean => {
-  if (decision.status !== "ACCEPTED") return false;
-  const startedAt = safeTimestamp(round.started_at);
-  const reviewedAt = safeTimestamp(decision.reviewed_at);
-
-  return startedAt !== null && reviewedAt !== null && reviewedAt > startedAt;
-};
-
 const canActOnCurrentWeeklyPlanRound = (
   plan: Pick<WeeklyPlan, "status" | "actions" | "review_workflow">,
 ): boolean => {
@@ -137,19 +104,10 @@ export const canAcceptWeeklyPlanDecision = (
 export const canRequestChangesForWeeklyPlanDecision = (
   plan: Pick<WeeklyPlan, "status" | "actions" | "review_workflow">,
   decision: WeeklyPlanReviewDecision,
-): boolean => {
-  if (
-    !isCurrentRoundDecision(plan, decision) ||
-    !canActOnCurrentWeeklyPlanRound(plan)
-  ) {
-    return false;
-  }
-
-  if (decision.status === "PENDING") return true;
-  const round = plan.review_workflow?.current_round;
-
-  return round ? isCurrentRoundAcceptedDecision(round, decision) : false;
-};
+): boolean =>
+  isCurrentRoundDecision(plan, decision) &&
+  canActOnCurrentWeeklyPlanRound(plan) &&
+  decision.actions.can_request_changes;
 
 export const isWeeklyPlanWaitingForHr = (status: WeeklyPlanStatus): boolean =>
   status === "ASSISTANT_CHANGES_REQUESTED" ||

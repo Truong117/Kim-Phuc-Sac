@@ -128,6 +128,9 @@ export type WeeklyPlanReviewDecision = {
   status: WeeklyPlanReviewStatus;
   reviewed_by: { id: number; name: string } | null;
   reviewed_at: string | null;
+  actions: {
+    can_request_changes: boolean;
+  };
 };
 
 export type WeeklyPlanReviewRound = {

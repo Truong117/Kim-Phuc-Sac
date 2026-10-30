@@ -275,6 +275,9 @@ class WeeklyPlanResource extends JsonResource
                     'name' => $decision->reviewer->name,
                 ],
                 'reviewed_at' => $decision->reviewed_at?->toISOString(),
+                'actions' => $decision->getAttribute('actions') ?? [
+                    'can_request_changes' => false,
+                ],
             ])->values(),
         ];
     }

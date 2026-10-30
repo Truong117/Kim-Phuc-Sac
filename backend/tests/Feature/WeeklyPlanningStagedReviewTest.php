@@ -151,17 +151,35 @@ class WeeklyPlanningStagedReviewTest extends TestCase
                 'ASSISTANT',
                 1,
             );
+            $this->actingAs($assistant)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', true)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', true);
+            $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
             $this->decide($assistant, $plan, $changedEmployee, 'CHANGES_REQUESTED')
                 ->assertOk()
-                ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
+                ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', true);
             $this->decide($assistant, $plan, $carriedEmployee, 'ACCEPTED')
                 ->assertOk()
-                ->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED');
+                ->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED')
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
 
             $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
                 ->assertOk()
                 ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
-                ->assertJsonPath('data.review_workflow.current_round.round_number', 2);
+                ->assertJsonPath('data.review_workflow.current_round.round_number', 2)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
+            $this->actingAs($assistant)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', true)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
             $this->assertCarriedAcceptanceWithEqualTimestampIsLocked(
                 $assistant,
                 $plan,
@@ -182,17 +200,35 @@ class WeeklyPlanningStagedReviewTest extends TestCase
                 'OWNER',
                 1,
             );
+            $this->actingAs($owner)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', true)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', true);
+            $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
             $this->decide($owner, $plan, $changedEmployee, 'CHANGES_REQUESTED')
                 ->assertOk()
-                ->assertJsonPath('data.status', 'OWNER_REVIEW');
+                ->assertJsonPath('data.status', 'OWNER_REVIEW')
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', true);
             $this->decide($owner, $plan, $carriedEmployee, 'ACCEPTED')
                 ->assertOk()
-                ->assertJsonPath('data.status', 'OWNER_CHANGES_REQUESTED');
+                ->assertJsonPath('data.status', 'OWNER_CHANGES_REQUESTED')
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
 
             $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
                 ->assertOk()
                 ->assertJsonPath('data.status', 'OWNER_REVIEW')
-                ->assertJsonPath('data.review_workflow.current_round.round_number', 2);
+                ->assertJsonPath('data.review_workflow.current_round.round_number', 2)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', false)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
+            $this->actingAs($owner)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.review_workflow.current_round.decisions.0.actions.can_request_changes', true)
+                ->assertJsonPath('data.review_workflow.current_round.decisions.1.actions.can_request_changes', false);
             $this->assertCarriedAcceptanceWithEqualTimestampIsLocked(
                 $owner,
                 $plan,
