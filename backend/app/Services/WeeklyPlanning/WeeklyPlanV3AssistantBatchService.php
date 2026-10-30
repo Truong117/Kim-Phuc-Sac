@@ -29,6 +29,7 @@ final class WeeklyPlanV3AssistantBatchService
         private readonly WeeklyPlanEmployeeLifecycleService $lifecycle,
         private readonly WeeklyPlanV3ContentSnapshotService $snapshots,
         private readonly WeeklyPlanV3AssistantEligibilityService $eligibility,
+        private readonly WeeklyPlanV3EmployeeReadinessService $readiness,
     ) {}
 
     /**
@@ -303,14 +304,7 @@ final class WeeklyPlanV3AssistantBatchService
         WeeklyPlanV3AssistantDecision $decision,
         Collection $entries,
     ): void {
-        $invalid = $entries->contains(
-            fn (WeeklyPlanEntry $entry): bool => $entry->assignee_id !== $decision->assigneeId
-                || $entry->validation_status !== 'VALID'
-                || blank($entry->expected_result)
-                || $entry->start_date === null
-                || $entry->due_date === null,
-        );
-        if ($invalid) {
+        if (! $this->readiness->ready($entries, $decision->assigneeId)) {
             throw ValidationException::withMessages([
                 'decisions' => ['Nội dung của nhân viên chưa sẵn sàng để xét duyệt.'],
             ]);

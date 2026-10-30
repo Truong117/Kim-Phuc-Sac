@@ -658,14 +658,23 @@ test("wizard active states and primary actions use the KPS palette", async () =>
 });
 
 test("quick check groups blockers and advisory warnings without becoming a navigation gate", async () => {
-  const [work, quickCheck, submit, stepper, translationsSource] =
-    await Promise.all([
-      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
-      readSource("src/components/weekly-plans/WeeklyPlanQuickCheck.tsx"),
-      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
-      readSource("src/components/weekly-plans/WeeklyPlanWizardStepper.tsx"),
-      readSource("src/locales/vi/common.json"),
-    ]);
+  const [
+    work,
+    quickCheck,
+    submit,
+    discussionHistory,
+    stepper,
+    translationsSource,
+  ] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanQuickCheck.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+    readSource(
+      "src/components/weekly-plans/WeeklyPlanStep4DiscussionHistory.tsx",
+    ),
+    readSource("src/components/weekly-plans/WeeklyPlanWizardStepper.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
   const wizard = JSON.parse(translationsSource).weeklyPlanning.wizard;
 
   assert.deepEqual(Object.keys(wizard.steps), [
@@ -688,8 +697,8 @@ test("quick check groups blockers and advisory warnings without becoming a navig
     submit,
     /weeklyPlanAnalysisState|reviewCounts|pending|resolved/,
   );
-  assert.match(submit, /submit\.comments/);
-  assert.match(submit, /submit\.history/);
+  assert.match(discussionHistory, /submit\.comments/);
+  assert.match(discussionHistory, /submit\.history/);
 });
 
 const discussionPlan = {
@@ -884,21 +893,37 @@ test("HR and OWNER reuse the hierarchical accessible discussion controls", async
     ]);
   const copy = JSON.parse(translationsSource).weeklyPlanning;
 
-  assert.match(submit, /<details\s+data-section="weekly-plan-discussion"/);
-  assert.match(submit, /<details\s+data-section="weekly-plan-history"/);
-  assert.doesNotMatch(submit, /<details[^>]*\sopen(?:=|\s|>)/);
-  assert.match(submit, /WeeklyPlanDiscussionTargetFields/);
+  assert.match(submit, /<WeeklyPlanStep4DiscussionHistory/);
+  const discussionHistory = await readSource(
+    "src/components/weekly-plans/WeeklyPlanStep4DiscussionHistory.tsx",
+  );
+  assert.match(
+    discussionHistory,
+    /<details\s+data-section="weekly-plan-discussion"/,
+  );
+  assert.match(
+    discussionHistory,
+    /<details\s+data-section="weekly-plan-history"/,
+  );
+  assert.doesNotMatch(discussionHistory, /<details[^>]*\sopen(?:=|\s|>)/);
+  assert.match(discussionHistory, /WeeklyPlanDiscussionTargetFields/);
   assert.match(detail, /WeeklyPlanDiscussionTargetFields/);
-  assert.match(submit, /WeeklyPlanCommentContext/);
+  assert.match(discussionHistory, /WeeklyPlanCommentContext/);
   assert.match(detail, /WeeklyPlanCommentContext/);
-  assert.match(submit, /formatWeeklyPlanCommentTimestamp\(item\.created_at\)/);
+  assert.match(
+    discussionHistory,
+    /formatWeeklyPlanCommentTimestamp\(item\.created_at\)/,
+  );
   assert.match(detail, /formatWeeklyPlanCommentTimestamp\(item\.created_at\)/);
-  assert.doesNotMatch(submit, /import Select|<Select|commentTarget\.split/);
+  assert.doesNotMatch(
+    discussionHistory,
+    /import Select|<Select|commentTarget\.split/,
+  );
   assert.doesNotMatch(detail, /import Select|<Select|commentTarget\.split/);
   assert.doesNotMatch(detail, /Công việc #|commentForEntry|commentEntry/);
-  assert.match(submit, /resolveWeeklyPlanCommentTargetArguments/);
+  assert.match(discussionHistory, /resolveWeeklyPlanCommentTargetArguments/);
   assert.match(detail, /resolveWeeklyPlanCommentTargetArguments/);
-  assert.match(submit, /disabled={busy \|\| !comment\.trim\(\)}/);
+  assert.match(discussionHistory, /disabled={busy \|\| !comment\.trim\(\)}/);
   assert.match(detail, /plan\.actions\.can_comment/);
   assert.match(submit, /submitWeeklyPlan\(plan\.id\)/);
 
@@ -925,7 +950,7 @@ test("HR and OWNER reuse the hierarchical accessible discussion controls", async
   assert.match(copy.discussion.targetChanged, /Vui lòng chọn lại công việc/);
   assert.doesNotMatch(JSON.stringify(copy.discussion), /Công việc #\{id\}/);
 
-  for (const consumer of [submit, detail]) {
+  for (const consumer of [discussionHistory, detail]) {
     const invalidTargetCheck = consumer.indexOf("if (!target.valid)");
     const invalidReturn = consumer.indexOf("return;", invalidTargetCheck);
     const apiCall = consumer.indexOf(

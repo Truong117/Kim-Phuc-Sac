@@ -276,6 +276,48 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
         $this->assertSame('partial', $this->migration20State($metadata));
     }
 
+    public function test_migration_21_correction_ledger_metadata_is_exact_and_fails_closed(): void
+    {
+        $this->assertSame('absent', \incrementalMigration21SchemaStateFromMetadata([], [], []));
+        $columns = [
+            $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+            $this->column('weekly_plan_id', 2, 'bigint unsigned', 'NO', null, 'MUL'),
+            $this->column('request_id', 3, 'varchar(64)', 'NO'),
+            $this->column('payload_sha256', 4, 'char(64)', 'NO'),
+            $this->column('submitter_id', 5, 'bigint unsigned', 'YES', null, 'MUL'),
+            $this->column('submitter_name', 6, 'varchar(255)', 'NO'),
+            $this->column('result_snapshot', 7, 'json', 'NO'),
+            $this->column('confirmed_at', 8, 'timestamp', 'NO'),
+            $this->column('created_at', 9, 'timestamp', 'NO'),
+        ];
+        $indexes = [
+            'PRIMARY' => $this->actualIndex(0, ['id']),
+            'weekly_v3_correction_batches_plan_confirmed_index' => $this->actualIndex(1, ['weekly_plan_id', 'confirmed_at']),
+            'weekly_v3_correction_batches_plan_request_unique' => $this->actualIndex(0, ['weekly_plan_id', 'request_id']),
+            'weekly_v3_correction_batches_submitter_index' => $this->actualIndex(1, ['submitter_id']),
+        ];
+        $foreignKeys = [
+            'weekly_v3_correction_batches_plan_foreign' => $this->actualForeignKey(
+                ['weekly_plan_id'], 'weekly_plans', ['id'], 'RESTRICT',
+            ),
+            'weekly_v3_correction_batches_submitter_foreign' => $this->actualForeignKey(
+                ['submitter_id'], 'users', ['id'], 'SET NULL',
+            ),
+        ];
+
+        $this->assertSame('complete', \incrementalMigration21SchemaStateFromMetadata(
+            $columns,
+            $indexes,
+            $foreignKeys,
+        ));
+        $columns[6]['COLUMN_TYPE'] = 'longtext';
+        $this->assertSame('partial', \incrementalMigration21SchemaStateFromMetadata(
+            $columns,
+            $indexes,
+            $foreignKeys,
+        ));
+    }
+
     /** @return array<string, mixed> */
     private function migration18Metadata(): array
     {

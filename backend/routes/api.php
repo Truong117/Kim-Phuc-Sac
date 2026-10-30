@@ -175,6 +175,18 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/{plan}/assistant-review-batches', [WeeklyPlanController::class, 'confirmV3AssistantBatch'])
             ->whereNumber('plan')
             ->middleware('permission:weekly_plans.assistant_review,organization');
+        Route::post('/{plan}/v3-corrections/{assignee}/entries', [WeeklyPlanController::class, 'storeV3CorrectionEntry'])
+            ->whereNumber('plan')->whereNumber('assignee')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::patch('/{plan}/v3-corrections/{assignee}/entries/{entry}', [WeeklyPlanController::class, 'updateV3CorrectionEntry'])
+            ->whereNumber('plan')->whereNumber('assignee')->whereNumber('entry')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::delete('/{plan}/v3-corrections/{assignee}/entries/{entry}', [WeeklyPlanController::class, 'destroyV3CorrectionEntry'])
+            ->whereNumber('plan')->whereNumber('assignee')->whereNumber('entry')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{plan}/correction-batches', [WeeklyPlanController::class, 'confirmV3CorrectionBatch'])
+            ->whereNumber('plan')
+            ->middleware('permission:weekly_plans.submit,organization');
         Route::post('/{id}/finalize-assistant-review', [WeeklyPlanController::class, 'finalizeAssistantReview'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.assistant_review,organization');

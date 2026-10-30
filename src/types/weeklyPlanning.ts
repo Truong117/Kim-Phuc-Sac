@@ -384,6 +384,29 @@ export type WeeklyPlanV3AssistantBatchResult = {
   }>;
 };
 
+export type WeeklyPlanV3CorrectionEmployeeInput = {
+  assignee_id: number;
+  expected_state_version: number;
+  expected_content_version: number;
+};
+
+export type WeeklyPlanV3CorrectionBatchResult = {
+  plan: WeeklyPlan;
+  batch: {
+    id: number;
+    confirmed_at: string;
+    affected_employee_ids: number[];
+  };
+  results: Array<{
+    assignee_id: number;
+    from_state: "HR_CORRECTION";
+    to_state: "AWAITING_ASSISTANT";
+    from_state_version: number;
+    to_state_version: number;
+    content_version: number;
+  }>;
+};
+
 export type WeeklyPlanListItem = Pick<
   WeeklyPlan,
   | "id"

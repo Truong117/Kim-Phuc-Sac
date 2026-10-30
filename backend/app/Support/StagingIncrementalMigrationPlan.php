@@ -16,6 +16,8 @@ final class StagingIncrementalMigrationPlan
 
     public const MIGRATION_20 = '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php';
 
+    public const MIGRATION_21 = '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php';
+
     /** @var array<string, array{migration: string, before: int, after: int}> */
     private const ALLOWLIST = [
         self::MIGRATION_16 => [
@@ -42,6 +44,11 @@ final class StagingIncrementalMigrationPlan
             'migration' => '2026_10_30_000000_create_weekly_plan_v3_schema_foundation',
             'before' => 19,
             'after' => 20,
+        ],
+        self::MIGRATION_21 => [
+            'migration' => '2026_10_30_010000_create_weekly_plan_v3_correction_batches',
+            'before' => 20,
+            'after' => 21,
         ],
     ];
 
@@ -101,6 +108,11 @@ final class StagingIncrementalMigrationPlan
 
         if ($state['unexpected_migrations'] !== []) {
             $violations[] = 'unexpected_migrations_detected';
+        }
+
+        if ($migrationFile !== self::MIGRATION_21
+            && ($state['migration_21_schema_state'] ?? 'absent') !== 'absent') {
+            $violations[] = 'migration_21_schema_exists_before_prerequisites';
         }
 
         if (! $state['parent_prerequisites_verified']) {
@@ -182,7 +194,7 @@ final class StagingIncrementalMigrationPlan
             if (($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_20_schema_exists_before_migration_19';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_20) {
             if ($state['migration_16_schema_state'] !== 'complete') {
                 $violations[] = 'migration_16_schema_not_verified';
             }
@@ -197,6 +209,20 @@ final class StagingIncrementalMigrationPlan
             }
             if (($state['migration_20_schema_state'] ?? 'partial') !== 'absent') {
                 $violations[] = 'migration_20_partial_or_existing_schema';
+            }
+            if (($state['migration_21_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_21_schema_exists_before_migration_20';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete'
+                || $state['migration_17_schema_state'] !== 'complete'
+                || $state['migration_18_schema_state'] !== 'complete'
+                || ($state['migration_19_schema_state'] ?? 'partial') !== 'complete'
+                || ($state['migration_20_schema_state'] ?? 'partial') !== 'complete') {
+                $violations[] = 'migration_21_prerequisite_schema_not_verified';
+            }
+            if (($state['migration_21_schema_state'] ?? 'partial') !== 'absent') {
+                $violations[] = 'migration_21_partial_or_existing_schema';
             }
         }
 
@@ -259,6 +285,11 @@ final class StagingIncrementalMigrationPlan
 
         if ($state['unexpected_migrations'] !== []) {
             $violations[] = 'unexpected_migrations_detected';
+        }
+
+        if ($migrationFile !== self::MIGRATION_21
+            && ($state['migration_21_schema_state'] ?? 'absent') !== 'absent') {
+            $violations[] = 'migration_21_schema_exists_before_prerequisites';
         }
 
         if ($state['weekly_plan_count'] !== $expectedWeeklyPlanCount
@@ -340,7 +371,7 @@ final class StagingIncrementalMigrationPlan
                 || ($state['legacy_employee_review_count'] ?? -1) !== $expectedLegacyEmployeeReviewCount) {
                 $violations[] = 'migration_19_legacy_normalization_mismatch';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_20) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
                 || $state['migration_18_schema_state'] !== 'complete'
@@ -360,6 +391,22 @@ final class StagingIncrementalMigrationPlan
                 || ($state['v3_review_batch_count'] ?? -1) !== 0
                 || ($state['v3_review_decision_count'] ?? -1) !== 0) {
                 $violations[] = 'migration_20_v2_baseline_or_empty_v3_tables_mismatch';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete'
+                || $state['migration_17_schema_state'] !== 'complete'
+                || $state['migration_18_schema_state'] !== 'complete'
+                || ($state['migration_19_schema_state'] ?? 'partial') !== 'complete'
+                || ($state['migration_20_schema_state'] ?? 'partial') !== 'complete'
+                || ($state['migration_21_schema_state'] ?? 'partial') !== 'complete') {
+                $violations[] = 'migration_21_postflight_schema_mismatch';
+            }
+            if ($expectedWeeklyPlanEntryCount === null
+                || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
+                $violations[] = 'weekly_plan_entry_count_baseline_changed';
+            }
+            if (($state['v3_correction_batch_count'] ?? -1) !== 0) {
+                $violations[] = 'migration_21_correction_batch_table_not_empty';
             }
         }
 

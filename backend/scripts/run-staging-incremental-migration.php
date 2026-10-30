@@ -22,6 +22,7 @@ const RUNNER_ALLOWED_MIGRATIONS = [
     '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
     '2026_10_29_000000_create_weekly_plan_staged_review_tables.php',
     '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php',
+    '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php',
 ];
 
 const RUNNER_ALLOWED_ENVIRONMENT = [

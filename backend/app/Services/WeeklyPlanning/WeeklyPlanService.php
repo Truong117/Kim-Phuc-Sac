@@ -56,6 +56,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanClock $clock,
         private readonly WeeklyPlanFileParser $parser,
         private readonly WeeklyPlanEntryValidator $validator,
+        private readonly WeeklyPlanEntryContentService $entryContent,
         private readonly WeeklyPlanSuggestionGenerator $suggestions,
         private readonly WeeklyPlanPublisher $publisher,
         private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
@@ -650,11 +651,11 @@ class WeeklyPlanService
                 unset($attributes['source_passage_ids']);
                 $attributes['source_origin'] = 'DOCUMENT_PASSAGES';
                 $attributes['source_passage_ids'] = $sourcePassageIds;
-                $prepared = $this->prepareEntry($locked, $attributes);
+                $prepared = $this->entryContent->prepareEntry($locked, $attributes);
                 if ($prepared['validation_errors'] !== []) {
                     $validationErrors['entries.'.$index] = $prepared['validation_errors'];
                 }
-                $preparedItems = $this->prepareItems(
+                $preparedItems = $this->entryContent->prepareItems(
                     $items,
                     $sourcePassageIds,
                     $locked->source_type === WeeklyPlanSourceType::GOOGLE_DOCS,
@@ -680,7 +681,7 @@ class WeeklyPlanService
             foreach ($preparedEntries as [$prepared, $sourcePassageIds, $preparedItems]) {
                 $entry = $locked->entries()->create($prepared + ['sort_order' => ++$sortOrder]);
                 $entry->sourcePassages()->attach($sourcePassageIds);
-                $this->replaceEntryItems($entry, $preparedItems);
+                $this->entryContent->replaceItems($entry, $preparedItems);
                 $itemCount += count($preparedItems);
                 $entryIds[] = $entry->id;
             }
@@ -1006,12 +1007,15 @@ class WeeklyPlanService
                 $attributes['assignee_id'] = $entry->assignee_id;
                 $attributes['start_date'] = $entry->start_date?->toDateString();
             }
-            $prepared = $this->prepareEntry($locked, $attributes + ['source_row' => $entry->source_row]);
+            $prepared = $this->entryContent->prepareEntry(
+                $locked,
+                $attributes + ['source_row' => $entry->source_row],
+            );
             $entry->forceFill($prepared)->save();
             if ($hasItems) {
                 $parentSourceIds = $entry->sourcePassages()->pluck('weekly_plan_source_passages.id')->all();
                 $validationErrors = [];
-                $preparedItems = $this->prepareItems(
+                $preparedItems = $this->entryContent->prepareItems(
                     $items,
                     array_map('intval', $parentSourceIds),
                     false,
@@ -1021,7 +1025,7 @@ class WeeklyPlanService
                 if ($validationErrors !== []) {
                     throw ValidationException::withMessages($validationErrors);
                 }
-                $this->replaceEntryItems($entry, $preparedItems);
+                $this->entryContent->replaceItems($entry, $preparedItems);
             }
             $this->resetEmployeeReview($locked, $oldAssignee);
             $this->resetEmployeeReview($locked, $entry->assignee_id);
