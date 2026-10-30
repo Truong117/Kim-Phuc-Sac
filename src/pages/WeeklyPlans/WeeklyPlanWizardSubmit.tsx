@@ -20,9 +20,10 @@ import {
   weeklyPlanSubmitStatusKey,
 } from "@/utils/weeklyPlanReviewWorkspace";
 import { weeklyPlanWorkCounts } from "@/utils/weeklyPlanWizard";
+import { activeWeeklyPlanReviewPath } from "@/utils/weeklyPlanReviewer";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { Navigate } from "react-router";
 
 const formatTimestamp = (value: string) =>
   new Intl.DateTimeFormat("vi-VN", {
@@ -42,7 +43,6 @@ export default function WeeklyPlanWizardSubmit() {
     keyPrefix: "weeklyPlanning.discussion",
   });
   const { plan, busy, perform } = useWeeklyPlanWizard();
-  const navigate = useNavigate();
   const [comment, setComment] = useState("");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(
     null,
@@ -57,6 +57,9 @@ export default function WeeklyPlanWizardSubmit() {
       <WeeklyPlanWizardLayout step="submit">{null}</WeeklyPlanWizardLayout>
     );
   }
+
+  const reviewPath = activeWeeklyPlanReviewPath(plan);
+  if (reviewPath) return <Navigate to={reviewPath} replace />;
 
   const counts = weeklyPlanWorkCounts(plan);
   const submitted =
@@ -181,19 +184,6 @@ export default function WeeklyPlanWizardSubmit() {
               onClick={() => void perform(() => submitWeeklyPlan(plan.id))}
             >
               {t("submit.resubmitAction")}
-            </Button>
-          </div>
-        )}
-
-        {(plan.actions.can_assistant_review ||
-          plan.actions.can_owner_review) && (
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate(`/weekly-plans/${plan.id}/review`)}
-            >
-              {t("submit.openReview")}
             </Button>
           </div>
         )}

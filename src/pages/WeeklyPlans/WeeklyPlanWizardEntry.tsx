@@ -1,6 +1,7 @@
 import PageMeta from "@/components/common/PageMeta";
 import { useWeeklyPlanWizard } from "@/context/WeeklyPlanWizardContext";
 import { inferWeeklyPlanWizardStep } from "@/utils/weeklyPlanWizard";
+import { activeWeeklyPlanReviewPath } from "@/utils/weeklyPlanReviewer";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
 
@@ -30,6 +31,9 @@ export default function WeeklyPlanWizardEntry() {
       </>
     );
   }
+
+  const reviewPath = activeWeeklyPlanReviewPath(plan);
+  if (reviewPath) return <Navigate to={reviewPath} replace />;
 
   return (
     <Navigate

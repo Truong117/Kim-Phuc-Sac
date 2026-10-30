@@ -840,7 +840,8 @@
       "APPROVED": "Đã phê duyệt",
       "PUBLISHED": "Đã phát hành",
       "PENDING": "Chờ xét duyệt",
-      "ACCEPTED": "Đã chấp nhận"
+      "ACCEPTED": "Đã chấp nhận",
+      "reviewRequired": "Cần xét duyệt"
     },
     "parseStatus": {
       "PARSED": "Đã đọc dữ liệu",
@@ -874,6 +875,7 @@
       "period": "Tuần {start} – {end}",
       "summary": "Người tạo: {creator} · {count} công việc",
       "open": "Mở kế hoạch",
+      "review": "Xét duyệt",
       "delete": {
         "action": "Xóa kế hoạch",
         "title": "Xóa kế hoạch tuần?",

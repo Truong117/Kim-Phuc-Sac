@@ -18,6 +18,7 @@ import type {
   WeeklyPlanReferences,
 } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
+import { activeWeeklyPlanReviewPath } from "@/utils/weeklyPlanReviewer";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
@@ -168,54 +169,61 @@ export default function WeeklyPlanList() {
         </div>
       ) : result?.data.length ? (
         <div className="space-y-4">
-          {result.data.map((plan) => (
-            <div
-              key={plan.id}
-              className="rounded-2xl border border-gray-200 bg-white p-5 transition hover:border-kps-primary/40 hover:shadow-theme-sm dark:border-gray-800 dark:bg-white/3"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-semibold text-gray-900 dark:text-white">
-                      {t("list.period", {
-                        start: formatDateOnly(plan.week_start),
-                        end: formatDateOnly(plan.week_end),
+          {result.data.map((plan) => {
+            const reviewPath = activeWeeklyPlanReviewPath(plan);
+
+            return (
+              <div
+                key={plan.id}
+                className="rounded-2xl border border-gray-200 bg-white p-5 transition hover:border-kps-primary/40 hover:shadow-theme-sm dark:border-gray-800 dark:bg-white/3"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="font-semibold text-gray-900 dark:text-white">
+                        {t("list.period", {
+                          start: formatDateOnly(plan.week_start),
+                          end: formatDateOnly(plan.week_end),
+                        })}
+                      </h2>
+                      <WeeklyPlanStatusBadge
+                        status={plan.status}
+                        actions={plan.actions}
+                      />
+                    </div>
+                    <p className="mt-2 text-theme-sm text-gray-500 dark:text-gray-400">
+                      {t("list.summary", {
+                        creator: plan.creator.name,
+                        count: plan.entries_count ?? 0,
                       })}
-                    </h2>
-                    <WeeklyPlanStatusBadge status={plan.status} />
+                    </p>
                   </div>
-                  <p className="mt-2 text-theme-sm text-gray-500 dark:text-gray-400">
-                    {t("list.summary", {
-                      creator: plan.creator.name,
-                      count: plan.entries_count ?? 0,
-                    })}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    to={"/weekly-plans/" + plan.id}
-                    className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-theme-sm font-semibold text-kps-primary transition hover:bg-brand-50 focus-visible:ring-3 focus-visible:ring-kps-primary/25 focus-visible:outline-none dark:text-sidebar-selected dark:hover:bg-white/5"
-                  >
-                    {t("list.open")}
-                  </Link>
-                  {plan.actions.can_delete && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => {
-                        setSelectedPlan(plan);
-                        setDeleteError(null);
-                        deleteModal.openModal();
-                      }}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to={reviewPath ?? "/weekly-plans/" + plan.id}
+                      className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-theme-sm font-semibold text-kps-primary transition hover:bg-brand-50 focus-visible:ring-3 focus-visible:ring-kps-primary/25 focus-visible:outline-none dark:text-sidebar-selected dark:hover:bg-white/5"
                     >
-                      {t("list.delete.action")}
-                    </Button>
-                  )}
+                      {t(reviewPath ? "list.review" : "list.open")}
+                    </Link>
+                    {plan.actions.can_delete && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => {
+                          setSelectedPlan(plan);
+                          setDeleteError(null);
+                          deleteModal.openModal();
+                        }}
+                      >
+                        {t("list.delete.action")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {result.meta.last_page > 1 && (
             <div className="flex justify-end gap-2">
               <Button
