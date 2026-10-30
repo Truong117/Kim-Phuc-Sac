@@ -10,6 +10,7 @@ import {
 import {
   activeWeeklyPlanReviewPath,
   actorRelativeWeeklyPlanStatusKey,
+  canActivelyReviewWeeklyPlan,
 } from "../src/utils/weeklyPlanReviewer.ts";
 
 const readSource = (relativePath) =>
@@ -113,11 +114,13 @@ test("stage reviewers receive direct list navigation while active labels stay ac
     activeWeeklyPlanReviewPath(ownerPlan),
     "/weekly-plans/31/review",
   );
+  assert.equal(canActivelyReviewWeeklyPlan(ownerPlan.actions), true);
   assert.equal(
     actorRelativeWeeklyPlanStatusKey(ownerPlan.status, ownerPlan.actions),
     "weeklyPlanning.status.reviewRequired",
   );
   assert.equal(activeWeeklyPlanReviewPath(hrPlan), null);
+  assert.equal(canActivelyReviewWeeklyPlan(hrPlan.actions), false);
   assert.equal(
     actorRelativeWeeklyPlanStatusKey(hrPlan.status, hrPlan.actions),
     null,
@@ -137,9 +140,14 @@ test("stage reviewers receive direct list navigation while active labels stay ac
     activeWeeklyPlanReviewPath(ownerWaitingForHr),
     "/weekly-plans/31/review",
   );
+  assert.equal(canActivelyReviewWeeklyPlan(ownerWaitingForHr.actions), false);
   assert.equal(
     activeWeeklyPlanReviewPath(assistantWaitingForHr),
     "/weekly-plans/31/review",
+  );
+  assert.equal(
+    canActivelyReviewWeeklyPlan(assistantWaitingForHr.actions),
+    false,
   );
   assert.equal(
     activeWeeklyPlanReviewPath({
@@ -160,9 +168,13 @@ test("stage reviewers receive direct list navigation while active labels stay ac
   const copy = JSON.parse(translationsSource).weeklyPlanning;
 
   assert.match(list, /const reviewPath = activeWeeklyPlanReviewPath\(plan\)/);
+  assert.match(
+    list,
+    /const reviewCtaKey = canActivelyReviewWeeklyPlan\(plan\.actions\)[\s\S]*?\? "list\.review"[\s\S]*?: reviewPath[\s\S]*?\? "list\.viewReview"[\s\S]*?: "list\.open"/,
+  );
   assert.match(list, /to=\{reviewPath \?\? "\/weekly-plans\/" \+ plan\.id\}/);
   assert.match(list, /actions=\{plan\.actions\}/);
-  assert.match(list, /t\(reviewPath \? "list\.review" : "list\.open"\)/);
+  assert.match(list, /t\(reviewCtaKey\)/);
   assert.match(
     types,
     /"can_delete"[\s\S]*?"can_assistant_review"[\s\S]*?"can_owner_review"[\s\S]*?"can_open_review_workspace"/,
@@ -170,6 +182,7 @@ test("stage reviewers receive direct list navigation while active labels stay ac
   assert.equal(copy.status.reviewRequired, "Cần xét duyệt");
   assert.equal(copy.status.OWNER_REVIEW, "Giám đốc đang xét duyệt");
   assert.equal(copy.list.review, "Xét duyệt");
+  assert.equal(copy.list.viewReview, "Xem xét duyệt");
   assert.equal(copy.list.open, "Mở kế hoạch");
 });
 

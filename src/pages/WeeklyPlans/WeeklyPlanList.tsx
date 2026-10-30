@@ -18,7 +18,10 @@ import type {
   WeeklyPlanReferences,
 } from "@/types/weeklyPlanning";
 import { formatDateOnly } from "@/utils/dateOnly";
-import { activeWeeklyPlanReviewPath } from "@/utils/weeklyPlanReviewer";
+import {
+  activeWeeklyPlanReviewPath,
+  canActivelyReviewWeeklyPlan,
+} from "@/utils/weeklyPlanReviewer";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
@@ -171,6 +174,11 @@ export default function WeeklyPlanList() {
         <div className="space-y-4">
           {result.data.map((plan) => {
             const reviewPath = activeWeeklyPlanReviewPath(plan);
+            const reviewCtaKey = canActivelyReviewWeeklyPlan(plan.actions)
+              ? "list.review"
+              : reviewPath
+                ? "list.viewReview"
+                : "list.open";
 
             return (
               <div
@@ -203,7 +211,7 @@ export default function WeeklyPlanList() {
                       to={reviewPath ?? "/weekly-plans/" + plan.id}
                       className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-theme-sm font-semibold text-kps-primary transition hover:bg-brand-50 focus-visible:ring-3 focus-visible:ring-kps-primary/25 focus-visible:outline-none dark:text-sidebar-selected dark:hover:bg-white/5"
                     >
-                      {t(reviewPath ? "list.review" : "list.open")}
+                      {t(reviewCtaKey)}
                     </Link>
                     {plan.actions.can_delete && (
                       <Button

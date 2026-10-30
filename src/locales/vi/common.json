@@ -876,6 +876,7 @@
       "summary": "Người tạo: {creator} · {count} công việc",
       "open": "Mở kế hoạch",
       "review": "Xét duyệt",
+      "viewReview": "Xem xét duyệt",
       "delete": {
         "action": "Xóa kế hoạch",
         "title": "Xóa kế hoạch tuần?",
