@@ -62,6 +62,12 @@ final class StagingBootstrapPlan
             'department' => null,
         ],
         [
+            'name' => 'KPS Staging Executive Assistant (Fake)',
+            'email' => 'assistant@kps-staging.example.test',
+            'role' => 'EXECUTIVE_ASSISTANT',
+            'department' => 'HR_ADMIN',
+        ],
+        [
             'name' => 'KPS Staging HR (Fake)',
             'email' => 'hr@kps-staging.example.test',
             'role' => 'HR_MANAGER',
