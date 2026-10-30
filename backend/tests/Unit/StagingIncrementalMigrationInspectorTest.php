@@ -260,6 +260,22 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
         ));
     }
 
+    public function test_migration_20_schema_metadata_is_exact_and_fails_closed_on_mismatch(): void
+    {
+        $this->assertSame('absent', \incrementalMigration20SchemaStateFromMetadata(
+            [], [], [], [], [], [], [], [], [], [], [],
+        ));
+        $metadata = $this->migration20Metadata();
+        $this->assertSame('complete', $this->migration20State($metadata));
+
+        $metadata['workflow_version_columns'][0]['COLUMN_DEFAULT'] = '3';
+        $this->assertSame('partial', $this->migration20State($metadata));
+
+        $metadata = $this->migration20Metadata();
+        $metadata['decision_foreign_keys']['weekly_v3_decisions_workflow_foreign']['delete_rule'] = 'CASCADE';
+        $this->assertSame('partial', $this->migration20State($metadata));
+    }
+
     /** @return array<string, mixed> */
     private function migration18Metadata(): array
     {
@@ -389,6 +405,129 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
                 ),
             ],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function migration20Metadata(): array
+    {
+        return [
+            'workflow_version_columns' => [
+                $this->column('workflow_version', 1, 'tinyint unsigned', 'NO', '2', 'MUL'),
+            ],
+            'workflow_version_indexes' => [
+                'weekly_plans_workflow_version_index' => $this->actualIndex(1, ['workflow_version']),
+            ],
+            'workflow_columns' => [
+                $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+                $this->column('weekly_plan_id', 2, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('assignee_id', 3, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('state', 4, 'varchar(32)', 'NO'),
+                $this->column('state_version', 5, 'bigint unsigned', 'NO', '1'),
+                $this->column('content_version', 6, 'bigint unsigned', 'NO', '1'),
+                $this->column('correction_origin_stage', 7, 'varchar(32)', 'YES'),
+                $this->column('published_by', 8, 'bigint unsigned', 'YES', null, 'MUL'),
+                $this->column('published_at', 9, 'timestamp', 'YES'),
+                $this->column('published_task_count', 10, 'int unsigned', 'NO', '0'),
+                $this->column('created_at', 11, 'timestamp', 'YES'),
+                $this->column('updated_at', 12, 'timestamp', 'YES'),
+            ],
+            'workflow_indexes' => [
+                'PRIMARY' => $this->actualIndex(0, ['id']),
+                'weekly_employee_workflows_assignee_foreign' => $this->actualIndex(1, ['assignee_id']),
+                'weekly_employee_workflows_plan_assignee_unique' => $this->actualIndex(0, ['weekly_plan_id', 'assignee_id']),
+                'weekly_employee_workflows_plan_state_index' => $this->actualIndex(1, ['weekly_plan_id', 'state']),
+                'weekly_employee_workflows_publisher_index' => $this->actualIndex(1, ['published_by']),
+            ],
+            'workflow_foreign_keys' => [
+                'weekly_employee_workflows_assignee_foreign' => $this->actualForeignKey(
+                    ['assignee_id'], 'users', ['id'], 'RESTRICT',
+                ),
+                'weekly_employee_workflows_plan_foreign' => $this->actualForeignKey(
+                    ['weekly_plan_id'], 'weekly_plans', ['id'],
+                ),
+                'weekly_employee_workflows_publisher_foreign' => $this->actualForeignKey(
+                    ['published_by'], 'users', ['id'], 'SET NULL',
+                ),
+            ],
+            'batch_columns' => [
+                $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+                $this->column('weekly_plan_id', 2, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('stage', 3, 'varchar(32)', 'NO'),
+                $this->column('request_id', 4, 'varchar(64)', 'NO'),
+                $this->column('payload_sha256', 5, 'char(64)', 'NO'),
+                $this->column('reviewer_id', 6, 'bigint unsigned', 'YES', null, 'MUL'),
+                $this->column('reviewer_name', 7, 'varchar(255)', 'NO'),
+                $this->column('confirmed_at', 8, 'timestamp', 'NO'),
+                $this->column('created_at', 9, 'timestamp', 'NO'),
+            ],
+            'batch_indexes' => [
+                'PRIMARY' => $this->actualIndex(0, ['id']),
+                'weekly_v3_batches_plan_stage_confirmed_index' => $this->actualIndex(1, ['weekly_plan_id', 'stage', 'confirmed_at']),
+                'weekly_v3_batches_plan_stage_request_unique' => $this->actualIndex(0, ['weekly_plan_id', 'stage', 'request_id']),
+                'weekly_v3_batches_reviewer_index' => $this->actualIndex(1, ['reviewer_id']),
+            ],
+            'batch_foreign_keys' => [
+                'weekly_v3_batches_plan_foreign' => $this->actualForeignKey(
+                    ['weekly_plan_id'], 'weekly_plans', ['id'], 'RESTRICT',
+                ),
+                'weekly_v3_batches_reviewer_foreign' => $this->actualForeignKey(
+                    ['reviewer_id'], 'users', ['id'], 'SET NULL',
+                ),
+            ],
+            'decision_columns' => [
+                $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+                $this->column('weekly_plan_v3_review_batch_id', 2, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('weekly_plan_employee_workflow_id', 3, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('assignee_id', 4, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('decision', 5, 'varchar(32)', 'NO'),
+                $this->column('from_state', 6, 'varchar(32)', 'NO'),
+                $this->column('to_state', 7, 'varchar(32)', 'NO'),
+                $this->column('expected_state_version', 8, 'bigint unsigned', 'NO'),
+                $this->column('expected_content_version', 9, 'bigint unsigned', 'NO'),
+                $this->column('content_sha256', 10, 'char(64)', 'NO'),
+                $this->column('content_snapshot', 11, 'json', 'NO'),
+                $this->column('created_at', 12, 'timestamp', 'NO'),
+            ],
+            'decision_indexes' => [
+                'PRIMARY' => $this->actualIndex(0, ['id']),
+                'weekly_v3_decisions_assignee_index' => $this->actualIndex(1, ['assignee_id']),
+                'weekly_v3_decisions_batch_workflow_unique' => $this->actualIndex(0, [
+                    'weekly_plan_v3_review_batch_id', 'weekly_plan_employee_workflow_id',
+                ]),
+                'weekly_v3_decisions_workflow_created_index' => $this->actualIndex(1, [
+                    'weekly_plan_employee_workflow_id', 'created_at',
+                ]),
+            ],
+            'decision_foreign_keys' => [
+                'weekly_v3_decisions_assignee_foreign' => $this->actualForeignKey(
+                    ['assignee_id'], 'users', ['id'], 'RESTRICT',
+                ),
+                'weekly_v3_decisions_batch_foreign' => $this->actualForeignKey(
+                    ['weekly_plan_v3_review_batch_id'], 'weekly_plan_v3_review_batches', ['id'], 'RESTRICT',
+                ),
+                'weekly_v3_decisions_workflow_foreign' => $this->actualForeignKey(
+                    ['weekly_plan_employee_workflow_id'], 'weekly_plan_employee_workflows', ['id'], 'RESTRICT',
+                ),
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function migration20State(array $metadata): string
+    {
+        return \incrementalMigration20SchemaStateFromMetadata(
+            $metadata['workflow_version_columns'],
+            $metadata['workflow_version_indexes'],
+            $metadata['workflow_columns'],
+            $metadata['workflow_indexes'],
+            $metadata['workflow_foreign_keys'],
+            $metadata['batch_columns'],
+            $metadata['batch_indexes'],
+            $metadata['batch_foreign_keys'],
+            $metadata['decision_columns'],
+            $metadata['decision_indexes'],
+            $metadata['decision_foreign_keys'],
+        );
     }
 
     /** @return array<string, mixed> */

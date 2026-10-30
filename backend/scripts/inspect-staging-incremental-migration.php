@@ -713,6 +713,148 @@ function incrementalMigration19SchemaState(PDO $pdo): string
 }
 
 /**
+ * @param  list<array<string, mixed>>  $workflowVersionColumns
+ * @param  array<string, mixed>  $workflowVersionIndexes
+ * @param  list<array<string, mixed>>  $workflowColumns
+ * @param  array<string, mixed>  $workflowIndexes
+ * @param  array<string, mixed>  $workflowForeignKeys
+ * @param  list<array<string, mixed>>  $batchColumns
+ * @param  array<string, mixed>  $batchIndexes
+ * @param  array<string, mixed>  $batchForeignKeys
+ * @param  list<array<string, mixed>>  $decisionColumns
+ * @param  array<string, mixed>  $decisionIndexes
+ * @param  array<string, mixed>  $decisionForeignKeys
+ */
+function incrementalMigration20SchemaStateFromMetadata(
+    array $workflowVersionColumns,
+    array $workflowVersionIndexes,
+    array $workflowColumns,
+    array $workflowIndexes,
+    array $workflowForeignKeys,
+    array $batchColumns,
+    array $batchIndexes,
+    array $batchForeignKeys,
+    array $decisionColumns,
+    array $decisionIndexes,
+    array $decisionForeignKeys,
+): string {
+    if ($workflowVersionColumns === [] && $workflowVersionIndexes === []
+        && $workflowColumns === [] && $workflowIndexes === [] && $workflowForeignKeys === []
+        && $batchColumns === [] && $batchIndexes === [] && $batchForeignKeys === []
+        && $decisionColumns === [] && $decisionIndexes === [] && $decisionForeignKeys === []) {
+        return 'absent';
+    }
+
+    $workflowVersionValid = incrementalColumnsMatch($workflowVersionColumns, [
+        'workflow_version' => incrementalExpectedColumn('/^tinyint(?:\(\d+\))? unsigned$/', default: '2', key: 'MUL'),
+    ]) && StagingIncrementalSchema::indexesMatch($workflowVersionIndexes, [
+        'weekly_plans_workflow_version_index' => incrementalExpectedIndex(1, ['workflow_version']),
+    ]);
+    $workflowColumnsValid = incrementalColumnsMatch($workflowColumns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'assignee_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'state' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'state_version' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', default: '1'),
+        'content_version' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', default: '1'),
+        'correction_origin_stage' => incrementalExpectedColumn('/^varchar\(32\)$/', 'YES'),
+        'published_by' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', 'YES', key: 'MUL'),
+        'published_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'published_task_count' => incrementalExpectedColumn('/^int(?:\(\d+\))? unsigned$/', default: '0'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+        'updated_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
+    ]);
+    $batchColumnsValid = incrementalColumnsMatch($batchColumns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'stage' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'request_id' => incrementalExpectedColumn('/^varchar\(64\)$/'),
+        'payload_sha256' => incrementalExpectedColumn('/^char\(64\)$/'),
+        'reviewer_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', 'YES', key: 'MUL'),
+        'reviewer_name' => incrementalExpectedColumn('/^varchar\(255\)$/'),
+        'confirmed_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+    ]);
+    $decisionColumnsValid = incrementalColumnsMatch($decisionColumns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_v3_review_batch_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'weekly_plan_employee_workflow_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'assignee_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'decision' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'from_state' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'to_state' => incrementalExpectedColumn('/^varchar\(32\)$/'),
+        'expected_state_version' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/'),
+        'expected_content_version' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/'),
+        'content_sha256' => incrementalExpectedColumn('/^char\(64\)$/'),
+        'content_snapshot' => incrementalExpectedColumn('/^json$/'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+    ]);
+    $indexesValid = StagingIncrementalSchema::indexesMatch($workflowIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_employee_workflows_assignee_foreign' => incrementalExpectedIndex(1, ['assignee_id']),
+        'weekly_employee_workflows_plan_assignee_unique' => incrementalExpectedIndex(0, ['weekly_plan_id', 'assignee_id']),
+        'weekly_employee_workflows_plan_state_index' => incrementalExpectedIndex(1, ['weekly_plan_id', 'state']),
+        'weekly_employee_workflows_publisher_index' => incrementalExpectedIndex(1, ['published_by']),
+    ]) && StagingIncrementalSchema::indexesMatch($batchIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_v3_batches_plan_stage_confirmed_index' => incrementalExpectedIndex(1, ['weekly_plan_id', 'stage', 'confirmed_at']),
+        'weekly_v3_batches_plan_stage_request_unique' => incrementalExpectedIndex(0, ['weekly_plan_id', 'stage', 'request_id']),
+        'weekly_v3_batches_reviewer_index' => incrementalExpectedIndex(1, ['reviewer_id']),
+    ]) && StagingIncrementalSchema::indexesMatch($decisionIndexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_v3_decisions_assignee_index' => incrementalExpectedIndex(1, ['assignee_id']),
+        'weekly_v3_decisions_batch_workflow_unique' => incrementalExpectedIndex(0, ['weekly_plan_v3_review_batch_id', 'weekly_plan_employee_workflow_id']),
+        'weekly_v3_decisions_workflow_created_index' => incrementalExpectedIndex(1, ['weekly_plan_employee_workflow_id', 'created_at']),
+    ]);
+    $foreignKeysValid = StagingIncrementalSchema::foreignKeysMatch($workflowForeignKeys, [
+        'weekly_employee_workflows_assignee_foreign' => incrementalExpectedForeignKey(['assignee_id'], 'users', ['id'], 'RESTRICT'),
+        'weekly_employee_workflows_plan_foreign' => incrementalExpectedForeignKey(['weekly_plan_id'], 'weekly_plans', ['id'], 'CASCADE'),
+        'weekly_employee_workflows_publisher_foreign' => incrementalExpectedForeignKey(['published_by'], 'users', ['id'], 'SET NULL'),
+    ]) && StagingIncrementalSchema::foreignKeysMatch($batchForeignKeys, [
+        'weekly_v3_batches_plan_foreign' => incrementalExpectedForeignKey(['weekly_plan_id'], 'weekly_plans', ['id'], 'RESTRICT'),
+        'weekly_v3_batches_reviewer_foreign' => incrementalExpectedForeignKey(['reviewer_id'], 'users', ['id'], 'SET NULL'),
+    ]) && StagingIncrementalSchema::foreignKeysMatch($decisionForeignKeys, [
+        'weekly_v3_decisions_assignee_foreign' => incrementalExpectedForeignKey(['assignee_id'], 'users', ['id'], 'RESTRICT'),
+        'weekly_v3_decisions_batch_foreign' => incrementalExpectedForeignKey(['weekly_plan_v3_review_batch_id'], 'weekly_plan_v3_review_batches', ['id'], 'RESTRICT'),
+        'weekly_v3_decisions_workflow_foreign' => incrementalExpectedForeignKey(['weekly_plan_employee_workflow_id'], 'weekly_plan_employee_workflows', ['id'], 'RESTRICT'),
+    ]);
+
+    return $workflowVersionValid && $workflowColumnsValid && $batchColumnsValid
+        && $decisionColumnsValid && $indexesValid && $foreignKeysValid
+        ? 'complete'
+        : 'partial';
+}
+
+function incrementalMigration20SchemaState(PDO $pdo): string
+{
+    $weeklyPlanColumns = array_values(array_filter(
+        incrementalColumns($pdo, 'weekly_plans'),
+        static fn (array $column): bool => incrementalRowValue($column, 'COLUMN_NAME') === 'workflow_version',
+    ));
+    if (isset($weeklyPlanColumns[0])) {
+        $weeklyPlanColumns[0]['ORDINAL_POSITION'] = 1;
+    }
+    $weeklyPlanIndexes = array_intersect_key(
+        incrementalIndexes($pdo, 'weekly_plans'),
+        ['weekly_plans_workflow_version_index' => true],
+    );
+
+    return incrementalMigration20SchemaStateFromMetadata(
+        $weeklyPlanColumns,
+        $weeklyPlanIndexes,
+        incrementalColumns($pdo, 'weekly_plan_employee_workflows'),
+        incrementalIndexes($pdo, 'weekly_plan_employee_workflows'),
+        incrementalForeignKeys($pdo, 'weekly_plan_employee_workflows'),
+        incrementalColumns($pdo, 'weekly_plan_v3_review_batches'),
+        incrementalIndexes($pdo, 'weekly_plan_v3_review_batches'),
+        incrementalForeignKeys($pdo, 'weekly_plan_v3_review_batches'),
+        incrementalColumns($pdo, 'weekly_plan_v3_review_decisions'),
+        incrementalIndexes($pdo, 'weekly_plan_v3_review_decisions'),
+        incrementalForeignKeys($pdo, 'weekly_plan_v3_review_decisions'),
+    );
+}
+
+/**
  * @param  list<array<string, mixed>>  $entryColumns
  * @param  array<string, mixed>  $entryIndexes
  * @param  list<array<string, mixed>>  $passageColumns
@@ -761,7 +903,17 @@ function incrementalParentPrerequisitesVerified(
     string $migration17State,
     array $migration18ParentEvidence,
     string $migration18State = 'complete',
+    string $migration19State = 'complete',
 ): bool {
+    if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_20) {
+        return $migration16State === 'complete'
+            && $migration17State === 'complete'
+            && $migration18State === 'complete'
+            && $migration19State === 'complete'
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'weekly_plans')
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'users');
+    }
+
     if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_19) {
         return $migration16State === 'complete'
             && $migration17State === 'complete'
@@ -821,6 +973,9 @@ function incrementalCountRows(PDO $pdo, string $table, array $tables): ?int
         'weekly_plan_review_rounds',
         'weekly_plan_review_decisions',
         'weekly_plan_employee_reviews',
+        'weekly_plan_employee_workflows',
+        'weekly_plan_v3_review_batches',
+        'weekly_plan_v3_review_decisions',
     ];
 
     if (! in_array($table, $allowed, true)) {
@@ -1028,6 +1183,7 @@ $migration16State = incrementalMigration16SchemaState($pdo);
 $migration17State = incrementalMigration17SchemaState($pdo);
 $migration18State = incrementalMigration18SchemaState($pdo);
 $migration19State = incrementalMigration19SchemaState($pdo);
+$migration20State = incrementalMigration20SchemaState($pdo);
 $migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);
 $weeklyPlanIdFingerprint = hash('sha256', implode(',', $weeklyPlanIds));
@@ -1049,6 +1205,8 @@ $ownerChangesPlanCountRows = incrementalQueryRows(
     "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE status = 'OWNER_CHANGES_REQUESTED'",
 );
 $uploadedFilePlanCount = null;
+$v2WorkflowPlanCount = null;
+$v3WorkflowPlanCount = null;
 
 if ($migration16State === 'complete') {
     $rows = incrementalQueryRows(
@@ -1056,6 +1214,19 @@ if ($migration16State === 'complete') {
         "SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE source_type = 'UPLOADED_FILE'",
     );
     $uploadedFilePlanCount = (int) ($rows[0]['aggregate'] ?? -1);
+}
+
+if ($migration20State === 'complete') {
+    $v2Rows = incrementalQueryRows(
+        $pdo,
+        'SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE workflow_version = 2',
+    );
+    $v3Rows = incrementalQueryRows(
+        $pdo,
+        'SELECT COUNT(*) AS aggregate FROM weekly_plans WHERE workflow_version = 3',
+    );
+    $v2WorkflowPlanCount = (int) ($v2Rows[0]['aggregate'] ?? -1);
+    $v3WorkflowPlanCount = (int) ($v3Rows[0]['aggregate'] ?? -1);
 }
 
 $state = [
@@ -1083,6 +1254,7 @@ $state = [
     'migration_17_schema_state' => $migration17State,
     'migration_18_schema_state' => $migration18State,
     'migration_19_schema_state' => $migration19State,
+    'migration_20_schema_state' => $migration20State,
     'parent_prerequisites_verified' => incrementalParentPrerequisitesVerified(
         $pdo,
         $migrationFile,
@@ -1090,6 +1262,7 @@ $state = [
         $migration17State,
         $migration18ParentEvidence,
         $migration18State,
+        $migration19State,
     ),
     'source_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_sources', $tables),
     'mapping_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_tab_mappings', $tables),
@@ -1102,6 +1275,11 @@ $state = [
     ),
     'review_round_count' => incrementalCountRows($pdo, 'weekly_plan_review_rounds', $tables),
     'review_decision_count' => incrementalCountRows($pdo, 'weekly_plan_review_decisions', $tables),
+    'v2_workflow_plan_count' => $v2WorkflowPlanCount,
+    'v3_workflow_plan_count' => $v3WorkflowPlanCount,
+    'v3_employee_workflow_count' => incrementalCountRows($pdo, 'weekly_plan_employee_workflows', $tables),
+    'v3_review_batch_count' => incrementalCountRows($pdo, 'weekly_plan_v3_review_batches', $tables),
+    'v3_review_decision_count' => incrementalCountRows($pdo, 'weekly_plan_v3_review_decisions', $tables),
     'legacy_employee_review_count' => $legacyEmployeeReviewCount,
     'legacy_status_plan_count' => (int) ($legacyStatusPlanCountRows[0]['aggregate'] ?? -1),
     'owner_review_plan_count' => (int) ($ownerReviewPlanCountRows[0]['aggregate'] ?? -1),
@@ -1185,6 +1363,7 @@ incrementalFinish([
         'migration_17_state' => $migration17State,
         'migration_18_state' => $migration18State,
         'migration_19_state' => $migration19State,
+        'migration_20_state' => $migration20State,
         'parent_prerequisites_verified' => $state['parent_prerequisites_verified'],
         'migration_18_parent_prerequisites' => $migration18ParentEvidence,
         'source_row_count' => $state['source_row_count'],
@@ -1194,6 +1373,9 @@ incrementalFinish([
         'item_source_passage_row_count' => $state['item_source_passage_row_count'],
         'review_round_count' => $state['review_round_count'],
         'review_decision_count' => $state['review_decision_count'],
+        'v3_employee_workflow_count' => $state['v3_employee_workflow_count'],
+        'v3_review_batch_count' => $state['v3_review_batch_count'],
+        'v3_review_decision_count' => $state['v3_review_decision_count'],
     ],
     'concurrency' => [
         'ddl_jobs_verified' => $state['ddl_jobs_verified'],
@@ -1209,6 +1391,8 @@ incrementalFinish([
         'legacy_owner_changes_plan_count' => $legacyOwnerChangesPlanCount,
         'expected_review_decision_count' => $expectedReviewDecisionCount,
         'legacy_employee_review_count' => $legacyEmployeeReviewCount,
+        'v2_workflow_plan_count' => $v2WorkflowPlanCount,
+        'v3_workflow_plan_count' => $v3WorkflowPlanCount,
     ],
     'plan' => [
         'artisan_command' => $command,

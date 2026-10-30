@@ -10,13 +10,14 @@ use PHPUnit\Framework\TestCase;
 
 class StagingIncrementalMigrationPlanTest extends TestCase
 {
-    public function test_only_the_four_reviewed_migrations_are_allowlisted(): void
+    public function test_only_the_five_reviewed_migrations_are_allowlisted(): void
     {
         $this->assertSame([
             StagingIncrementalMigrationPlan::MIGRATION_16,
             StagingIncrementalMigrationPlan::MIGRATION_17,
             StagingIncrementalMigrationPlan::MIGRATION_18,
             StagingIncrementalMigrationPlan::MIGRATION_19,
+            StagingIncrementalMigrationPlan::MIGRATION_20,
         ], StagingIncrementalMigrationPlan::allowedFiles());
 
         foreach ([
@@ -75,7 +76,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         ];
     }
 
-    public function test_partial_schema_is_rejected_for_all_three_migrations(): void
+    public function test_partial_schema_is_rejected_for_all_reviewed_migrations(): void
     {
         $migration16 = array_replace($this->stateForMigration16(), [
             'migration_16_schema_state' => 'partial',
@@ -107,6 +108,28 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             StagingIncrementalMigrationPlan::preflightViolations(
                 StagingIncrementalMigrationPlan::MIGRATION_18,
                 $migration18,
+            ),
+        );
+
+        $migration19 = array_replace($this->stateForMigration19(), [
+            'migration_19_schema_state' => 'partial',
+        ]);
+        $this->assertContains(
+            'migration_19_partial_or_existing_schema',
+            StagingIncrementalMigrationPlan::preflightViolations(
+                StagingIncrementalMigrationPlan::MIGRATION_19,
+                $migration19,
+            ),
+        );
+
+        $migration20 = array_replace($this->stateForMigration20(), [
+            'migration_20_schema_state' => 'partial',
+        ]);
+        $this->assertContains(
+            'migration_20_partial_or_existing_schema',
+            StagingIncrementalMigrationPlan::preflightViolations(
+                StagingIncrementalMigrationPlan::MIGRATION_20,
+                $migration20,
             ),
         );
     }
@@ -222,7 +245,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         ));
 
         $state = array_replace($this->stateForMigration19(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 19),
             'migration_19_schema_state' => 'complete',
             'weekly_plan_count' => 4,
             'weekly_plan_id_fingerprint' => str_repeat('d', 64),
@@ -261,6 +284,48 @@ class StagingIncrementalMigrationPlanTest extends TestCase
                 1,
                 7,
                 2,
+            ),
+        );
+    }
+
+    public function test_migration_20_requires_exact_v2_baseline_and_empty_v3_tables(): void
+    {
+        $this->assertSame([], StagingIncrementalMigrationPlan::preflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_20,
+            $this->stateForMigration20(),
+        ));
+
+        $state = array_replace($this->stateForMigration20(), [
+            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'migration_20_schema_state' => 'complete',
+            'weekly_plan_count' => 4,
+            'weekly_plan_id_fingerprint' => str_repeat('d', 64),
+            'weekly_plan_entry_count' => 9,
+            'v2_workflow_plan_count' => 4,
+            'v3_workflow_plan_count' => 0,
+            'v3_employee_workflow_count' => 0,
+            'v3_review_batch_count' => 0,
+            'v3_review_decision_count' => 0,
+        ]);
+
+        $this->assertSame([], StagingIncrementalMigrationPlan::postflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_20,
+            $state,
+            4,
+            str_repeat('d', 64),
+            9,
+        ));
+
+        $state['v2_workflow_plan_count'] = 3;
+        $state['v3_review_batch_count'] = 1;
+        $this->assertContains(
+            'migration_20_v2_baseline_or_empty_v3_tables_mismatch',
+            StagingIncrementalMigrationPlan::postflightViolations(
+                StagingIncrementalMigrationPlan::MIGRATION_20,
+                $state,
+                4,
+                str_repeat('d', 64),
+                9,
             ),
         );
     }
@@ -316,6 +381,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             'migration_17_schema_state' => 'absent',
             'migration_18_schema_state' => 'absent',
             'migration_19_schema_state' => 'absent',
+            'migration_20_schema_state' => 'absent',
             'parent_prerequisites_verified' => true,
         ];
     }
@@ -343,6 +409,15 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 18),
             'migration_18_schema_state' => 'complete',
             'migration_19_schema_state' => 'absent',
+        ]);
+    }
+
+    private function stateForMigration20(): array
+    {
+        return array_replace($this->stateForMigration19(), [
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 19),
+            'migration_19_schema_state' => 'complete',
+            'migration_20_schema_state' => 'absent',
         ]);
     }
 }

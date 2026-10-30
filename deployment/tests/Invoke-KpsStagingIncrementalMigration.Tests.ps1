@@ -30,13 +30,14 @@ function New-FakeInspectionResult {
             migration_grants_verified = $true
         }
         ledger = [pscustomobject]@{
-            expected_count = 18
+            expected_count = 20
             applied_count = 15
             pending_migrations = @(
                 '2026_10_27_000000_add_google_docs_source_to_weekly_plans',
                 '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables',
                 '2026_10_28_000000_create_weekly_plan_entry_items_tables',
-                '2026_10_29_000000_create_weekly_plan_staged_review_tables'
+                '2026_10_29_000000_create_weekly_plan_staged_review_tables',
+                '2026_10_30_000000_create_weekly_plan_v3_schema_foundation'
             )
             unexpected_migrations = @()
         }
@@ -45,6 +46,7 @@ function New-FakeInspectionResult {
             migration_17_state = 'absent'
             migration_18_state = 'absent'
             migration_19_state = 'absent'
+            migration_20_state = 'absent'
             parent_prerequisites_verified = $true
             migration_18_parent_prerequisites = [pscustomobject]@{
                 weekly_plan_entries_id_referenceable = $true
@@ -71,6 +73,8 @@ function New-FakeInspectionResult {
             legacy_owner_changes_plan_count = 1
             expected_review_decision_count = 7
             legacy_employee_review_count = 2
+            v2_workflow_plan_count = $null
+            v3_workflow_plan_count = $null
         }
         plan = [pscustomobject]@{}
     }
@@ -450,14 +454,15 @@ echo json_encode([
 }
 
 Describe 'isolated child environment and file integrity' {
-    It 'accepts migrations 18 and 19 in both PowerShell and isolated PHP allowlists' {
+    It 'accepts migrations 18 through 20 in both PowerShell and isolated PHP allowlists' {
         $validateSet = (Get-Command $runnerPath).Parameters['Migration'].Attributes |
             Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
             Select-Object -First 1
         $migration18 = '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
         $migration19 = '2026_10_29_000000_create_weekly_plan_staged_review_tables.php'
+        $migration20 = '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php'
 
-        foreach ($migration in @($migration18, $migration19)) {
+        foreach ($migration in @($migration18, $migration19, $migration20)) {
             ($validateSet.ValidValues -contains $migration) | Should Be $true
             ($script:AllowedMigrations -contains $migration) | Should Be $true
         }
@@ -476,6 +481,10 @@ echo $input->getParameterOption('--path');
         $path19 = & php -r $probe $backendRoot $migration19
         $LASTEXITCODE | Should Be 0
         $path19 | Should Be ('database/migrations/' + $migration19)
+
+        $path20 = & php -r $probe $backendRoot $migration20
+        $LASTEXITCODE | Should Be 0
+        $path20 | Should Be ('database/migrations/' + $migration20)
     }
 
     It 'atomically rejects reuse of a consumed receipt nonce' {

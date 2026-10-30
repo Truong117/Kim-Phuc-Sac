@@ -59,6 +59,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanPublisher $publisher,
         private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
         private readonly WeeklyPlanReadinessService $planReadiness,
+        private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -84,13 +85,18 @@ class WeeklyPlanService
                 $hasAssistantReviewPermission,
                 $hasOwnerReviewPermission,
             ): WeeklyPlan {
+                $v2Workflow = $this->workflowVersions->isV2($plan);
                 $plan->setAttribute('actions', [
-                    'can_delete' => $canManageDrafts && $plan->status === WeeklyPlanStatus::DRAFT,
-                    'can_assistant_review' => $hasAssistantReviewPermission
+                    'can_delete' => $v2Workflow
+                        && $canManageDrafts
+                        && $plan->status === WeeklyPlanStatus::DRAFT,
+                    'can_assistant_review' => $v2Workflow
+                        && $hasAssistantReviewPermission
                         && $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW,
-                    'can_owner_review' => $hasOwnerReviewPermission
+                    'can_owner_review' => $v2Workflow
+                        && $hasOwnerReviewPermission
                         && $plan->status === WeeklyPlanStatus::OWNER_REVIEW,
-                    'can_open_review_workspace' => $this->canOpenReviewWorkspace(
+                    'can_open_review_workspace' => $v2Workflow && $this->canOpenReviewWorkspace(
                         $plan->status,
                         $hasAssistantReviewPermission,
                         $hasOwnerReviewPermission,
@@ -962,6 +968,7 @@ class WeeklyPlanService
 
         DB::transaction(function () use ($actor, $attributes, $entryId, $plan): void {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            $this->workflowVersions->assertV2($locked);
             $isDraftEditor = $this->scope->allows($actor, 'weekly_plans.manage_draft')
                 && in_array($locked->status, self::EDITABLE_STATUSES, true);
             $isCorrectionEditor = $this->scope->allows($actor, 'weekly_plans.manage_draft')
@@ -1053,6 +1060,7 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
                 ->lockForUpdate()
                 ->findOrFail($planId);
+            $this->workflowVersions->assertV2($plan);
 
             if ($plan->status !== WeeklyPlanStatus::DRAFT) {
                 throw new ConflictHttpException('Chỉ có thể đặt lại kế hoạch đang ở trạng thái nháp.');
@@ -1091,6 +1099,7 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
                 ->lockForUpdate()
                 ->findOrFail($planId);
+            $this->workflowVersions->assertV2($plan);
 
             if ($plan->status !== WeeklyPlanStatus::DRAFT) {
                 throw new ConflictHttpException('Chỉ có thể xóa kế hoạch đang ở trạng thái nháp.');
@@ -1246,6 +1255,7 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.approve')
                 ->lockForUpdate()
                 ->findOrFail($planId);
+            $this->workflowVersions->assertV2($plan);
             if ($plan->status !== WeeklyPlanStatus::OWNER_REVIEW) {
                 throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể phê duyệt.');
             }
@@ -1514,6 +1524,8 @@ class WeeklyPlanService
 
     private function assertEditable(WeeklyPlan $plan): void
     {
+        $this->workflowVersions->assertV2($plan);
+
         if (! in_array($plan->status, self::EDITABLE_STATUSES, true)) {
             throw new ConflictHttpException('Kế hoạch không còn ở trạng thái có thể chỉnh sửa.');
         }
@@ -1521,6 +1533,8 @@ class WeeklyPlanService
 
     private function assertEntryEditingAllowed(WeeklyPlan $plan): void
     {
+        $this->workflowVersions->assertV2($plan);
+
         if (in_array($plan->status, self::EDITABLE_STATUSES, true)
             || $this->isCorrectionStatus($plan->status)) {
             return;
@@ -1539,6 +1553,8 @@ class WeeklyPlanService
 
     private function assertSubmittable(WeeklyPlan $plan): void
     {
+        $this->workflowVersions->assertV2($plan);
+
         if (! in_array($plan->status, self::EDITABLE_STATUSES, true)
             && ! $this->isCorrectionStatus($plan->status)) {
             throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể gửi xét duyệt.');
@@ -1827,6 +1843,7 @@ class WeeklyPlanService
                 ->orderBy('sequence'),
         ])->loadCount('entries');
 
+        $v2Workflow = $this->workflowVersions->isV2($plan);
         $isGoogleDocs = $plan->source_type === WeeklyPlanSourceType::GOOGLE_DOCS;
         $sourceAvailability = $isGoogleDocs ? 'NOT_APPLICABLE' : $this->sourceAvailability($plan);
         $plan->setAttribute('source_file_availability', $sourceAvailability);
@@ -1882,8 +1899,10 @@ class WeeklyPlanService
             'weekly_plans.assistant_review',
         );
         $hasOwnerReviewPermission = $this->scope->allows($viewer, 'weekly_plans.review');
-        $canAssistantReview = $assistantReviewStatus && $hasAssistantReviewPermission;
-        $canOwnerReview = $ownerReviewStatus && $hasOwnerReviewPermission;
+        $canAssistantReview = $v2Workflow
+            && $assistantReviewStatus
+            && $hasAssistantReviewPermission;
+        $canOwnerReview = $v2Workflow && $ownerReviewStatus && $hasOwnerReviewPermission;
         $currentReviewRound = match (true) {
             $assistantReviewStatus => $assistantRound,
             $ownerReviewStatus => $ownerRound,
@@ -1935,15 +1954,17 @@ class WeeklyPlanService
             && $emptyReviewRecoveryRound->decisions->every(
                 fn ($decision): bool => $decision->status === WeeklyPlanReviewStatus::ACCEPTED,
             );
-        $canCorrectRequestedChanges = ($correctionStateValid || $emptyReviewRecovery)
+        $canCorrectRequestedChanges = $v2Workflow
+            && ($correctionStateValid || $emptyReviewRecovery)
             && $this->scope->allows($viewer, 'weekly_plans.manage_draft');
-        $canResubmitChanges = $correctionStateValid
+        $canResubmitChanges = $v2Workflow
+            && $correctionStateValid
             && $this->planReadiness->evaluateCorrectionResubmission($plan)['ready']
             && $sourceProcessingComplete
             && $this->scope->allows($viewer, 'weekly_plans.manage_draft')
             && $this->scope->allows($viewer, 'weekly_plans.submit');
 
-        $plan->setAttribute('actions', [
+        $actions = [
             'can_edit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_correct_requested_changes' => $canCorrectRequestedChanges,
@@ -2018,7 +2039,17 @@ class WeeklyPlanService
                 && $plan->status === WeeklyPlanStatus::DRAFT
                 && $sourceWorkAvailable
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
-        ]);
+        ];
+
+        if (! $v2Workflow) {
+            foreach (array_keys($actions) as $action) {
+                if ($action !== 'can_comment') {
+                    $actions[$action] = false;
+                }
+            }
+        }
+
+        $plan->setAttribute('actions', $actions);
 
         return $plan;
     }
