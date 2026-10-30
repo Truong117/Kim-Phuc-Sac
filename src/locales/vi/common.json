@@ -1519,6 +1519,40 @@
         "zeroWorkTitle": "Không còn công việc sau chỉnh sửa.",
         "zeroWorkDescription": "Phần công việc của nhân viên này đã được loại bỏ trong lần chỉnh sửa gần nhất. Bạn vẫn cần xác nhận thay đổi này."
       },
+      "v3Assistant": {
+        "title": "Xét duyệt theo lô của Trợ lý Giám đốc",
+        "description": "Chọn quyết định nháp cho từng nhân viên, sau đó xác nhận một lần. Ghi chú trao đổi được lưu riêng và không tự tạo quyết định.",
+        "counts": "{entries} công việc · {items} đầu mục",
+        "state": {
+          "AWAITING_ASSISTANT": "Chờ Trợ lý xét duyệt",
+          "STAGED_FOR_OWNER": "Đã chuyển OWNER",
+          "HR_CORRECTION": "Chờ Nhân sự chỉnh sửa",
+          "PUBLISHED": "Đã phát hành",
+          "NO_WORK_APPROVED": "Đã duyệt không có công việc"
+        },
+        "draft": {
+          "ACCEPTED": "Nháp: Chấp nhận",
+          "CHANGES_REQUESTED": "Nháp: Yêu cầu chỉnh sửa"
+        },
+        "zeroWork": "Nhân viên này hiện không có công việc. Bạn vẫn có thể chấp nhận trạng thái không có công việc.",
+        "accept": "Chấp nhận",
+        "requestChanges": "Yêu cầu chỉnh sửa",
+        "clear": "Bỏ lựa chọn",
+        "readOnly": "Phần kế hoạch này hiện chỉ có thể xem.",
+        "empty": "Chưa có dữ liệu quy trình nhân viên để xét duyệt.",
+        "reviewBatch": "Xem lại lô ({count})",
+        "confirmation": {
+          "title": "Xác nhận lô xét duyệt?",
+          "summary": "{total} nhân viên · {accepted} chấp nhận · {changesRequested} yêu cầu chỉnh sửa",
+          "unselected": "Nhân viên chưa được chọn sẽ giữ nguyên trạng thái và có thể được xét duyệt trong lô sau.",
+          "cancel": "Quay lại",
+          "submit": "Xác nhận lô",
+          "submitting": "Đang xác nhận..."
+        },
+        "errors": {
+          "submit": "Không thể xác nhận lô xét duyệt. Các lựa chọn nháp vẫn được giữ nguyên để bạn thử lại."
+        }
+      },
       "work": {
         "untitled": "Công việc chưa có tiêu đề",
         "missingValue": "Chưa có thông tin",
@@ -1622,6 +1656,7 @@
       "OWNER_EMPLOYEE_ACCEPTED": "OWNER đã chấp nhận kế hoạch của nhân viên",
       "OWNER_EMPLOYEE_CHANGES_REQUESTED": "OWNER đã yêu cầu nhân viên chỉnh sửa",
       "OWNER_REVIEW_COMPLETED": "OWNER đã hoàn tất xét duyệt",
+      "V3_ASSISTANT_BATCH_CONFIRMED": "Trợ lý đã xác nhận lô xét duyệt V3",
       "COMMENT_ADDED": "Đã thêm nhận xét",
       "SUGGESTION_DECIDED": "Đã xử lý gợi ý theo quy tắc",
       "ANALYZED": "Đã chạy phân tích theo quy tắc",

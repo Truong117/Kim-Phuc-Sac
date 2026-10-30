@@ -16,6 +16,7 @@ final class WeeklyPlanV3ProjectionService
         private readonly WeeklyPlanScopeService $scope,
         private readonly WeeklyPlanEmployeeWorkflowIntegrityService $integrity,
         private readonly WeeklyPlanV3SummaryService $summaries,
+        private readonly WeeklyPlanV3AssistantEligibilityService $assistantEligibility,
     ) {}
 
     /**
@@ -58,14 +59,18 @@ final class WeeklyPlanV3ProjectionService
             ->filter(fn ($entry): bool => $entry->assignee_id !== null)
             ->groupBy(fn ($entry): int => (int) $entry->assignee_id);
         $viewerContext = $this->viewerContextPermissions($viewer);
+        $assistantActionsEnabled = $this->assistantEligibility->planAllowsReview($plan)
+            && $viewerContext['assistant'];
 
         return [
             'employee_workflows' => $workflows
                 ->map(function (WeeklyPlanEmployeeWorkflow $workflow) use (
                     $entriesByAssignee,
                     $viewerContext,
+                    $assistantActionsEnabled,
                 ): array {
                     $entries = $entriesByAssignee->get($workflow->assignee_id, collect());
+                    $actions = $this->actionsFor($workflow->state, $assistantActionsEnabled);
 
                     return [
                         'id' => $workflow->id,
@@ -91,9 +96,10 @@ final class WeeklyPlanV3ProjectionService
                         ],
                         'viewer_context' => [
                             'mode' => $this->viewerMode($workflow->state, $viewerContext),
-                            'read_only' => true,
+                            'read_only' => ! $actions['can_accept']
+                                && ! $actions['can_request_changes'],
                         ],
-                        'actions' => $this->disabledActions(),
+                        'actions' => $actions,
                     ];
                 })
                 ->values()
@@ -129,12 +135,17 @@ final class WeeklyPlanV3ProjectionService
         };
     }
 
-    /** @return array{can_accept: false, can_request_changes: false, can_correct: false, can_resubmit: false, can_publish: false} */
-    private function disabledActions(): array
-    {
+    /** @return array{can_accept: bool, can_request_changes: bool, can_correct: false, can_resubmit: false, can_publish: false} */
+    private function actionsFor(
+        WeeklyPlanEmployeeWorkflowState $state,
+        bool $assistantActionsEnabled,
+    ): array {
+        $canReview = $assistantActionsEnabled
+            && $state === WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT;
+
         return [
-            'can_accept' => false,
-            'can_request_changes' => false,
+            'can_accept' => $canReview,
+            'can_request_changes' => $canReview,
             'can_correct' => false,
             'can_resubmit' => false,
             'can_publish' => false,

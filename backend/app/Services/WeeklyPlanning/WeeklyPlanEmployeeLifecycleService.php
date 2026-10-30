@@ -22,6 +22,27 @@ final class WeeklyPlanEmployeeLifecycleService
     ): WeeklyPlanEmployeeLifecycleTransition {
         $this->integrity->assertWorkflow($workflow);
 
+        return $this->calculateTransitionForVerifiedWorkflow(
+            $workflow,
+            $action,
+            $reviewStage,
+            $expectedStateVersion,
+            $expectedContentVersion,
+        );
+    }
+
+    /**
+     * The caller must verify plan, assignee and organization integrity for the
+     * complete locked workflow set before using this batch-oriented path.
+     */
+    public function calculateTransitionForVerifiedWorkflow(
+        WeeklyPlanEmployeeWorkflow $workflow,
+        WeeklyPlanEmployeeWorkflowAction $action,
+        ?WeeklyPlanReviewStage $reviewStage,
+        int $expectedStateVersion,
+        int $expectedContentVersion,
+    ): WeeklyPlanEmployeeLifecycleTransition {
+
         if ($workflow->state_version !== $expectedStateVersion) {
             throw new WeeklyPlanEmployeeLifecycleConflictException(
                 WeeklyPlanEmployeeLifecycleConflictException::STALE_STATE_VERSION,
