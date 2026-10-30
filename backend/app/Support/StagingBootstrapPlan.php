@@ -30,6 +30,7 @@ final class StagingBootstrapPlan
         '2026_10_27_000000_add_google_docs_source_to_weekly_plans',
         '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables',
         '2026_10_28_000000_create_weekly_plan_entry_items_tables',
+        '2026_10_29_000000_create_weekly_plan_staged_review_tables',
     ];
 
     /** @var list<string> */
@@ -105,6 +106,7 @@ final class StagingBootstrapPlan
     public const EXPECTED_ROLE_CODES = [
         'OWNER',
         'ADMIN',
+        'EXECUTIVE_ASSISTANT',
         'HR_MANAGER',
         'DEPARTMENT_MANAGER',
         'OFFICE_STAFF',
@@ -121,6 +123,7 @@ final class StagingBootstrapPlan
         'weekly_plans.view',
         'weekly_plans.manage_draft',
         'weekly_plans.submit',
+        'weekly_plans.assistant_review',
         'weekly_plans.review',
         'weekly_plans.approve',
         'weekly_plans.publish',

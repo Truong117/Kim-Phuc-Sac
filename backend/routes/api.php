@@ -170,6 +170,11 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/{id}/employee-reviews', [WeeklyPlanController::class, 'reviewEmployee'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.review,organization');
+        Route::post('/{id}/review-decisions/{assigneeId}', [WeeklyPlanController::class, 'decideReview'])
+            ->whereNumber('id')->whereNumber('assigneeId');
+        Route::post('/{id}/finalize-assistant-review', [WeeklyPlanController::class, 'finalizeAssistantReview'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.assistant_review,organization');
         Route::post('/{id}/approve', [WeeklyPlanController::class, 'approve'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.approve,organization');

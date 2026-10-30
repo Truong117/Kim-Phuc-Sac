@@ -2,7 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Enums\WeeklyPlanReviewStage;
+use App\Enums\WeeklyPlanReviewStatus;
+use App\Enums\WeeklyPlanStatus;
 use App\Models\WeeklyPlanEntry;
+use App\Models\WeeklyPlanReviewRound;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -153,6 +157,7 @@ class WeeklyPlanResource extends JsonResource
                     'reviewed_at' => $review->reviewed_at?->toISOString(),
                 ],
             )),
+            'review_workflow' => $this->reviewWorkflowPayload(),
             'suggestions' => $this->whenLoaded('suggestions', fn () => $this->suggestions->map(
                 fn ($suggestion): array => [
                     'id' => $suggestion->id,
@@ -193,6 +198,98 @@ class WeeklyPlanResource extends JsonResource
             'approved_at' => $this->approved_at?->toISOString(),
             'published_at' => $this->published_at?->toISOString(),
             'actions' => $this->getAttribute('actions') ?? [],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function reviewWorkflowPayload(): array
+    {
+        $stage = match ($this->status) {
+            WeeklyPlanStatus::ASSISTANT_REVIEW,
+            WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED => WeeklyPlanReviewStage::ASSISTANT,
+            WeeklyPlanStatus::OWNER_REVIEW,
+            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED => WeeklyPlanReviewStage::OWNER,
+            default => null,
+        };
+        $assistantRound = $this->latestReviewRound(WeeklyPlanReviewStage::ASSISTANT);
+        $ownerRound = $this->latestReviewRound(WeeklyPlanReviewStage::OWNER);
+        $currentRound = match ($stage) {
+            WeeklyPlanReviewStage::ASSISTANT => $assistantRound,
+            WeeklyPlanReviewStage::OWNER => $ownerRound,
+            default => null,
+        };
+
+        return [
+            'stage' => $stage?->value,
+            'current_round' => $this->reviewRoundPayload($currentRound),
+            'assistant_summary' => $this->reviewSummary($assistantRound),
+            'owner_summary' => $this->reviewSummary($ownerRound),
+        ];
+    }
+
+    private function latestReviewRound(WeeklyPlanReviewStage $stage): ?WeeklyPlanReviewRound
+    {
+        if (! $this->relationLoaded('reviewRounds')) {
+            return null;
+        }
+
+        $round = $this->reviewRounds
+            ->where('stage', $stage)
+            ->sortByDesc('round_number')
+            ->first();
+
+        return $round instanceof WeeklyPlanReviewRound ? $round : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function reviewRoundPayload(?WeeklyPlanReviewRound $round): ?array
+    {
+        if ($round === null) {
+            return null;
+        }
+
+        return [
+            'id' => $round->id,
+            'stage' => $round->stage->value,
+            'round_number' => $round->round_number,
+            'status' => $round->status->value,
+            'started_by' => $round->starter === null ? null : [
+                'id' => $round->starter->id,
+                'name' => $round->starter->name,
+            ],
+            'started_at' => $round->started_at?->toISOString(),
+            'completed_by' => $round->completer === null ? null : [
+                'id' => $round->completer->id,
+                'name' => $round->completer->name,
+            ],
+            'completed_at' => $round->completed_at?->toISOString(),
+            'decisions' => $round->decisions->map(fn ($decision): array => [
+                'id' => $decision->id,
+                'assignee' => [
+                    'id' => $decision->assignee->id,
+                    'name' => $decision->assignee->name,
+                ],
+                'status' => $decision->status->value,
+                'reviewed_by' => $decision->reviewer === null ? null : [
+                    'id' => $decision->reviewer->id,
+                    'name' => $decision->reviewer->name,
+                ],
+                'reviewed_at' => $decision->reviewed_at?->toISOString(),
+            ])->values(),
+        ];
+    }
+
+    /** @return array{total: int, accepted: int, changes_requested: int, pending: int} */
+    private function reviewSummary(?WeeklyPlanReviewRound $round): array
+    {
+        $decisions = $round?->decisions ?? collect();
+
+        return [
+            'total' => $decisions->count(),
+            'accepted' => $decisions->where('status', WeeklyPlanReviewStatus::ACCEPTED)->count(),
+            'changes_requested' => $decisions
+                ->where('status', WeeklyPlanReviewStatus::CHANGES_REQUESTED)->count(),
+            'pending' => $decisions->where('status', WeeklyPlanReviewStatus::PENDING)->count(),
         ];
     }
 

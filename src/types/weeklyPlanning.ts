@@ -5,11 +5,20 @@ export type WeeklyPlanStatus =
   | "SUBMITTED"
   | "IN_REVIEW"
   | "CHANGES_REQUESTED"
+  | "ASSISTANT_REVIEW"
+  | "ASSISTANT_CHANGES_REQUESTED"
+  | "OWNER_REVIEW"
+  | "OWNER_CHANGES_REQUESTED"
   | "APPROVED"
   | "PUBLISHED";
 
 export type WeeklyPlanReviewStatus =
   "PENDING" | "CHANGES_REQUESTED" | "ACCEPTED";
+
+export type WeeklyPlanReviewStage = "ASSISTANT" | "OWNER";
+
+export type WeeklyPlanReviewRoundStatus =
+  "OPEN" | "CHANGES_REQUESTED" | "COMPLETED" | "SUPERSEDED";
 
 export type WeeklyPlanEmployee = {
   id: number;
@@ -113,6 +122,40 @@ export type WeeklyPlanReview = {
   reviewed_at: string | null;
 };
 
+export type WeeklyPlanReviewDecision = {
+  id: number;
+  assignee: { id: number; name: string };
+  status: WeeklyPlanReviewStatus;
+  reviewed_by: { id: number; name: string } | null;
+  reviewed_at: string | null;
+};
+
+export type WeeklyPlanReviewRound = {
+  id: number;
+  stage: WeeklyPlanReviewStage;
+  round_number: number;
+  status: WeeklyPlanReviewRoundStatus;
+  started_by: { id: number; name: string } | null;
+  started_at: string;
+  completed_by: { id: number; name: string } | null;
+  completed_at: string | null;
+  decisions: WeeklyPlanReviewDecision[];
+};
+
+export type WeeklyPlanReviewSummary = {
+  total: number;
+  accepted: number;
+  changes_requested: number;
+  pending: number;
+};
+
+export type WeeklyPlanReviewWorkflow = {
+  stage: WeeklyPlanReviewStage | null;
+  current_round: WeeklyPlanReviewRound | null;
+  assistant_summary: WeeklyPlanReviewSummary;
+  owner_summary: WeeklyPlanReviewSummary;
+};
+
 export type WeeklyPlanSuggestion = {
   id: number;
   entry_id: number;
@@ -142,12 +185,17 @@ export type WeeklyPlanEvent = {
 
 export type WeeklyPlanActions = {
   can_edit: boolean;
+  can_correct_requested_changes: boolean;
+  can_resubmit_changes: boolean;
   can_reset: boolean;
   can_delete: boolean;
   can_analyze: boolean;
   can_submit: boolean;
   can_review: boolean;
   can_review_edit: boolean;
+  can_assistant_review: boolean;
+  can_finalize_assistant_review: boolean;
+  can_owner_review: boolean;
   can_approve: boolean;
   can_publish: boolean;
   can_approve_and_publish: boolean;
@@ -251,6 +299,7 @@ export type WeeklyPlan = {
   };
   entries: WeeklyPlanEntry[];
   employee_reviews: WeeklyPlanReview[];
+  review_workflow: WeeklyPlanReviewWorkflow;
   suggestions: WeeklyPlanSuggestion[];
   comments: WeeklyPlanComment[];
   events: WeeklyPlanEvent[];

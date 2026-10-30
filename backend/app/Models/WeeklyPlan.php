@@ -73,6 +73,13 @@ class WeeklyPlan extends Model
         return $this->hasMany(WeeklyPlanEmployeeReview::class);
     }
 
+    public function reviewRounds(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanReviewRound::class)
+            ->orderBy('stage')
+            ->orderBy('round_number');
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(WeeklyPlanComment::class)

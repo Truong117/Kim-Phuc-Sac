@@ -24,9 +24,15 @@ class AuthorizationSeederTest extends TestCase
             'type' => 'internal',
             'is_active' => true,
         ]);
-        $this->assertDatabaseCount('roles', 9);
+        $this->assertDatabaseCount('roles', 10);
+        $this->assertDatabaseHas('roles', [
+            'code' => 'EXECUTIVE_ASSISTANT',
+            'name' => 'Trợ lý Giám đốc',
+            'description' => 'Hỗ trợ Giám đốc điều hành, rà soát kế hoạch và quản lý nghiệp vụ nội bộ.',
+            'is_system' => true,
+        ]);
         $this->assertDatabaseCount('permissions', 41);
-        $this->assertDatabaseCount('role_permissions', 156);
+        $this->assertDatabaseCount('role_permissions', 192);
 
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('departments', 0);
@@ -42,6 +48,7 @@ class AuthorizationSeederTest extends TestCase
         $expectedGrantCounts = [
             'OWNER' => 40,
             'ADMIN' => 41,
+            'EXECUTIVE_ASSISTANT' => 36,
             'HR_MANAGER' => 10,
             'DEPARTMENT_MANAGER' => 9,
             'OFFICE_STAFF' => 5,
@@ -73,6 +80,9 @@ class AuthorizationSeederTest extends TestCase
         $this->assertSeededScope('OWNER', 'ai.dashboard.view', DataScope::ALL);
         $this->assertSeededScope('ADMIN', 'reports.create', DataScope::ALL);
         $this->assertSeededScope('ADMIN', 'ai.dashboard.view', DataScope::ALL);
+        $this->assertSeededScope('EXECUTIVE_ASSISTANT', 'dashboard.view', DataScope::ORGANIZATION);
+        $this->assertSeededScope('EXECUTIVE_ASSISTANT', 'users.update', DataScope::ORGANIZATION);
+        $this->assertSeededScope('EXECUTIVE_ASSISTANT', 'audit.view', DataScope::ORGANIZATION);
         $this->assertSeededScope('HR_MANAGER', 'dashboard.view', DataScope::OWN);
         $this->assertSeededScope('HR_MANAGER', 'reports.create', DataScope::OWN);
         $this->assertSeededScope('HR_MANAGER', 'reports.view', DataScope::OWN);
@@ -150,11 +160,20 @@ class AuthorizationSeederTest extends TestCase
         $nonPrivilegedGrantCount = DB::table('role_permissions')
             ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
             ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
-            ->whereNotIn('roles.code', ['OWNER', 'ADMIN', 'HR_MANAGER'])
+            ->whereNotIn('roles.code', ['OWNER', 'ADMIN', 'HR_MANAGER', 'EXECUTIVE_ASSISTANT'])
             ->whereIn('permissions.code', $userPermissions)
             ->count();
 
         $this->assertSame(0, $nonPrivilegedGrantCount);
+
+        foreach (['users.assign_role', 'settings.manage', 'integrations.manage'] as $permission) {
+            $this->assertFalse(DB::table('role_permissions')
+                ->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+                ->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')
+                ->where('roles.code', 'EXECUTIVE_ASSISTANT')
+                ->where('permissions.code', $permission)
+                ->exists());
+        }
     }
 
     private function assertSeededScope(string $roleCode, string $permissionCode, ?DataScope $scope): void

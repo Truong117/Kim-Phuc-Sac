@@ -9,6 +9,7 @@ Only these exact filenames are accepted:
 1. `2026_10_27_000000_add_google_docs_source_to_weekly_plans.php`
 2. `2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php`
 3. `2026_10_28_000000_create_weekly_plan_entry_items_tables.php`
+4. `2026_10_29_000000_create_weekly_plan_staged_review_tables.php`
 
 Directories, arbitrary paths, raw Artisan arguments, multiple migrations, traversal, and unknown names are rejected by both the PowerShell wrapper and the isolated PHP launcher.
 
@@ -107,12 +108,16 @@ The complete expected index sets include the deterministic TiDB/MySQL child-FK i
 - migration 17 event table: `weekly_gdoc_tab_events_actor_foreign`, `weekly_gdoc_tab_events_new_user_foreign`, `weekly_gdoc_tab_events_old_user_foreign`, `weekly_gdoc_tab_events_plan_foreign`;
 - migration 18 item table: `weekly_plan_entry_items_weekly_plan_entry_id_foreign`;
 - migration 18 item-source-passage table: `weekly_item_passage_passage_foreign`; its first child FK is already covered by the composite primary key.
+- migration 19 review rounds: explicit indexes for `started_by` and `completed_by`; the plan FK is covered by the plan-led composite indexes;
+- migration 19 review decisions: explicit indexes for `assignee_id` and `reviewed_by`; the round FK is covered by the round/assignee unique index.
 
 Unexpected indexes or an unsupported metadata representation fail closed as partial schema. Parent FK prerequisites require a compatible unsigned bigint and a referenceable single-column PRIMARY/UNIQUE key.
 
 ## Sequencing and failure policy
 
-Migration 16 must complete postflight before migration 17 can pass Plan or Execute, and migrations 16 and 17 must both have exact complete schemas before migration 18 can pass. Migration 16 preserves Weekly Plan IDs/count, requires existing rows to use `UPLOADED_FILE`, and leaves the new source table empty. Migration 17 leaves both new mapping/event tables empty. Migration 18 preserves Weekly Plan IDs/count and the Weekly Plan Entry count, and leaves both new item tables empty.
+Migration 16 must complete postflight before migration 17 can pass Plan or Execute. Migration 18 requires migrations 16–17 complete, and migration 19 requires migrations 16–18 complete. Migration 16 preserves Weekly Plan IDs/count, requires existing rows to use `UPLOADED_FILE`, and leaves the new source table empty. Migration 17 leaves both new mapping/event tables empty. Migration 18 preserves Weekly Plan IDs/count and the Weekly Plan Entry count, and leaves both new item tables empty.
+
+Migration 19 preserves the exact Weekly Plan count, plan-ID fingerprint, Weekly Plan Entry count, and legacy employee-review row count. Its preflight records plans in `SUBMITTED`/`IN_REVIEW`, plans in legacy `CHANGES_REQUESTED`, and the distinct plan/assignee pairs that must receive OWNER decisions. Postflight requires all legacy statuses to be normalized to `OWNER_REVIEW` or `OWNER_CHANGES_REQUESTED`, exactly one OWNER round per affected plan, the expected copied/default decisions, and no loss of legacy review rows. It does not fabricate Assistant history.
 
 On any migration or postflight failure—including invalid inspector output—stop. Do not retry, roll back, drop objects, edit the migration ledger, seed, start the next migration, or attempt automatic repair. Collect only read-only evidence from the migration ledger, `INFORMATION_SCHEMA`, `SHOW CREATE TABLE`, process state, and DDL jobs.
 

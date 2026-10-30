@@ -20,6 +20,11 @@ class WeeklyPlanningPermissionSeederTest extends TestCase
         $owner = Role::query()->create(['code' => 'OWNER', 'name' => 'Owner', 'is_system' => true]);
         $hr = Role::query()->create(['code' => 'HR_MANAGER', 'name' => 'HR', 'is_system' => true]);
         $admin = Role::query()->create(['code' => 'ADMIN', 'name' => 'Admin', 'is_system' => true]);
+        $assistant = Role::query()->create([
+            'code' => 'EXECUTIVE_ASSISTANT',
+            'name' => 'Trợ lý Giám đốc',
+            'is_system' => true,
+        ]);
         $unrelated = Permission::query()->create([
             'code' => 'unrelated.keep',
             'name' => 'Keep',
@@ -33,6 +38,9 @@ class WeeklyPlanningPermissionSeederTest extends TestCase
         $this->assertTrue($owner->fresh()->permissions()->where('code', 'weekly_plans.publish')->exists());
         $this->assertTrue($hr->fresh()->permissions()->where('code', 'weekly_plans.manage_draft')->exists());
         $this->assertTrue($hr->fresh()->permissions()->where('code', 'unrelated.keep')->exists());
+        $this->assertTrue($assistant->fresh()->permissions()->where('code', 'weekly_plans.assistant_review')->exists());
+        $this->assertTrue($assistant->fresh()->permissions()->where('code', 'weekly_plans.view')->exists());
+        $this->assertFalse($assistant->fresh()->permissions()->where('code', 'weekly_plans.publish')->exists());
         $adminWeeklyPermissions = $admin->fresh()->permissions()->where('code', 'like', 'weekly_plans.%')->get();
         $this->assertCount(2, $adminWeeklyPermissions);
         foreach (['weekly_plans.view', 'weekly_plans.google_docs.configure'] as $code) {
@@ -46,6 +54,6 @@ class WeeklyPlanningPermissionSeederTest extends TestCase
         }
         $this->assertFalse($hr->fresh()->permissions()->where('code', 'weekly_plans.google_docs.configure')->exists());
         $this->assertFalse($owner->fresh()->permissions()->where('code', 'weekly_plans.google_docs.configure')->exists());
-        $this->assertSame(7, Permission::query()->where('code', 'like', 'weekly_plans.%')->count());
+        $this->assertSame(8, Permission::query()->where('code', 'like', 'weekly_plans.%')->count());
     }
 }

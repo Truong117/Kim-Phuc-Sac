@@ -302,7 +302,7 @@ class WeeklyPlanningResetTest extends TestCase
             ->assertOk();
         $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', WeeklyPlanStatus::SUBMITTED->value);
+            ->assertJsonPath('data.status', WeeklyPlanStatus::ASSISTANT_REVIEW->value);
     }
 
     #[DataProvider('uploadedSourceExtensions')]
@@ -325,7 +325,7 @@ class WeeklyPlanningResetTest extends TestCase
             ->assertOk();
         $this->actingAs($manager)->postJson("/api/weekly-plans/{$plan->id}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', WeeklyPlanStatus::SUBMITTED->value);
+            ->assertJsonPath('data.status', WeeklyPlanStatus::ASSISTANT_REVIEW->value);
     }
 
     /** @return iterable<string, array{string}> */

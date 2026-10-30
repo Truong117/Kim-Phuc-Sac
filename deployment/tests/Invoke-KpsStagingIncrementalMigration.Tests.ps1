@@ -35,7 +35,8 @@ function New-FakeInspectionResult {
             pending_migrations = @(
                 '2026_10_27_000000_add_google_docs_source_to_weekly_plans',
                 '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables',
-                '2026_10_28_000000_create_weekly_plan_entry_items_tables'
+                '2026_10_28_000000_create_weekly_plan_entry_items_tables',
+                '2026_10_29_000000_create_weekly_plan_staged_review_tables'
             )
             unexpected_migrations = @()
         }
@@ -43,6 +44,7 @@ function New-FakeInspectionResult {
             migration_16_state = 'absent'
             migration_17_state = 'absent'
             migration_18_state = 'absent'
+            migration_19_state = 'absent'
             parent_prerequisites_verified = $true
             migration_18_parent_prerequisites = [pscustomobject]@{
                 weekly_plan_entries_id_referenceable = $true
@@ -65,6 +67,10 @@ function New-FakeInspectionResult {
             weekly_plan_count = 4
             weekly_plan_id_fingerprint = ('d' * 64)
             weekly_plan_entry_count = 9
+            legacy_owner_review_plan_count = 2
+            legacy_owner_changes_plan_count = 1
+            expected_review_decision_count = 7
+            legacy_employee_review_count = 2
         }
         plan = [pscustomobject]@{}
     }
@@ -444,14 +450,17 @@ echo json_encode([
 }
 
 Describe 'isolated child environment and file integrity' {
-    It 'accepts migration 18 in both PowerShell and isolated PHP allowlists' {
+    It 'accepts migrations 18 and 19 in both PowerShell and isolated PHP allowlists' {
         $validateSet = (Get-Command $runnerPath).Parameters['Migration'].Attributes |
             Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
             Select-Object -First 1
         $migration18 = '2026_10_28_000000_create_weekly_plan_entry_items_tables.php'
+        $migration19 = '2026_10_29_000000_create_weekly_plan_staged_review_tables.php'
 
-        ($validateSet.ValidValues -contains $migration18) | Should Be $true
-        ($script:AllowedMigrations -contains $migration18) | Should Be $true
+        foreach ($migration in @($migration18, $migration19)) {
+            ($validateSet.ValidValues -contains $migration) | Should Be $true
+            ($script:AllowedMigrations -contains $migration) | Should Be $true
+        }
 
         $probe = @'
 require $argv[1].'/vendor/autoload.php';
@@ -463,6 +472,10 @@ echo $input->getParameterOption('--path');
 
         $LASTEXITCODE | Should Be 0
         $path | Should Be ('database/migrations/' + $migration18)
+
+        $path19 = & php -r $probe $backendRoot $migration19
+        $LASTEXITCODE | Should Be 0
+        $path19 | Should Be ('database/migrations/' + $migration19)
     }
 
     It 'atomically rejects reuse of a consumed receipt nonce' {
