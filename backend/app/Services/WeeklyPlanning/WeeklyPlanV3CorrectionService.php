@@ -4,6 +4,7 @@ namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanEmployeeWorkflowAction;
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEmployeeWorkflow;
@@ -263,15 +264,17 @@ final class WeeklyPlanV3CorrectionService
             ->lockForUpdate()
             ->firstOrFail();
         $this->assertCurrentAuthorization($actor, $plan, 'weekly_plans.submit');
-        $this->assertPlanEligible($plan);
 
         $existing = WeeklyPlanV3CorrectionBatch::query()
             ->where('weekly_plan_id', $plan->id)
             ->where('request_id', $requestId)
             ->first();
         if ($existing instanceof WeeklyPlanV3CorrectionBatch) {
+            $this->assertReplayEligible($plan);
+
             return $this->replay($existing, $payloadSha256);
         }
+        $this->assertPlanEligible($plan);
 
         $assigneeIds = $employees->pluck('assigneeId')->all();
         /** @var Collection<int, WeeklyPlanEmployeeWorkflow> $workflows */
@@ -448,6 +451,17 @@ final class WeeklyPlanV3CorrectionService
         }
     }
 
+    private function assertReplayEligible(WeeklyPlan $plan): void
+    {
+        if ($plan->workflow_version !== WeeklyPlanWorkflowVersion::V3
+            || ! (bool) config('weekly_plans.workflow_v3_enabled', false)) {
+            throw new WeeklyPlanV3BatchException(
+                'PLAN_NOT_CORRECTABLE',
+                'Kế hoạch không cho phép truy xuất kết quả chỉnh sửa V3.',
+            );
+        }
+    }
+
     private function assertCurrentAuthorization(User $actor, WeeklyPlan $plan, string $permission): void
     {
         $membership = $this->scope->freshAuthorizedMembership($actor, $permission);
@@ -478,7 +492,7 @@ final class WeeklyPlanV3CorrectionService
             ->whereKey($planId)
             ->firstOrFail();
         $this->assertCurrentAuthorization($actor, $plan, 'weekly_plans.submit');
-        $this->assertPlanEligible($plan);
+        $this->assertReplayEligible($plan);
 
         return $this->replay($batch, $payloadSha256);
     }

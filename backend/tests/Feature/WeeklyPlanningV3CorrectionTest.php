@@ -13,11 +13,13 @@ use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEmployeeWorkflow;
 use App\Models\WeeklyPlanEntry;
+use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanV3CorrectionBatch;
 use App\Models\WeeklyPlanV3ReviewBatch;
 use App\Models\WeeklyPlanV3ReviewDecision;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 use Tests\AuthorizationFixtures;
@@ -59,6 +61,7 @@ class WeeklyPlanningV3CorrectionTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.employee_workflows.0.actions.can_correct', true)
             ->assertJsonPath('data.employee_workflows.0.actions.can_resubmit', true)
+            ->assertJsonPath('data.employee_workflows.0.viewer_context.read_only', false)
             ->assertJsonPath('data.employee_workflows.1.actions.can_correct', false);
 
         $created = $this->actingAs($hr)
@@ -383,6 +386,116 @@ class WeeklyPlanningV3CorrectionTest extends TestCase
             }
         }
         $this->assertDatabaseCount('weekly_plan_v3_correction_batches', 1);
+    }
+
+    public function test_exact_replay_survives_employee_and_plan_completion_but_remains_authorized(): void
+    {
+        [$hr, $organizationId] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit',
+        ]);
+        [$observer] = $this->actor(['weekly_plans.view']);
+        [$outsideHr] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit',
+        ], 'OTHER');
+        [$employee] = $this->actor([]);
+        $plan = $this->plan($organizationId, $hr);
+        $workflow = $this->workflow($plan, $employee, stateVersion: 3, contentVersion: 4);
+        $url = "/api/weekly-plans/{$plan->id}/correction-batches";
+        $payload = ['employees' => [$this->employeePayload($workflow)]];
+
+        $created = $this->actingAs($hr)
+            ->withHeader('Idempotency-Key', 'hr-terminal-replay-001')
+            ->postJson($url, $payload)
+            ->assertCreated();
+        $batchId = $created->json('data.batch.id');
+        $eventCount = WeeklyPlanEvent::query()->count();
+
+        $workflow->forceFill([
+            'state' => WeeklyPlanEmployeeWorkflowState::PUBLISHED,
+            'state_version' => 8,
+        ])->save();
+        $plan->forceFill(['status' => WeeklyPlanStatus::PUBLISHED])->save();
+
+        $this->actingAs($hr)
+            ->withHeader('Idempotency-Key', 'hr-terminal-replay-001')
+            ->postJson($url, $payload)
+            ->assertOk()
+            ->assertJsonPath('data.batch.id', $batchId)
+            ->assertJsonPath('data.results.0.to_state', 'AWAITING_ASSISTANT');
+        $this->assertSame($eventCount, WeeklyPlanEvent::query()->count());
+        $this->assertSame(WeeklyPlanEmployeeWorkflowState::PUBLISHED, $workflow->fresh()->state);
+
+        $different = $payload;
+        $different['employees'][0]['expected_content_version'] = 5;
+        $this->actingAs($hr)
+            ->withHeader('Idempotency-Key', 'hr-terminal-replay-001')
+            ->postJson($url, $different)
+            ->assertConflict()
+            ->assertJsonPath('code', 'IDEMPOTENCY_KEY_REUSED');
+        $this->actingAs($observer)
+            ->withHeader('Idempotency-Key', 'hr-terminal-replay-001')
+            ->postJson($url, $payload)
+            ->assertForbidden();
+        $this->actingAs($outsideHr)
+            ->withHeader('Idempotency-Key', 'hr-terminal-replay-001')
+            ->postJson($url, $payload)
+            ->assertUnauthorized();
+
+        config()->set('weekly_plans.workflow_v3_enabled', false);
+        $this->actingAs($hr)
+            ->withHeader('Idempotency-Key', 'hr-terminal-replay-001')
+            ->postJson($url, $payload)
+            ->assertConflict()
+            ->assertJsonPath('code', 'PLAN_NOT_CORRECTABLE');
+    }
+
+    public function test_projection_read_only_uses_every_executable_employee_action(): void
+    {
+        [$hr, $organizationId] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit',
+        ]);
+        [$assistant] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.assistant_review',
+        ]);
+        [$owner] = $this->actor([
+            'weekly_plans.view', 'weekly_plans.review',
+        ]);
+        [$observer] = $this->actor(['weekly_plans.view']);
+        [$correctionEmployee] = $this->actor([]);
+        [$assistantEmployee] = $this->actor([]);
+        [$ownerEmployee] = $this->actor([]);
+        [$publishedEmployee] = $this->actor([]);
+        $plan = $this->plan($organizationId, $hr);
+        $this->workflow($plan, $correctionEmployee);
+        $this->workflow($plan, $assistantEmployee, WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT);
+        $this->workflow($plan, $ownerEmployee, WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER);
+        $this->workflow($plan, $publishedEmployee, WeeklyPlanEmployeeWorkflowState::PUBLISHED);
+
+        $project = function (User $viewer) use ($plan): Collection {
+            return collect($this->actingAs($viewer)
+                ->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->json('data.employee_workflows'))
+                ->keyBy('assignee.id');
+        };
+
+        $this->assertFalse($project($hr)[$correctionEmployee->id]['viewer_context']['read_only']);
+        $this->assertFalse($project($assistant)[$assistantEmployee->id]['viewer_context']['read_only']);
+        $this->assertTrue($project($owner)[$ownerEmployee->id]['viewer_context']['read_only']);
+        foreach ($project($observer) as $projection) {
+            $this->assertTrue($projection['viewer_context']['read_only']);
+        }
+        foreach ([$hr, $assistant, $owner, $observer] as $viewer) {
+            $this->assertTrue($project($viewer)[$publishedEmployee->id]['viewer_context']['read_only']);
+        }
+
+        config()->set('weekly_plans.workflow_v3_enabled', false);
+        foreach ($project($hr) as $projection) {
+            $this->assertTrue($projection['viewer_context']['read_only']);
+        }
+        foreach ($project($assistant) as $projection) {
+            $this->assertTrue($projection['viewer_context']['read_only']);
+        }
     }
 
     /** @param list<string> $permissions @return array{User, int, int} */

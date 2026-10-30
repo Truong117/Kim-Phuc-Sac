@@ -15,6 +15,12 @@ import type {
   WeeklyPlanEntry,
   WeeklyPlanEntryInput,
 } from "@/types/weeklyPlanning";
+import {
+  clearConfirmedWeeklyPlanV3CorrectionSelection,
+  resolveWeeklyPlanV3CorrectionConfirmation,
+  weeklyPlanV3CorrectionFailureMode,
+  type WeeklyPlanV3PendingCorrectionConfirmation,
+} from "@/utils/weeklyPlanV3CorrectionConfirmation";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -23,6 +29,8 @@ type Editor = {
   entry?: WeeklyPlanEntry;
 };
 
+type RecoveryState = "AMBIGUOUS" | "STALE" | "VALIDATION" | "RECONCILED" | null;
+
 const requestId = () =>
   `hr-correction-${Date.now()}-${crypto.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 
@@ -30,14 +38,16 @@ export default function WeeklyPlanV3HrCorrections() {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.v3Corrections",
   });
-  const { plan, references, busy, perform } = useWeeklyPlanWizard();
+  const { plan, references, busy, perform, refresh } = useWeeklyPlanWizard();
   const [editor, setEditor] = useState<Editor | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [serverErrors, setServerErrors] = useState<ValidationErrors>({});
   const [serverErrorVersion, setServerErrorVersion] = useState(0);
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<WeeklyPlanV3PendingCorrectionConfirmation | null>(null);
+  const [recoveryState, setRecoveryState] = useState<RecoveryState>(null);
   const submitRef = useRef(false);
-  const idempotencyKeyRef = useRef<string | null>(null);
 
   const correctionWorkflows = useMemo(
     () =>
@@ -49,6 +59,13 @@ export default function WeeklyPlanV3HrCorrections() {
   const otherWorkflows = (plan?.employee_workflows ?? []).filter(
     (workflow) => workflow.state !== "HR_CORRECTION",
   );
+  const selectedEligibleIds = useMemo(() => {
+    const eligible = new Set(
+      correctionWorkflows.map((workflow) => workflow.assignee.id),
+    );
+
+    return selected.filter((id) => eligible.has(id));
+  }, [correctionWorkflows, selected]);
 
   if (!plan) return null;
 
@@ -88,31 +105,70 @@ export default function WeeklyPlanV3HrCorrections() {
     });
   };
   const confirmBatch = () => {
-    if (submitRef.current || selected.length === 0) return;
+    if (
+      submitRef.current ||
+      (selectedEligibleIds.length === 0 && pendingConfirmation === null)
+    ) {
+      return;
+    }
     submitRef.current = true;
-    const employees = correctionWorkflows
+    const currentEmployees = correctionWorkflows
       .filter((workflow) => selected.includes(workflow.assignee.id))
       .map((workflow) => ({
         assignee_id: workflow.assignee.id,
         expected_state_version: workflow.state_version,
         expected_content_version: workflow.content_version,
       }));
-    idempotencyKeyRef.current ??= requestId();
-    void perform(() =>
-      confirmWeeklyPlanV3CorrectionBatch(
-        plan.id,
-        employees,
-        idempotencyKeyRef.current!,
-      ).then((result) => result.plan),
-    ).then((ok) => {
-      if (ok) {
-        setSelected([]);
+    const resolution = resolveWeeklyPlanV3CorrectionConfirmation(
+      pendingConfirmation,
+      plan.id,
+      currentEmployees,
+      requestId,
+    );
+    setPendingConfirmation(resolution.confirmation);
+    setRecoveryState(null);
+    let failure: unknown;
+    let batchResult: Awaited<
+      ReturnType<typeof confirmWeeklyPlanV3CorrectionBatch>
+    > | null = null;
+    void perform(async () => {
+      try {
+        batchResult = await confirmWeeklyPlanV3CorrectionBatch(
+          plan.id,
+          resolution.confirmation.employees,
+          resolution.confirmation.requestId,
+        );
+        return batchResult.plan;
+      } catch (error) {
+        failure = error;
+        throw error;
+      }
+    }).then((ok) => {
+      if (ok && batchResult) {
+        setSelected((current) =>
+          clearConfirmedWeeklyPlanV3CorrectionSelection(
+            current,
+            batchResult!.results,
+          ),
+        );
         setConfirming(false);
-        idempotencyKeyRef.current = null;
+        setPendingConfirmation(null);
+        setRecoveryState(
+          resolution.reconciliationRequired ? "RECONCILED" : null,
+        );
+      } else {
+        const failureMode = weeklyPlanV3CorrectionFailureMode(failure);
+        if (failureMode !== "AMBIGUOUS") {
+          setPendingConfirmation(null);
+        }
+        setRecoveryState(failureMode);
       }
       submitRef.current = false;
     });
   };
+
+  const confirmationCount =
+    pendingConfirmation?.employees.length ?? selectedEligibleIds.length;
 
   return (
     <div className="space-y-5" data-workspace="v3-hr-corrections">
@@ -120,7 +176,8 @@ export default function WeeklyPlanV3HrCorrections() {
         <div className="space-y-5">
           {correctionWorkflows.map((workflow) => {
             const entries = entriesFor(workflow.assignee.id);
-            const canEdit = workflow.actions.can_correct;
+            const canEdit =
+              workflow.actions.can_correct && pendingConfirmation === null;
             const canSelect = workflow.actions.can_resubmit;
             const employee = lockedEmployee(workflow);
             const comments = plan.comments.filter(
@@ -258,14 +315,14 @@ export default function WeeklyPlanV3HrCorrections() {
             </p>
           )}
 
-          {selected.length > 0 && (
+          {(selectedEligibleIds.length > 0 || pendingConfirmation !== null) && (
             <div className="flex justify-end">
               <Button
                 type="button"
                 disabled={busy}
                 onClick={() => setConfirming(true)}
               >
-                {t("resubmit", { count: selected.length })}
+                {t("resubmit", { count: confirmationCount })}
               </Button>
             </div>
           )}
@@ -280,7 +337,7 @@ export default function WeeklyPlanV3HrCorrections() {
                 {t("confirmTitle")}
               </p>
               <p className="mt-1 text-theme-sm text-gray-600 dark:text-gray-300">
-                {t("confirmDescription", { count: selected.length })}
+                {t("confirmDescription", { count: confirmationCount })}
               </p>
               <div className="mt-4 flex justify-end gap-2">
                 <Button
@@ -292,9 +349,39 @@ export default function WeeklyPlanV3HrCorrections() {
                   {t("cancel")}
                 </Button>
                 <Button type="button" disabled={busy} onClick={confirmBatch}>
-                  {t("confirm")}
+                  {pendingConfirmation ? t("recovery.retry") : t("confirm")}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {recoveryState && (
+            <div
+              role="alert"
+              className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-theme-sm text-warning-800 dark:border-warning-800 dark:bg-warning-500/10 dark:text-warning-300"
+            >
+              <p>{t(`recovery.${recoveryState}`)}</p>
+              {recoveryState === "AMBIGUOUS" && (
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" disabled={busy} onClick={confirmBatch}>
+                    {t("recovery.retry")}
+                  </Button>
+                </div>
+              )}
+              {recoveryState === "STALE" && (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      void refresh().then(() => setRecoveryState(null));
+                    }}
+                  >
+                    {t("recovery.reload")}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

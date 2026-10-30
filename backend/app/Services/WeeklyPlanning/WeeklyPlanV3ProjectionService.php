@@ -106,8 +106,7 @@ final class WeeklyPlanV3ProjectionService
                         ],
                         'viewer_context' => [
                             'mode' => $this->viewerMode($workflow->state, $viewerContext),
-                            'read_only' => ! $actions['can_accept']
-                                && ! $actions['can_request_changes'],
+                            'read_only' => ! in_array(true, $actions, true),
                         ],
                         'actions' => $actions,
                     ];

@@ -1692,6 +1692,14 @@
       "confirmDescription": "{count} nhân viên đã chọn sẽ quay lại vòng xét duyệt của Trợ lý Giám đốc.",
       "cancel": "Hủy",
       "confirm": "Xác nhận gửi lại",
+      "recovery": {
+        "AMBIGUOUS": "Chưa thể xác định yêu cầu trước đã được xử lý hay chưa. Hãy thử lại để đối soát đúng yêu cầu đó trước khi gửi lô mới.",
+        "STALE": "Phiên bản nội dung hoặc trạng thái đã thay đổi. Dữ liệu bạn đang nhập vẫn được giữ lại; hãy tải lại kế hoạch và kiểm tra trước khi xác nhận.",
+        "VALIDATION": "Lô chỉnh sửa chưa hợp lệ. Các lựa chọn và nội dung chưa gửi vẫn được giữ lại để bạn kiểm tra.",
+        "RECONCILED": "Yêu cầu trước đã được đối soát thành công. Các nhân viên mới chọn vẫn được giữ lại; hãy xác nhận lô mới khi sẵn sàng.",
+        "retry": "Thử lại và đối soát",
+        "reload": "Tải lại kế hoạch"
+      },
       "states": {
         "AWAITING_ASSISTANT": "Đang chờ Trợ lý xét duyệt",
         "STAGED_FOR_OWNER": "Đã chuyển OWNER",
