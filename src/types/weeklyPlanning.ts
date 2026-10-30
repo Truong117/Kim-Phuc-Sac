@@ -299,7 +299,7 @@ export type WeeklyPlan = {
   };
   entries: WeeklyPlanEntry[];
   employee_reviews: WeeklyPlanReview[];
-  review_workflow: WeeklyPlanReviewWorkflow;
+  review_workflow: WeeklyPlanReviewWorkflow | null;
   suggestions: WeeklyPlanSuggestion[];
   comments: WeeklyPlanComment[];
   events: WeeklyPlanEvent[];

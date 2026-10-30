@@ -282,6 +282,24 @@ export const publishWeeklyPlan = (id: number) => planAction(id, "publish");
 export const approveAndPublishWeeklyPlan = (id: number) =>
   planAction(id, "approve-and-publish");
 
+export const finalizeAssistantWeeklyPlanReview = (id: number) =>
+  planAction(id, "finalize-assistant-review");
+
+export const decideWeeklyPlanReview = async (
+  id: number,
+  assigneeId: number,
+  decision: Exclude<WeeklyPlanReviewStatus, "PENDING">,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    `/api/weekly-plans/${id}/review-decisions/${assigneeId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    },
+  );
+  return response.data;
+};
+
 export const reviewWeeklyPlanEmployee = async (
   id: number,
   assigneeId: number,

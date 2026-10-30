@@ -176,7 +176,7 @@ function TargetPicker({
 
 type Props = {
   idPrefix: string;
-  plan: Pick<WeeklyPlan, "employee_reviews" | "entries">;
+  plan: Pick<WeeklyPlan, "employee_reviews" | "entries" | "review_workflow">;
   value: WeeklyPlanDiscussionTarget;
   onChange: (value: WeeklyPlanDiscussionTarget) => void;
   disabled?: boolean;

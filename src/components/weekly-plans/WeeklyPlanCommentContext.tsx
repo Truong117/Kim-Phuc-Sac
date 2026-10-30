@@ -3,7 +3,7 @@ import { resolveWeeklyPlanCommentContext } from "@/utils/weeklyPlanCommentContex
 import { useTranslation } from "react-i18next";
 
 type Props = {
-  plan: Pick<WeeklyPlan, "employee_reviews" | "entries">;
+  plan: Pick<WeeklyPlan, "employee_reviews" | "entries" | "review_workflow">;
   comment: Pick<WeeklyPlanComment, "entry_id" | "assignee_id">;
 };
 
