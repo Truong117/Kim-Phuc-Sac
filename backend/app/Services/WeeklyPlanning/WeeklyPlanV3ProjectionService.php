@@ -6,7 +6,8 @@ use App\Enums\WeeklyPlanEmployeeWorkflowState;
 use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEmployeeWorkflow;
-use Illuminate\Database\Eloquent\Collection;
+use App\Models\WeeklyPlanEntry;
+use Illuminate\Support\Collection;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -17,6 +18,7 @@ final class WeeklyPlanV3ProjectionService
         private readonly WeeklyPlanEmployeeWorkflowIntegrityService $integrity,
         private readonly WeeklyPlanV3SummaryService $summaries,
         private readonly WeeklyPlanV3AssistantEligibilityService $assistantEligibility,
+        private readonly WeeklyPlanV3EmployeeReadinessService $readiness,
     ) {}
 
     /**
@@ -61,6 +63,7 @@ final class WeeklyPlanV3ProjectionService
         $viewerContext = $this->viewerContextPermissions($viewer);
         $assistantActionsEnabled = $this->assistantEligibility->planAllowsReview($plan)
             && $viewerContext['assistant'];
+        $correctionActionsEnabled = $this->assistantEligibility->planAllowsReview($plan);
 
         return [
             'employee_workflows' => $workflows
@@ -68,9 +71,16 @@ final class WeeklyPlanV3ProjectionService
                     $entriesByAssignee,
                     $viewerContext,
                     $assistantActionsEnabled,
+                    $correctionActionsEnabled,
                 ): array {
                     $entries = $entriesByAssignee->get($workflow->assignee_id, collect());
-                    $actions = $this->actionsFor($workflow->state, $assistantActionsEnabled);
+                    $actions = $this->actionsFor(
+                        $workflow,
+                        $entries,
+                        $assistantActionsEnabled,
+                        $correctionActionsEnabled && $viewerContext['correct'],
+                        $correctionActionsEnabled && $viewerContext['resubmit'],
+                    );
 
                     return [
                         'id' => $workflow->id,
@@ -108,18 +118,20 @@ final class WeeklyPlanV3ProjectionService
         ];
     }
 
-    /** @return array{assistant: bool, owner: bool, hr: bool} */
+    /** @return array{assistant: bool, owner: bool, hr: bool, correct: bool, resubmit: bool} */
     private function viewerContextPermissions(User $viewer): array
     {
         return [
             'assistant' => $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
             'owner' => $this->scope->allows($viewer, 'weekly_plans.review'),
+            'correct' => $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'resubmit' => $this->scope->allows($viewer, 'weekly_plans.submit'),
             'hr' => $this->scope->allows($viewer, 'weekly_plans.manage_draft')
                 || $this->scope->allows($viewer, 'weekly_plans.submit'),
         ];
     }
 
-    /** @param array{assistant: bool, owner: bool, hr: bool} $permissions */
+    /** @param array{assistant: bool, owner: bool, hr: bool, correct: bool, resubmit: bool} $permissions */
     private function viewerMode(
         WeeklyPlanEmployeeWorkflowState $state,
         array $permissions,
@@ -135,19 +147,30 @@ final class WeeklyPlanV3ProjectionService
         };
     }
 
-    /** @return array{can_accept: bool, can_request_changes: bool, can_correct: false, can_resubmit: false, can_publish: false} */
+    /**
+     * @param  Collection<int, WeeklyPlanEntry>  $entries
+     * @return array{can_accept: bool, can_request_changes: bool, can_correct: bool, can_resubmit: bool, can_publish: false}
+     */
     private function actionsFor(
-        WeeklyPlanEmployeeWorkflowState $state,
+        WeeklyPlanEmployeeWorkflow $workflow,
+        Collection $entries,
         bool $assistantActionsEnabled,
+        bool $correctionEnabled,
+        bool $resubmitEnabled,
     ): array {
         $canReview = $assistantActionsEnabled
-            && $state === WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT;
+            && $workflow->state === WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT;
+        $canCorrect = $correctionEnabled
+            && $workflow->state === WeeklyPlanEmployeeWorkflowState::HR_CORRECTION;
+        $canResubmit = $resubmitEnabled
+            && $workflow->state === WeeklyPlanEmployeeWorkflowState::HR_CORRECTION
+            && $this->readiness->ready($entries, $workflow->assignee_id);
 
         return [
             'can_accept' => $canReview,
             'can_request_changes' => $canReview,
-            'can_correct' => false,
-            'can_resubmit' => false,
+            'can_correct' => $canCorrect,
+            'can_resubmit' => $canResubmit,
             'can_publish' => false,
         ];
     }

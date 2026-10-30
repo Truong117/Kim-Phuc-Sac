@@ -99,6 +99,13 @@ class WeeklyPlan extends Model
             ->orderBy('id');
     }
 
+    public function v3CorrectionBatches(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanV3CorrectionBatch::class)
+            ->orderBy('confirmed_at')
+            ->orderBy('id');
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(WeeklyPlanComment::class)

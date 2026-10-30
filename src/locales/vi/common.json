@@ -1657,6 +1657,11 @@
       "OWNER_EMPLOYEE_CHANGES_REQUESTED": "OWNER đã yêu cầu nhân viên chỉnh sửa",
       "OWNER_REVIEW_COMPLETED": "OWNER đã hoàn tất xét duyệt",
       "V3_ASSISTANT_BATCH_CONFIRMED": "Trợ lý đã xác nhận lô xét duyệt V3",
+      "V3_EMPLOYEE_ENTRY_ADDED": "Nhân sự đã thêm công việc cần chỉnh sửa",
+      "V3_EMPLOYEE_ENTRY_UPDATED": "Nhân sự đã cập nhật công việc cần chỉnh sửa",
+      "V3_EMPLOYEE_ENTRY_DELETED": "Nhân sự đã xóa công việc cần chỉnh sửa",
+      "V3_EMPLOYEE_CORRECTION_RESUBMITTED": "Nhân sự đã gửi lại kế hoạch của nhân viên cho Trợ lý",
+      "V3_HR_CORRECTION_BATCH_CONFIRMED": "Nhân sự đã xác nhận lô chỉnh sửa V3",
       "COMMENT_ADDED": "Đã thêm nhận xét",
       "SUGGESTION_DECIDED": "Đã xử lý gợi ý theo quy tắc",
       "ANALYZED": "Đã chạy phân tích theo quy tắc",
@@ -1667,6 +1672,33 @@
       "SOURCE_ENTRIES_APPLIED": "Đã tạo công việc nháp từ tài liệu nguồn",
       "APPROVED": "Đã phê duyệt cuối",
       "PUBLISHED": "Đã phát hành thành Task"
+    },
+    "v3Corrections": {
+      "title": "Chỉnh sửa theo nhân viên",
+      "description": "Chỉ cập nhật các nhân viên được yêu cầu chỉnh sửa, sau đó gửi lại cho Trợ lý Giám đốc.",
+      "origin": "Yêu cầu từ {stage}",
+      "stages": {
+        "ASSISTANT": "Trợ lý Giám đốc",
+        "OWNER": "OWNER"
+      },
+      "counts": "{entries} công việc · {items} đầu mục",
+      "addEntry": "Thêm công việc",
+      "select": "Chọn gửi lại",
+      "deleteConfirm": "Xóa công việc này? Thảo luận và công việc đã xuất bản sẽ được bảo vệ.",
+      "discussion": "Thảo luận liên quan ({count})",
+      "empty": "Không còn nhân viên nào đang chờ chỉnh sửa.",
+      "resubmit": "Gửi lại {count} nhân viên",
+      "confirmTitle": "Xác nhận gửi lại cho Trợ lý",
+      "confirmDescription": "{count} nhân viên đã chọn sẽ quay lại vòng xét duyệt của Trợ lý Giám đốc.",
+      "cancel": "Hủy",
+      "confirm": "Xác nhận gửi lại",
+      "states": {
+        "AWAITING_ASSISTANT": "Đang chờ Trợ lý xét duyệt",
+        "STAGED_FOR_OWNER": "Đã chuyển OWNER",
+        "HR_CORRECTION": "Đang chờ chỉnh sửa",
+        "PUBLISHED": "Đã phát hành Task",
+        "NO_WORK_APPROVED": "Đã duyệt không có công việc"
+      }
     },
     "entryForm": {
       "addTitle": "Thêm công việc",

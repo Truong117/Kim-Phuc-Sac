@@ -855,6 +855,54 @@ function incrementalMigration20SchemaState(PDO $pdo): string
 }
 
 /**
+ * @param  list<array<string, mixed>>  $columns
+ * @param  array<string, mixed>  $indexes
+ * @param  array<string, mixed>  $foreignKeys
+ */
+function incrementalMigration21SchemaStateFromMetadata(
+    array $columns,
+    array $indexes,
+    array $foreignKeys,
+): string {
+    if ($columns === [] && $indexes === [] && $foreignKeys === []) {
+        return 'absent';
+    }
+
+    $columnsValid = incrementalColumnsMatch($columns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'weekly_plan_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'request_id' => incrementalExpectedColumn('/^varchar\(64\)$/'),
+        'payload_sha256' => incrementalExpectedColumn('/^char\(64\)$/'),
+        'submitter_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', 'YES', key: 'MUL'),
+        'submitter_name' => incrementalExpectedColumn('/^varchar\(255\)$/'),
+        'result_snapshot' => incrementalExpectedColumn('/^json$/'),
+        'confirmed_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+    ]);
+    $indexesValid = StagingIncrementalSchema::indexesMatch($indexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'weekly_v3_correction_batches_plan_confirmed_index' => incrementalExpectedIndex(1, ['weekly_plan_id', 'confirmed_at']),
+        'weekly_v3_correction_batches_plan_request_unique' => incrementalExpectedIndex(0, ['weekly_plan_id', 'request_id']),
+        'weekly_v3_correction_batches_submitter_index' => incrementalExpectedIndex(1, ['submitter_id']),
+    ]);
+    $foreignKeysValid = StagingIncrementalSchema::foreignKeysMatch($foreignKeys, [
+        'weekly_v3_correction_batches_plan_foreign' => incrementalExpectedForeignKey(['weekly_plan_id'], 'weekly_plans', ['id'], 'RESTRICT'),
+        'weekly_v3_correction_batches_submitter_foreign' => incrementalExpectedForeignKey(['submitter_id'], 'users', ['id'], 'SET NULL'),
+    ]);
+
+    return $columnsValid && $indexesValid && $foreignKeysValid ? 'complete' : 'partial';
+}
+
+function incrementalMigration21SchemaState(PDO $pdo): string
+{
+    return incrementalMigration21SchemaStateFromMetadata(
+        incrementalColumns($pdo, 'weekly_plan_v3_correction_batches'),
+        incrementalIndexes($pdo, 'weekly_plan_v3_correction_batches'),
+        incrementalForeignKeys($pdo, 'weekly_plan_v3_correction_batches'),
+    );
+}
+
+/**
  * @param  list<array<string, mixed>>  $entryColumns
  * @param  array<string, mixed>  $entryIndexes
  * @param  list<array<string, mixed>>  $passageColumns
@@ -904,7 +952,17 @@ function incrementalParentPrerequisitesVerified(
     array $migration18ParentEvidence,
     string $migration18State = 'complete',
     string $migration19State = 'complete',
+    string $migration20State = 'complete',
 ): bool {
+    if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_21) {
+        return $migration16State === 'complete'
+            && $migration17State === 'complete'
+            && $migration18State === 'complete'
+            && $migration19State === 'complete'
+            && $migration20State === 'complete'
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'weekly_plans')
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'users');
+    }
     if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_20) {
         return $migration16State === 'complete'
             && $migration17State === 'complete'
@@ -976,6 +1034,7 @@ function incrementalCountRows(PDO $pdo, string $table, array $tables): ?int
         'weekly_plan_employee_workflows',
         'weekly_plan_v3_review_batches',
         'weekly_plan_v3_review_decisions',
+        'weekly_plan_v3_correction_batches',
     ];
 
     if (! in_array($table, $allowed, true)) {
@@ -1184,6 +1243,7 @@ $migration17State = incrementalMigration17SchemaState($pdo);
 $migration18State = incrementalMigration18SchemaState($pdo);
 $migration19State = incrementalMigration19SchemaState($pdo);
 $migration20State = incrementalMigration20SchemaState($pdo);
+$migration21State = incrementalMigration21SchemaState($pdo);
 $migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);
 $weeklyPlanIdFingerprint = hash('sha256', implode(',', $weeklyPlanIds));
@@ -1255,6 +1315,7 @@ $state = [
     'migration_18_schema_state' => $migration18State,
     'migration_19_schema_state' => $migration19State,
     'migration_20_schema_state' => $migration20State,
+    'migration_21_schema_state' => $migration21State,
     'parent_prerequisites_verified' => incrementalParentPrerequisitesVerified(
         $pdo,
         $migrationFile,
@@ -1263,6 +1324,7 @@ $state = [
         $migration18ParentEvidence,
         $migration18State,
         $migration19State,
+        $migration20State,
     ),
     'source_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_sources', $tables),
     'mapping_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_tab_mappings', $tables),
@@ -1280,6 +1342,7 @@ $state = [
     'v3_employee_workflow_count' => incrementalCountRows($pdo, 'weekly_plan_employee_workflows', $tables),
     'v3_review_batch_count' => incrementalCountRows($pdo, 'weekly_plan_v3_review_batches', $tables),
     'v3_review_decision_count' => incrementalCountRows($pdo, 'weekly_plan_v3_review_decisions', $tables),
+    'v3_correction_batch_count' => incrementalCountRows($pdo, 'weekly_plan_v3_correction_batches', $tables),
     'legacy_employee_review_count' => $legacyEmployeeReviewCount,
     'legacy_status_plan_count' => (int) ($legacyStatusPlanCountRows[0]['aggregate'] ?? -1),
     'owner_review_plan_count' => (int) ($ownerReviewPlanCountRows[0]['aggregate'] ?? -1),
@@ -1364,6 +1427,7 @@ incrementalFinish([
         'migration_18_state' => $migration18State,
         'migration_19_state' => $migration19State,
         'migration_20_state' => $migration20State,
+        'migration_21_state' => $migration21State,
         'parent_prerequisites_verified' => $state['parent_prerequisites_verified'],
         'migration_18_parent_prerequisites' => $migration18ParentEvidence,
         'source_row_count' => $state['source_row_count'],
@@ -1376,6 +1440,7 @@ incrementalFinish([
         'v3_employee_workflow_count' => $state['v3_employee_workflow_count'],
         'v3_review_batch_count' => $state['v3_review_batch_count'],
         'v3_review_decision_count' => $state['v3_review_decision_count'],
+        'v3_correction_batch_count' => $state['v3_correction_batch_count'],
     ],
     'concurrency' => [
         'ddl_jobs_verified' => $state['ddl_jobs_verified'],

@@ -19,6 +19,8 @@ import type {
   WeeklyPlanSourceEntryInput,
   WeeklyPlanV3AssistantBatchDecisionInput,
   WeeklyPlanV3AssistantBatchResult,
+  WeeklyPlanV3CorrectionBatchResult,
+  WeeklyPlanV3CorrectionEmployeeInput,
 } from "@/types/weeklyPlanning";
 
 type WeeklyPlanResponse = { data: WeeklyPlan };
@@ -309,6 +311,78 @@ export const confirmWeeklyPlanAssistantBatch = (
   idempotencyKey: string,
 ): Promise<WeeklyPlanV3AssistantBatchResult> =>
   requestWeeklyPlanAssistantBatch(apiRequest, id, decisions, idempotencyKey);
+
+export const addWeeklyPlanV3CorrectionEntry = async (
+  id: number,
+  assigneeId: number,
+  expectedContentVersion: number,
+  input: WeeklyPlanEntryInput,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    `/api/weekly-plans/${id}/v3-corrections/${assigneeId}/entries`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        ...input,
+        expected_content_version: expectedContentVersion,
+      }),
+    },
+  );
+  return response.data;
+};
+
+export const updateWeeklyPlanV3CorrectionEntry = async (
+  id: number,
+  assigneeId: number,
+  entryId: number,
+  expectedContentVersion: number,
+  input: WeeklyPlanEntryInput,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    `/api/weekly-plans/${id}/v3-corrections/${assigneeId}/entries/${entryId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...input,
+        expected_content_version: expectedContentVersion,
+      }),
+    },
+  );
+  return response.data;
+};
+
+export const deleteWeeklyPlanV3CorrectionEntry = async (
+  id: number,
+  assigneeId: number,
+  entryId: number,
+  expectedContentVersion: number,
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    `/api/weekly-plans/${id}/v3-corrections/${assigneeId}/entries/${entryId}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({
+        expected_content_version: expectedContentVersion,
+      }),
+    },
+  );
+  return response.data;
+};
+
+export const confirmWeeklyPlanV3CorrectionBatch = async (
+  id: number,
+  employees: WeeklyPlanV3CorrectionEmployeeInput[],
+  idempotencyKey: string,
+): Promise<WeeklyPlanV3CorrectionBatchResult> => {
+  const response = await apiRequest<{
+    data: WeeklyPlanV3CorrectionBatchResult;
+  }>(`/api/weekly-plans/${id}/correction-batches`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ employees }),
+  });
+  return response.data;
+};
 
 export const reviewWeeklyPlanEmployee = async (
   id: number,

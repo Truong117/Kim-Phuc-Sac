@@ -5,6 +5,7 @@ import Button from "@/components/ui/button/Button";
 import WeeklyPlanCommentContext from "@/components/weekly-plans/WeeklyPlanCommentContext";
 import WeeklyPlanDiscussionTargetFields from "@/components/weekly-plans/WeeklyPlanDiscussionTargetFields";
 import WeeklyPlanWizardLayout from "@/components/weekly-plans/WeeklyPlanWizardLayout";
+import WeeklyPlanV3HrCorrections from "@/components/weekly-plans/WeeklyPlanV3HrCorrections";
 import { useWeeklyPlanWizard } from "@/context/WeeklyPlanWizardContext";
 import {
   addWeeklyPlanComment,
@@ -60,6 +61,19 @@ export default function WeeklyPlanWizardSubmit() {
 
   const reviewPath = activeWeeklyPlanReviewPath(plan);
   if (reviewPath) return <Navigate to={reviewPath} replace />;
+
+  const isV3CorrectionWorkspace =
+    plan.workflow_version === 3 &&
+    (plan.employee_workflows ?? []).some(
+      (workflow) => workflow.state === "HR_CORRECTION",
+    );
+  if (isV3CorrectionWorkspace) {
+    return (
+      <WeeklyPlanWizardLayout step="submit">
+        <WeeklyPlanV3HrCorrections />
+      </WeeklyPlanWizardLayout>
+    );
+  }
 
   const counts = weeklyPlanWorkCounts(plan);
   const submitted =

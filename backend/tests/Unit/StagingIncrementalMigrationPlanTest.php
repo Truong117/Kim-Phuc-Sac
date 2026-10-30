@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 class StagingIncrementalMigrationPlanTest extends TestCase
 {
-    public function test_only_the_five_reviewed_migrations_are_allowlisted(): void
+    public function test_only_the_six_reviewed_migrations_are_allowlisted(): void
     {
         $this->assertSame([
             StagingIncrementalMigrationPlan::MIGRATION_16,
@@ -18,6 +18,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             StagingIncrementalMigrationPlan::MIGRATION_18,
             StagingIncrementalMigrationPlan::MIGRATION_19,
             StagingIncrementalMigrationPlan::MIGRATION_20,
+            StagingIncrementalMigrationPlan::MIGRATION_21,
         ], StagingIncrementalMigrationPlan::allowedFiles());
 
         foreach ([
@@ -296,7 +297,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         ));
 
         $state = array_replace($this->stateForMigration20(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20),
             'migration_20_schema_state' => 'complete',
             'weekly_plan_count' => 4,
             'weekly_plan_id_fingerprint' => str_repeat('d', 64),
@@ -322,6 +323,42 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             'migration_20_v2_baseline_or_empty_v3_tables_mismatch',
             StagingIncrementalMigrationPlan::postflightViolations(
                 StagingIncrementalMigrationPlan::MIGRATION_20,
+                $state,
+                4,
+                str_repeat('d', 64),
+                9,
+            ),
+        );
+    }
+
+    public function test_migration_21_requires_v3_foundation_and_an_empty_correction_ledger(): void
+    {
+        $this->assertSame([], StagingIncrementalMigrationPlan::preflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_21,
+            $this->stateForMigration21(),
+        ));
+
+        $state = array_replace($this->stateForMigration21(), [
+            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'migration_21_schema_state' => 'complete',
+            'weekly_plan_count' => 4,
+            'weekly_plan_id_fingerprint' => str_repeat('d', 64),
+            'weekly_plan_entry_count' => 9,
+            'v3_correction_batch_count' => 0,
+        ]);
+        $this->assertSame([], StagingIncrementalMigrationPlan::postflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_21,
+            $state,
+            4,
+            str_repeat('d', 64),
+            9,
+        ));
+
+        $state['v3_correction_batch_count'] = 1;
+        $this->assertContains(
+            'migration_21_correction_batch_table_not_empty',
+            StagingIncrementalMigrationPlan::postflightViolations(
+                StagingIncrementalMigrationPlan::MIGRATION_21,
                 $state,
                 4,
                 str_repeat('d', 64),
@@ -382,6 +419,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             'migration_18_schema_state' => 'absent',
             'migration_19_schema_state' => 'absent',
             'migration_20_schema_state' => 'absent',
+            'migration_21_schema_state' => 'absent',
             'parent_prerequisites_verified' => true,
         ];
     }
@@ -418,6 +456,15 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 19),
             'migration_19_schema_state' => 'complete',
             'migration_20_schema_state' => 'absent',
+        ]);
+    }
+
+    private function stateForMigration21(): array
+    {
+        return array_replace($this->stateForMigration20(), [
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20),
+            'migration_20_schema_state' => 'complete',
+            'migration_21_schema_state' => 'absent',
         ]);
     }
 }
