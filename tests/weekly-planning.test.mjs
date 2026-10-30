@@ -313,7 +313,8 @@ test("weekly entry filters preserve the external edit modal and actions stay opa
   assert.match(entries, /setCompletenessFilter/);
   assert.match(detail, /isOpen=\{editing !== null\}/);
   assert.match(detail, /canEdit=\{plan\.actions\.can_edit\}/);
-  assert.match(detail, /canReview=\{reviewMode && plan\.actions\.can_review\}/);
+  assert.match(detail, /canReview=\{false\}/);
+  assert.doesNotMatch(detail, /reviewMode|reviewWeeklyPlanEmployee/);
   assert.doesNotMatch(entries + detail, /role\s*===|HR_MANAGER|OWNER|ADMIN/);
   assert.match(sourceDocument, /createFromSelection/);
   assert.match(sourceDocument, /applyToDraft/);
@@ -369,23 +370,31 @@ test("weekly entry form uses date-only picker and interaction-gated validation",
 });
 
 test("weekly UI groups entries by employee and consumes opaque action flags", async () => {
-  const [entries, detail, list, upload] = await Promise.all([
-    readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
-  ]);
+  const [entries, detail, reviewWorkspace, reviewModel, list, upload] =
+    await Promise.all([
+      readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanReviewWorkspace.tsx"),
+      readSource("src/utils/weeklyPlanReviewWorkspace.ts"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
+    ]);
 
   assert.match(entries, /entries\.reduce/);
   assert.match(entries, /entry\.assignee\?\.id/);
   assert.match(detail, /plan\.actions\.can_edit/);
-  assert.match(detail, /plan\.actions\.can_review/);
   assert.match(detail, /plan\.actions\.can_analyze/);
-  assert.match(detail, /plan\.actions\.can_approve_and_publish/);
   assert.match(detail, /plan\.actions\.can_comment/);
   assert.match(detail, /analyzeWeeklyPlan/);
-  assert.match(detail, /approveAndPublishWeeklyPlan/);
-  assert.match(detail, /showAssignmentConfirm/);
+  assert.doesNotMatch(
+    detail,
+    /approveAndPublishWeeklyPlan|showAssignmentConfirm/,
+  );
+  assert.match(reviewModel, /plan\.actions\.can_assistant_review/);
+  assert.match(reviewModel, /plan\.actions\.can_owner_review/);
+  assert.match(reviewWorkspace, /plan\.actions\.can_approve/);
+  assert.match(reviewWorkspace, /plan\.actions\.can_publish/);
+  assert.doesNotMatch(reviewWorkspace, /can_approve_and_publish/);
   assert.match(detail, /plan\.events\.map/);
   assert.match(detail, /commentTarget/);
   assert.match(list, /loading && !result/);
@@ -409,7 +418,9 @@ test("weekly create and review flows return to the authorized weekly list", asyn
   assert.match(upload, /navigate\("\/weekly-plans"\)/);
   assert.match(detail, /to="\/weekly-plans"/);
   assert.match(detail, /to=\{"\/weekly-plans\/" \+ plan\.id \+ "\/review"\}/);
-  assert.match(review, /<WeeklyPlanDetail reviewMode \/>/);
+  assert.match(review, /<WeeklyPlanReviewWorkspace/);
+  assert.match(review, /getWeeklyPlan\(id, controller\.signal\)/);
+  assert.doesNotMatch(review, /WeeklyPlanDetail|reviewMode/);
 });
 
 test("Vietnamese weekly translations interpolate actual values with single braces", async () => {

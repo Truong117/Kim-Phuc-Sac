@@ -20,10 +20,15 @@ import type {
 import { formatDateOnly } from "@/utils/dateOnly";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 export default function WeeklyPlanList() {
   const { t } = useTranslation("common", { keyPrefix: "weeklyPlanning" });
+  const location = useLocation();
+  const assistantReviewCompleted = Boolean(
+    (location.state as { weeklyPlanReviewCompleted?: boolean } | null)
+      ?.weeklyPlanReviewCompleted,
+  );
   const [result, setResult] = useState<WeeklyPlanListResponse | null>(null);
   const [references, setReferences] = useState<WeeklyPlanReferences | null>(
     null,
@@ -128,6 +133,12 @@ export default function WeeklyPlanList() {
           </Link>
         )}
       </div>
+
+      {assistantReviewCompleted && (
+        <p className="mb-5 rounded-xl bg-success-50 px-4 py-3 text-theme-sm font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
+          {t("list.assistantReviewCompleted")}
+        </p>
+      )}
 
       {error ? (
         <section className="rounded-2xl border border-error-200 bg-white px-6 py-12 text-center dark:border-error-800 dark:bg-white/3">

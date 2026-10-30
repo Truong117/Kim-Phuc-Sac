@@ -10,13 +10,15 @@ type Props = {
 };
 
 export default function WeeklyPlanStatusBadge({ status }: Props) {
-  const { t } = useTranslation("common", {
-    keyPrefix: "weeklyPlanning.status",
-  });
+  const { t } = useTranslation("common");
   const positive = ["ACCEPTED", "APPROVED", "PUBLISHED"].includes(status);
-  const warning = ["CHANGES_REQUESTED", "IN_REVIEW", "SUBMITTED"].includes(
-    status,
-  );
+  const warning = [
+    "CHANGES_REQUESTED",
+    "ASSISTANT_CHANGES_REQUESTED",
+    "OWNER_CHANGES_REQUESTED",
+    "IN_REVIEW",
+    "SUBMITTED",
+  ].includes(status);
 
   return (
     <span
@@ -29,7 +31,7 @@ export default function WeeklyPlanStatusBadge({ status }: Props) {
             : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
       )}
     >
-      {t(status)}
+      {t(`weeklyPlanning.status.${status}`)}
     </span>
   );
 }

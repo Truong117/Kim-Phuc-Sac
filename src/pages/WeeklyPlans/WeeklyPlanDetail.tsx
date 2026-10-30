@@ -21,7 +21,6 @@ import {
   analyzeWeeklyPlan,
   applyWeeklyPlanSourceEntries,
   assignWeeklyPlanSourceGroup,
-  approveAndPublishWeeklyPlan,
   decideWeeklyPlanSuggestion,
   deleteWeeklyPlanEntry,
   extractWeeklyPlanSourceWithAi,
@@ -31,7 +30,6 @@ import {
   extractWeeklyPlanSource,
   reparseWeeklyPlan,
   replaceWeeklyPlanSource,
-  reviewWeeklyPlanEmployee,
   submitWeeklyPlan,
   updateWeeklyPlanEntry,
 } from "@/services/weeklyPlanningService";
@@ -54,9 +52,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router";
 
-type Props = { reviewMode?: boolean };
-
-export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
+export default function WeeklyPlanDetail() {
   const { t } = useTranslation("common", { keyPrefix: "weeklyPlanning" });
   const { id } = useParams();
   const [plan, setPlan] = useState<WeeklyPlan | null>(null);
@@ -76,7 +72,6 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
   );
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [showAssignmentConfirm, setShowAssignmentConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entryFormErrors, setEntryFormErrors] = useState<ValidationErrors>({});
   const [entryFormErrorVersion, setEntryFormErrorVersion] = useState(0);
@@ -249,12 +244,10 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
   return (
     <>
       <PageMeta
-        title={reviewMode ? t("review.metaTitle") : t("detail.metaTitle")}
+        title={t("detail.metaTitle")}
         description={t("detail.metaDescription")}
       />
-      <PageBreadCrumb
-        pageTitle={reviewMode ? t("review.title") : t("detail.title")}
-      />
+      <PageBreadCrumb pageTitle={t("detail.title")} />
 
       <div className="-mt-4 mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -278,7 +271,10 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
           >
             {t("actions.back")}
           </Link>
-          {!reviewMode && plan.actions.can_review && (
+          {(plan.actions.can_assistant_review ||
+            plan.actions.can_owner_review ||
+            plan.actions.can_approve ||
+            plan.actions.can_publish) && (
             <Link
               to={"/weekly-plans/" + plan.id + "/review"}
               className="inline-flex items-center rounded-lg bg-kps-primary px-4 py-2.5 text-theme-sm font-semibold text-white transition hover:bg-kps-primary-hover"
@@ -475,7 +471,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             entries={plan.entries}
             reviews={plan.employee_reviews}
             canEdit={plan.actions.can_edit}
-            canReview={reviewMode && plan.actions.can_review}
+            canReview={false}
             busy={busy}
             onEdit={(entry) => {
               setEntryFormErrors({});
@@ -486,21 +482,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
                 void perform(() => deleteWeeklyPlanEntry(plan.id, entry.id));
               }
             }}
-            onReview={(assigneeId, status) => {
-              const reviewComment =
-                status === "CHANGES_REQUESTED"
-                  ? (window.prompt(t("review.changeCommentPrompt")) ?? "")
-                  : undefined;
-              if (status === "CHANGES_REQUESTED" && !reviewComment) return;
-              void perform(() =>
-                reviewWeeklyPlanEmployee(
-                  plan.id,
-                  assigneeId,
-                  status,
-                  reviewComment,
-                ),
-              );
-            }}
+            onReview={() => undefined}
           />
         </ComponentCard>
 
@@ -730,19 +712,6 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
               {t("detail.submit")}
             </Button>
           )}
-          {reviewMode && plan.actions.can_approve_and_publish && (
-            <Button
-              type="button"
-              disabled={busy}
-              className="bg-kps-primary hover:bg-kps-primary-hover"
-              onClick={() => {
-                setError(null);
-                setShowAssignmentConfirm(true);
-              }}
-            >
-              {t("review.approveAndPublish")}
-            </Button>
-          )}
         </div>
       </div>
 
@@ -768,7 +737,7 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
           employees={references.employees}
           weekStart={plan.week_start}
           weekEnd={plan.week_end}
-          reviewerEdit={reviewMode && !plan.actions.can_edit}
+          reviewerEdit={false}
           isSaving={busy}
           serverErrors={entryFormErrors}
           serverErrorVersion={entryFormErrorVersion}
@@ -793,64 +762,6 @@ export default function WeeklyPlanDetail({ reviewMode = false }: Props) {
             }
           }}
         />
-      </Modal>
-
-      <Modal
-        isOpen={showAssignmentConfirm}
-        onClose={() => {
-          if (!busy) setShowAssignmentConfirm(false);
-        }}
-        showCloseButton={false}
-        className="max-w-lg p-6"
-        ariaLabelledBy="weekly-approve-publish-title"
-      >
-        <h2
-          id="weekly-approve-publish-title"
-          className="text-lg font-semibold text-gray-900 dark:text-white"
-        >
-          {t("review.confirmTitle")}
-        </h2>
-        <p className="mt-3 text-theme-sm text-gray-600 dark:text-gray-300">
-          {t("review.confirmDescription", {
-            employees: plan.summary.employee_count,
-            tasks: plan.summary.entry_count,
-          })}
-        </p>
-        <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-          {t("review.confirmSafety")}
-        </p>
-        {error && (
-          <p
-            role="alert"
-            className="mt-4 rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400"
-          >
-            {error}
-          </p>
-        )}
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={() => setShowAssignmentConfirm(false)}
-          >
-            {t("actions.cancel")}
-          </Button>
-          <Button
-            type="button"
-            disabled={busy}
-            className="bg-kps-primary hover:bg-kps-primary-hover"
-            onClick={() => {
-              void perform(() => approveAndPublishWeeklyPlan(plan.id)).then(
-                (succeeded) => {
-                  if (succeeded) setShowAssignmentConfirm(false);
-                },
-              );
-            }}
-          >
-            {busy ? t("review.publishing") : t("review.approveAndPublish")}
-          </Button>
-        </div>
       </Modal>
     </>
   );

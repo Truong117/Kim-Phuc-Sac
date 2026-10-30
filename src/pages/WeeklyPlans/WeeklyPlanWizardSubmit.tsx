@@ -15,6 +15,10 @@ import {
   isWeeklyPlanDiscussionEmployeeConsistent,
   resolveWeeklyPlanCommentTargetArguments,
 } from "@/utils/weeklyPlanDiscussionTarget";
+import {
+  isWeeklyPlanWaitingForHr,
+  weeklyPlanSubmitStatusKey,
+} from "@/utils/weeklyPlanReviewWorkspace";
 import { weeklyPlanWorkCounts } from "@/utils/weeklyPlanWizard";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -57,6 +61,15 @@ export default function WeeklyPlanWizardSubmit() {
   const counts = weeklyPlanWorkCounts(plan);
   const submitted =
     plan.status !== "DRAFT" && plan.status !== "CHANGES_REQUESTED";
+  const waitingForHr = isWeeklyPlanWaitingForHr(plan.status);
+  const correctionDecisions =
+    plan.review_workflow?.current_round?.decisions.filter(
+      (decision) => decision.status === "CHANGES_REQUESTED",
+    ) ?? [];
+  const canInitialSubmit =
+    ["DRAFT", "CHANGES_REQUESTED"].includes(plan.status) &&
+    plan.actions.can_submit;
+  const canResubmit = waitingForHr && plan.actions.can_resubmit_changes;
 
   const handleAddComment = () => {
     const target = resolveWeeklyPlanCommentTargetArguments(plan, {
@@ -109,8 +122,12 @@ export default function WeeklyPlanWizardSubmit() {
         </dl>
 
         {submitted ? (
-          <div className="rounded-xl bg-success-50 p-4 text-success-700 dark:bg-success-500/10 dark:text-success-400">
-            <p className="font-semibold">{t("submit.submitted")}</p>
+          <div
+            className={`rounded-xl p-4 ${waitingForHr ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400" : "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"}`}
+          >
+            <p className="font-semibold">
+              {t(`submit.status.${weeklyPlanSubmitStatusKey(plan.status)}`)}
+            </p>
             {plan.submitted_at && (
               <p className="mt-1 text-theme-sm">
                 {formatTimestamp(plan.submitted_at)}
@@ -118,7 +135,7 @@ export default function WeeklyPlanWizardSubmit() {
             )}
           </div>
         ) : (
-          plan.actions.can_submit && (
+          canInitialSubmit && (
             <div className="flex justify-end">
               <Button
                 type="button"
@@ -132,7 +149,44 @@ export default function WeeklyPlanWizardSubmit() {
           )
         )}
 
-        {plan.actions.can_review && (
+        {waitingForHr && (
+          <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 dark:border-warning-800 dark:bg-warning-500/10">
+            <p className="font-semibold text-warning-800 dark:text-warning-300">
+              {t("submit.correction.title")}
+            </p>
+            <p className="mt-1 text-theme-sm text-warning-700 dark:text-warning-400">
+              {correctionDecisions.length === 1
+                ? t("submit.correction.single", {
+                    stage: t(
+                      `submit.correction.${plan.review_workflow?.stage ?? "OWNER"}`,
+                    ),
+                    employee: correctionDecisions[0].assignee.name,
+                  })
+                : t("submit.correction.multiple", {
+                    count: correctionDecisions.length,
+                  })}
+            </p>
+            <p className="mt-2 text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+              {t("submit.correction.scope")}
+            </p>
+          </div>
+        )}
+
+        {canResubmit && (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              disabled={busy}
+              className="bg-kps-primary hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none"
+              onClick={() => void perform(() => submitWeeklyPlan(plan.id))}
+            >
+              {t("submit.resubmitAction")}
+            </Button>
+          </div>
+        )}
+
+        {(plan.actions.can_assistant_review ||
+          plan.actions.can_owner_review) && (
           <div className="flex justify-end">
             <Button
               type="button"

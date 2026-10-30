@@ -1,6 +1,7 @@
 import type { WeeklyPlan, WeeklyPlanComment } from "@/types/weeklyPlanning";
 
-type CommentContextPlan = Pick<WeeklyPlan, "employee_reviews" | "entries">;
+type CommentContextPlan = Pick<WeeklyPlan, "employee_reviews" | "entries"> &
+  Partial<Pick<WeeklyPlan, "review_workflow">>;
 
 export type WeeklyPlanCommentContextType = "PLAN" | "EMPLOYEE" | "ENTRY";
 
@@ -22,6 +23,9 @@ const findEmployeeName = (
   plan: CommentContextPlan,
   assigneeId: number,
 ): string | null =>
+  plan.review_workflow?.current_round?.decisions.find(
+    (decision) => decision.assignee.id === assigneeId,
+  )?.assignee.name ??
   plan.employee_reviews.find((review) => review.assignee.id === assigneeId)
     ?.assignee.name ??
   plan.entries.find((entry) => entry.assignee?.id === assigneeId)?.assignee

@@ -1,6 +1,7 @@
 import type { WeeklyPlan } from "@/types/weeklyPlanning";
 
-type DiscussionTargetPlan = Pick<WeeklyPlan, "employee_reviews" | "entries">;
+type DiscussionTargetPlan = Pick<WeeklyPlan, "employee_reviews" | "entries"> &
+  Partial<Pick<WeeklyPlan, "review_workflow">>;
 
 export type WeeklyPlanDiscussionTarget = {
   selectedEmployeeId: number | null;
@@ -50,6 +51,9 @@ export const createWeeklyPlanDiscussionEmployeeOptions = (
   const employees = new Map<number, WeeklyPlanDiscussionOption>();
 
   plan.employee_reviews.forEach(({ assignee }) => {
+    employees.set(assignee.id, { value: assignee.id, label: assignee.name });
+  });
+  plan.review_workflow?.current_round?.decisions.forEach(({ assignee }) => {
     employees.set(assignee.id, { value: assignee.id, label: assignee.name });
   });
   plan.entries.forEach(({ assignee }) => {

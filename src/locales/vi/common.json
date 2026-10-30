@@ -839,7 +839,7 @@
       "OWNER_CHANGES_REQUESTED": "Giám đốc yêu cầu chỉnh sửa",
       "APPROVED": "Đã phê duyệt",
       "PUBLISHED": "Đã phát hành",
-      "PENDING": "Chờ xem xét",
+      "PENDING": "Chờ xét duyệt",
       "ACCEPTED": "Đã chấp nhận"
     },
     "parseStatus": {
@@ -868,6 +868,7 @@
       "metaDescription": "Danh sách kế hoạch công việc tuần",
       "title": "Kế hoạch công việc tuần",
       "subtitle": "Chuẩn bị, xét duyệt và phát hành công việc cho tuần tiếp theo.",
+      "assistantReviewCompleted": "Đã hoàn tất vòng xét duyệt của Trợ lý Giám đốc và chuyển kế hoạch sang OWNER.",
       "create": "Thêm kế hoạch tuần",
       "loading": "Đang tải danh sách kế hoạch tuần",
       "period": "Tuần {start} – {end}",
@@ -1099,16 +1100,33 @@
       },
       "submit": {
         "title": "Gửi xét duyệt",
-        "description": "Kiểm tra tóm tắt cuối trước khi gửi OWNER xét duyệt.",
-        "action": "Gửi OWNER xét duyệt",
-        "submitted": "✓ Đã gửi OWNER xét duyệt",
-        "openReview": "Mở màn hình OWNER xét duyệt",
+        "description": "Kiểm tra tóm tắt cuối trước khi gửi Trợ lý Giám đốc xét duyệt.",
+        "action": "Gửi Trợ lý Giám đốc xét duyệt",
+        "resubmitAction": "Gửi lại sau chỉnh sửa",
+        "openReview": "Mở không gian xét duyệt",
         "comments": "Trao đổi",
         "noComments": "Chưa có trao đổi.",
         "commentTarget": "Phạm vi trao đổi",
         "addComment": "Thêm trao đổi",
         "history": "Lịch sử hoạt động",
-        "systemActor": "Hệ thống"
+        "systemActor": "Hệ thống",
+        "status": {
+          "assistantReview": "Đã gửi Trợ lý Giám đốc xét duyệt",
+          "assistantChangesRequested": "Trợ lý Giám đốc yêu cầu chỉnh sửa",
+          "ownerReview": "Đã chuyển OWNER xét duyệt",
+          "ownerChangesRequested": "OWNER yêu cầu chỉnh sửa",
+          "approved": "Đã phê duyệt",
+          "published": "Đã phát hành",
+          "submittedLegacy": "Đã gửi xét duyệt"
+        },
+        "correction": {
+          "title": "Đang có yêu cầu chỉnh sửa",
+          "single": "{stage} yêu cầu chỉnh sửa phần kế hoạch của {employee}.",
+          "multiple": "{count} nhân viên cần chỉnh sửa.",
+          "scope": "Chỉ các phần được yêu cầu chỉnh sửa mới có thể thay đổi.",
+          "ASSISTANT": "Trợ lý Giám đốc",
+          "OWNER": "OWNER"
+        }
       }
     },
     "detail": {
@@ -1466,6 +1484,119 @@
       "confirmDescription": "Kế hoạch gồm {employees} nhân viên và {tasks} Task sẽ được tạo.",
       "confirmSafety": "Hệ thống chỉ tạo Task khi toàn bộ dữ liệu và người phụ trách vẫn hợp lệ."
     },
+    "reviewWorkspace": {
+      "metaTitle": "Xét duyệt kế hoạch tuần | KIM PHỤC SẮC",
+      "metaDescription": "Không gian xét duyệt kế hoạch tuần theo từng nhân viên",
+      "loading": "Đang tải không gian xét duyệt...",
+      "retry": "Thử lại",
+      "back": "Quay lại danh sách kế hoạch tuần",
+      "legacyUnavailable": "Kế hoạch này chưa có dữ liệu vòng xét duyệt theo giai đoạn. Vui lòng quay lại trang chi tiết để xem thông tin kế hoạch.",
+      "header": {
+        "title": "Xét duyệt kế hoạch tuần",
+        "period": "{start} – {end}",
+        "creator": "Người lập: {name}"
+      },
+      "stage": {
+        "ASSISTANT": "Vòng Trợ lý Giám đốc",
+        "OWNER": "Vòng OWNER"
+      },
+      "summary": {
+        "title": "Tiến độ xét duyệt",
+        "round": "Vòng {round}",
+        "total": "{count} nhân viên",
+        "accepted": "Đã chấp nhận",
+        "changesRequested": "Cần chỉnh sửa",
+        "pending": "Chờ xét duyệt"
+      },
+      "employee": {
+        "title": "Kế hoạch theo nhân viên",
+        "noDepartment": "Chưa có thông tin phòng ban",
+        "counts": "{entries} công việc · {items} đầu mục",
+        "zeroWorkTitle": "Không còn công việc sau chỉnh sửa.",
+        "zeroWorkDescription": "Phần công việc của nhân viên này đã được loại bỏ trong lần chỉnh sửa gần nhất. Bạn vẫn cần xác nhận thay đổi này."
+      },
+      "work": {
+        "untitled": "Công việc chưa có tiêu đề",
+        "missingValue": "Chưa có thông tin",
+        "compactSummary": "Kết quả: {result} · {start} – {due}",
+        "priority": "Ưu tiên: {priority}",
+        "itemCount": "{count} đầu mục",
+        "content": "Nội dung",
+        "expectedResult": "Kết quả cần đạt",
+        "startDate": "Ngày bắt đầu",
+        "dueDate": "Hạn hoàn thành",
+        "priorityLabel": "Mức độ ưu tiên",
+        "note": "Ghi chú",
+        "items": "Đầu mục ({count})",
+        "noItems": "Không có đầu mục.",
+        "sourceInformation": "Thông tin nguồn",
+        "expanded": "Đang mở chi tiết công việc"
+      },
+      "decision": {
+        "title": "Quyết định xét duyệt chính thức",
+        "description": "Quyết định này thay đổi trạng thái xét duyệt và hoàn toàn tách biệt với ghi chú.",
+        "currentAcceptedHelp": "Đã chấp nhận trong vòng xét duyệt này. Bạn vẫn có thể yêu cầu chỉnh sửa trước khi hoàn tất vòng.",
+        "requestChanges": "Yêu cầu chỉnh sửa",
+        "accept": "Chấp nhận"
+      },
+      "decisionModal": {
+        "changeTitle": "Yêu cầu chỉnh sửa cho {employee}?",
+        "changeDescription": "Nhân sự sẽ chỉ có thể chỉnh sửa công việc thuộc nhân viên này. Các nhân viên đã được chấp nhận vẫn được giữ nguyên trạng thái.",
+        "acceptTitle": "Chấp nhận phần kế hoạch của {employee}?",
+        "acceptDescription": "Bạn vẫn có thể thêm ghi chú riêng mà không thay đổi quyết định.",
+        "noteLabel": "Nội dung cần chỉnh sửa",
+        "noteHelp": "Nội dung này là ghi chú trao đổi. Ghi chú sẽ được lưu trước khi gửi quyết định chính thức.",
+        "cancel": "Hủy",
+        "confirmChange": "Xác nhận yêu cầu chỉnh sửa",
+        "confirmAccept": "Xác nhận chấp nhận"
+      },
+      "waiting": {
+        "title": "Đang chờ Nhân sự chỉnh sửa và gửi lại.",
+        "description": "Các quyết định hiện tại chỉ để tham khảo. Thao tác xét duyệt sẽ mở lại sau khi Nhân sự gửi vòng chỉnh sửa mới."
+      },
+      "discussion": {
+        "title": "Ghi chú và trao đổi",
+        "neutralHelp": "Ghi chú chỉ dùng để trao đổi và không làm thay đổi trạng thái xét duyệt.",
+        "empty": "Chưa có ghi chú trao đổi.",
+        "add": "Thêm ghi chú"
+      },
+      "final": {
+        "title": "Hoàn tất giai đoạn",
+        "finalizeAssistant": "Chuyển OWNER xét duyệt",
+        "approve": "Phê duyệt kế hoạch",
+        "publish": "Phát hành công việc",
+        "unavailable": "Hiện không có thao tác giai đoạn nào khả dụng."
+      },
+      "finalModal": {
+        "workCount": "Công việc",
+        "FINALIZE_ASSISTANT": {
+          "title": "Chuyển kế hoạch sang OWNER xét duyệt?",
+          "description": "Sau khi chuyển, OWNER sẽ thực hiện vòng xét duyệt cuối.",
+          "confirm": "Chuyển OWNER xét duyệt"
+        },
+        "APPROVE": {
+          "title": "Phê duyệt kế hoạch?",
+          "description": "Kế hoạch sẽ chuyển sang trạng thái đã phê duyệt. Công việc chưa được phát hành ở bước này.",
+          "confirm": "Phê duyệt kế hoạch"
+        },
+        "PUBLISH": {
+          "title": "Phát hành công việc cho nhân viên?",
+          "description": "Thao tác này tạo hoặc áp dụng công việc thực tế cho nhân viên theo nội dung kế hoạch đã được phê duyệt.",
+          "confirm": "Phát hành công việc"
+        }
+      },
+      "history": {
+        "title": "Lịch sử xét duyệt",
+        "unknownEvent": "Hoạt động hệ thống",
+        "systemActor": "Hệ thống"
+      },
+      "errors": {
+        "load": "Không thể tải không gian xét duyệt.",
+        "notFound": "Không tìm thấy kế hoạch tuần.",
+        "forbidden": "Bạn không có quyền xem kế hoạch tuần này.",
+        "action": "Không thể hoàn tất thao tác. Vui lòng thử lại."
+      }
+    },
     "events": {
       "ENTRY_CREATED": "Đã thêm công việc",
       "PLAN_RESET": "Đã đặt lại kế hoạch",
@@ -1478,10 +1609,12 @@
       "EMPLOYEE_ACCEPTED": "Đã chấp nhận kế hoạch của nhân viên",
       "EMPLOYEE_CHANGES_REQUESTED": "Đã yêu cầu chỉnh sửa kế hoạch của nhân viên",
       "ASSISTANT_REVIEW_STARTED": "Trợ lý Giám đốc bắt đầu xét duyệt",
+      "ASSISTANT_REVIEW_RESUBMITTED": "Nhân sự đã gửi lại vòng xét duyệt cho Trợ lý Giám đốc",
       "ASSISTANT_EMPLOYEE_ACCEPTED": "Trợ lý đã chấp nhận kế hoạch của nhân viên",
       "ASSISTANT_EMPLOYEE_CHANGES_REQUESTED": "Trợ lý đã yêu cầu nhân viên chỉnh sửa",
       "ASSISTANT_REVIEW_COMPLETED": "Trợ lý đã hoàn tất xét duyệt",
       "OWNER_REVIEW_STARTED": "OWNER bắt đầu xét duyệt",
+      "OWNER_REVIEW_RESUBMITTED": "Nhân sự đã gửi lại vòng xét duyệt cho OWNER",
       "OWNER_EMPLOYEE_ACCEPTED": "OWNER đã chấp nhận kế hoạch của nhân viên",
       "OWNER_EMPLOYEE_CHANGES_REQUESTED": "OWNER đã yêu cầu nhân viên chỉnh sửa",
       "OWNER_REVIEW_COMPLETED": "OWNER đã hoàn tất xét duyệt",
