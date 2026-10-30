@@ -54,4 +54,29 @@ class StagingSeederTest extends TestCase
             $this->assertDatabaseHas('permissions', ['code' => $permissionCode]);
         }
     }
+
+    public function test_executive_assistant_account_has_primary_role_and_hr_admin_department(): void
+    {
+        putenv('KPS_STAGING_TEST_ACCOUNT_PASSWORD=fake-staging-password-2026');
+
+        try {
+            $this->seed(StagingSeeder::class);
+        } finally {
+            putenv('KPS_STAGING_TEST_ACCOUNT_PASSWORD');
+        }
+
+        $user = User::query()
+            ->where('email', 'assistant@kps-staging.example.test')
+            ->firstOrFail();
+        $membership = $user->defaultOrganizationMembership()->firstOrFail();
+
+        $this->assertSame('HR_ADMIN', $membership->department()->value('code'));
+        $this->assertDatabaseHas('membership_roles', [
+            'membership_id' => $membership->id,
+            'role_id' => $membership->roles()
+                ->where('roles.code', 'EXECUTIVE_ASSISTANT')
+                ->value('roles.id'),
+            'is_primary' => true,
+        ]);
+    }
 }
