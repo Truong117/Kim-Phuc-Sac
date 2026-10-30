@@ -156,6 +156,38 @@ class WeeklyPlanReviewWorkflowService
         }
     }
 
+    public function reopenAcceptedDecisionForEmptyPlan(WeeklyPlan $plan, int $assigneeId): void
+    {
+        $stage = match ($plan->status) {
+            WeeklyPlanStatus::ASSISTANT_REVIEW => WeeklyPlanReviewStage::ASSISTANT,
+            WeeklyPlanStatus::OWNER_REVIEW => WeeklyPlanReviewStage::OWNER,
+            default => null,
+        };
+        if ($stage === null || $plan->entries()->exists()) {
+            throw new ConflictHttpException('Kế hoạch không ở trạng thái khôi phục sau khi xóa toàn bộ công việc.');
+        }
+
+        $round = $this->lockedCurrentRound($plan, $stage);
+        if ($round->status !== WeeklyPlanReviewRoundStatus::OPEN || ! $this->allAccepted($round)) {
+            throw new ConflictHttpException('Vòng xét duyệt chưa sẵn sàng để bổ sung lại công việc.');
+        }
+
+        $decision = $round->decisions()
+            ->where('assignee_id', $assigneeId)
+            ->lockForUpdate()
+            ->first();
+        if (! $decision instanceof WeeklyPlanReviewDecision
+            || $decision->status !== WeeklyPlanReviewStatus::ACCEPTED) {
+            throw new ConflictHttpException('Nhân viên không thuộc phạm vi khôi phục công việc.');
+        }
+
+        $decision->forceFill([
+            'status' => WeeklyPlanReviewStatus::PENDING,
+            'reviewed_by' => null,
+            'reviewed_at' => null,
+        ])->save();
+    }
+
     public function resubmitRequestedChanges(WeeklyPlan $plan, User $actor): WeeklyPlanReviewRound
     {
         $stage = $this->correctionStageForStatus($plan->status);
@@ -184,9 +216,6 @@ class WeeklyPlanReviewWorkflowService
             ->orderBy('assignee_id')
             ->pluck('assignee_id')
             ->map(fn (mixed $assigneeId): int => (int) $assigneeId);
-        if ($currentAssigneeIds->isEmpty()) {
-            throw new ConflictHttpException('Kế hoạch không có nhân viên hợp lệ để xét duyệt.');
-        }
         if ($currentAssigneeIds->contains(
             fn (int $assigneeId): bool => ! $previousDecisions->has($assigneeId),
         )) {
@@ -237,6 +266,11 @@ class WeeklyPlanReviewWorkflowService
             $this->assertStageStatus($plan, WeeklyPlanReviewStage::ASSISTANT);
             $round = $this->lockedCurrentRound($plan, WeeklyPlanReviewStage::ASSISTANT);
             $this->assertAllAccepted($round);
+            if (! $plan->entries()->exists()) {
+                throw ValidationException::withMessages([
+                    'plan' => ['Kế hoạch không còn công việc sau chỉnh sửa. Vui lòng bổ sung ít nhất một công việc hoặc xử lý lại kế hoạch.'],
+                ]);
+            }
 
             $round->forceFill([
                 'status' => WeeklyPlanReviewRoundStatus::COMPLETED,
