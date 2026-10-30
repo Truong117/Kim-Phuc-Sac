@@ -52,6 +52,7 @@ export default function WeeklyPlanV3AssistantBatchReview({
   ) => {
     if (busy) return;
     if (
+      workflow.viewer_context.mode !== "ASSISTANT_REVIEW" ||
       (decision === "ACCEPTED" && !workflow.actions.can_accept) ||
       (decision === "CHANGES_REQUESTED" &&
         !workflow.actions.can_request_changes)
@@ -147,8 +148,12 @@ export default function WeeklyPlanV3AssistantBatchReview({
           const entries = plan.entries.filter(
             (entry) => entry.assignee?.id === workflow.assignee.id,
           );
+          const isAssistantWorkflow =
+            workflow.viewer_context.mode === "ASSISTANT_REVIEW";
           const actionable =
-            workflow.actions.can_accept || workflow.actions.can_request_changes;
+            isAssistantWorkflow &&
+            (workflow.actions.can_accept ||
+              workflow.actions.can_request_changes);
 
           return (
             <article
@@ -193,7 +198,7 @@ export default function WeeklyPlanV3AssistantBatchReview({
 
               {actionable ? (
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {workflow.actions.can_accept && (
+                  {isAssistantWorkflow && workflow.actions.can_accept && (
                     <Button
                       type="button"
                       size="sm"
@@ -204,21 +209,24 @@ export default function WeeklyPlanV3AssistantBatchReview({
                       {t("accept")}
                     </Button>
                   )}
-                  {workflow.actions.can_request_changes && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={
-                        selected === "CHANGES_REQUESTED" ? "primary" : "outline"
-                      }
-                      disabled={busy}
-                      onClick={() =>
-                        updateDecision(workflow, "CHANGES_REQUESTED")
-                      }
-                    >
-                      {t("requestChanges")}
-                    </Button>
-                  )}
+                  {isAssistantWorkflow &&
+                    workflow.actions.can_request_changes && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          selected === "CHANGES_REQUESTED"
+                            ? "primary"
+                            : "outline"
+                        }
+                        disabled={busy}
+                        onClick={() =>
+                          updateDecision(workflow, "CHANGES_REQUESTED")
+                        }
+                      >
+                        {t("requestChanges")}
+                      </Button>
+                    )}
                   {selected && (
                     <Button
                       type="button"

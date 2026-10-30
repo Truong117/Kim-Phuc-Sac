@@ -37,9 +37,10 @@ export const buildWeeklyPlanV3AssistantBatch = (
     .filter((workflow) => {
       const decision = draft[workflow.assignee.id];
       return (
-        (decision === "ACCEPTED" && workflow.actions.can_accept) ||
-        (decision === "CHANGES_REQUESTED" &&
-          workflow.actions.can_request_changes)
+        workflow.viewer_context.mode === "ASSISTANT_REVIEW" &&
+        ((decision === "ACCEPTED" && workflow.actions.can_accept) ||
+          (decision === "CHANGES_REQUESTED" &&
+            workflow.actions.can_request_changes))
       );
     })
     .map((workflow) => ({

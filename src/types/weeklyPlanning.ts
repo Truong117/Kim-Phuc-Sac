@@ -48,6 +48,7 @@ export type WeeklyPlanEmployeeWorkflow = {
     can_correct: boolean;
     can_resubmit: boolean;
     can_publish: boolean;
+    can_approve_no_work: boolean;
   };
 };
 

@@ -9,6 +9,7 @@ use App\Http\Requests\WeeklyPlanning\ApplyWeeklyPlanSourceEntriesRequest;
 use App\Http\Requests\WeeklyPlanning\AssignWeeklyPlanSourceGroupRequest;
 use App\Http\Requests\WeeklyPlanning\ConfirmWeeklyPlanV3AssistantBatchRequest;
 use App\Http\Requests\WeeklyPlanning\ConfirmWeeklyPlanV3CorrectionBatchRequest;
+use App\Http\Requests\WeeklyPlanning\ConfirmWeeklyPlanV3OwnerBatchRequest;
 use App\Http\Requests\WeeklyPlanning\DecideWeeklyPlanReviewRequest;
 use App\Http\Requests\WeeklyPlanning\DecideWeeklyPlanSuggestionRequest;
 use App\Http\Requests\WeeklyPlanning\DeleteWeeklyPlanV3CorrectionEntryRequest;
@@ -27,6 +28,7 @@ use App\Services\WeeklyPlanning\WeeklyPlanService;
 use App\Services\WeeklyPlanning\WeeklyPlanTemplateService;
 use App\Services\WeeklyPlanning\WeeklyPlanV3AssistantBatchService;
 use App\Services\WeeklyPlanning\WeeklyPlanV3CorrectionService;
+use App\Services\WeeklyPlanning\WeeklyPlanV3OwnerBatchService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -39,6 +41,7 @@ class WeeklyPlanController extends Controller
         private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
         private readonly WeeklyPlanV3AssistantBatchService $v3AssistantBatches,
         private readonly WeeklyPlanV3CorrectionService $v3Corrections,
+        private readonly WeeklyPlanV3OwnerBatchService $v3OwnerBatches,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -311,6 +314,29 @@ class WeeklyPlanController extends Controller
 
         return (new WeeklyPlanResource($this->plans->findVisible($user, $plan)))
             ->response()->setStatusCode(201);
+    }
+
+    public function confirmV3OwnerBatch(
+        ConfirmWeeklyPlanV3OwnerBatchRequest $request,
+        int $plan,
+    ): JsonResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $result = $this->v3OwnerBatches->confirm(
+            $user,
+            $plan,
+            $request->requestId(),
+            $request->decisions(),
+        );
+        $detail = $this->plans->findVisible($user, $plan);
+
+        return response()->json([
+            'data' => [
+                'plan' => (new WeeklyPlanResource($detail))->resolve(),
+                'batch' => $result['batch'],
+                'results' => $result['results'],
+            ],
+        ], $result['replayed'] ? 200 : 201);
     }
 
     public function updateV3CorrectionEntry(

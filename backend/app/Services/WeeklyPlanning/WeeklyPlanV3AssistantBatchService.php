@@ -5,6 +5,7 @@ namespace App\Services\WeeklyPlanning;
 use App\Enums\WeeklyPlanEmployeeWorkflowAction;
 use App\Enums\WeeklyPlanReviewStage;
 use App\Enums\WeeklyPlanReviewStatus;
+use App\Enums\WeeklyPlanV3ReviewDecisionType;
 use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\User;
 use App\Models\WeeklyPlan;
@@ -230,7 +231,7 @@ final class WeeklyPlanV3AssistantBatchService
                 'weekly_plan_v3_review_batch_id' => $batch->id,
                 'weekly_plan_employee_workflow_id' => $workflow->id,
                 'assignee_id' => $workflow->assignee_id,
-                'decision' => $decision->decision,
+                'decision' => $decision->decision->value,
                 'from_state' => $transition->fromState,
                 'to_state' => $transition->toState,
                 'expected_state_version' => $transition->expectedStateVersion,
@@ -376,10 +377,10 @@ final class WeeklyPlanV3AssistantBatchService
                 'stage' => $batch->stage->value,
                 'confirmed_at' => $batch->confirmed_at?->toISOString(),
                 'accepted' => $decisions
-                    ->where('decision', WeeklyPlanReviewStatus::ACCEPTED)
+                    ->where('decision', WeeklyPlanV3ReviewDecisionType::ACCEPTED)
                     ->count(),
                 'changes_requested' => $decisions
-                    ->where('decision', WeeklyPlanReviewStatus::CHANGES_REQUESTED)
+                    ->where('decision', WeeklyPlanV3ReviewDecisionType::CHANGES_REQUESTED)
                     ->count(),
                 'affected_employee_ids' => $decisions->pluck('assignee_id')->all(),
             ],

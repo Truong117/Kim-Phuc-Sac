@@ -64,6 +64,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
         private readonly WeeklyPlanV3ProjectionService $v3Projections,
         private readonly WeeklyPlanV3AssistantEligibilityService $v3AssistantEligibility,
+        private readonly WeeklyPlanV3OwnerEligibilityService $v3OwnerEligibility,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -93,6 +94,9 @@ class WeeklyPlanService
                 $v3AssistantCanOpen = ! $v2Workflow
                     && $hasAssistantReviewPermission
                     && $this->v3AssistantEligibility->planAllowsReview($plan);
+                $v3OwnerCanOpen = ! $v2Workflow
+                    && $hasOwnerReviewPermission
+                    && $this->v3OwnerEligibility->planAllowsReview($plan);
                 $plan->setAttribute('actions', [
                     'can_delete' => $v2Workflow
                         && $canManageDrafts
@@ -109,7 +113,7 @@ class WeeklyPlanService
                             $hasAssistantReviewPermission,
                             $hasOwnerReviewPermission,
                         )
-                        : $v3AssistantCanOpen,
+                        : ($v3AssistantCanOpen || $v3OwnerCanOpen),
                 ]);
 
                 return $plan;
@@ -2059,8 +2063,13 @@ class WeeklyPlanService
                     $actions[$action] = false;
                 }
             }
-            $actions['can_open_review_workspace'] = $hasAssistantReviewPermission
-                && $this->v3AssistantEligibility->planAllowsReview($plan);
+            $actions['can_open_review_workspace'] = (
+                $hasAssistantReviewPermission
+                && $this->v3AssistantEligibility->planAllowsReview($plan)
+            ) || (
+                $hasOwnerReviewPermission
+                && $this->v3OwnerEligibility->planAllowsReview($plan)
+            );
         }
 
         $plan->setAttribute('actions', $actions);

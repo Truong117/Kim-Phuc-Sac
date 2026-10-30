@@ -18,6 +18,7 @@ final class WeeklyPlanV3ProjectionService
         private readonly WeeklyPlanEmployeeWorkflowIntegrityService $integrity,
         private readonly WeeklyPlanV3SummaryService $summaries,
         private readonly WeeklyPlanV3AssistantEligibilityService $assistantEligibility,
+        private readonly WeeklyPlanV3OwnerEligibilityService $ownerEligibility,
         private readonly WeeklyPlanV3EmployeeReadinessService $readiness,
     ) {}
 
@@ -63,6 +64,10 @@ final class WeeklyPlanV3ProjectionService
         $viewerContext = $this->viewerContextPermissions($viewer);
         $assistantActionsEnabled = $this->assistantEligibility->planAllowsReview($plan)
             && $viewerContext['assistant'];
+        $ownerReviewEnabled = $this->ownerEligibility->planAllowsReview($plan)
+            && $this->ownerEligibility->canReview($viewer);
+        $ownerFinalizationEnabled = $this->ownerEligibility->planAllowsReview($plan)
+            && $this->ownerEligibility->canFinalize($viewer);
         $correctionActionsEnabled = $this->assistantEligibility->planAllowsReview($plan);
 
         return [
@@ -71,6 +76,8 @@ final class WeeklyPlanV3ProjectionService
                     $entriesByAssignee,
                     $viewerContext,
                     $assistantActionsEnabled,
+                    $ownerReviewEnabled,
+                    $ownerFinalizationEnabled,
                     $correctionActionsEnabled,
                 ): array {
                     $entries = $entriesByAssignee->get($workflow->assignee_id, collect());
@@ -78,6 +85,8 @@ final class WeeklyPlanV3ProjectionService
                         $workflow,
                         $entries,
                         $assistantActionsEnabled,
+                        $ownerReviewEnabled,
+                        $ownerFinalizationEnabled,
                         $correctionActionsEnabled && $viewerContext['correct'],
                         $correctionActionsEnabled && $viewerContext['resubmit'],
                     );
@@ -148,17 +157,28 @@ final class WeeklyPlanV3ProjectionService
 
     /**
      * @param  Collection<int, WeeklyPlanEntry>  $entries
-     * @return array{can_accept: bool, can_request_changes: bool, can_correct: bool, can_resubmit: bool, can_publish: false}
+     * @return array{can_accept: bool, can_request_changes: bool, can_correct: bool, can_resubmit: bool, can_publish: bool, can_approve_no_work: bool}
      */
     private function actionsFor(
         WeeklyPlanEmployeeWorkflow $workflow,
         Collection $entries,
         bool $assistantActionsEnabled,
+        bool $ownerReviewEnabled,
+        bool $ownerFinalizationEnabled,
         bool $correctionEnabled,
         bool $resubmitEnabled,
     ): array {
-        $canReview = $assistantActionsEnabled
+        $canAssistantReview = $assistantActionsEnabled
             && $workflow->state === WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT;
+        $canOwnerReview = $ownerReviewEnabled
+            && $workflow->state === WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER;
+        $canPublish = $ownerFinalizationEnabled
+            && $canOwnerReview
+            && $entries->isNotEmpty()
+            && $this->readiness->ready($entries, $workflow->assignee_id);
+        $canApproveNoWork = $ownerFinalizationEnabled
+            && $canOwnerReview
+            && $entries->isEmpty();
         $canCorrect = $correctionEnabled
             && $workflow->state === WeeklyPlanEmployeeWorkflowState::HR_CORRECTION;
         $canResubmit = $resubmitEnabled
@@ -166,11 +186,12 @@ final class WeeklyPlanV3ProjectionService
             && $this->readiness->ready($entries, $workflow->assignee_id);
 
         return [
-            'can_accept' => $canReview,
-            'can_request_changes' => $canReview,
+            'can_accept' => $canAssistantReview || $canPublish,
+            'can_request_changes' => $canAssistantReview || $canOwnerReview,
             'can_correct' => $canCorrect,
             'can_resubmit' => $canResubmit,
-            'can_publish' => false,
+            'can_publish' => $canPublish,
+            'can_approve_no_work' => $canApproveNoWork,
         ];
     }
 }

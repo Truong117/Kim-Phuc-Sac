@@ -3,11 +3,13 @@
 namespace App\Services;
 
 use App\Enums\TaskStatus;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\Department;
 use App\Models\Location;
 use App\Models\OrganizationMembership;
 use App\Models\Task;
 use App\Models\User;
+use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEntry;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -81,26 +83,12 @@ class TaskService
             (int) $attributes['assignee_id'],
         );
 
-        $task = DB::transaction(function () use ($attributes, $assigneeMembership, $creator, $creatorMembership): Task {
-            $task = Task::query()->create([
-                'organization_id' => $creatorMembership->organization_id,
-                'creator_id' => $creator->id,
-                'assignee_id' => $assigneeMembership->user_id,
-                'department_id' => $assigneeMembership->department_id,
-                'location_id' => $assigneeMembership->location_id,
-                'weekly_plan_entry_id' => $attributes['weekly_plan_entry_id'] ?? null,
-                'title' => $attributes['title'],
-                'description' => ($attributes['description'] ?? null) ?: null,
-                'priority' => $attributes['priority'],
-                'status' => TaskStatus::TODO,
-                'start_date' => $attributes['start_date'] ?? null,
-                'due_date' => $attributes['due_date'],
-            ]);
-
-            $this->notifications->createTaskAssignedNotification($task, $creator, false);
-
-            return $task;
-        });
+        $task = $this->createRecord(
+            $creator,
+            $creatorMembership,
+            $assigneeMembership,
+            $attributes,
+        );
 
         return $this->loadAndDecorate($task, $creator);
     }
@@ -119,17 +107,48 @@ class TaskService
             ->filter(fn (?string $value): bool => filled($value))
             ->implode("\n\nKết quả cần đạt: ");
 
-        $task = $this->create($publisher, [
-            'assignee_id' => $entry->assignee_id,
-            'title' => $entry->title,
-            'description' => $description !== '' ? $description : null,
-            'priority' => $entry->priority?->value ?? $entry->priority,
-            'start_date' => $entry->start_date?->toDateString(),
-            'due_date' => $entry->due_date?->toDateString(),
-            'weekly_plan_entry_id' => $entry->id,
-        ]);
+        $task = $this->create($publisher, $this->weeklyPlanEntryAttributes(
+            $entry,
+            $description,
+        ));
 
         return $task;
+    }
+
+    /**
+     * Trusted V3 publication path. The caller authorizes the OWNER batch;
+     * this method only accepts a locked, organization-valid target.
+     */
+    public function createFromWeeklyPlanEntryForV3Publication(
+        User $publisher,
+        WeeklyPlan $plan,
+        WeeklyPlanEntry $entry,
+        OrganizationMembership $assigneeMembership,
+    ): Task {
+        $publisherMembership = $this->activeMembership($publisher);
+        if ($plan->workflow_version !== WeeklyPlanWorkflowVersion::V3
+            || $publisherMembership->organization_id !== $plan->organization_id
+            || $entry->weekly_plan_id !== $plan->id
+            || $entry->assignee_id === null
+            || $assigneeMembership->organization_id !== $plan->organization_id
+            || $assigneeMembership->user_id !== $entry->assignee_id
+            || ! $assigneeMembership->is_default
+            || ! $assigneeMembership->is_active) {
+            throw ValidationException::withMessages([
+                'assignee_id' => ['Người phụ trách không thuộc phạm vi phát hành kế hoạch.'],
+            ]);
+        }
+
+        $description = collect([$entry->content, $entry->expected_result])
+            ->filter(fn (?string $value): bool => filled($value))
+            ->implode("\n\nKết quả cần đạt: ");
+
+        return $this->createRecord(
+            $publisher,
+            $publisherMembership,
+            $assigneeMembership,
+            $this->weeklyPlanEntryAttributes($entry, $description),
+        );
     }
 
     /** @param array<string, mixed> $attributes */
@@ -277,6 +296,56 @@ class TaskService
     {
         return $this->memberships->activeMembershipFor($user)
             ?? throw new AccessDeniedHttpException;
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function createRecord(
+        User $creator,
+        OrganizationMembership $creatorMembership,
+        OrganizationMembership $assigneeMembership,
+        array $attributes,
+    ): Task {
+        return DB::transaction(function () use (
+            $attributes,
+            $assigneeMembership,
+            $creator,
+            $creatorMembership,
+        ): Task {
+            $task = Task::query()->create([
+                'organization_id' => $creatorMembership->organization_id,
+                'creator_id' => $creator->id,
+                'assignee_id' => $assigneeMembership->user_id,
+                'department_id' => $assigneeMembership->department_id,
+                'location_id' => $assigneeMembership->location_id,
+                'weekly_plan_entry_id' => $attributes['weekly_plan_entry_id'] ?? null,
+                'title' => $attributes['title'],
+                'description' => ($attributes['description'] ?? null) ?: null,
+                'priority' => $attributes['priority'],
+                'status' => TaskStatus::TODO,
+                'start_date' => $attributes['start_date'] ?? null,
+                'due_date' => $attributes['due_date'],
+            ]);
+
+            $this->notifications->createTaskAssignedNotification($task, $creator, false);
+
+            return $task;
+        });
+    }
+
+    /** @return array<string, mixed> */
+    private function weeklyPlanEntryAttributes(
+        WeeklyPlanEntry $entry,
+        ?string $description,
+    ): array {
+        return [
+            'assignee_id' => $entry->assignee_id,
+            'title' => $entry->title,
+            'description' => $description !== '' ? $description : null,
+            'priority' => $entry->priority?->value ?? $entry->priority,
+            'start_date' => $entry->start_date?->toDateString(),
+            'due_date' => $entry->due_date?->toDateString(),
+            'weekly_plan_entry_id' => $entry->id,
+        ];
     }
 
     private function assignableMembership(

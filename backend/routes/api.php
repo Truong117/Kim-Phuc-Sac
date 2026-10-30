@@ -175,6 +175,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/{plan}/assistant-review-batches', [WeeklyPlanController::class, 'confirmV3AssistantBatch'])
             ->whereNumber('plan')
             ->middleware('permission:weekly_plans.assistant_review,organization');
+        Route::post('/{plan}/owner-review-batches', [WeeklyPlanController::class, 'confirmV3OwnerBatch'])
+            ->whereNumber('plan')
+            ->middleware('permission:weekly_plans.review,organization');
         Route::post('/{plan}/v3-corrections/{assignee}/entries', [WeeklyPlanController::class, 'storeV3CorrectionEntry'])
             ->whereNumber('plan')->whereNumber('assignee')
             ->middleware('permission:weekly_plans.manage_draft,organization');
