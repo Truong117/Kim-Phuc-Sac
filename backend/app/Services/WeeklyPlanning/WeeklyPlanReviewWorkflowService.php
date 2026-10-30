@@ -106,9 +106,9 @@ class WeeklyPlanReviewWorkflowService
             }
 
             $isCurrentRoundAcceptance = $reviewDecision->status === WeeklyPlanReviewStatus::ACCEPTED
+                && $reviewDecision->reviewed_by !== null
                 && $reviewDecision->reviewed_at !== null
-                && $round->started_at !== null
-                && $reviewDecision->reviewed_at->greaterThanOrEqualTo($round->started_at);
+                && ! $this->wasAcceptedInPreviousRound($round, $assigneeId);
             $canUpdateDecision = $reviewDecision->status === WeeklyPlanReviewStatus::PENDING
                 || ($isCurrentRoundAcceptance && $decision === WeeklyPlanReviewStatus::CHANGES_REQUESTED);
             if (! $canUpdateDecision) {
@@ -445,6 +445,24 @@ class WeeklyPlanReviewWorkflowService
         }
 
         return $round;
+    }
+
+    private function wasAcceptedInPreviousRound(
+        WeeklyPlanReviewRound $round,
+        int $assigneeId,
+    ): bool {
+        if ($round->round_number <= 1) {
+            return false;
+        }
+
+        return WeeklyPlanReviewDecision::query()
+            ->where('assignee_id', $assigneeId)
+            ->where('status', WeeklyPlanReviewStatus::ACCEPTED->value)
+            ->whereHas('round', fn ($query) => $query
+                ->where('weekly_plan_id', $round->weekly_plan_id)
+                ->where('stage', $round->stage->value)
+                ->where('round_number', $round->round_number - 1))
+            ->exists();
     }
 
     private function assertAllAccepted(WeeklyPlanReviewRound $round): void
