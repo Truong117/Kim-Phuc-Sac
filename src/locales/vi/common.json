@@ -1009,6 +1009,7 @@
       "createdBy": "Người tạo: {name}",
       "stepperLabel": "Các bước hoàn thiện kế hoạch tuần",
       "back": "Quay lại",
+      "backToPlanList": "Quay lại danh sách kế hoạch",
       "steps": {
         "source": "Nguồn & nhân viên",
         "structure": "Phân tích công việc",
