@@ -20,7 +20,10 @@ use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
 class WeeklyPlanReviewWorkflowService
 {
-    public function __construct(private readonly WeeklyPlanScopeService $scope) {}
+    public function __construct(
+        private readonly WeeklyPlanScopeService $scope,
+        private readonly WeeklyPlanReadinessService $planReadiness,
+    ) {}
 
     public function startAssistantReview(WeeklyPlan $plan, User $actor): WeeklyPlanReviewRound
     {
@@ -266,10 +269,11 @@ class WeeklyPlanReviewWorkflowService
             $this->assertStageStatus($plan, WeeklyPlanReviewStage::ASSISTANT);
             $round = $this->lockedCurrentRound($plan, WeeklyPlanReviewStage::ASSISTANT);
             $this->assertAllAccepted($round);
-            if (! $plan->entries()->exists()) {
-                throw ValidationException::withMessages([
-                    'plan' => ['Kế hoạch không còn công việc sau chỉnh sửa. Vui lòng bổ sung ít nhất một công việc hoặc xử lý lại kế hoạch.'],
-                ]);
+            $readiness = $this->planReadiness->evaluate($plan);
+            if (! $readiness['ready']) {
+                throw ValidationException::withMessages(
+                    $this->planReadiness->validationMessages($readiness),
+                );
             }
 
             $round->forceFill([

@@ -384,11 +384,14 @@ class WeeklyPlanningStagedReviewTest extends TestCase
 
         $this->decide($assistant, $plan, $employee, 'ACCEPTED')
             ->assertOk()
-            ->assertJsonPath('data.actions.can_finalize_assistant_review', true);
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', false);
+        $this->actingAs($assistant)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', false);
         $this->actingAs($assistant)
             ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('plan');
+            ->assertJsonValidationErrors('entries');
         $this->assertDatabaseHas('weekly_plan_review_rounds', [
             'weekly_plan_id' => $plan->id,
             'stage' => 'ASSISTANT',
@@ -403,14 +406,56 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.actions.can_correct_requested_changes', true);
 
-        $this->actingAs($hr)->postJson(
+        $replacementResponse = $this->actingAs($hr)->postJson(
             "/api/weekly-plans/{$plan->id}/entries",
-            $this->entryPayload($entry, ['title' => 'Replacement work after full removal']),
+            $this->entryPayload($entry, [
+                'title' => 'Replacement work after full removal',
+                'expected_result' => null,
+            ]),
         )->assertCreated()
             ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
             ->assertJsonPath('data.review_workflow.current_round.decisions.0.status', 'PENDING')
             ->assertJsonPath('data.actions.can_finalize_assistant_review', false);
-        $this->decide($assistant, $plan, $employee, 'ACCEPTED')->assertOk();
+        $replacementData = collect($replacementResponse->json('data.entries'))
+            ->firstWhere('title', 'Replacement work after full removal');
+        $this->assertIsArray($replacementData);
+        $replacementEntry = WeeklyPlanEntry::findOrFail($replacementData['id']);
+
+        $this->decide($assistant, $plan, $employee, 'ACCEPTED')
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', false);
+        $this->actingAs($assistant)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', false);
+        $this->actingAs($assistant)
+            ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('expected_result');
+        $this->assertDatabaseHas('weekly_plan_review_rounds', [
+            'weekly_plan_id' => $plan->id,
+            'stage' => 'ASSISTANT',
+            'round_number' => 2,
+            'status' => 'OPEN',
+        ]);
+        $this->assertDatabaseMissing('weekly_plan_review_rounds', [
+            'weekly_plan_id' => $plan->id,
+            'stage' => 'OWNER',
+        ]);
+
+        $this->decide($assistant, $plan, $employee, 'CHANGES_REQUESTED')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED');
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$replacementEntry->id}",
+            $this->entryPayload($replacementEntry, ['expected_result' => 'Recovered result']),
+        )->assertOk();
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 3)
+            ->assertJsonPath('data.review_workflow.current_round.decisions.0.status', 'PENDING');
+        $this->decide($assistant, $plan, $employee, 'ACCEPTED')
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', true);
         $this->actingAs($assistant)
             ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
             ->assertOk()
@@ -459,7 +504,7 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             ->assertJsonPath('data.actions.can_approve', false);
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/approve")
             ->assertUnprocessable()
-            ->assertJsonValidationErrors('plan');
+            ->assertJsonValidationErrors('entries');
         $this->assertDatabaseHas('weekly_plan_review_rounds', [
             'weekly_plan_id' => $plan->id,
             'stage' => 'OWNER',
@@ -471,11 +516,50 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             'status' => 'APPROVED',
         ]);
 
-        $this->actingAs($hr)->postJson(
+        $replacementResponse = $this->actingAs($hr)->postJson(
             "/api/weekly-plans/{$plan->id}/entries",
-            $this->entryPayload($entry, ['title' => 'OWNER replacement work']),
+            $this->entryPayload($entry, [
+                'title' => 'OWNER replacement work',
+                'expected_result' => null,
+            ]),
         )->assertCreated()
             ->assertJsonPath('data.status', 'OWNER_REVIEW')
+            ->assertJsonPath('data.review_workflow.current_round.decisions.0.status', 'PENDING')
+            ->assertJsonPath('data.actions.can_approve', false);
+        $replacementData = collect($replacementResponse->json('data.entries'))
+            ->firstWhere('title', 'OWNER replacement work');
+        $this->assertIsArray($replacementData);
+        $replacementEntry = WeeklyPlanEntry::findOrFail($replacementData['id']);
+
+        $this->decide($owner, $plan, $employee, 'ACCEPTED')
+            ->assertOk()->assertJsonPath('data.actions.can_approve', false);
+        $this->actingAs($owner)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_approve', false);
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/approve")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('expected_result');
+        $this->assertDatabaseHas('weekly_plan_review_rounds', [
+            'weekly_plan_id' => $plan->id,
+            'stage' => 'OWNER',
+            'round_number' => 2,
+            'status' => 'OPEN',
+        ]);
+        $this->assertDatabaseMissing('weekly_plans', [
+            'id' => $plan->id,
+            'status' => 'APPROVED',
+        ]);
+
+        $this->decide($owner, $plan, $employee, 'CHANGES_REQUESTED')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'OWNER_CHANGES_REQUESTED');
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$replacementEntry->id}",
+            $this->entryPayload($replacementEntry, ['expected_result' => 'OWNER recovered result']),
+        )->assertOk();
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 3)
             ->assertJsonPath('data.review_workflow.current_round.decisions.0.status', 'PENDING');
         $this->decide($owner, $plan, $employee, 'ACCEPTED')
             ->assertOk()->assertJsonPath('data.actions.can_approve', true);

@@ -57,6 +57,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanSuggestionGenerator $suggestions,
         private readonly WeeklyPlanPublisher $publisher,
         private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
+        private readonly WeeklyPlanReadinessService $planReadiness,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -1123,27 +1124,15 @@ class WeeklyPlanService
 
             $isCorrectionResubmission = $this->isCorrectionStatus($plan->status);
             $readiness = $isCorrectionResubmission
-                ? $this->correctionResubmissionReadiness($plan)
-                : $this->submissionReadiness($plan);
+                ? $this->planReadiness->evaluateCorrectionResubmission($plan)
+                : $this->planReadiness->evaluate($plan);
             if (! $readiness['ready']) {
-                $errors = [];
-                if ($readiness['no_entries'] > 0) {
-                    $errors['entries'][] = 'Kế hoạch phải có ít nhất một công việc.';
-                }
-                if ($readiness['missing_assignee'] > 0) {
-                    $errors['assignee'][] = 'Mỗi công việc phải có nhân viên phụ trách.';
-                }
-                if ($readiness['invalid_entries'] > 0) {
-                    $errors['entries'][] = 'Kế hoạch còn công việc chưa hợp lệ.';
-                }
-                if ($readiness['missing_expected_result'] > 0) {
-                    $errors['expected_result'][] = 'Mỗi công việc phải có kết quả cần đạt.';
-                }
-                if ($readiness['missing_dates'] > 0) {
-                    $errors['dates'][] = 'Mỗi công việc phải có ngày bắt đầu và hạn hoàn thành.';
-                }
-
-                throw ValidationException::withMessages($errors);
+                throw ValidationException::withMessages(
+                    $this->planReadiness->validationMessages(
+                        $readiness,
+                        $isCorrectionResubmission,
+                    ),
+                );
             }
 
             if ($isCorrectionResubmission) {
@@ -1241,14 +1230,11 @@ class WeeklyPlanService
             if ($plan->status !== WeeklyPlanStatus::OWNER_REVIEW) {
                 throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể phê duyệt.');
             }
-            $readiness = $this->submissionReadiness($plan);
-            if ($readiness['no_entries'] > 0) {
-                throw ValidationException::withMessages([
-                    'plan' => ['Kế hoạch không còn công việc sau chỉnh sửa. Vui lòng bổ sung ít nhất một công việc hoặc xử lý lại kế hoạch.'],
-                ]);
-            }
+            $readiness = $this->planReadiness->evaluate($plan);
             if (! $readiness['ready']) {
-                throw ValidationException::withMessages(['plan' => ['Kế hoạch còn dữ liệu chưa hợp lệ.']]);
+                throw ValidationException::withMessages(
+                    $this->planReadiness->validationMessages($readiness),
+                );
             }
             $this->reviewWorkflow->completeOwnerReviewForApproval($plan, $actor);
 
@@ -1801,71 +1787,6 @@ class WeeklyPlanService
         }
     }
 
-    /**
-     * @return array{
-     *     ready: bool,
-     *     no_entries: int,
-     *     missing_assignee: int,
-     *     invalid_entries: int,
-     *     missing_expected_result: int,
-     *     missing_dates: int
-     * }
-     */
-    private function submissionReadiness(WeeklyPlan $plan): array
-    {
-        /** @var Collection<int, WeeklyPlanEntry> $entries */
-        $entries = $plan->relationLoaded('entries')
-            ? $plan->entries
-            : $plan->entries()->get();
-        $noEntries = $entries->isEmpty() ? 1 : 0;
-        $missingAssignee = $entries->filter(
-            fn (WeeklyPlanEntry $entry): bool => $entry->assignee_id === null,
-        )->count();
-        $invalidEntries = $entries->filter(
-            fn (WeeklyPlanEntry $entry): bool => $entry->validation_status !== 'VALID',
-        )->count();
-        $missingExpectedResult = $entries->filter(
-            fn (WeeklyPlanEntry $entry): bool => blank($entry->expected_result),
-        )->count();
-        $missingDates = $entries->filter(
-            fn (WeeklyPlanEntry $entry): bool => $entry->start_date === null || $entry->due_date === null,
-        )->count();
-
-        return [
-            'ready' => $noEntries === 0
-                && $missingAssignee === 0
-                && $invalidEntries === 0
-                && $missingExpectedResult === 0
-                && $missingDates === 0,
-            'no_entries' => $noEntries,
-            'missing_assignee' => $missingAssignee,
-            'invalid_entries' => $invalidEntries,
-            'missing_expected_result' => $missingExpectedResult,
-            'missing_dates' => $missingDates,
-        ];
-    }
-
-    /**
-     * @return array{
-     *     ready: bool,
-     *     no_entries: int,
-     *     missing_assignee: int,
-     *     invalid_entries: int,
-     *     missing_expected_result: int,
-     *     missing_dates: int
-     * }
-     */
-    private function correctionResubmissionReadiness(WeeklyPlan $plan): array
-    {
-        $readiness = $this->submissionReadiness($plan);
-        $readiness['ready'] = $readiness['missing_assignee'] === 0
-            && $readiness['invalid_entries'] === 0
-            && $readiness['missing_expected_result'] === 0
-            && $readiness['missing_dates'] === 0;
-
-        return $readiness;
-    }
-
     private function load(WeeklyPlan $plan, User $viewer): WeeklyPlan
     {
         $plan->load([
@@ -1916,11 +1837,7 @@ class WeeklyPlanService
             ],
         ]);
 
-        $hasValidEntries = $plan->entries->isNotEmpty()
-            && $plan->entries->every(
-                fn (WeeklyPlanEntry $entry): bool => $entry->validation_status === 'VALID',
-            );
-        $submissionReadiness = $this->submissionReadiness($plan);
+        $submissionReadiness = $this->planReadiness->evaluate($plan);
         $assistantRound = $plan->reviewRounds
             ->where('stage', WeeklyPlanReviewStage::ASSISTANT)
             ->sortByDesc('round_number')
@@ -1969,7 +1886,7 @@ class WeeklyPlanService
         $canCorrectRequestedChanges = ($correctionStateValid || $emptyReviewRecovery)
             && $this->scope->allows($viewer, 'weekly_plans.manage_draft');
         $canResubmitChanges = $correctionStateValid
-            && $this->correctionResubmissionReadiness($plan)['ready']
+            && $this->planReadiness->evaluateCorrectionResubmission($plan)['ready']
             && $sourceProcessingComplete
             && $this->scope->allows($viewer, 'weekly_plans.manage_draft')
             && $this->scope->allows($viewer, 'weekly_plans.submit');
@@ -1996,6 +1913,7 @@ class WeeklyPlanService
                 && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
             'can_finalize_assistant_review' => $assistantReviewStatus
                 && $allAssistantDecisionsAccepted
+                && $submissionReadiness['ready']
                 && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
             'can_owner_review' => $ownerReviewStatus
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
@@ -2004,7 +1922,7 @@ class WeeklyPlanService
             'can_review_edit' => in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true)
                 && $this->scope->allows($viewer, 'weekly_plans.review'),
             'can_approve' => $plan->status === WeeklyPlanStatus::OWNER_REVIEW
-                && $hasValidEntries
+                && $submissionReadiness['ready']
                 && $allOwnerDecisionsAccepted
                 && $this->scope->allows($viewer, 'weekly_plans.approve'),
             'can_publish' => $plan->status === WeeklyPlanStatus::APPROVED
