@@ -122,12 +122,13 @@ test("submit back navigation returns drafts to work and staged plans to the list
   assert.match(layout, /submitStepReturnsToList \? "backToPlanList" : "back"/);
 });
 
-test("active reviewers bypass wizard entry and submit while HR keeps wizard inference", async () => {
+test("stage reviewers bypass wizard entry and submit while HR keeps wizard inference", async () => {
   const reviewerPlan = {
     ...plan({ status: "OWNER_REVIEW" }),
     actions: {
       can_assistant_review: false,
       can_owner_review: true,
+      can_open_review_workspace: true,
     },
   };
   const hrPlan = {
@@ -135,6 +136,25 @@ test("active reviewers bypass wizard entry and submit while HR keeps wizard infe
     actions: {
       can_assistant_review: false,
       can_owner_review: false,
+      can_open_review_workspace: false,
+    },
+  };
+  const readonlyOwnerPlan = {
+    ...reviewerPlan,
+    status: "OWNER_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const readonlyAssistantPlan = {
+    ...reviewerPlan,
+    status: "ASSISTANT_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
     },
   };
 
@@ -143,6 +163,14 @@ test("active reviewers bypass wizard entry and submit while HR keeps wizard infe
     "/weekly-plans/31/review",
   );
   assert.equal(activeWeeklyPlanReviewPath(hrPlan), null);
+  assert.equal(
+    activeWeeklyPlanReviewPath(readonlyOwnerPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath(readonlyAssistantPlan),
+    "/weekly-plans/31/review",
+  );
   assert.equal(inferWeeklyPlanWizardStep(hrPlan, null), "submit");
 
   const [entry, submit] = await Promise.all([

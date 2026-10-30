@@ -5,7 +5,7 @@ import type {
 
 export type WeeklyPlanReviewerActions = Pick<
   WeeklyPlanActions,
-  "can_assistant_review" | "can_owner_review"
+  "can_assistant_review" | "can_owner_review" | "can_open_review_workspace"
 >;
 
 type ReviewerPlan = {
@@ -21,7 +21,7 @@ export const canActivelyReviewWeeklyPlan = (
 export const activeWeeklyPlanReviewPath = (
   plan: ReviewerPlan,
 ): string | null =>
-  canActivelyReviewWeeklyPlan(plan.actions)
+  plan.actions.can_open_review_workspace
     ? `/weekly-plans/${plan.id}/review`
     : null;
 

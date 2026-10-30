@@ -10,6 +10,7 @@ import {
 import {
   activeWeeklyPlanReviewPath,
   actorRelativeWeeklyPlanStatusKey,
+  canActivelyReviewWeeklyPlan,
 } from "../src/utils/weeklyPlanReviewer.ts";
 
 const readSource = (relativePath) =>
@@ -63,13 +64,14 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/ai-extract/);
 });
 
-test("active reviewers receive direct list navigation and actor-relative status copy", async () => {
+test("stage reviewers receive direct list navigation while active labels stay action-specific", async () => {
   const ownerPlan = {
     id: 31,
     status: "OWNER_REVIEW",
     actions: {
       can_assistant_review: false,
       can_owner_review: true,
+      can_open_review_workspace: true,
     },
   };
   const hrPlan = {
@@ -77,6 +79,7 @@ test("active reviewers receive direct list navigation and actor-relative status 
     actions: {
       can_assistant_review: false,
       can_owner_review: false,
+      can_open_review_workspace: false,
     },
   };
   const assistantPlan = {
@@ -85,6 +88,25 @@ test("active reviewers receive direct list navigation and actor-relative status 
     actions: {
       can_assistant_review: true,
       can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const ownerWaitingForHr = {
+    ...ownerPlan,
+    status: "OWNER_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const assistantWaitingForHr = {
+    ...assistantPlan,
+    status: "ASSISTANT_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
     },
   };
 
@@ -92,11 +114,13 @@ test("active reviewers receive direct list navigation and actor-relative status 
     activeWeeklyPlanReviewPath(ownerPlan),
     "/weekly-plans/31/review",
   );
+  assert.equal(canActivelyReviewWeeklyPlan(ownerPlan.actions), true);
   assert.equal(
     actorRelativeWeeklyPlanStatusKey(ownerPlan.status, ownerPlan.actions),
     "weeklyPlanning.status.reviewRequired",
   );
   assert.equal(activeWeeklyPlanReviewPath(hrPlan), null);
+  assert.equal(canActivelyReviewWeeklyPlan(hrPlan.actions), false);
   assert.equal(
     actorRelativeWeeklyPlanStatusKey(hrPlan.status, hrPlan.actions),
     null,
@@ -112,6 +136,29 @@ test("active reviewers receive direct list navigation and actor-relative status 
     ),
     "weeklyPlanning.status.reviewRequired",
   );
+  assert.equal(
+    activeWeeklyPlanReviewPath(ownerWaitingForHr),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(canActivelyReviewWeeklyPlan(ownerWaitingForHr.actions), false);
+  assert.equal(
+    activeWeeklyPlanReviewPath(assistantWaitingForHr),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    canActivelyReviewWeeklyPlan(assistantWaitingForHr.actions),
+    false,
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath({
+      ...ownerWaitingForHr,
+      actions: {
+        ...ownerWaitingForHr.actions,
+        can_open_review_workspace: false,
+      },
+    }),
+    null,
+  );
 
   const [list, types, translationsSource] = await Promise.all([
     readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
@@ -121,16 +168,21 @@ test("active reviewers receive direct list navigation and actor-relative status 
   const copy = JSON.parse(translationsSource).weeklyPlanning;
 
   assert.match(list, /const reviewPath = activeWeeklyPlanReviewPath\(plan\)/);
+  assert.match(
+    list,
+    /const reviewCtaKey = canActivelyReviewWeeklyPlan\(plan\.actions\)[\s\S]*?\? "list\.review"[\s\S]*?: reviewPath[\s\S]*?\? "list\.viewReview"[\s\S]*?: "list\.open"/,
+  );
   assert.match(list, /to=\{reviewPath \?\? "\/weekly-plans\/" \+ plan\.id\}/);
   assert.match(list, /actions=\{plan\.actions\}/);
-  assert.match(list, /t\(reviewPath \? "list\.review" : "list\.open"\)/);
+  assert.match(list, /t\(reviewCtaKey\)/);
   assert.match(
     types,
-    /"can_delete" \| "can_assistant_review" \| "can_owner_review"/,
+    /"can_delete"[\s\S]*?"can_assistant_review"[\s\S]*?"can_owner_review"[\s\S]*?"can_open_review_workspace"/,
   );
   assert.equal(copy.status.reviewRequired, "Cần xét duyệt");
   assert.equal(copy.status.OWNER_REVIEW, "Giám đốc đang xét duyệt");
   assert.equal(copy.list.review, "Xét duyệt");
+  assert.equal(copy.list.viewReview, "Xem xét duyệt");
   assert.equal(copy.list.open, "Mở kế hoạch");
 });
 
