@@ -31,6 +31,7 @@ final class StagingBootstrapPlan
         '2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables',
         '2026_10_28_000000_create_weekly_plan_entry_items_tables',
         '2026_10_29_000000_create_weekly_plan_staged_review_tables',
+        '2026_10_30_000000_create_weekly_plan_v3_schema_foundation',
     ];
 
     /** @var list<string> */

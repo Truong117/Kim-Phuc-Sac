@@ -23,10 +23,13 @@ class WeeklyPlanReviewWorkflowService
     public function __construct(
         private readonly WeeklyPlanScopeService $scope,
         private readonly WeeklyPlanReadinessService $planReadiness,
+        private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
     ) {}
 
     public function startAssistantReview(WeeklyPlan $plan, User $actor): WeeklyPlanReviewRound
     {
+        $this->workflowVersions->assertV2($plan);
+
         if (! in_array($plan->status, [
             WeeklyPlanStatus::DRAFT,
             WeeklyPlanStatus::CHANGES_REQUESTED,
@@ -79,6 +82,7 @@ class WeeklyPlanReviewWorkflowService
         }
 
         $visible = $this->scope->queryFor($actor, 'weekly_plans.view')->findOrFail($planId);
+        $this->workflowVersions->assertV2($visible);
         [$stage, $permission] = $this->stageAndPermission($visible);
         $this->assertPermission($actor, $permission);
 
@@ -86,6 +90,7 @@ class WeeklyPlanReviewWorkflowService
             $plan = $this->scope->queryFor($actor, $permission)
                 ->lockForUpdate()
                 ->findOrFail($planId);
+            $this->workflowVersions->assertV2($plan);
             if ($this->stageForStatus($plan->status) !== $stage) {
                 throw new ConflictHttpException('Giai đoạn xét duyệt của kế hoạch đã thay đổi.');
             }
@@ -154,7 +159,8 @@ class WeeklyPlanReviewWorkflowService
         WeeklyPlanReviewDecision $decision,
         bool $viewerCanReview,
     ): bool {
-        if (! $viewerCanReview
+        if (! $this->workflowVersions->isV2($plan)
+            || ! $viewerCanReview
             || $round->status !== WeeklyPlanReviewRoundStatus::OPEN
             || $plan->status !== $this->planStatusFor($round->stage, false)
             || $decision->weekly_plan_review_round_id !== $round->id) {
@@ -173,6 +179,8 @@ class WeeklyPlanReviewWorkflowService
 
     public function assertAssigneeCanBeCorrected(WeeklyPlan $plan, int $assigneeId): void
     {
+        $this->workflowVersions->assertV2($plan);
+
         $stage = $this->correctionStageForStatus($plan->status);
         if ($stage === null) {
             throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể chỉnh sửa theo yêu cầu.');
@@ -195,6 +203,8 @@ class WeeklyPlanReviewWorkflowService
 
     public function reopenAcceptedDecisionForEmptyPlan(WeeklyPlan $plan, int $assigneeId): void
     {
+        $this->workflowVersions->assertV2($plan);
+
         $stage = match ($plan->status) {
             WeeklyPlanStatus::ASSISTANT_REVIEW => WeeklyPlanReviewStage::ASSISTANT,
             WeeklyPlanStatus::OWNER_REVIEW => WeeklyPlanReviewStage::OWNER,
@@ -227,6 +237,8 @@ class WeeklyPlanReviewWorkflowService
 
     public function resubmitRequestedChanges(WeeklyPlan $plan, User $actor): WeeklyPlanReviewRound
     {
+        $this->workflowVersions->assertV2($plan);
+
         $stage = $this->correctionStageForStatus($plan->status);
         if ($stage === null) {
             throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể gửi lại.');
@@ -300,6 +312,7 @@ class WeeklyPlanReviewWorkflowService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.assistant_review')
                 ->lockForUpdate()
                 ->findOrFail($planId);
+            $this->workflowVersions->assertV2($plan);
             $this->assertStageStatus($plan, WeeklyPlanReviewStage::ASSISTANT);
             $round = $this->lockedCurrentRound($plan, WeeklyPlanReviewStage::ASSISTANT);
             $this->assertAllAccepted($round);
@@ -327,6 +340,8 @@ class WeeklyPlanReviewWorkflowService
 
     public function completeOwnerReviewForApproval(WeeklyPlan $plan, User $actor): void
     {
+        $this->workflowVersions->assertV2($plan);
+
         if ($plan->status !== WeeklyPlanStatus::OWNER_REVIEW) {
             throw new ConflictHttpException('Kế hoạch không ở giai đoạn OWNER có thể phê duyệt.');
         }

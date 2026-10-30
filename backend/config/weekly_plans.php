@@ -2,6 +2,9 @@
 
 return [
     'timezone' => env('WEEKLY_PLAN_TIMEZONE', 'Asia/Ho_Chi_Minh'),
+    // Schema and model support may land before V3 business behavior. Keep all
+    // creation and mutation paths on V2 until a later rollout explicitly opts in.
+    'workflow_v3_enabled' => (bool) env('WEEKLY_PLAN_WORKFLOW_V3_ENABLED', false),
     'storage_disk' => env('WEEKLY_PLAN_STORAGE_DISK', 'local'),
     'max_file_kb' => (int) env('WEEKLY_PLAN_MAX_FILE_KB', 5120),
     'max_archive_entries' => (int) env('WEEKLY_PLAN_MAX_ARCHIVE_ENTRIES', 250),

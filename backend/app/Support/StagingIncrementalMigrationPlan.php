@@ -14,6 +14,8 @@ final class StagingIncrementalMigrationPlan
 
     public const MIGRATION_19 = '2026_10_29_000000_create_weekly_plan_staged_review_tables.php';
 
+    public const MIGRATION_20 = '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php';
+
     /** @var array<string, array{migration: string, before: int, after: int}> */
     private const ALLOWLIST = [
         self::MIGRATION_16 => [
@@ -35,6 +37,11 @@ final class StagingIncrementalMigrationPlan
             'migration' => '2026_10_29_000000_create_weekly_plan_staged_review_tables',
             'before' => 18,
             'after' => 19,
+        ],
+        self::MIGRATION_20 => [
+            'migration' => '2026_10_30_000000_create_weekly_plan_v3_schema_foundation',
+            'before' => 19,
+            'after' => 20,
         ],
     ];
 
@@ -100,6 +107,7 @@ final class StagingIncrementalMigrationPlan
             $violations[] = match ($migrationFile) {
                 self::MIGRATION_18 => 'migration_18_parent_prerequisites_missing_or_incompatible',
                 self::MIGRATION_19 => 'migration_19_parent_prerequisites_missing_or_incompatible',
+                self::MIGRATION_20 => 'migration_20_parent_prerequisites_missing_or_incompatible',
                 default => 'foreign_key_prerequisites_missing_or_incompatible',
             };
         }
@@ -119,6 +127,9 @@ final class StagingIncrementalMigrationPlan
             if (($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_19_schema_exists_before_migration_16';
             }
+            if (($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_20_schema_exists_before_migration_16';
+            }
         } elseif ($migrationFile === self::MIGRATION_17) {
             if ($state['migration_16_schema_state'] !== 'complete') {
                 $violations[] = 'migration_16_schema_not_verified';
@@ -133,6 +144,9 @@ final class StagingIncrementalMigrationPlan
             }
             if (($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_19_schema_exists_before_migration_17';
+            }
+            if (($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_20_schema_exists_before_migration_17';
             }
         } elseif ($migrationFile === self::MIGRATION_18) {
             if ($state['migration_16_schema_state'] !== 'complete') {
@@ -149,7 +163,10 @@ final class StagingIncrementalMigrationPlan
             if (($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_19_schema_exists_before_migration_18';
             }
-        } else {
+            if (($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_20_schema_exists_before_migration_18';
+            }
+        } elseif ($migrationFile === self::MIGRATION_19) {
             if ($state['migration_16_schema_state'] !== 'complete') {
                 $violations[] = 'migration_16_schema_not_verified';
             }
@@ -161,6 +178,25 @@ final class StagingIncrementalMigrationPlan
             }
             if (($state['migration_19_schema_state'] ?? 'partial') !== 'absent') {
                 $violations[] = 'migration_19_partial_or_existing_schema';
+            }
+            if (($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
+                $violations[] = 'migration_20_schema_exists_before_migration_19';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete') {
+                $violations[] = 'migration_16_schema_not_verified';
+            }
+            if ($state['migration_17_schema_state'] !== 'complete') {
+                $violations[] = 'migration_17_schema_not_verified';
+            }
+            if ($state['migration_18_schema_state'] !== 'complete') {
+                $violations[] = 'migration_18_schema_not_verified';
+            }
+            if (($state['migration_19_schema_state'] ?? 'partial') !== 'complete') {
+                $violations[] = 'migration_19_schema_not_verified';
+            }
+            if (($state['migration_20_schema_state'] ?? 'partial') !== 'absent') {
+                $violations[] = 'migration_20_partial_or_existing_schema';
             }
         }
 
@@ -234,7 +270,8 @@ final class StagingIncrementalMigrationPlan
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'absent'
                 || $state['migration_18_schema_state'] !== 'absent'
-                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
+                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent'
+                || ($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_16_postflight_schema_mismatch';
             }
 
@@ -249,7 +286,8 @@ final class StagingIncrementalMigrationPlan
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
                 || $state['migration_18_schema_state'] !== 'absent'
-                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
+                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent'
+                || ($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_17_postflight_schema_mismatch';
             }
 
@@ -260,7 +298,8 @@ final class StagingIncrementalMigrationPlan
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
                 || $state['migration_18_schema_state'] !== 'complete'
-                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent') {
+                || ($state['migration_19_schema_state'] ?? 'absent') !== 'absent'
+                || ($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_18_postflight_schema_mismatch';
             }
 
@@ -273,11 +312,12 @@ final class StagingIncrementalMigrationPlan
                 || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
                 $violations[] = 'weekly_plan_entry_count_baseline_changed';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_19) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
                 || $state['migration_18_schema_state'] !== 'complete'
-                || ($state['migration_19_schema_state'] ?? 'partial') !== 'complete') {
+                || ($state['migration_19_schema_state'] ?? 'partial') !== 'complete'
+                || ($state['migration_20_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_19_postflight_schema_mismatch';
             }
 
@@ -299,6 +339,27 @@ final class StagingIncrementalMigrationPlan
                 || ($state['review_decision_count'] ?? -1) !== $expectedReviewDecisionCount
                 || ($state['legacy_employee_review_count'] ?? -1) !== $expectedLegacyEmployeeReviewCount) {
                 $violations[] = 'migration_19_legacy_normalization_mismatch';
+            }
+        } else {
+            if ($state['migration_16_schema_state'] !== 'complete'
+                || $state['migration_17_schema_state'] !== 'complete'
+                || $state['migration_18_schema_state'] !== 'complete'
+                || ($state['migration_19_schema_state'] ?? 'partial') !== 'complete'
+                || ($state['migration_20_schema_state'] ?? 'partial') !== 'complete') {
+                $violations[] = 'migration_20_postflight_schema_mismatch';
+            }
+
+            if ($expectedWeeklyPlanEntryCount === null
+                || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
+                $violations[] = 'weekly_plan_entry_count_baseline_changed';
+            }
+
+            if (($state['v2_workflow_plan_count'] ?? -1) !== $expectedWeeklyPlanCount
+                || ($state['v3_workflow_plan_count'] ?? -1) !== 0
+                || ($state['v3_employee_workflow_count'] ?? -1) !== 0
+                || ($state['v3_review_batch_count'] ?? -1) !== 0
+                || ($state['v3_review_decision_count'] ?? -1) !== 0) {
+                $violations[] = 'migration_20_v2_baseline_or_empty_v3_tables_mismatch';
             }
         }
 
