@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Enums\WeeklyPlanReviewStage;
 use App\Enums\WeeklyPlanReviewStatus;
 use App\Enums\WeeklyPlanStatus;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\WeeklyPlanEntry;
 use App\Models\WeeklyPlanReviewRound;
 use Illuminate\Http\Request;
@@ -14,6 +15,10 @@ class WeeklyPlanResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $hasV3Projection = $this->workflow_version === WeeklyPlanWorkflowVersion::V3
+            && array_key_exists('v3_employee_workflows', $this->resource->getAttributes())
+            && array_key_exists('v3_publication_summary', $this->resource->getAttributes());
+
         return [
             'id' => $this->id,
             'week_start' => $this->week_start->toDateString(),
@@ -197,6 +202,18 @@ class WeeklyPlanResource extends JsonResource
             'submitted_at' => $this->submitted_at?->toISOString(),
             'approved_at' => $this->approved_at?->toISOString(),
             'published_at' => $this->published_at?->toISOString(),
+            'workflow_version' => $this->when(
+                $hasV3Projection,
+                WeeklyPlanWorkflowVersion::V3->value,
+            ),
+            'employee_workflows' => $this->when(
+                $hasV3Projection,
+                $this->getAttribute('v3_employee_workflows'),
+            ),
+            'publication_summary' => $this->when(
+                $hasV3Projection,
+                $this->getAttribute('v3_publication_summary'),
+            ),
             'actions' => $this->getAttribute('actions') ?? [],
         ];
     }

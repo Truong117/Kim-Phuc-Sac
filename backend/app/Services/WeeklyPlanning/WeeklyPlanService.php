@@ -9,6 +9,7 @@ use App\Enums\WeeklyPlanReviewStatus;
 use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
 use App\Enums\WeeklyPlanSuggestionStatus;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\OrganizationMembership;
 use App\Models\User;
 use App\Models\WeeklyPlan;
@@ -60,6 +61,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanReviewWorkflowService $reviewWorkflow,
         private readonly WeeklyPlanReadinessService $planReadiness,
         private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
+        private readonly WeeklyPlanV3ProjectionService $v3Projections,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -2050,6 +2052,12 @@ class WeeklyPlanService
         }
 
         $plan->setAttribute('actions', $actions);
+
+        if ($plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+            $projection = $this->v3Projections->project($plan, $viewer);
+            $plan->setAttribute('v3_employee_workflows', $projection['employee_workflows']);
+            $plan->setAttribute('v3_publication_summary', $projection['publication_summary']);
+        }
 
         return $plan;
     }
