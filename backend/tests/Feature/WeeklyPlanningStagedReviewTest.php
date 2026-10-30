@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DataScope;
 use App\Models\User;
 use App\Models\WeeklyPlan;
+use App\Models\WeeklyPlanEntry;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\AuthorizationFixtures;
@@ -15,7 +16,7 @@ class WeeklyPlanningStagedReviewTest extends TestCase
     use AuthorizationFixtures;
     use RefreshDatabase;
 
-    public function test_staged_review_preserves_partial_decisions_and_requires_explicit_transitions(): void
+    public function test_staged_review_corrections_create_new_same_stage_rounds(): void
     {
         [$hr, $organizationId] = $this->actor([
             'weekly_plans.view',
@@ -36,6 +37,8 @@ class WeeklyPlanningStagedReviewTest extends TestCase
         $firstEmployee = User::factory()->create();
         $secondEmployee = User::factory()->create();
         $plan = $this->plan($organizationId, $hr, [$firstEmployee, $secondEmployee]);
+        $firstEntry = $plan->entries()->where('assignee_id', $firstEmployee->id)->firstOrFail();
+        $secondEntry = $plan->entries()->where('assignee_id', $secondEmployee->id)->firstOrFail();
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
             ->assertOk()
@@ -43,82 +46,161 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             ->assertJsonPath('data.review_workflow.stage', 'ASSISTANT')
             ->assertJsonPath('data.review_workflow.current_round.round_number', 1)
             ->assertJsonPath('data.review_workflow.assistant_summary.pending', 2);
-        $this->assertDatabaseHas('weekly_plan_review_rounds', [
-            'weekly_plan_id' => $plan->id,
-            'stage' => 'ASSISTANT',
-            'round_number' => 1,
-            'status' => 'OPEN',
-        ]);
-        $this->assertSame(2, DB::table('weekly_plan_review_decisions')->where('status', 'PENDING')->count());
+        $this->assertCommentIsStateNeutral(
+            $assistant,
+            $plan,
+            $secondEmployee,
+            'ASSISTANT_REVIEW',
+        );
 
-        $this->actingAs($assistant)->postJson(
-            "/api/weekly-plans/{$plan->id}/review-decisions/{$firstEmployee->id}",
-            ['decision' => 'ACCEPTED'],
-        )->assertOk()
-            ->assertJsonPath('data.review_workflow.assistant_summary.accepted', 1)
-            ->assertJsonPath('data.review_workflow.assistant_summary.pending', 1);
+        $this->decide($assistant, $plan, $firstEmployee, 'ACCEPTED')
+            ->assertOk()
+            ->assertJsonPath('data.review_workflow.assistant_summary.accepted', 1);
+        $this->decide($assistant, $plan, $secondEmployee, 'CHANGES_REQUESTED')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED')
+            ->assertJsonPath('data.actions.can_edit', false)
+            ->assertJsonPath('data.actions.can_assistant_review', false);
+        $assistantRoundOne = $this->roundId($plan->id, 'ASSISTANT', 1);
+        $acceptedAssistantDecision = DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $assistantRoundOne)
+            ->where('assignee_id', $firstEmployee->id)
+            ->first();
+        $this->assertDecision($plan->id, 'ASSISTANT', 1, $firstEmployee->id, 'ACCEPTED');
+        $this->assertDecision($plan->id, 'ASSISTANT', 1, $secondEmployee->id, 'CHANGES_REQUESTED');
+        $this->assertCommentIsStateNeutral(
+            $assistant,
+            $plan,
+            $secondEmployee,
+            'ASSISTANT_CHANGES_REQUESTED',
+        );
+        $this->decide($assistant, $plan, $secondEmployee, 'ACCEPTED')->assertConflict();
 
-        $this->actingAs($assistant)->postJson(
-            "/api/weekly-plans/{$plan->id}/review-decisions/{$secondEmployee->id}",
-            ['decision' => 'CHANGES_REQUESTED'],
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_edit', false)
+            ->assertJsonPath('data.actions.can_correct_requested_changes', true)
+            ->assertJsonPath('data.actions.can_resubmit_changes', true)
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$firstEntry->id}",
+            $this->entryPayload($firstEntry, ['title' => 'Accepted work must stay locked']),
+        )->assertConflict();
+        $this->actingAs($hr)->deleteJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$firstEntry->id}",
+        )->assertConflict();
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$secondEntry->id}",
+            $this->entryPayload($secondEntry, ['assignee_id' => $firstEmployee->id]),
+        )->assertConflict();
+        $this->actingAs($hr)->postJson(
+            "/api/weekly-plans/{$plan->id}/entries",
+            $this->entryPayload($firstEntry, ['title' => 'Unrelated accepted employee work']),
+        )->assertConflict();
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$secondEntry->id}",
+            $this->entryPayload($secondEntry, ['title' => 'Assistant correction']),
         )->assertOk()->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED');
-        $this->assertDecision($plan->id, 'ASSISTANT', $firstEmployee->id, 'ACCEPTED');
-        $this->assertDecision($plan->id, 'ASSISTANT', $secondEmployee->id, 'CHANGES_REQUESTED');
+        $addedResponse = $this->actingAs($hr)->postJson(
+            "/api/weekly-plans/{$plan->id}/entries",
+            $this->entryPayload($secondEntry, ['title' => 'Temporary correction work']),
+        )->assertCreated();
+        $addedEntry = collect($addedResponse->json('data.entries'))
+            ->firstWhere('title', 'Temporary correction work');
+        $this->assertIsArray($addedEntry);
+        $this->actingAs($hr)->deleteJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$addedEntry['id']}",
+        )->assertOk()->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED');
 
-        $this->actingAs($assistant)->postJson("/api/weekly-plans/{$plan->id}/comments", [
-            'content' => 'Ghi chú trao đổi, không phải quyết định.',
-            'assignee_id' => $secondEmployee->id,
-        ])->assertCreated()->assertJsonPath('data.status', 'ASSISTANT_CHANGES_REQUESTED');
-        $this->assertDecision($plan->id, 'ASSISTANT', $secondEmployee->id, 'CHANGES_REQUESTED');
-
-        $this->actingAs($assistant)
-            ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
-            ->assertUnprocessable();
-
-        $this->actingAs($assistant)->postJson(
-            "/api/weekly-plans/{$plan->id}/review-decisions/{$secondEmployee->id}",
-            ['decision' => 'ACCEPTED'],
-        )->assertOk()
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
             ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
-            ->assertJsonPath('data.actions.can_finalize_assistant_review', true);
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 2)
+            ->assertJsonPath('data.review_workflow.assistant_summary.accepted', 1)
+            ->assertJsonPath('data.review_workflow.assistant_summary.pending', 1)
+            ->assertJsonPath('data.actions.can_correct_requested_changes', false)
+            ->assertJsonPath('data.actions.can_resubmit_changes', false);
+        $this->assertDatabaseHas('weekly_plan_review_rounds', [
+            'id' => $assistantRoundOne,
+            'status' => 'SUPERSEDED',
+        ]);
+        $this->assertDecision($plan->id, 'ASSISTANT', 2, $firstEmployee->id, 'ACCEPTED');
+        $this->assertDecision($plan->id, 'ASSISTANT', 2, $secondEmployee->id, 'PENDING');
+        $carriedAssistantDecision = DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $this->roundId($plan->id, 'ASSISTANT', 2))
+            ->where('assignee_id', $firstEmployee->id)
+            ->first();
+        $this->assertSame($acceptedAssistantDecision->reviewed_by, $carriedAssistantDecision->reviewed_by);
+        $this->assertSame($acceptedAssistantDecision->reviewed_at, $carriedAssistantDecision->reviewed_at);
+        $this->assertNull(DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $this->roundId($plan->id, 'ASSISTANT', 2))
+            ->where('assignee_id', $secondEmployee->id)
+            ->value('reviewed_by'));
 
+        $this->decide($assistant, $plan, $secondEmployee, 'ACCEPTED')
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', true);
         $this->actingAs($assistant)
             ->postJson("/api/weekly-plans/{$plan->id}/finalize-assistant-review")
             ->assertOk()
             ->assertJsonPath('data.status', 'OWNER_REVIEW')
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 1);
+        $this->assertCommentIsStateNeutral($owner, $plan, $secondEmployee, 'OWNER_REVIEW');
+
+        $this->decide($owner, $plan, $firstEmployee, 'ACCEPTED')->assertOk();
+        $this->decide($owner, $plan, $secondEmployee, 'CHANGES_REQUESTED')
+            ->assertOk()
+            ->assertJsonPath('data.status', 'OWNER_CHANGES_REQUESTED');
+        $ownerRoundOne = $this->roundId($plan->id, 'OWNER', 1);
+        $acceptedOwnerDecision = DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $ownerRoundOne)
+            ->where('assignee_id', $firstEmployee->id)
+            ->first();
+        $this->assertCommentIsStateNeutral(
+            $owner,
+            $plan,
+            $secondEmployee,
+            'OWNER_CHANGES_REQUESTED',
+        );
+        $this->decide($owner, $plan, $secondEmployee, 'ACCEPTED')->assertConflict();
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$firstEntry->id}",
+            $this->entryPayload($firstEntry, ['title' => 'OWNER accepted work stays locked']),
+        )->assertConflict();
+        $secondEntry->refresh();
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$secondEntry->id}",
+            $this->entryPayload($secondEntry, ['title' => 'OWNER correction']),
+        )->assertOk()->assertJsonPath('data.status', 'OWNER_CHANGES_REQUESTED');
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'OWNER_REVIEW')
             ->assertJsonPath('data.review_workflow.stage', 'OWNER')
-            ->assertJsonPath('data.review_workflow.owner_summary.pending', 2);
+            ->assertJsonPath('data.review_workflow.current_round.round_number', 2)
+            ->assertJsonPath('data.review_workflow.owner_summary.accepted', 1)
+            ->assertJsonPath('data.review_workflow.owner_summary.pending', 1);
+        $this->assertDatabaseHas('weekly_plan_review_rounds', [
+            'id' => $ownerRoundOne,
+            'status' => 'SUPERSEDED',
+        ]);
         $this->assertDatabaseHas('weekly_plan_review_rounds', [
             'weekly_plan_id' => $plan->id,
             'stage' => 'ASSISTANT',
+            'round_number' => 2,
             'status' => 'COMPLETED',
         ]);
-        $this->assertDatabaseHas('weekly_plan_review_rounds', [
-            'weekly_plan_id' => $plan->id,
-            'stage' => 'OWNER',
-            'round_number' => 1,
-            'status' => 'OPEN',
-        ]);
+        $this->assertDecision($plan->id, 'OWNER', 2, $firstEmployee->id, 'ACCEPTED');
+        $this->assertDecision($plan->id, 'OWNER', 2, $secondEmployee->id, 'PENDING');
+        $carriedOwnerDecision = DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $this->roundId($plan->id, 'OWNER', 2))
+            ->where('assignee_id', $firstEmployee->id)
+            ->first();
+        $this->assertSame($acceptedOwnerDecision->reviewed_by, $carriedOwnerDecision->reviewed_by);
+        $this->assertSame($acceptedOwnerDecision->reviewed_at, $carriedOwnerDecision->reviewed_at);
 
-        $this->actingAs($owner)->postJson(
-            "/api/weekly-plans/{$plan->id}/review-decisions/{$firstEmployee->id}",
-            ['decision' => 'ACCEPTED'],
-        )->assertOk();
-        $this->assertDecision($plan->id, 'ASSISTANT', $firstEmployee->id, 'ACCEPTED');
-        $this->assertDecision($plan->id, 'OWNER', $firstEmployee->id, 'ACCEPTED');
-
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/comments", [
-            'content' => 'OWNER trao đổi trước khi ra quyết định.',
-            'assignee_id' => $secondEmployee->id,
-        ])->assertCreated()->assertJsonPath('data.status', 'OWNER_REVIEW');
-        $this->assertDecision($plan->id, 'OWNER', $secondEmployee->id, 'PENDING');
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/approve")
-            ->assertUnprocessable();
-
-        $this->actingAs($owner)->postJson(
-            "/api/weekly-plans/{$plan->id}/review-decisions/{$secondEmployee->id}",
-            ['decision' => 'ACCEPTED'],
-        )->assertOk()->assertJsonPath('data.actions.can_approve', true);
+        $this->decide($owner, $plan, $secondEmployee, 'ACCEPTED')
+            ->assertOk()->assertJsonPath('data.actions.can_approve', true);
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/approve")
             ->assertOk()->assertJsonPath('data.status', 'APPROVED');
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$plan->id}/publish")
@@ -126,11 +208,12 @@ class WeeklyPlanningStagedReviewTest extends TestCase
 
         foreach ([
             'ASSISTANT_REVIEW_STARTED',
-            'ASSISTANT_EMPLOYEE_ACCEPTED',
             'ASSISTANT_EMPLOYEE_CHANGES_REQUESTED',
+            'ASSISTANT_REVIEW_RESUBMITTED',
             'ASSISTANT_REVIEW_COMPLETED',
             'OWNER_REVIEW_STARTED',
-            'OWNER_EMPLOYEE_ACCEPTED',
+            'OWNER_EMPLOYEE_CHANGES_REQUESTED',
+            'OWNER_REVIEW_RESUBMITTED',
             'OWNER_REVIEW_COMPLETED',
             'APPROVED',
             'COMMENT_ADDED',
@@ -140,9 +223,18 @@ class WeeklyPlanningStagedReviewTest extends TestCase
                 'event_type' => $eventType,
             ]);
         }
+        foreach (['ASSISTANT_REVIEW_RESUBMITTED', 'OWNER_REVIEW_RESUBMITTED'] as $eventType) {
+            $metadata = json_decode((string) DB::table('weekly_plan_events')
+                ->where('weekly_plan_id', $plan->id)
+                ->where('event_type', $eventType)
+                ->value('metadata'), true, flags: JSON_THROW_ON_ERROR);
+            $keys = array_keys($metadata);
+            sort($keys);
+            $this->assertSame(['new_round_id', 'previous_round_id'], $keys);
+        }
     }
 
-    public function test_review_decisions_fail_closed_for_wrong_stage_permission_assignee_and_organization(): void
+    public function test_review_and_correction_operations_fail_closed(): void
     {
         [$hr, $organizationId] = $this->actor([
             'weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit',
@@ -154,9 +246,14 @@ class WeeklyPlanningStagedReviewTest extends TestCase
             ['weekly_plans.view', 'weekly_plans.assistant_review'],
             'OUTSIDE',
         );
+        [$outsideHr] = $this->actor(
+            ['weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit'],
+            'OUTSIDE_HR',
+        );
         $employee = User::factory()->create();
         $notInPlan = User::factory()->create();
         $plan = $this->plan($organizationId, $hr, [$employee]);
+        $entry = $plan->entries()->firstOrFail();
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")->assertOk();
 
         $url = "/api/weekly-plans/{$plan->id}/review-decisions/{$employee->id}";
@@ -169,7 +266,31 @@ class WeeklyPlanningStagedReviewTest extends TestCase
         )->assertUnprocessable();
         $this->actingAs($assistant)->postJson($url, ['decision' => 'PENDING'])
             ->assertUnprocessable();
-        $this->assertDecision($plan->id, 'ASSISTANT', $employee->id, 'PENDING');
+        $this->assertDecision($plan->id, 'ASSISTANT', 1, $employee->id, 'PENDING');
+
+        $this->actingAs($assistant)->postJson($url, ['decision' => 'CHANGES_REQUESTED'])
+            ->assertOk();
+        $this->actingAs($viewer)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$entry->id}",
+            $this->entryPayload($entry),
+        )->assertForbidden();
+        $this->actingAs($outsideHr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$entry->id}",
+            $this->entryPayload($entry),
+        )->assertUnauthorized();
+
+        DB::table('weekly_plan_review_rounds')
+            ->where('id', $this->roundId($plan->id, 'ASSISTANT', 1))
+            ->update(['status' => 'SUPERSEDED']);
+        $this->actingAs($hr)->patchJson(
+            "/api/weekly-plans/{$plan->id}/entries/{$entry->id}",
+            $this->entryPayload($entry, ['title' => 'Stale correction']),
+        )->assertConflict();
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+            ->assertConflict();
+        $this->assertSame(1, DB::table('weekly_plan_review_rounds')
+            ->where('weekly_plan_id', $plan->id)
+            ->count());
     }
 
     /** @return array{User, int} */
@@ -234,13 +355,83 @@ class WeeklyPlanningStagedReviewTest extends TestCase
         return $plan;
     }
 
-    private function assertDecision(int $planId, string $stage, int $assigneeId, string $status): void
+    private function decide(User $reviewer, WeeklyPlan $plan, User $employee, string $decision)
     {
+        return $this->actingAs($reviewer)->postJson(
+            "/api/weekly-plans/{$plan->id}/review-decisions/{$employee->id}",
+            ['decision' => $decision],
+        );
+    }
+
+    /** @param array<string, mixed> $overrides @return array<string, mixed> */
+    private function entryPayload(WeeklyPlanEntry $entry, array $overrides = []): array
+    {
+        return array_replace([
+            'assignee_id' => $entry->assignee_id,
+            'title' => $entry->title,
+            'content' => $entry->content,
+            'expected_result' => $entry->expected_result,
+            'start_date' => $entry->start_date?->toDateString(),
+            'due_date' => $entry->due_date?->toDateString(),
+            'priority' => $entry->priority?->value,
+            'note' => $entry->note,
+        ], $overrides);
+    }
+
+    private function assertCommentIsStateNeutral(
+        User $actor,
+        WeeklyPlan $plan,
+        User $employee,
+        string $expectedStatus,
+    ): void {
+        $beforePlan = DB::table('weekly_plans')->where('id', $plan->id)->value('status');
+        $beforeRound = DB::table('weekly_plan_review_rounds')
+            ->where('weekly_plan_id', $plan->id)
+            ->whereIn('status', ['OPEN', 'CHANGES_REQUESTED'])
+            ->orderByDesc('id')
+            ->first();
+        $beforeDecisions = DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $beforeRound->id)
+            ->orderBy('assignee_id')
+            ->get(['assignee_id', 'status', 'reviewed_by', 'reviewed_at'])
+            ->map(fn ($decision): array => (array) $decision)
+            ->all();
+
+        $this->actingAs($actor)->postJson("/api/weekly-plans/{$plan->id}/comments", [
+            'content' => 'Trao đổi thông tin, không phải quyết định xét duyệt.',
+            'assignee_id' => $employee->id,
+        ])->assertCreated()->assertJsonPath('data.status', $expectedStatus);
+
+        $afterRound = DB::table('weekly_plan_review_rounds')->where('id', $beforeRound->id)->first();
+        $this->assertSame($beforePlan, DB::table('weekly_plans')->where('id', $plan->id)->value('status'));
+        $this->assertSame($beforeRound->status, $afterRound->status);
+        $this->assertSame($beforeRound->round_number, $afterRound->round_number);
+        $this->assertSame($beforeDecisions, DB::table('weekly_plan_review_decisions')
+            ->where('weekly_plan_review_round_id', $beforeRound->id)
+            ->orderBy('assignee_id')
+            ->get(['assignee_id', 'status', 'reviewed_by', 'reviewed_at'])
+            ->map(fn ($decision): array => (array) $decision)
+            ->all());
+    }
+
+    private function roundId(int $planId, string $stage, int $roundNumber): int
+    {
+        return (int) DB::table('weekly_plan_review_rounds')
+            ->where('weekly_plan_id', $planId)
+            ->where('stage', $stage)
+            ->where('round_number', $roundNumber)
+            ->value('id');
+    }
+
+    private function assertDecision(
+        int $planId,
+        string $stage,
+        int $roundNumber,
+        int $assigneeId,
+        string $status,
+    ): void {
         $this->assertDatabaseHas('weekly_plan_review_decisions', [
-            'weekly_plan_review_round_id' => DB::table('weekly_plan_review_rounds')
-                ->where('weekly_plan_id', $planId)
-                ->where('stage', $stage)
-                ->value('id'),
+            'weekly_plan_review_round_id' => $this->roundId($planId, $stage, $roundNumber),
             'assignee_id' => $assigneeId,
             'status' => $status,
         ]);

@@ -3,6 +3,7 @@
 namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanParseStatus;
+use App\Enums\WeeklyPlanReviewRoundStatus;
 use App\Enums\WeeklyPlanReviewStage;
 use App\Enums\WeeklyPlanReviewStatus;
 use App\Enums\WeeklyPlanSourceType;
@@ -41,6 +42,11 @@ class WeeklyPlanService
     private const EDITABLE_STATUSES = [
         WeeklyPlanStatus::DRAFT,
         WeeklyPlanStatus::CHANGES_REQUESTED,
+    ];
+
+    private const CORRECTION_STATUSES = [
+        WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED,
+        WeeklyPlanStatus::OWNER_CHANGES_REQUESTED,
     ];
 
     public function __construct(
@@ -889,10 +895,16 @@ class WeeklyPlanService
     /** @param array<string, mixed> $attributes */
     public function addEntry(User $actor, int $planId, array $attributes): WeeklyPlan
     {
-        $plan = $this->editablePlan($actor, $planId);
+        $plan = $this->entryEditablePlan($actor, $planId);
         DB::transaction(function () use ($actor, $attributes, $plan): void {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
-            $this->assertEditable($locked);
+            $this->assertEntryEditingAllowed($locked);
+            if ($this->isCorrectionStatus($locked->status)) {
+                $this->reviewWorkflow->assertAssigneeCanBeCorrected(
+                    $locked,
+                    (int) $attributes['assignee_id'],
+                );
+            }
             $entry = $this->storeEntry(
                 $locked,
                 $attributes,
@@ -910,12 +922,13 @@ class WeeklyPlanService
     public function updateEntry(User $actor, int $planId, int $entryId, array $attributes): WeeklyPlan
     {
         $plan = $this->scope->queryFor($actor)->findOrFail($planId);
-        $canEditDraft = $this->scope->allows($actor, 'weekly_plans.manage_draft')
-            && in_array($plan->status, self::EDITABLE_STATUSES, true);
+        $canManageEntry = $this->scope->allows($actor, 'weekly_plans.manage_draft')
+            && (in_array($plan->status, self::EDITABLE_STATUSES, true)
+                || $this->isCorrectionStatus($plan->status));
         $canReviewEdit = $this->scope->allows($actor, 'weekly_plans.review')
             && in_array($plan->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true);
 
-        if (! $canEditDraft && ! $canReviewEdit) {
+        if (! $canManageEntry && ! $canReviewEdit) {
             throw new AccessDeniedHttpException;
         }
 
@@ -923,18 +936,30 @@ class WeeklyPlanService
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
             $isDraftEditor = $this->scope->allows($actor, 'weekly_plans.manage_draft')
                 && in_array($locked->status, self::EDITABLE_STATUSES, true);
+            $isCorrectionEditor = $this->scope->allows($actor, 'weekly_plans.manage_draft')
+                && $this->isCorrectionStatus($locked->status);
             $isReviewer = $this->scope->allows($actor, 'weekly_plans.review')
                 && in_array($locked->status, [WeeklyPlanStatus::SUBMITTED, WeeklyPlanStatus::IN_REVIEW], true);
 
-            if (! $isDraftEditor && ! $isReviewer) {
+            if (! $isDraftEditor && ! $isCorrectionEditor && ! $isReviewer) {
                 throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể xét duyệt.');
             }
             $entry = $locked->entries()->whereKey($entryId)->lockForUpdate()->firstOrFail();
+            if ($isCorrectionEditor) {
+                if ($entry->assignee_id === null
+                    || (int) $attributes['assignee_id'] !== $entry->assignee_id) {
+                    throw new ConflictHttpException('Không thể thay đổi nhân viên trong lần chỉnh sửa này.');
+                }
+                $this->reviewWorkflow->assertAssigneeCanBeCorrected(
+                    $locked,
+                    $entry->assignee_id,
+                );
+            }
             $hasItems = array_key_exists('items', $attributes);
             $items = $hasItems ? $attributes['items'] : [];
             unset($attributes['items']);
             $oldAssignee = $entry->assignee_id;
-            if (! $isDraftEditor) {
+            if (! $isDraftEditor && ! $isCorrectionEditor) {
                 $attributes['assignee_id'] = $entry->assignee_id;
                 $attributes['start_date'] = $entry->start_date?->toDateString();
             }
@@ -967,11 +992,20 @@ class WeeklyPlanService
 
     public function deleteEntry(User $actor, int $planId, int $entryId): WeeklyPlan
     {
-        $plan = $this->editablePlan($actor, $planId);
+        $plan = $this->entryEditablePlan($actor, $planId);
         DB::transaction(function () use ($actor, $entryId, $plan): void {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
-            $this->assertEditable($locked);
+            $this->assertEntryEditingAllowed($locked);
             $entry = $locked->entries()->whereKey($entryId)->lockForUpdate()->firstOrFail();
+            if ($this->isCorrectionStatus($locked->status)) {
+                if ($entry->assignee_id === null) {
+                    throw new ConflictHttpException('Công việc không thuộc nhân viên được yêu cầu chỉnh sửa.');
+                }
+                $this->reviewWorkflow->assertAssigneeCanBeCorrected(
+                    $locked,
+                    $entry->assignee_id,
+                );
+            }
             $assigneeId = $entry->assignee_id;
             $entry->delete();
             $this->resetEmployeeReview($locked, $assigneeId);
@@ -1076,7 +1110,7 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.submit')
                 ->lockForUpdate()
                 ->findOrFail($planId);
-            $this->assertEditable($plan);
+            $this->assertSubmittable($plan);
             $this->assertSourceProcessingComplete($plan);
 
             $readiness = $this->submissionReadiness($plan);
@@ -1101,7 +1135,12 @@ class WeeklyPlanService
                 throw ValidationException::withMessages($errors);
             }
 
-            $this->reviewWorkflow->startAssistantReview($plan, $actor);
+            if ($this->isCorrectionStatus($plan->status)) {
+                $this->assertPermission($actor, 'weekly_plans.manage_draft');
+                $this->reviewWorkflow->resubmitRequestedChanges($plan, $actor);
+            } else {
+                $this->reviewWorkflow->startAssistantReview($plan, $actor);
+            }
         });
 
         return $this->findVisible($actor, $planId);
@@ -1442,11 +1481,41 @@ class WeeklyPlanService
         return $plan;
     }
 
+    private function entryEditablePlan(User $actor, int $planId): WeeklyPlan
+    {
+        $this->assertPermission($actor, 'weekly_plans.manage_draft');
+        $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')->findOrFail($planId);
+        $this->assertEntryEditingAllowed($plan);
+
+        return $plan;
+    }
+
     private function assertEditable(WeeklyPlan $plan): void
     {
         if (! in_array($plan->status, self::EDITABLE_STATUSES, true)) {
             throw new ConflictHttpException('Kế hoạch không còn ở trạng thái có thể chỉnh sửa.');
         }
+    }
+
+    private function assertEntryEditingAllowed(WeeklyPlan $plan): void
+    {
+        if (! in_array($plan->status, self::EDITABLE_STATUSES, true)
+            && ! $this->isCorrectionStatus($plan->status)) {
+            throw new ConflictHttpException('Kế hoạch không còn ở trạng thái có thể chỉnh sửa.');
+        }
+    }
+
+    private function assertSubmittable(WeeklyPlan $plan): void
+    {
+        if (! in_array($plan->status, self::EDITABLE_STATUSES, true)
+            && ! $this->isCorrectionStatus($plan->status)) {
+            throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể gửi xét duyệt.');
+        }
+    }
+
+    private function isCorrectionStatus(WeeklyPlanStatus $status): bool
+    {
+        return in_array($status, self::CORRECTION_STATUSES, true);
     }
 
     private function assertPermission(User $actor, string $permission): void
@@ -1822,18 +1891,33 @@ class WeeklyPlanService
             && $ownerRound->decisions->every(
                 fn ($decision): bool => $decision->status === WeeklyPlanReviewStatus::ACCEPTED,
             );
-        $assistantReviewStatus = in_array($plan->status, [
-            WeeklyPlanStatus::ASSISTANT_REVIEW,
-            WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED,
-        ], true);
-        $ownerReviewStatus = in_array($plan->status, [
-            WeeklyPlanStatus::OWNER_REVIEW,
-            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED,
-        ], true);
+        $assistantReviewStatus = $plan->status === WeeklyPlanStatus::ASSISTANT_REVIEW;
+        $ownerReviewStatus = $plan->status === WeeklyPlanStatus::OWNER_REVIEW;
+        $correctionRound = match ($plan->status) {
+            WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED => $assistantRound,
+            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED => $ownerRound,
+            default => null,
+        };
+        $correctionStateValid = $correctionRound instanceof WeeklyPlanReviewRound
+            && $correctionRound->status === WeeklyPlanReviewRoundStatus::CHANGES_REQUESTED
+            && $correctionRound->decisions->contains(
+                fn ($decision): bool => $decision->status === WeeklyPlanReviewStatus::CHANGES_REQUESTED,
+            )
+            && $plan->entries->pluck('assignee_id')->filter()->unique()->diff(
+                $correctionRound->decisions->pluck('assignee_id'),
+            )->isEmpty();
+        $canCorrectRequestedChanges = $correctionStateValid
+            && $this->scope->allows($viewer, 'weekly_plans.manage_draft');
+        $canResubmitChanges = $canCorrectRequestedChanges
+            && $submissionReadiness['ready']
+            && $sourceProcessingComplete
+            && $this->scope->allows($viewer, 'weekly_plans.submit');
 
         $plan->setAttribute('actions', [
             'can_edit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+            'can_correct_requested_changes' => $canCorrectRequestedChanges,
+            'can_resubmit_changes' => $canResubmitChanges,
             'can_reset' => $plan->status === WeeklyPlanStatus::DRAFT
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
             'can_delete' => $plan->status === WeeklyPlanStatus::DRAFT
@@ -1842,10 +1926,11 @@ class WeeklyPlanService
                 && $plan->entries->isNotEmpty()
                 && $sourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
-            'can_submit' => in_array($plan->status, self::EDITABLE_STATUSES, true)
+            'can_submit' => (in_array($plan->status, self::EDITABLE_STATUSES, true)
                 && $submissionReadiness['ready']
                 && $sourceProcessingComplete
-                && $this->scope->allows($viewer, 'weekly_plans.submit'),
+                && $this->scope->allows($viewer, 'weekly_plans.submit'))
+                || $canResubmitChanges,
             'can_assistant_review' => $assistantReviewStatus
                 && $this->scope->allows($viewer, 'weekly_plans.assistant_review'),
             'can_finalize_assistant_review' => $assistantReviewStatus

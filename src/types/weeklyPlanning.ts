@@ -185,6 +185,8 @@ export type WeeklyPlanEvent = {
 
 export type WeeklyPlanActions = {
   can_edit: boolean;
+  can_correct_requested_changes: boolean;
+  can_resubmit_changes: boolean;
   can_reset: boolean;
   can_delete: boolean;
   can_analyze: boolean;

@@ -12,6 +12,7 @@ use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanReviewDecision;
 use App\Models\WeeklyPlanReviewRound;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -23,7 +24,10 @@ class WeeklyPlanReviewWorkflowService
 
     public function startAssistantReview(WeeklyPlan $plan, User $actor): WeeklyPlanReviewRound
     {
-        if ($plan->status !== WeeklyPlanStatus::DRAFT) {
+        if (! in_array($plan->status, [
+            WeeklyPlanStatus::DRAFT,
+            WeeklyPlanStatus::CHANGES_REQUESTED,
+        ], true)) {
             throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể gửi xét duyệt.');
         }
 
@@ -82,7 +86,7 @@ class WeeklyPlanReviewWorkflowService
             if ($this->stageForStatus($plan->status) !== $stage) {
                 throw new ConflictHttpException('Giai đoạn xét duyệt của kế hoạch đã thay đổi.');
             }
-            $this->assertStageStatus($plan, $stage);
+            $this->assertDecisionStageOpen($plan, $stage);
             if (! $plan->entries()->where('assignee_id', $assigneeId)->exists()) {
                 throw ValidationException::withMessages([
                     'assignee_id' => ['Nhân viên không thuộc kế hoạch này.'],
@@ -129,6 +133,94 @@ class WeeklyPlanReviewWorkflowService
         });
 
         return $this->scope->queryFor($actor, 'weekly_plans.view')->findOrFail($planId);
+    }
+
+    public function assertAssigneeCanBeCorrected(WeeklyPlan $plan, int $assigneeId): void
+    {
+        $stage = $this->correctionStageForStatus($plan->status);
+        if ($stage === null) {
+            throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể chỉnh sửa theo yêu cầu.');
+        }
+
+        $round = $this->lockedCurrentRound($plan, $stage);
+        if ($round->status !== WeeklyPlanReviewRoundStatus::CHANGES_REQUESTED) {
+            throw new ConflictHttpException('Vòng xét duyệt hiện tại không có yêu cầu chỉnh sửa.');
+        }
+
+        $decision = $round->decisions()
+            ->where('assignee_id', $assigneeId)
+            ->lockForUpdate()
+            ->first();
+        if (! $decision instanceof WeeklyPlanReviewDecision
+            || $decision->status !== WeeklyPlanReviewStatus::CHANGES_REQUESTED) {
+            throw new ConflictHttpException('Nhân viên không có yêu cầu chỉnh sửa trong vòng xét duyệt hiện tại.');
+        }
+    }
+
+    public function resubmitRequestedChanges(WeeklyPlan $plan, User $actor): WeeklyPlanReviewRound
+    {
+        $stage = $this->correctionStageForStatus($plan->status);
+        if ($stage === null) {
+            throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể gửi lại.');
+        }
+
+        $previousRound = $this->lockedCurrentRound($plan, $stage);
+        if ($previousRound->status !== WeeklyPlanReviewRoundStatus::CHANGES_REQUESTED) {
+            throw new ConflictHttpException('Vòng xét duyệt hiện tại không có yêu cầu chỉnh sửa.');
+        }
+
+        $previousDecisions = $previousRound->decisions()
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('assignee_id');
+        if (! $previousDecisions->contains(
+            fn (WeeklyPlanReviewDecision $decision): bool => $decision->status === WeeklyPlanReviewStatus::CHANGES_REQUESTED,
+        )) {
+            throw new ConflictHttpException('Vòng xét duyệt hiện tại không có yêu cầu chỉnh sửa.');
+        }
+
+        $assigneeIds = $plan->entries()
+            ->whereNotNull('assignee_id')
+            ->distinct()
+            ->orderBy('assignee_id')
+            ->pluck('assignee_id')
+            ->map(fn (mixed $assigneeId): int => (int) $assigneeId);
+        if ($assigneeIds->isEmpty()) {
+            throw new ConflictHttpException('Kế hoạch không có nhân viên hợp lệ để xét duyệt.');
+        }
+        if ($assigneeIds->contains(
+            fn (int $assigneeId): bool => ! $previousDecisions->has($assigneeId),
+        )) {
+            throw new ConflictHttpException('Danh sách nhân viên đã thay đổi ngoài phạm vi chỉnh sửa.');
+        }
+
+        $previousRound->forceFill([
+            'status' => WeeklyPlanReviewRoundStatus::SUPERSEDED,
+        ])->save();
+        $newRound = $this->createResubmissionRound(
+            $plan,
+            $stage,
+            $actor,
+            $previousRound,
+            $previousDecisions,
+            $assigneeIds->all(),
+        );
+
+        $plan->forceFill([
+            'status' => $stage === WeeklyPlanReviewStage::ASSISTANT
+                ? WeeklyPlanStatus::ASSISTANT_REVIEW
+                : WeeklyPlanStatus::OWNER_REVIEW,
+            'submitted_by' => $actor->id,
+            'submitted_at' => CarbonImmutable::now('UTC'),
+        ])->save();
+
+        $prefix = $stage === WeeklyPlanReviewStage::ASSISTANT ? 'ASSISTANT' : 'OWNER';
+        $this->record($plan, $actor, "{$prefix}_REVIEW_RESUBMITTED", [
+            'previous_round_id' => $previousRound->id,
+            'new_round_id' => $newRound->id,
+        ]);
+
+        return $newRound;
     }
 
     public function finalizeAssistantReview(User $actor, int $planId): WeeklyPlan
@@ -231,6 +323,53 @@ class WeeklyPlanReviewWorkflowService
         WeeklyPlanReviewDecision::query()->insert($rows);
     }
 
+    /**
+     * @param  Collection<int, WeeklyPlanReviewDecision>  $previousDecisions
+     * @param  list<int>  $assigneeIds
+     */
+    private function createResubmissionRound(
+        WeeklyPlan $plan,
+        WeeklyPlanReviewStage $stage,
+        User $actor,
+        WeeklyPlanReviewRound $previousRound,
+        Collection $previousDecisions,
+        array $assigneeIds,
+    ): WeeklyPlanReviewRound {
+        $now = CarbonImmutable::now('UTC');
+        $round = WeeklyPlanReviewRound::query()->create([
+            'weekly_plan_id' => $plan->id,
+            'stage' => $stage,
+            'round_number' => $previousRound->round_number + 1,
+            'status' => WeeklyPlanReviewRoundStatus::OPEN,
+            'started_by' => $actor->id,
+            'started_at' => $now,
+        ]);
+        $rows = collect($assigneeIds)->map(function (int $assigneeId) use (
+            $now,
+            $previousDecisions,
+            $round,
+        ): array {
+            /** @var WeeklyPlanReviewDecision $previousDecision */
+            $previousDecision = $previousDecisions->get($assigneeId);
+            $accepted = $previousDecision->status === WeeklyPlanReviewStatus::ACCEPTED;
+
+            return [
+                'weekly_plan_review_round_id' => $round->id,
+                'assignee_id' => $assigneeId,
+                'status' => $accepted
+                    ? WeeklyPlanReviewStatus::ACCEPTED->value
+                    : WeeklyPlanReviewStatus::PENDING->value,
+                'reviewed_by' => $accepted ? $previousDecision->reviewed_by : null,
+                'reviewed_at' => $accepted ? $previousDecision->reviewed_at : null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        })->all();
+        WeeklyPlanReviewDecision::query()->insert($rows);
+
+        return $round;
+    }
+
     private function lockedCurrentRound(
         WeeklyPlan $plan,
         WeeklyPlanReviewStage $stage,
@@ -294,6 +433,26 @@ class WeeklyPlanReviewWorkflowService
         if (! in_array($plan->status, $allowed, true)) {
             throw new ConflictHttpException('Kế hoạch không ở đúng giai đoạn xét duyệt.');
         }
+    }
+
+    private function assertDecisionStageOpen(WeeklyPlan $plan, WeeklyPlanReviewStage $stage): void
+    {
+        $expected = $stage === WeeklyPlanReviewStage::ASSISTANT
+            ? WeeklyPlanStatus::ASSISTANT_REVIEW
+            : WeeklyPlanStatus::OWNER_REVIEW;
+
+        if ($plan->status !== $expected) {
+            throw new ConflictHttpException('Kế hoạch đang chờ chỉnh sửa và gửi lại trước khi tiếp tục xét duyệt.');
+        }
+    }
+
+    private function correctionStageForStatus(WeeklyPlanStatus $status): ?WeeklyPlanReviewStage
+    {
+        return match ($status) {
+            WeeklyPlanStatus::ASSISTANT_CHANGES_REQUESTED => WeeklyPlanReviewStage::ASSISTANT,
+            WeeklyPlanStatus::OWNER_CHANGES_REQUESTED => WeeklyPlanReviewStage::OWNER,
+            default => null,
+        };
     }
 
     private function planStatusFor(
