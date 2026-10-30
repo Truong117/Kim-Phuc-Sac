@@ -168,7 +168,9 @@ final class WeeklyPlanV3AssistantBatchService
             $workflow = $workflowsByAssignee->get($decision->assigneeId);
             /** @var Collection<int, WeeklyPlanEntry> $employeeEntries */
             $employeeEntries = $entriesByAssignee->get($decision->assigneeId, collect());
-            $this->assertEmployeeReviewReady($decision, $employeeEntries);
+            if ($decision->decision === WeeklyPlanReviewStatus::ACCEPTED) {
+                $this->assertAcceptedEmployeeReviewReady($decision, $employeeEntries);
+            }
 
             try {
                 $transition = $this->lifecycle->calculateTransitionForVerifiedWorkflow(
@@ -297,7 +299,7 @@ final class WeeklyPlanV3AssistantBatchService
     }
 
     /** @param Collection<int, WeeklyPlanEntry> $entries */
-    private function assertEmployeeReviewReady(
+    private function assertAcceptedEmployeeReviewReady(
         WeeklyPlanV3AssistantDecision $decision,
         Collection $entries,
     ): void {

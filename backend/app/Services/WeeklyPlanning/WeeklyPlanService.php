@@ -62,6 +62,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanReadinessService $planReadiness,
         private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
         private readonly WeeklyPlanV3ProjectionService $v3Projections,
+        private readonly WeeklyPlanV3AssistantEligibilityService $v3AssistantEligibility,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -88,6 +89,9 @@ class WeeklyPlanService
                 $hasOwnerReviewPermission,
             ): WeeklyPlan {
                 $v2Workflow = $this->workflowVersions->isV2($plan);
+                $v3AssistantCanOpen = ! $v2Workflow
+                    && $hasAssistantReviewPermission
+                    && $this->v3AssistantEligibility->planAllowsReview($plan);
                 $plan->setAttribute('actions', [
                     'can_delete' => $v2Workflow
                         && $canManageDrafts
@@ -98,11 +102,13 @@ class WeeklyPlanService
                     'can_owner_review' => $v2Workflow
                         && $hasOwnerReviewPermission
                         && $plan->status === WeeklyPlanStatus::OWNER_REVIEW,
-                    'can_open_review_workspace' => $v2Workflow && $this->canOpenReviewWorkspace(
-                        $plan->status,
-                        $hasAssistantReviewPermission,
-                        $hasOwnerReviewPermission,
-                    ),
+                    'can_open_review_workspace' => $v2Workflow
+                        ? $this->canOpenReviewWorkspace(
+                            $plan->status,
+                            $hasAssistantReviewPermission,
+                            $hasOwnerReviewPermission,
+                        )
+                        : $v3AssistantCanOpen,
                 ]);
 
                 return $plan;
@@ -2049,6 +2055,8 @@ class WeeklyPlanService
                     $actions[$action] = false;
                 }
             }
+            $actions['can_open_review_workspace'] = $hasAssistantReviewPermission
+                && $this->v3AssistantEligibility->planAllowsReview($plan);
         }
 
         $plan->setAttribute('actions', $actions);

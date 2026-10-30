@@ -157,6 +157,22 @@ test("stage reviewers bypass wizard entry and submit while HR keeps wizard infer
       can_open_review_workspace: true,
     },
   };
+  const v3AssistantPlan = {
+    ...reviewerPlan,
+    status: "IN_REVIEW",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const v3FeatureDisabledPlan = {
+    ...v3AssistantPlan,
+    actions: {
+      ...v3AssistantPlan.actions,
+      can_open_review_workspace: false,
+    },
+  };
 
   assert.equal(
     activeWeeklyPlanReviewPath(reviewerPlan),
@@ -171,6 +187,11 @@ test("stage reviewers bypass wizard entry and submit while HR keeps wizard infer
     activeWeeklyPlanReviewPath(readonlyAssistantPlan),
     "/weekly-plans/31/review",
   );
+  assert.equal(
+    activeWeeklyPlanReviewPath(v3AssistantPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(activeWeeklyPlanReviewPath(v3FeatureDisabledPlan), null);
   assert.equal(inferWeeklyPlanWizardStep(hrPlan, null), "submit");
 
   const [entry, submit] = await Promise.all([

@@ -256,6 +256,182 @@ class WeeklyPlanningV3AssistantBatchTest extends TestCase
         $this->assertDatabaseCount('user_notifications', 0);
     }
 
+    public function test_v3_assistant_workspace_navigation_actions_are_backend_authoritative(): void
+    {
+        [$assistant, $organizationId] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ], name: 'Navigation Assistant');
+        [$observer] = $this->actor(['weekly_plans.view'], name: 'Navigation Observer');
+        [$awaiting] = $this->actor([], name: 'Navigation Awaiting Employee');
+        [$staged] = $this->actor([], name: 'Navigation Staged Employee');
+        $plan = $this->plan($organizationId, $assistant);
+        $this->workflow($plan, $awaiting);
+        $this->workflow($plan, $staged, WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER);
+        $this->entry($plan, $awaiting, 1, 1);
+        $this->entry($plan, $staged, 1, 2);
+
+        $this->actingAs($assistant)
+            ->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $plan->id)
+            ->assertJsonPath('data.0.status', 'IN_REVIEW')
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', true)
+            ->assertJsonPath('data.0.actions.can_assistant_review', false)
+            ->assertJsonPath('data.0.actions.can_owner_review', false);
+        $detail = $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_open_review_workspace', true)
+            ->assertJsonPath('data.actions.can_assistant_review', false)
+            ->assertJsonPath('data.actions.can_finalize_assistant_review', false)
+            ->assertJsonPath('data.actions.can_owner_review', false)
+            ->assertJsonPath('data.actions.can_approve', false)
+            ->assertJsonPath('data.actions.can_publish', false);
+        $workflows = collect($detail->json('data.employee_workflows'))
+            ->keyBy('assignee.id');
+        $this->assertTrue($workflows[$awaiting->id]['actions']['can_accept']);
+        $this->assertTrue($workflows[$awaiting->id]['actions']['can_request_changes']);
+        $this->assertFalse($workflows[$staged->id]['actions']['can_accept']);
+        $this->assertFalse($workflows[$staged->id]['actions']['can_request_changes']);
+
+        $this->actingAs($observer)
+            ->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', false)
+            ->assertJsonPath('data.0.actions.can_assistant_review', false);
+        $this->actingAs($observer)
+            ->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_open_review_workspace', false)
+            ->assertJsonPath('data.employee_workflows.0.actions.can_accept', false)
+            ->assertJsonPath('data.employee_workflows.0.actions.can_request_changes', false);
+
+        config()->set('weekly_plans.workflow_v3_enabled', false);
+        $this->actingAs($assistant)
+            ->getJson('/api/weekly-plans')
+            ->assertOk()
+            ->assertJsonPath('data.0.actions.can_open_review_workspace', false);
+        $this->actingAs($assistant)
+            ->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.actions.can_open_review_workspace', false)
+            ->assertJsonPath('data.employee_workflows.0.actions.can_accept', false)
+            ->assertJsonPath('data.employee_workflows.0.actions.can_request_changes', false);
+    }
+
+    public function test_invalid_content_can_request_changes_but_cannot_be_accepted(): void
+    {
+        [$assistant, $organizationId] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ]);
+        [$employee] = $this->actor([], name: 'Invalid Content Employee');
+        $plan = $this->plan($organizationId, $assistant);
+        $workflow = $this->workflow($plan, $employee, stateVersion: 3, contentVersion: 4);
+        $entry = $this->entry($plan, $employee, 1, 1);
+        $entry->forceFill([
+            'expected_result' => null,
+            'start_date' => null,
+            'validation_status' => 'INVALID',
+            'validation_errors' => ['expected_result' => ['Required']],
+        ])->save();
+        $url = "/api/weekly-plans/{$plan->id}/assistant-review-batches";
+
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-invalid-accept-001')
+            ->postJson($url, [
+                'decisions' => [$this->decision($workflow, 'ACCEPTED')],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('decisions');
+        $this->assertSame(3, $workflow->fresh()->state_version);
+        $this->assertDatabaseCount('weekly_plan_v3_review_batches', 0);
+
+        config()->set('weekly_plans.v3_review_max_employee_snapshot_bytes', 1);
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-invalid-bounds-001')
+            ->postJson($url, [
+                'decisions' => [$this->decision($workflow, 'CHANGES_REQUESTED')],
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('decisions');
+        config()->set('weekly_plans.v3_review_max_employee_snapshot_bytes', 524288);
+
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-invalid-changes-001')
+            ->postJson($url, [
+                'decisions' => [$this->decision($workflow, 'CHANGES_REQUESTED')],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.batch.accepted', 0)
+            ->assertJsonPath('data.batch.changes_requested', 1)
+            ->assertJsonPath('data.results.0.to_state', 'HR_CORRECTION');
+
+        $this->assertSame(
+            WeeklyPlanEmployeeWorkflowState::HR_CORRECTION,
+            $workflow->fresh()->state,
+        );
+        $this->assertSame(4, $workflow->fresh()->state_version);
+        $this->assertSame(4, $workflow->fresh()->content_version);
+        $decision = WeeklyPlanV3ReviewDecision::query()->firstOrFail();
+        $this->assertNull($decision->content_snapshot['entries'][0]['expected_result']);
+        $this->assertNull($decision->content_snapshot['entries'][0]['start_date']);
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseCount('user_notifications', 0);
+    }
+
+    public function test_mixed_valid_acceptance_and_invalid_change_request_commit_atomically(): void
+    {
+        [$assistant, $organizationId] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ]);
+        [$validEmployee] = $this->actor([], name: 'Valid Accepted Employee');
+        [$invalidEmployee] = $this->actor([], name: 'Invalid Changes Employee');
+        $plan = $this->plan($organizationId, $assistant);
+        $validWorkflow = $this->workflow($plan, $validEmployee, stateVersion: 2, contentVersion: 5);
+        $invalidWorkflow = $this->workflow($plan, $invalidEmployee, stateVersion: 7, contentVersion: 9);
+        $this->entry($plan, $validEmployee, 1, 1);
+        $invalidEntry = $this->entry($plan, $invalidEmployee, 1, 2);
+        $invalidEntry->forceFill([
+            'due_date' => null,
+            'validation_status' => 'INVALID',
+            'validation_errors' => ['due_date' => ['Required']],
+        ])->save();
+
+        $this->actingAs($assistant)
+            ->withHeader('Idempotency-Key', 'assistant-valid-invalid-mixed-001')
+            ->postJson("/api/weekly-plans/{$plan->id}/assistant-review-batches", [
+                'decisions' => [
+                    $this->decision($invalidWorkflow, 'CHANGES_REQUESTED'),
+                    $this->decision($validWorkflow, 'ACCEPTED'),
+                ],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('data.batch.accepted', 1)
+            ->assertJsonPath('data.batch.changes_requested', 1)
+            ->assertJsonCount(2, 'data.results');
+
+        $this->assertSame(
+            WeeklyPlanEmployeeWorkflowState::STAGED_FOR_OWNER,
+            $validWorkflow->fresh()->state,
+        );
+        $this->assertSame(3, $validWorkflow->fresh()->state_version);
+        $this->assertSame(5, $validWorkflow->fresh()->content_version);
+        $this->assertSame(
+            WeeklyPlanEmployeeWorkflowState::HR_CORRECTION,
+            $invalidWorkflow->fresh()->state,
+        );
+        $this->assertSame(8, $invalidWorkflow->fresh()->state_version);
+        $this->assertSame(9, $invalidWorkflow->fresh()->content_version);
+        $this->assertDatabaseCount('weekly_plan_v3_review_batches', 1);
+        $this->assertDatabaseCount('weekly_plan_v3_review_decisions', 2);
+        $this->assertDatabaseCount('weekly_plan_events', 1);
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseCount('user_notifications', 0);
+    }
+
     public function test_invalid_employee_rolls_back_the_entire_batch(): void
     {
         [$assistant, $organizationId] = $this->actor([
@@ -301,17 +477,33 @@ class WeeklyPlanningV3AssistantBatchTest extends TestCase
             'weekly_plans.view',
             'weekly_plans.assistant_review',
         ]);
-        [$employee] = $this->actor([]);
+        [$eligibleEmployee] = $this->actor([], name: 'Rollback Eligible Employee');
+        [$staleEmployee] = $this->actor([], name: 'Rollback Stale Employee');
         $plan = $this->plan($organizationId, $assistant);
-        $workflow = $this->workflow($plan, $employee, stateVersion: 4, contentVersion: 8);
-        $this->entry($plan, $employee, 1, 1);
+        $eligibleWorkflow = $this->workflow(
+            $plan,
+            $eligibleEmployee,
+            stateVersion: 2,
+            contentVersion: 3,
+        );
+        $workflow = $this->workflow(
+            $plan,
+            $staleEmployee,
+            stateVersion: 4,
+            contentVersion: 8,
+        );
+        $this->entry($plan, $eligibleEmployee, 1, 1);
+        $this->entry($plan, $staleEmployee, 1, 2);
 
         $staleState = $this->decision($workflow, 'ACCEPTED');
         $staleState['expected_state_version'] = 3;
         $this->actingAs($assistant)
             ->withHeader('Idempotency-Key', 'assistant-stale-state')
             ->postJson("/api/weekly-plans/{$plan->id}/assistant-review-batches", [
-                'decisions' => [$staleState],
+                'decisions' => [
+                    $this->decision($eligibleWorkflow, 'ACCEPTED'),
+                    $staleState,
+                ],
             ])
             ->assertConflict()
             ->assertJsonPath('code', 'STALE_STATE_VERSION');
@@ -321,11 +513,20 @@ class WeeklyPlanningV3AssistantBatchTest extends TestCase
         $this->actingAs($assistant)
             ->withHeader('Idempotency-Key', 'assistant-stale-content')
             ->postJson("/api/weekly-plans/{$plan->id}/assistant-review-batches", [
-                'decisions' => [$staleContent],
+                'decisions' => [
+                    $this->decision($eligibleWorkflow, 'ACCEPTED'),
+                    $staleContent,
+                ],
             ])
             ->assertConflict()
             ->assertJsonPath('code', 'STALE_CONTENT_VERSION');
 
+        $this->assertSame(
+            WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT,
+            $eligibleWorkflow->fresh()->state,
+        );
+        $this->assertSame(2, $eligibleWorkflow->fresh()->state_version);
+        $this->assertSame(3, $eligibleWorkflow->fresh()->content_version);
         $this->assertSame(4, $workflow->fresh()->state_version);
         $this->assertSame(8, $workflow->fresh()->content_version);
         $this->assertDatabaseCount('weekly_plan_v3_review_batches', 0);

@@ -109,6 +109,15 @@ test("stage reviewers receive direct list navigation while active labels stay ac
       can_open_review_workspace: true,
     },
   };
+  const v3AssistantPlan = {
+    ...assistantPlan,
+    status: "IN_REVIEW",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
 
   assert.equal(
     activeWeeklyPlanReviewPath(ownerPlan),
@@ -150,10 +159,22 @@ test("stage reviewers receive direct list navigation while active labels stay ac
     false,
   );
   assert.equal(
+    activeWeeklyPlanReviewPath(v3AssistantPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(canActivelyReviewWeeklyPlan(v3AssistantPlan.actions), false);
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(
+      v3AssistantPlan.status,
+      v3AssistantPlan.actions,
+    ),
+    null,
+  );
+  assert.equal(
     activeWeeklyPlanReviewPath({
-      ...ownerWaitingForHr,
+      ...v3AssistantPlan,
       actions: {
-        ...ownerWaitingForHr.actions,
+        ...v3AssistantPlan.actions,
         can_open_review_workspace: false,
       },
     }),
