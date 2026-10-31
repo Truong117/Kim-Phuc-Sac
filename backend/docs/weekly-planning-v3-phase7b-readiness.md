@@ -11,6 +11,34 @@ tests, source inspection, MySQL, or SQLite as substitutes for those two gates.
 The Phase 7B test and documentation changes are suitable for review, but they do
 not authorize deployment, migration, feature activation, or staging access.
 
+## Phase 7B.1 infrastructure preparation
+
+The follow-up local audit on base
+`40d319e74e20b213664ff26270b2639dc93fe7d5` confirmed that Chrome and Edge are
+installed, but no authorized browser-control surface or repository browser
+runner is available. WSL, Docker, TiUP, and TiDB are also unavailable. No new
+software was installed and no database was accessed.
+
+The repository now includes reviewed example profiles, deterministic synthetic
+fixture metadata, a private test storage disk, and fail-closed E2E/TiDB
+preflight support. See
+`backend/docs/weekly-planning-v3-phase7b1-test-environment.md` for approval
+gates, exact proposed setup commands, test design, and operational costs.
+
+This preparation does not upgrade any existing BLOCKED or NOT VERIFIED row to
+PASS. Browser E2E, migration 1-21 on TiDB, and all eight parallel TiDB races
+still require real execution and archived evidence. Phase 7B.1 validation
+passed 627 backend tests (5,824 assertions), 243 frontend tests, 25 mock-only
+Pester tests, lint, build, Pint, and changed-file formatting.
+
+Existing-suite validation on the preparation branch passed: full backend (624
+tests, 5,815 assertions), focused V3/infrastructure (80 tests, 986 assertions),
+migration/environment safety (64 tests, 411 assertions), mock-only Pester
+migration orchestration (25 tests), and full frontend (243 tests). ESLint,
+production build, Pint, changed-file Prettier, PHP syntax checks, and
+`git diff --check` also passed. These deterministic SQLite/mock/source checks
+are regression evidence only; they are not browser or TiDB evidence.
+
 ## Tested source
 
 - Base commit: `48fe4f41e7b3f46da0bd78cab7baae2ef09bedc1`

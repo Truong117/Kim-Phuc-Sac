@@ -40,6 +40,19 @@ return [
             'report' => false,
         ],
 
+        // Dedicated local-only storage for explicitly guarded browser/TiDB
+        // test processes. EnvironmentSafety rejects this local disk in
+        // production and in staging unless the existing staging opt-in is set.
+        'weekly_plan_e2e' => [
+            'driver' => 'local',
+            'root' => storage_path('framework/testing/weekly-plan-v3-e2e/files'),
+            'serve' => false,
+            'visibility' => 'private',
+            'directory_visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
