@@ -371,19 +371,25 @@ function incrementalExpectedColumn(
     ];
 }
 
-function incrementalMigration16SchemaState(PDO $pdo): string
+/** @param list<string> $appliedMigrations */
+function incrementalMigration16SchemaState(PDO $pdo, array $appliedMigrations, string $migration20State): string
 {
     $sourceTypeColumns = incrementalQueryRows(
         $pdo,
         <<<'SQL'
             SELECT source_column.COLUMN_TYPE, source_column.IS_NULLABLE, source_column.COLUMN_DEFAULT,
                    source_column.COLUMN_KEY, source_column.EXTRA, source_column.ORDINAL_POSITION,
-                   status_column.ORDINAL_POSITION AS STATUS_ORDINAL_POSITION
+                   status_column.ORDINAL_POSITION AS STATUS_ORDINAL_POSITION,
+                   workflow_column.ORDINAL_POSITION AS WORKFLOW_VERSION_ORDINAL_POSITION
             FROM INFORMATION_SCHEMA.COLUMNS AS source_column
             LEFT JOIN INFORMATION_SCHEMA.COLUMNS AS status_column
               ON status_column.TABLE_SCHEMA = source_column.TABLE_SCHEMA
              AND status_column.TABLE_NAME = source_column.TABLE_NAME
              AND status_column.COLUMN_NAME = 'status'
+            LEFT JOIN INFORMATION_SCHEMA.COLUMNS AS workflow_column
+              ON workflow_column.TABLE_SCHEMA = source_column.TABLE_SCHEMA
+             AND workflow_column.TABLE_NAME = source_column.TABLE_NAME
+             AND workflow_column.COLUMN_NAME = 'workflow_version'
             WHERE source_column.TABLE_SCHEMA = ?
               AND source_column.TABLE_NAME = 'weekly_plans'
               AND source_column.COLUMN_NAME = 'source_type'
@@ -392,18 +398,60 @@ function incrementalMigration16SchemaState(PDO $pdo): string
     );
     $sourceColumns = incrementalColumns($pdo, 'weekly_plan_google_docs_sources');
 
+    return incrementalMigration16SchemaStateFromMetadata(
+        $sourceTypeColumns,
+        $sourceColumns,
+        incrementalIndexes($pdo, 'weekly_plan_google_docs_sources'),
+        incrementalForeignKeys($pdo, 'weekly_plan_google_docs_sources'),
+        $appliedMigrations,
+        $migration20State,
+    );
+}
+
+/**
+ * @param  list<array<string, mixed>>  $sourceTypeColumns
+ * @param  list<array<string, mixed>>  $sourceColumns
+ * @param  array<string, array<string, mixed>>  $indexes
+ * @param  array<string, array<string, mixed>>  $foreignKeys
+ * @param  list<string>  $appliedMigrations
+ */
+function incrementalMigration16SchemaStateFromMetadata(
+    array $sourceTypeColumns,
+    array $sourceColumns,
+    array $indexes,
+    array $foreignKeys,
+    array $appliedMigrations,
+    string $migration20State,
+): string {
     if ($sourceTypeColumns === [] && $sourceColumns === []) {
         return 'absent';
     }
 
     $sourceType = $sourceTypeColumns[0] ?? [];
-    $sourceTypeValid = preg_match('/^varchar\(32\)$/', incrementalNormalize((string) ($sourceType['COLUMN_TYPE'] ?? ''))) === 1
+    foreach (['COLUMN_TYPE', 'IS_NULLABLE', 'COLUMN_DEFAULT', 'COLUMN_KEY', 'EXTRA', 'ORDINAL_POSITION', 'STATUS_ORDINAL_POSITION', 'WORKFLOW_VERSION_ORDINAL_POSITION'] as $field) {
+        if (! array_key_exists($field, $sourceType)) {
+            return 'partial';
+        }
+    }
+    $appliedCount = count($appliedMigrations);
+    $ledgerValid = $appliedCount >= 16
+        && $appliedCount <= count(StagingBootstrapPlan::EXPECTED_MIGRATIONS)
+        && $appliedMigrations === array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, $appliedCount);
+    $statusPosition = (int) ($sourceType['STATUS_ORDINAL_POSITION'] ?? 0);
+    $sourcePosition = (int) ($sourceType['ORDINAL_POSITION'] ?? 0);
+    $workflowPosition = $sourceType['WORKFLOW_VERSION_ORDINAL_POSITION'] ?? null;
+    // M20 intentionally inserts workflow_version AFTER status. Accept only
+    // that exact layout, backed by both the ledger and its full schema audit.
+    $layoutValid = $statusPosition > 0 && ($appliedCount < 20
+        ? $migration20State === 'absent' && $workflowPosition === null && $sourcePosition === $statusPosition + 1
+        : $migration20State === 'complete' && $workflowPosition !== null
+            && (int) $workflowPosition === $statusPosition + 1 && $sourcePosition === $statusPosition + 2);
+    $sourceTypeValid = count($sourceTypeColumns) === 1 && $ledgerValid && $layoutValid
+        && preg_match('/^varchar\(32\)$/', incrementalNormalize((string) ($sourceType['COLUMN_TYPE'] ?? ''))) === 1
         && strtoupper((string) ($sourceType['IS_NULLABLE'] ?? '')) === 'NO'
         && (string) ($sourceType['COLUMN_DEFAULT'] ?? '') === 'UPLOADED_FILE'
         && (string) ($sourceType['COLUMN_KEY'] ?? '') === ''
-        && incrementalNormalize((string) ($sourceType['EXTRA'] ?? '')) === ''
-        && (int) ($sourceType['ORDINAL_POSITION'] ?? 0)
-            === (int) ($sourceType['STATUS_ORDINAL_POSITION'] ?? -1) + 1;
+        && incrementalNormalize((string) ($sourceType['EXTRA'] ?? '')) === '';
     $columnsValid = incrementalColumnsMatch($sourceColumns, [
         'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
         'weekly_plan_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'UNI'),
@@ -427,7 +475,6 @@ function incrementalMigration16SchemaState(PDO $pdo): string
         'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
         'updated_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/', 'YES'),
     ]);
-    $indexes = incrementalIndexes($pdo, 'weekly_plan_google_docs_sources');
     // TiDB/MySQL creates the two named supporting indexes below when adding
     // single-column child FKs that are not covered by an explicit index.
     $indexesValid = StagingIncrementalSchema::indexesMatch($indexes, [
@@ -438,7 +485,6 @@ function incrementalMigration16SchemaState(PDO $pdo): string
         'weekly_google_sources_org_request_unique' => incrementalExpectedIndex(0, ['organization_id', 'request_id']),
         'weekly_google_sources_plan_unique' => incrementalExpectedIndex(0, ['weekly_plan_id']),
     ]);
-    $foreignKeys = incrementalForeignKeys($pdo, 'weekly_plan_google_docs_sources');
     $foreignKeysValid = StagingIncrementalSchema::foreignKeysMatch($foreignKeys, [
         'weekly_google_sources_actor_foreign' => incrementalExpectedForeignKey(['confirmed_by_user_id'], 'users', ['id'], 'RESTRICT'),
         'weekly_google_sources_folder_foreign' => incrementalExpectedForeignKey(['approved_folder_id'], 'organization_google_docs_folders', ['id'], 'RESTRICT'),
@@ -1238,11 +1284,11 @@ $sessions = $auditProcessVisibilityVerified
         $expectedMigrationUsername,
     )
     : ['verified' => false, 'competing_count' => -1];
-$migration16State = incrementalMigration16SchemaState($pdo);
+$migration20State = incrementalMigration20SchemaState($pdo);
+$migration16State = incrementalMigration16SchemaState($pdo, $appliedMigrations, $migration20State);
 $migration17State = incrementalMigration17SchemaState($pdo);
 $migration18State = incrementalMigration18SchemaState($pdo);
 $migration19State = incrementalMigration19SchemaState($pdo);
-$migration20State = incrementalMigration20SchemaState($pdo);
 $migration21State = incrementalMigration21SchemaState($pdo);
 $migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);

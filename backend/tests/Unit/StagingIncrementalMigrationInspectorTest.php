@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Support\StagingBootstrapPlan;
+use App\Support\StagingIncrementalMigrationPlan;
 use PDO;
 use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -276,6 +278,172 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
         $this->assertSame('partial', $this->migration20State($metadata));
     }
 
+    public function test_m16_layout_before_and_after_m20_requires_matching_ledger_and_complete_schema(): void
+    {
+        foreach (range(16, 19) as $appliedCount) {
+            $this->assertSame('complete', $this->migration16State($this->migration16Metadata(), $appliedCount, 'absent'));
+        }
+        $this->assertSame('complete', $this->migration16State($this->migration16Metadata(true), 20, $this->migration20State($this->migration20Metadata())));
+        $this->assertSame('complete', $this->migration16State($this->migration16Metadata(true), 21, 'complete'));
+    }
+
+    public function test_m16_rejects_unexpected_positions_and_unverified_m20_schema_or_ledger(): void
+    {
+        foreach (['absent', 'partial', 'complete'] as $m20State) {
+            $this->assertSame('partial', $this->migration16State($this->migration16Metadata(true), 19, $m20State));
+        }
+        foreach (['absent', 'partial'] as $m20State) {
+            $this->assertSame('partial', $this->migration16State($this->migration16Metadata(true), 20, $m20State));
+        }
+        $this->assertSame('partial', $this->migration16State($this->migration16Metadata(), 20, 'complete'));
+        $this->assertSame('partial', $this->migration16State($this->migration16Metadata(), 15, 'absent'));
+
+        foreach ([null, 6, 8, 9] as $position) {
+            $metadata = $this->migration16Metadata(true);
+            $metadata['source_type'][0]['WORKFLOW_VERSION_ORDINAL_POSITION'] = $position;
+            $this->assertSame('partial', $this->migration16State($metadata, 20, 'complete'));
+        }
+        foreach ([6, 7, 9] as $position) {
+            $metadata = $this->migration16Metadata(true);
+            $metadata['source_type'][0]['ORDINAL_POSITION'] = $position;
+            $this->assertSame('partial', $this->migration16State($metadata, 20, 'complete'));
+        }
+        $metadata = $this->migration16Metadata();
+        $metadata['source_type'][0]['ORDINAL_POSITION'] = 8;
+        $this->assertSame('partial', $this->migration16State($metadata, 19, 'absent'));
+
+        $ledger = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20);
+        unset($ledger[15]); // M16 missing even though M20 is recorded.
+        $this->assertSame('partial', $this->migration16State($this->migration16Metadata(true), 20, 'complete', array_values($ledger)));
+        $ledger = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20);
+        [$ledger[18], $ledger[19]] = [$ledger[19], $ledger[18]];
+        $this->assertSame('partial', $this->migration16State($this->migration16Metadata(true), 20, 'complete', $ledger));
+    }
+
+    public function test_m20_partial_metadata_never_unlocks_the_new_m16_layout(): void
+    {
+        $mutations = [
+            'missing table' => static function (array &$m): void {
+                $m['batch_columns'] = [];
+            },
+            'missing column' => static function (array &$m): void {
+                $m['workflow_version_columns'] = [];
+            },
+            'wrong type' => static function (array &$m): void {
+                $m['workflow_version_columns'][0]['COLUMN_TYPE'] = 'int unsigned';
+            },
+            'wrong default' => static function (array &$m): void {
+                $m['workflow_version_columns'][0]['COLUMN_DEFAULT'] = '3';
+            },
+            'nullable version' => static function (array &$m): void {
+                $m['workflow_version_columns'][0]['IS_NULLABLE'] = 'YES';
+            },
+            'missing index' => static function (array &$m): void {
+                $m['workflow_version_indexes'] = [];
+            },
+            'missing unique constraint' => static function (array &$m): void {
+                unset($m['workflow_indexes']['weekly_employee_workflows_plan_assignee_unique']);
+            },
+            'wrong foreign key' => static function (array &$m): void {
+                $m['decision_foreign_keys']['weekly_v3_decisions_workflow_foreign']['delete_rule'] = 'CASCADE';
+            },
+        ];
+        foreach ($mutations as $name => $mutate) {
+            $m20 = $this->migration20Metadata();
+            $mutate($m20);
+            $state = $this->migration20State($m20);
+            $this->assertSame('partial', $state, $name);
+            $this->assertSame('partial', $this->migration16State($this->migration16Metadata(true), 20, $state), $name);
+        }
+    }
+
+    public function test_m16_still_requires_exact_source_column_table_indexes_and_foreign_keys(): void
+    {
+        $mutations = [
+            static function (array &$m): void {
+                $m['source_type'][0]['COLUMN_TYPE'] = 'varchar(64)';
+            },
+            static function (array &$m): void {
+                $m['source_type'][0]['COLUMN_DEFAULT'] = 'GOOGLE_DOCS';
+            },
+            static function (array &$m): void {
+                $m['source_type'][0]['IS_NULLABLE'] = 'YES';
+            },
+            static function (array &$m): void {
+                unset($m['source_type'][0]['COLUMN_KEY']);
+            },
+            static function (array &$m): void {
+                $m['source_columns'] = [];
+            },
+            static function (array &$m): void {
+                $m['source_columns'][2]['COLUMN_TYPE'] = 'bigint';
+            },
+            static function (array &$m): void {
+                unset($m['indexes']['weekly_google_sources_plan_unique']);
+            },
+            static function (array &$m): void {
+                $m['foreign_keys']['weekly_google_sources_plan_foreign']['delete_rule'] = 'RESTRICT';
+            },
+        ];
+        foreach ($mutations as $mutate) {
+            $metadata = $this->migration16Metadata(true);
+            $mutate($metadata);
+            $this->assertSame('partial', $this->migration16State($metadata, 20, 'complete'));
+        }
+    }
+
+    public function test_verified_m20_metadata_allows_read_only_postflight_and_m21_preflight(): void
+    {
+        $m20State = $this->migration20State($this->migration20Metadata());
+        $state = [
+            'target_verified' => true,
+            'tls_verified' => true,
+            'database' => 'kps_internal',
+            'authenticated_user' => 'synthetic.kps_migrator',
+            'expected_user' => 'synthetic.kps_migrator',
+            'tidb_verified' => true,
+            'foreign_key_checks' => 1,
+            'migration_grants_verified' => true,
+            'ddl_jobs_verified' => true,
+            'active_ddl_job_count' => 0,
+            'processlist_verified' => true,
+            'competing_migrator_session_count' => 0,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20),
+            'unexpected_migrations' => [],
+            'migration_16_schema_state' => $this->migration16State($this->migration16Metadata(true), 20, $m20State),
+            'migration_17_schema_state' => 'complete',
+            'migration_18_schema_state' => 'complete',
+            'migration_19_schema_state' => 'complete',
+            'migration_20_schema_state' => $m20State,
+            'migration_21_schema_state' => 'absent',
+            'parent_prerequisites_verified' => true,
+            'weekly_plan_count' => 1,
+            'weekly_plan_id_fingerprint' => str_repeat('a', 64),
+            'weekly_plan_entry_count' => 21,
+            'v2_workflow_plan_count' => 1,
+            'v3_workflow_plan_count' => 0,
+            'v3_employee_workflow_count' => 0,
+            'v3_review_batch_count' => 0,
+            'v3_review_decision_count' => 0,
+        ];
+        $this->assertSame([], StagingIncrementalMigrationPlan::postflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_20, $state, 1, str_repeat('a', 64), 21,
+        ));
+        $this->assertSame([], StagingIncrementalMigrationPlan::preflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_21, $state,
+        ));
+
+        $state['applied_migrations'] = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 19);
+        $this->assertContains('migration_ledger_mismatch', StagingIncrementalMigrationPlan::preflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_21, $state,
+        ));
+        $state['applied_migrations'] = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20);
+        $state['migration_20_schema_state'] = 'partial';
+        $this->assertContains('migration_21_prerequisite_schema_not_verified', StagingIncrementalMigrationPlan::preflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_21, $state,
+        ));
+    }
+
     public function test_migration_21_correction_ledger_metadata_is_exact_and_fails_closed(): void
     {
         $this->assertSame('absent', \incrementalMigration21SchemaStateFromMetadata([], [], []));
@@ -447,6 +615,68 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
                 ),
             ],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function migration16Metadata(bool $afterM20 = false): array
+    {
+        $sourceType = $this->column('source_type', $afterM20 ? 8 : 7, 'varchar(32)', 'NO', 'UPLOADED_FILE');
+        $sourceType['STATUS_ORDINAL_POSITION'] = 6;
+        $sourceType['WORKFLOW_VERSION_ORDINAL_POSITION'] = $afterM20 ? 7 : null;
+
+        return [
+            'source_type' => [$sourceType],
+            'source_columns' => [
+                $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+                $this->column('weekly_plan_id', 2, 'bigint unsigned', 'NO', null, 'UNI'),
+                $this->column('organization_id', 3, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('approved_folder_id', 4, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('confirmed_by_user_id', 5, 'bigint unsigned', 'NO', null, 'MUL'),
+                $this->column('request_id', 6, 'char(36)', 'NO'),
+                $this->column('request_payload_sha256', 7, 'char(64)', 'NO'),
+                $this->column('google_document_id', 8, 'longtext', 'NO'),
+                $this->column('document_id_sha256', 9, 'char(64)', 'NO'),
+                $this->column('approved_folder_id_sha256', 10, 'char(64)', 'NO'),
+                $this->column('document_title', 11, 'longtext', 'NO'),
+                $this->column('revision_id', 12, 'longtext', 'YES'),
+                $this->column('snapshot_sha256', 13, 'char(64)', 'NO'),
+                $this->column('tab_manifest', 14, 'longtext', 'NO'),
+                $this->column('passage_count', 15, 'int unsigned', 'NO'),
+                $this->column('character_count', 16, 'bigint unsigned', 'NO'),
+                $this->column('captured_at', 17, 'timestamp', 'NO'),
+                $this->column('last_verified_at', 18, 'timestamp', 'NO'),
+                $this->column('stale_at', 19, 'timestamp', 'YES'),
+                $this->column('created_at', 20, 'timestamp', 'YES'),
+                $this->column('updated_at', 21, 'timestamp', 'YES'),
+            ],
+            'indexes' => [
+                'PRIMARY' => $this->actualIndex(0, ['id']),
+                'weekly_google_sources_actor_foreign' => $this->actualIndex(1, ['confirmed_by_user_id']),
+                'weekly_google_sources_folder_foreign' => $this->actualIndex(1, ['approved_folder_id']),
+                'weekly_google_sources_org_document_idx' => $this->actualIndex(1, ['organization_id', 'document_id_sha256']),
+                'weekly_google_sources_org_request_unique' => $this->actualIndex(0, ['organization_id', 'request_id']),
+                'weekly_google_sources_plan_unique' => $this->actualIndex(0, ['weekly_plan_id']),
+            ],
+            'foreign_keys' => [
+                'weekly_google_sources_actor_foreign' => $this->actualForeignKey(['confirmed_by_user_id'], 'users', ['id'], 'RESTRICT'),
+                'weekly_google_sources_folder_foreign' => $this->actualForeignKey(['approved_folder_id'], 'organization_google_docs_folders', ['id'], 'RESTRICT'),
+                'weekly_google_sources_org_foreign' => $this->actualForeignKey(['organization_id'], 'organizations', ['id'], 'RESTRICT'),
+                'weekly_google_sources_plan_foreign' => $this->actualForeignKey(['weekly_plan_id'], 'weekly_plans', ['id'], 'CASCADE'),
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $metadata @param list<string>|null $ledger */
+    private function migration16State(array $metadata, int $appliedCount, string $m20State, ?array $ledger = null): string
+    {
+        return \incrementalMigration16SchemaStateFromMetadata(
+            $metadata['source_type'],
+            $metadata['source_columns'],
+            $metadata['indexes'],
+            $metadata['foreign_keys'],
+            $ledger ?? array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, $appliedCount),
+            $m20State,
+        );
     }
 
     /** @return array<string, mixed> */
