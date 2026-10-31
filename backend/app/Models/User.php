@@ -49,6 +49,17 @@ class User extends Authenticatable
         ];
     }
 
+    // A mailbox's verification never carries over to a replacement address.
+    // The verified self-service flow sets email_verified_at after assigning email.
+    public function setEmailAttribute(string $email): void
+    {
+        if (($this->attributes['email'] ?? null) !== $email) {
+            $this->attributes['email_verified_at'] = null;
+        }
+
+        $this->attributes['email'] = $email;
+    }
+
     public function organizationMemberships(): HasMany
     {
         return $this->hasMany(OrganizationMembership::class);

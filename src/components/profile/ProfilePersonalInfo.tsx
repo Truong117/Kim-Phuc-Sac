@@ -2,6 +2,8 @@ import ComponentCard from "@/components/common/ComponentCard";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { useAuth } from "@/hooks/useAuth";
+import useAccountUnsavedChanges from "@/hooks/useAccountUnsavedChanges";
+import Button from "@/components/ui/button/Button";
 import { updateProfile } from "@/services/accountService";
 import { ApiServiceError } from "@/services/apiClient";
 import type { AuthUser } from "@/types/auth";
@@ -12,13 +14,16 @@ interface ProfilePersonalInfoProps {
   user: AuthUser;
 }
 
-export default function ProfilePersonalInfo({ user }: ProfilePersonalInfoProps) {
+export default function ProfilePersonalInfo({
+  user,
+}: ProfilePersonalInfoProps) {
   const { t } = useTranslation("common", { keyPrefix: "profile.personal" });
   const { updateCurrentUser } = useAuth();
   const [name, setName] = useState(user.name);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  useAccountUnsavedChanges(name.trim() !== user.name);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -34,14 +39,16 @@ export default function ProfilePersonalInfo({ user }: ProfilePersonalInfoProps) 
 
     setIsSubmitting(true);
     try {
-      const updatedUser = await updateProfile(normalizedName);
+      const updatedUser = await updateProfile(normalizedName, user.name);
       updateCurrentUser(updatedUser);
       setName(updatedUser.name);
       setSuccess(t("success"));
     } catch (request) {
       if (request instanceof ApiServiceError) {
         setError(
-          request.validationErrors?.name?.[0] ??
+          (request.status === 409
+            ? t("conflict")
+            : request.validationErrors?.name?.[0]) ??
             (request.status === 0 ? t("networkError") : t("saveError")),
         );
       } else {
@@ -54,7 +61,11 @@ export default function ProfilePersonalInfo({ user }: ProfilePersonalInfoProps) 
 
   return (
     <ComponentCard title={t("title")} desc={t("description")} compact>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4"
+        aria-busy={isSubmitting}
+      >
         <div>
           <Label htmlFor="profile-name">{t("name")}</Label>
           <Input
@@ -63,6 +74,10 @@ export default function ProfilePersonalInfo({ user }: ProfilePersonalInfoProps) 
             value={name}
             maxLength={255}
             autoComplete="name"
+            required
+            disabled={isSubmitting}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? "profile-name-error" : undefined}
             onChange={(event) => {
               setName(event.target.value);
               setError(null);
@@ -72,26 +87,14 @@ export default function ProfilePersonalInfo({ user }: ProfilePersonalInfoProps) 
           />
         </div>
 
-        <div>
-          <Label htmlFor="profile-email">{t("email")}</Label>
-          <Input
-            id="profile-email"
-            name="email"
-            type="email"
-            value={user.email}
-            readOnly
-            aria-readonly="true"
-            className="cursor-default bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
-          />
-          <p className="mt-1.5 text-theme-xs text-gray-500 dark:text-gray-400">
-            {t("emailNotice")}
-          </p>
-        </div>
-
         <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div aria-live="polite">
             {error && (
-              <p className="text-theme-sm text-error-600 dark:text-error-400">
+              <p
+                id="profile-name-error"
+                role="alert"
+                className="text-theme-sm text-error-600 dark:text-error-400"
+              >
                 {error}
               </p>
             )}
@@ -101,13 +104,29 @@ export default function ProfilePersonalInfo({ user }: ProfilePersonalInfoProps) 
               </p>
             )}
           </div>
-          <button
-            type="submit"
-            disabled={isSubmitting || name.trim() === user.name}
-            className="inline-flex items-center justify-center rounded-lg bg-kps-primary px-4 py-2.5 text-theme-sm font-semibold text-white transition-colors hover:bg-kps-primary-hover focus-visible:ring-2 focus-visible:ring-kps-primary/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSubmitting ? t("saving") : t("save")}
-          </button>
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isSubmitting || name === user.name}
+              onClick={() => {
+                setName(user.name);
+                setError(null);
+                setSuccess(null);
+              }}
+            >
+              {t("reset")}
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting || name.trim() === user.name}
+              className="!bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none disabled:!bg-kps-primary dark:!bg-kps-primary dark:hover:!bg-kps-primary-hover"
+            >
+              {isSubmitting ? t("saving") : t("save")}
+            </Button>
+          </div>
         </div>
       </form>
     </ComponentCard>

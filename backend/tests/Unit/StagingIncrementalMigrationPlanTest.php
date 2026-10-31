@@ -339,7 +339,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         ));
 
         $state = array_replace($this->stateForMigration21(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21),
             'migration_21_schema_state' => 'complete',
             'weekly_plan_count' => 4,
             'weekly_plan_id_fingerprint' => str_repeat('d', 64),
@@ -354,6 +354,19 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             9,
         ));
 
+        // The Account V2 migration must not broaden the existing migration-21 approval.
+        $state['applied_migrations'] = StagingBootstrapPlan::EXPECTED_MIGRATIONS;
+        $this->assertContains(
+            'postflight_migration_ledger_mismatch',
+            StagingIncrementalMigrationPlan::postflightViolations(
+                StagingIncrementalMigrationPlan::MIGRATION_21,
+                $state,
+                4,
+                str_repeat('d', 64),
+                9,
+            ),
+        );
+        $state['applied_migrations'] = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21);
         $state['v3_correction_batch_count'] = 1;
         $this->assertContains(
             'migration_21_correction_batch_table_not_empty',

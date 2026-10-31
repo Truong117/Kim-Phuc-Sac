@@ -128,6 +128,18 @@ class AccountProfileTest extends TestCase
         $this->assertTrue(Hash::check('current-password', $user->refresh()->password));
     }
 
+    public function test_concurrent_profile_edits_do_not_overwrite_newer_name(): void
+    {
+        $user = $this->activeUser(['name' => 'Original']);
+        $this->actingAs($user, 'web')->patchJson('/api/account/profile', [
+            'name' => 'First update', 'expected_name' => 'Original',
+        ])->assertOk();
+        $this->patchJson('/api/account/profile', [
+            'name' => 'Stale update', 'expected_name' => 'Original',
+        ])->assertConflict();
+        $this->assertSame('First update', $user->refresh()->name);
+    }
+
     /** @return array<string, array{string}> */
     public static function selfServiceRoleProvider(): array
     {

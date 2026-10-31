@@ -33,6 +33,7 @@ final class StagingBootstrapPlan
         '2026_10_29_000000_create_weekly_plan_staged_review_tables',
         '2026_10_30_000000_create_weekly_plan_v3_schema_foundation',
         '2026_10_30_010000_create_weekly_plan_v3_correction_batches',
+        '2026_10_31_000001_create_account_email_changes_table',
     ];
 
     /** @var list<string> */

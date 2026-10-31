@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AccountController;
+use App\Http\Controllers\AccountEmailChangeController;
 use App\Http\Controllers\AI\AiDailyReportController;
 use App\Http\Controllers\AI\AiExecutiveDashboardController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
@@ -43,7 +44,15 @@ Route::prefix('auth')->group(function () {
 Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () {
     Route::prefix('account')->group(function () {
         Route::patch('/profile', [AccountController::class, 'updateProfile']);
-        Route::patch('/password', [AccountController::class, 'updatePassword']);
+        Route::patch('/password', [AccountController::class, 'updatePassword'])
+            ->middleware('throttle:6,1,account-password');
+        Route::get('/email-change', [AccountEmailChangeController::class, 'show']);
+        Route::post('/email-change', [AccountEmailChangeController::class, 'store'])
+            ->middleware(['throttle:3,1,account-email-request', 'throttle:12,60,account-email-hour']);
+        Route::post('/email-change/confirm', [AccountEmailChangeController::class, 'confirm'])
+            ->middleware('throttle:6,1,account-email-confirm');
+        Route::delete('/email-change', [AccountEmailChangeController::class, 'destroy'])
+            ->middleware('throttle:6,1,account-email-cancel');
     });
 
     Route::get('/navigation', NavigationController::class);

@@ -18,6 +18,7 @@ class UpdateProfileRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'expected_name' => ['sometimes', 'required', 'string', 'max:255'],
             'email' => ['prohibited'],
             'organization' => ['prohibited'],
             'organization_id' => ['prohibited'],

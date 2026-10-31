@@ -1,13 +1,17 @@
 import AccountPasswordSection from "@/components/account/AccountPasswordSection";
 import AccountSummary from "@/components/account/AccountSummary";
+import AccountNavigation from "@/components/account/AccountNavigation";
+import AccountEmailSection from "@/components/account/AccountEmailSection";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
+import { useState } from "react";
 
 export default function Account() {
   const { t } = useTranslation("common", { keyPrefix: "account" });
   const { currentUser } = useAuth();
+  const [emailRevision, setEmailRevision] = useState(0);
 
   if (!currentUser) return null;
 
@@ -20,8 +24,12 @@ export default function Account() {
       </p>
 
       <div className="mx-auto max-w-5xl space-y-4">
+        <AccountNavigation />
         <AccountSummary user={currentUser} />
-        <AccountPasswordSection />
+        <AccountEmailSection revision={emailRevision} />
+        <AccountPasswordSection
+          onPasswordChanged={() => setEmailRevision((value) => value + 1)}
+        />
       </div>
     </>
   );

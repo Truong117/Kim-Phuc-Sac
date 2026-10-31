@@ -20,7 +20,7 @@ class AccountController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $updated = $this->accounts->updateName($user, $request->validated('name'));
+        $updated = $this->accounts->updateName($user, $request->validated('name'), $request->validated('expected_name'));
 
         return response()->json($this->userPayload->for($updated));
     }
@@ -29,7 +29,7 @@ class AccountController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $updated = $this->accounts->updatePassword($user, $request->validated('password'));
+        $updated = $this->accounts->updatePassword($user, $request->validated('password'), $request->validated('current_password'));
 
         return response()->json($this->userPayload->for($updated));
     }
