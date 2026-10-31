@@ -1,4 +1,5 @@
 import type { WeeklyPlanV3CorrectionEmployeeInput } from "@/types/weeklyPlanning";
+import { weeklyPlanV3BatchFailureMode } from "./weeklyPlanV3BatchConfirmation.ts";
 
 export type WeeklyPlanV3CorrectionFailureMode =
   "AMBIGUOUS" | "STALE" | "VALIDATION";
@@ -62,30 +63,4 @@ export const clearConfirmedWeeklyPlanV3CorrectionSelection = (
 
 export const weeklyPlanV3CorrectionFailureMode = (
   error: unknown,
-): WeeklyPlanV3CorrectionFailureMode => {
-  const candidateStatus =
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    typeof error.status === "number"
-      ? error.status
-      : null;
-  const status =
-    candidateStatus !== null && Number.isInteger(candidateStatus)
-      ? candidateStatus
-      : null;
-
-  if (status === 409) {
-    return "STALE";
-  }
-
-  if (status === 0 || (status !== null && status >= 500)) {
-    return "AMBIGUOUS";
-  }
-
-  if (status !== null && status >= 400 && status < 500) {
-    return "VALIDATION";
-  }
-
-  return "AMBIGUOUS";
-};
+): WeeklyPlanV3CorrectionFailureMode => weeklyPlanV3BatchFailureMode(error);

@@ -877,6 +877,7 @@
       "open": "Mở kế hoạch",
       "review": "Xét duyệt",
       "viewReview": "Xem xét duyệt",
+      "openReviewWorkspace": "Mở không gian xét duyệt",
       "delete": {
         "action": "Xóa kế hoạch",
         "title": "Xóa kế hoạch tuần?",
@@ -1512,6 +1513,78 @@
         "changesRequested": "Cần chỉnh sửa",
         "pending": "Chờ xét duyệt"
       },
+      "v3": {
+        "summary": {
+          "title": "Tiến độ phát hành theo nhân viên",
+          "phase": {
+            "NOT_STARTED": "Chưa bắt đầu quy trình theo nhân viên",
+            "IN_REVIEW": "Đang xét duyệt theo nhân viên",
+            "PARTIALLY_PUBLISHED": "Đã phát hành một phần",
+            "FULLY_PUBLISHED": "Đã hoàn tất phát hành"
+          },
+          "terminalProgress": "{terminal}/{total} nhân viên hoàn tất · {percentage}%",
+          "progressLabel": "Tiến độ hoàn tất theo nhân viên",
+          "metrics": {
+            "total": "Tổng nhân viên",
+            "awaitingAssistant": "Chờ Trợ lý",
+            "stagedForOwner": "Chờ OWNER",
+            "hrCorrection": "HR chỉnh sửa",
+            "published": "Đã phát hành",
+            "noWorkApproved": "Duyệt không việc"
+          },
+          "empty": "Kế hoạch chưa có dữ liệu quy trình nhân viên. Trạng thái này không được xem là đã hoàn tất."
+        },
+        "navigation": {
+          "title": "Không gian xét duyệt V3",
+          "description": "Chọn đúng hàng đợi nghiệp vụ. Quyền thao tác được lấy trực tiếp từ phản hồi backend.",
+          "label": "Chọn hàng đợi xét duyệt",
+          "OVERVIEW": "Tổng quan",
+          "ASSISTANT": "Hàng đợi Trợ lý",
+          "OWNER": "Hàng đợi OWNER",
+          "openCorrections": "Mở Step 4 chỉnh sửa HR"
+        },
+        "overview": {
+          "title": "Trạng thái theo nhân viên",
+          "empty": "Không có nhân viên phù hợp với bộ lọc này."
+        },
+        "filters": {
+          "MY_REVIEW": "Cần tôi xét duyệt",
+          "OTHER_REVIEW": "Chờ người khác",
+          "HR_CORRECTION": "Cần HR chỉnh sửa",
+          "PUBLISHED": "Đã phát hành",
+          "NO_WORK_APPROVED": "Đã duyệt không việc",
+          "ALL": "Tất cả"
+        },
+        "employee": {
+          "counts": "{entries} công việc · {items} đầu mục",
+          "state": {
+            "AWAITING_ASSISTANT": "Chờ Trợ lý xét duyệt",
+            "STAGED_FOR_OWNER": "Chờ OWNER xét duyệt",
+            "HR_CORRECTION": "Chờ HR chỉnh sửa",
+            "PUBLISHED": "Đã phát hành Task",
+            "NO_WORK_APPROVED": "Đã duyệt không có công việc"
+          },
+          "mode": {
+            "ASSISTANT_REVIEW": "Hàng đợi Trợ lý",
+            "OWNER_REVIEW": "Hàng đợi OWNER",
+            "HR_CORRECTION": "Không gian chỉnh sửa HR",
+            "OBSERVER": "Chỉ xem"
+          },
+          "stage": {
+            "ASSISTANT": "Trợ lý Giám đốc",
+            "OWNER": "OWNER"
+          },
+          "context": "Ngữ cảnh người xem",
+          "correctionOrigin": "Nguồn yêu cầu chỉnh sửa",
+          "publishedBy": "Người phát hành",
+          "taskCount": "Task đã tạo",
+          "publishedAt": "Thời điểm phát hành",
+          "zeroWorkTitle": "Nhân viên không có công việc",
+          "zeroWorkDescription": "Nhân viên vẫn được hiển thị để có thể xét duyệt trạng thái không có công việc một cách rõ ràng.",
+          "discussion": "Trao đổi liên quan ({count})",
+          "notApplicable": "Không áp dụng"
+        }
+      },
       "employee": {
         "title": "Kế hoạch theo nhân viên",
         "noDepartment": "Chưa có thông tin phòng ban",
@@ -1536,6 +1609,7 @@
         },
         "zeroWork": "Nhân viên này hiện không có công việc. Bạn vẫn có thể chấp nhận trạng thái không có công việc.",
         "accept": "Chấp nhận",
+        "decisionTitle": "Quyết định nháp của Trợ lý",
         "requestChanges": "Yêu cầu chỉnh sửa",
         "clear": "Bỏ lựa chọn",
         "readOnly": "Phần kế hoạch này hiện chỉ có thể xem.",
@@ -1551,6 +1625,50 @@
         },
         "errors": {
           "submit": "Không thể xác nhận lô xét duyệt. Các lựa chọn nháp vẫn được giữ nguyên để bạn thử lại."
+        },
+        "recovery": {
+          "AMBIGUOUS": "Chưa thể xác định yêu cầu trước đã được xử lý hay chưa. Hãy thử lại đúng lô này trước khi tạo lô mới.",
+          "STALE": "Trạng thái hoặc nội dung đã thay đổi. Lựa chọn nháp vẫn được giữ; hãy tải lại và kiểm tra.",
+          "VALIDATION": "Lô xét duyệt chưa hợp lệ. Lựa chọn nháp vẫn được giữ để bạn điều chỉnh.",
+          "RECONCILED": "Yêu cầu trước đã được đối soát thành công. Các lựa chọn mới vẫn được giữ nguyên.",
+          "retry": "Thử lại và đối soát",
+          "reload": "Tải lại kế hoạch",
+          "reloadFailed": "Không thể tải lại kế hoạch. Lựa chọn nháp vẫn được giữ nguyên; vui lòng thử lại."
+        }
+      },
+      "v3Owner": {
+        "title": "Xét duyệt và phát hành theo lô của OWNER",
+        "description": "Chọn quyết định cho từng nhân viên. Chỉ quyết định Chấp nhận mới tạo Task thật khi xác nhận lô.",
+        "decisionTitle": "Quyết định nháp của OWNER",
+        "decisionDescription": "Quyết định chỉ có hiệu lực sau khi xác nhận lô. Ghi chú trao đổi không tự thay đổi quyết định.",
+        "draft": {
+          "ACCEPTED": "Nháp: Phê duyệt và giao Task",
+          "CHANGES_REQUESTED": "Nháp: Yêu cầu HR chỉnh sửa",
+          "APPROVE_NO_WORK": "Nháp: Duyệt không có công việc"
+        },
+        "publish": "Phê duyệt và tạo Task",
+        "requestChanges": "Yêu cầu HR chỉnh sửa",
+        "approveNoWork": "Duyệt không có công việc",
+        "clear": "Bỏ lựa chọn",
+        "empty": "Không có nhân viên nào trong hàng đợi OWNER của bạn.",
+        "reviewBatch": "Xem lại lô OWNER ({count})",
+        "confirmation": {
+          "title": "Xác nhận phê duyệt và phát hành lô?",
+          "summary": "{total} nhân viên · {accepted} phát hành · {tasks} Task dự kiến · {changesRequested} trả HR · {noWorkApproved} duyệt không việc",
+          "effects": "Khi xác nhận, hệ thống sẽ tạo Task thật và thông báo giao việc cho các nhân viên được phê duyệt.",
+          "unselected": "Nhân viên chưa chọn sẽ giữ nguyên hoàn toàn và có thể được xử lý trong lô sau.",
+          "cancel": "Quay lại",
+          "submit": "Xác nhận và phát hành",
+          "submitting": "Đang xác nhận..."
+        },
+        "recovery": {
+          "AMBIGUOUS": "Chưa thể xác định lô trước đã được xử lý hay chưa. Hãy thử lại đúng request và payload cũ để đối soát.",
+          "STALE": "Trạng thái hoặc nội dung nhân viên đã thay đổi. Lựa chọn nháp vẫn được giữ; hãy tải lại và kiểm tra.",
+          "VALIDATION": "Lô OWNER chưa hợp lệ. Lựa chọn nháp vẫn được giữ để bạn điều chỉnh.",
+          "RECONCILED": "Lô trước đã được đối soát thành công. Các lựa chọn mới vẫn được giữ nguyên.",
+          "retry": "Thử lại và đối soát",
+          "reload": "Tải lại kế hoạch",
+          "reloadFailed": "Không thể tải lại kế hoạch. Lựa chọn nháp vẫn được giữ nguyên; vui lòng thử lại."
         }
       },
       "work": {
@@ -1662,6 +1780,10 @@
       "V3_EMPLOYEE_ENTRY_DELETED": "Nhân sự đã xóa công việc cần chỉnh sửa",
       "V3_EMPLOYEE_CORRECTION_RESUBMITTED": "Nhân sự đã gửi lại kế hoạch của nhân viên cho Trợ lý",
       "V3_HR_CORRECTION_BATCH_CONFIRMED": "Nhân sự đã xác nhận lô chỉnh sửa V3",
+      "V3_OWNER_EMPLOYEE_PUBLISHED": "OWNER đã phát hành công việc của nhân viên thành Task",
+      "V3_OWNER_EMPLOYEE_CHANGES_REQUESTED": "OWNER đã yêu cầu HR chỉnh sửa công việc của nhân viên",
+      "V3_OWNER_EMPLOYEE_NO_WORK_APPROVED": "OWNER đã duyệt nhân viên không có công việc",
+      "V3_OWNER_BATCH_CONFIRMED": "OWNER đã xác nhận lô xét duyệt và phát hành V3",
       "COMMENT_ADDED": "Đã thêm nhận xét",
       "SUGGESTION_DECIDED": "Đã xử lý gợi ý theo quy tắc",
       "ANALYZED": "Đã chạy phân tích theo quy tắc",

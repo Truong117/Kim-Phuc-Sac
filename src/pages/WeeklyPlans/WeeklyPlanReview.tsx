@@ -82,6 +82,11 @@ export default function WeeklyPlanReview() {
         <WeeklyPlanReviewWorkspace
           plan={plan}
           onPlanChange={setPlan}
+          onReload={async () => {
+            if (!id) return;
+            const nextPlan = await getWeeklyPlan(id);
+            setPlan(nextPlan);
+          }}
           onAssistantCompleted={() =>
             navigate("/weekly-plans", {
               replace: true,

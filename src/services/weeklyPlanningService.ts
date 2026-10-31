@@ -6,6 +6,7 @@ import {
 } from "@/services/googleDocsEmployeeMappingRequest";
 import { requestGoogleDocsSource } from "@/services/googleDocsSourceRequest";
 import { requestWeeklyPlanAssistantBatch } from "@/services/weeklyPlanAssistantBatchRequest";
+import { requestWeeklyPlanOwnerBatch } from "@/services/weeklyPlanOwnerBatchRequest";
 import type {
   WeeklyPlan,
   WeeklyPlanAiSuggestion,
@@ -21,6 +22,8 @@ import type {
   WeeklyPlanV3AssistantBatchResult,
   WeeklyPlanV3CorrectionBatchResult,
   WeeklyPlanV3CorrectionEmployeeInput,
+  WeeklyPlanV3OwnerBatchDecisionInput,
+  WeeklyPlanV3OwnerBatchResult,
 } from "@/types/weeklyPlanning";
 
 type WeeklyPlanResponse = { data: WeeklyPlan };
@@ -311,6 +314,13 @@ export const confirmWeeklyPlanAssistantBatch = (
   idempotencyKey: string,
 ): Promise<WeeklyPlanV3AssistantBatchResult> =>
   requestWeeklyPlanAssistantBatch(apiRequest, id, decisions, idempotencyKey);
+
+export const confirmWeeklyPlanOwnerBatch = (
+  id: number,
+  decisions: WeeklyPlanV3OwnerBatchDecisionInput[],
+  idempotencyKey: string,
+): Promise<WeeklyPlanV3OwnerBatchResult> =>
+  requestWeeklyPlanOwnerBatch(apiRequest, id, decisions, idempotencyKey);
 
 export const addWeeklyPlanV3CorrectionEntry = async (
   id: number,

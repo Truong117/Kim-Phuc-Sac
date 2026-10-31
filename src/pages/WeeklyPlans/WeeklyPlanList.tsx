@@ -176,9 +176,11 @@ export default function WeeklyPlanList() {
             const reviewPath = activeWeeklyPlanReviewPath(plan);
             const reviewCtaKey = canActivelyReviewWeeklyPlan(plan.actions)
               ? "list.review"
-              : reviewPath
-                ? "list.viewReview"
-                : "list.open";
+              : plan.status === "IN_REVIEW" && reviewPath
+                ? "list.openReviewWorkspace"
+                : reviewPath
+                  ? "list.viewReview"
+                  : "list.open";
 
             return (
               <div
