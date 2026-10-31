@@ -1,9 +1,11 @@
 import Button from "@/components/ui/button/Button";
+import WeeklyPlanV3EmployeeGroup from "@/components/weekly-plans/WeeklyPlanV3EmployeeGroup";
 import { ApiServiceError } from "@/services/apiClient";
 import { confirmWeeklyPlanAssistantBatch } from "@/services/weeklyPlanningService";
 import type {
   WeeklyPlan,
   WeeklyPlanEmployeeWorkflow,
+  WeeklyPlanV3AssistantBatchDecisionInput,
 } from "@/types/weeklyPlanning";
 import {
   buildWeeklyPlanV3AssistantBatch,
@@ -13,44 +15,75 @@ import {
   type WeeklyPlanV3AssistantDraft,
   type WeeklyPlanV3AssistantDraftDecision,
 } from "@/utils/weeklyPlanV3AssistantBatch";
+import {
+  resolveWeeklyPlanV3BatchConfirmation,
+  weeklyPlanV3BatchFailureMode,
+  type WeeklyPlanV3BatchFailureMode,
+  type WeeklyPlanV3PendingBatchConfirmation,
+} from "@/utils/weeklyPlanV3BatchConfirmation";
+import { weeklyPlanV3EntriesByAssignee } from "@/utils/weeklyPlanV3ReviewWorkspace";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type Props = {
   plan: WeeklyPlan;
   onPlanChange: (plan: WeeklyPlan) => void;
+  onReload: () => Promise<void>;
+  pending: WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3AssistantBatchDecisionInput> | null;
+  onPendingChange: (
+    pending: WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3AssistantBatchDecisionInput> | null,
+  ) => void;
 };
 
-const requestId = (): string => globalThis.crypto.randomUUID();
+const requestId = (): string =>
+  `asst-${Date.now()}-${globalThis.crypto.randomUUID()}`;
 
 export default function WeeklyPlanV3AssistantBatchReview({
   plan,
   onPlanChange,
+  onReload,
+  pending,
+  onPendingChange,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.reviewWorkspace.v3Assistant",
   });
   const [draft, setDraft] = useState<WeeklyPlanV3AssistantDraft>({});
   const [confirming, setConfirming] = useState(false);
-  const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null);
+  const [recoveryState, setRecoveryState] = useState<
+    WeeklyPlanV3BatchFailureMode | "RECONCILED" | null
+  >(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(
+    () =>
+      (plan.employee_workflows ?? []).find(
+        (workflow) => workflow.viewer_context.mode === "ASSISTANT_REVIEW",
+      )?.id ?? null,
+  );
   const submitting = useRef(false);
-  const workflows = plan.employee_workflows ?? [];
+  const workflows = (plan.employee_workflows ?? []).filter(
+    (workflow) => workflow.viewer_context.mode === "ASSISTANT_REVIEW",
+  );
+  const entriesByAssignee = useMemo(
+    () => weeklyPlanV3EntriesByAssignee(plan.entries),
+    [plan.entries],
+  );
   const decisions = useMemo(
     () => buildWeeklyPlanV3AssistantBatch(plan, draft),
     [draft, plan],
   );
-  const summary = useMemo(
-    () => summarizeWeeklyPlanV3AssistantDraft(decisions),
-    [decisions],
+  const confirmationDecisions = pending?.decisions ?? decisions;
+  const confirmationSummary = useMemo(
+    () => summarizeWeeklyPlanV3AssistantDraft(confirmationDecisions),
+    [confirmationDecisions],
   );
 
   const updateDecision = (
     workflow: WeeklyPlanEmployeeWorkflow,
     decision: WeeklyPlanV3AssistantDraftDecision | null,
   ) => {
-    if (busy) return;
+    if (busy || pending !== null) return;
     if (
       workflow.viewer_context.mode !== "ASSISTANT_REVIEW" ||
       (decision === "ACCEPTED" && !workflow.actions.can_accept) ||
@@ -68,59 +101,70 @@ export default function WeeklyPlanV3AssistantBatchReview({
       ),
     );
     setConfirming(false);
-    setIdempotencyKey(null);
+    setRecoveryState(null);
     setError(null);
-  };
-
-  const openConfirmation = () => {
-    if (decisions.length === 0 || busy) return;
-    setIdempotencyKey((current) => current ?? requestId());
-    setConfirming(true);
-    setError(null);
-  };
-
-  const closeConfirmation = () => {
-    if (busy) return;
-    setConfirming(false);
   };
 
   const confirm = async () => {
-    if (
-      decisions.length === 0 ||
-      idempotencyKey === null ||
-      submitting.current
-    ) {
+    if ((decisions.length === 0 && pending === null) || submitting.current) {
       return;
     }
 
+    const resolution = resolveWeeklyPlanV3BatchConfirmation(
+      pending,
+      plan.id,
+      "ASSISTANT",
+      decisions,
+      requestId,
+    );
+    onPendingChange(resolution.confirmation);
     submitting.current = true;
     setBusy(true);
     setError(null);
+    setRecoveryState(null);
     try {
       const result = await confirmWeeklyPlanAssistantBatch(
-        plan.id,
-        decisions,
-        idempotencyKey,
+        resolution.confirmation.planId,
+        resolution.confirmation.decisions,
+        resolution.confirmation.requestId,
       );
       onPlanChange(result.plan);
       setDraft((current) =>
         clearConfirmedWeeklyPlanV3AssistantDraft(current, result.results),
       );
       setConfirming(false);
-      setIdempotencyKey(null);
+      onPendingChange(null);
+      setRecoveryState(resolution.reconciliationRequired ? "RECONCILED" : null);
     } catch (nextError) {
+      const mode = weeklyPlanV3BatchFailureMode(nextError);
       const validation =
         nextError instanceof ApiServiceError
           ? Object.values(nextError.validationErrors ?? {})[0]?.[0]
           : undefined;
+      if (mode !== "AMBIGUOUS") onPendingChange(null);
+      setRecoveryState(mode);
       setError(
         validation ??
           (nextError instanceof ApiServiceError && nextError.status === 409
             ? nextError.message
-            : t("errors.submit")),
+            : t(`recovery.${mode}`)),
       );
     } finally {
       submitting.current = false;
+      setBusy(false);
+    }
+  };
+
+  const reload = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onReload();
+      setRecoveryState(null);
+    } catch {
+      setError(t("recovery.reloadFailed"));
+    } finally {
       setBusy(false);
     }
   };
@@ -145,72 +189,33 @@ export default function WeeklyPlanV3AssistantBatchReview({
       <div className="space-y-3">
         {workflows.map((workflow) => {
           const selected = draft[workflow.assignee.id];
-          const entries = plan.entries.filter(
-            (entry) => entry.assignee?.id === workflow.assignee.id,
+          const entries = entriesByAssignee.get(workflow.assignee.id) ?? [];
+          const comments = plan.comments.filter(
+            (comment) =>
+              comment.assignee_id === workflow.assignee.id ||
+              entries.some((entry) => entry.id === comment.entry_id),
           );
-          const isAssistantWorkflow =
-            workflow.viewer_context.mode === "ASSISTANT_REVIEW";
-          const actionable =
-            isAssistantWorkflow &&
-            (workflow.actions.can_accept ||
-              workflow.actions.can_request_changes);
 
           return (
-            <article
+            <WeeklyPlanV3EmployeeGroup
               key={workflow.id}
-              className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
-                    {workflow.assignee.name}
-                  </h3>
-                  <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
-                    {t("counts", {
-                      entries: workflow.active_entry_count,
-                      items: workflow.active_child_item_count,
-                    })}
+              workflow={workflow}
+              entries={entries}
+              comments={comments}
+              expanded={expandedId === workflow.id || workflows.length === 1}
+              draftLabel={selected ? t(`draft.${selected}`) : null}
+              onToggle={() =>
+                setExpandedId((current) =>
+                  current === workflow.id ? null : workflow.id,
+                )
+              }
+              actions={
+                <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                  <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                    {t("decisionTitle")}
                   </p>
-                </div>
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-theme-xs font-semibold text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                  {selected
-                    ? t(`draft.${selected}`)
-                    : t(`state.${workflow.state}`)}
-                </span>
-              </div>
-
-              {entries.length > 0 ? (
-                <ul className="mt-4 space-y-2">
-                  {entries.map((entry) => (
-                    <li
-                      key={entry.id}
-                      className="rounded-xl bg-gray-50 px-3 py-2 text-theme-sm text-gray-700 dark:bg-gray-800/60 dark:text-gray-300"
-                    >
-                      {entry.title}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-4 rounded-xl bg-gray-50 px-3 py-2 text-theme-sm text-gray-600 dark:bg-gray-800/60 dark:text-gray-400">
-                  {t("zeroWork")}
-                </p>
-              )}
-
-              {actionable ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {isAssistantWorkflow && workflow.actions.can_accept && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={selected === "ACCEPTED" ? "primary" : "outline"}
-                      disabled={busy}
-                      onClick={() => updateDecision(workflow, "ACCEPTED")}
-                    >
-                      {t("accept")}
-                    </Button>
-                  )}
-                  {isAssistantWorkflow &&
-                    workflow.actions.can_request_changes && (
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    {workflow.actions.can_request_changes && (
                       <Button
                         type="button"
                         size="sm"
@@ -219,7 +224,7 @@ export default function WeeklyPlanV3AssistantBatchReview({
                             ? "primary"
                             : "outline"
                         }
-                        disabled={busy}
+                        disabled={busy || pending !== null}
                         onClick={() =>
                           updateDecision(workflow, "CHANGES_REQUESTED")
                         }
@@ -227,24 +232,34 @@ export default function WeeklyPlanV3AssistantBatchReview({
                         {t("requestChanges")}
                       </Button>
                     )}
-                  {selected && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={() => updateDecision(workflow, null)}
-                    >
-                      {t("clear")}
-                    </Button>
-                  )}
+                    {workflow.actions.can_accept && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          selected === "ACCEPTED" ? "primary" : "outline"
+                        }
+                        disabled={busy || pending !== null}
+                        onClick={() => updateDecision(workflow, "ACCEPTED")}
+                      >
+                        {t("accept")}
+                      </Button>
+                    )}
+                    {selected && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={busy || pending !== null}
+                        onClick={() => updateDecision(workflow, null)}
+                      >
+                        {t("clear")}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <p className="mt-4 text-theme-xs text-gray-500 dark:text-gray-400">
-                  {t("readOnly")}
-                </p>
-              )}
-            </article>
+              }
+            />
           );
         })}
       </div>
@@ -264,10 +279,16 @@ export default function WeeklyPlanV3AssistantBatchReview({
         </p>
       )}
 
-      {decisions.length > 0 && !confirming && (
+      {(decisions.length > 0 || pending !== null) && !confirming && (
         <div className="flex justify-end">
-          <Button type="button" disabled={busy} onClick={openConfirmation}>
-            {t("reviewBatch", { count: decisions.length })}
+          <Button
+            type="button"
+            disabled={busy}
+            onClick={() => setConfirming(true)}
+          >
+            {pending
+              ? t("recovery.retry")
+              : t("reviewBatch", { count: decisions.length })}
           </Button>
         </div>
       )}
@@ -276,22 +297,38 @@ export default function WeeklyPlanV3AssistantBatchReview({
         <div
           role="dialog"
           aria-modal="true"
-          aria-labelledby="weekly-plan-v3-confirm-title"
+          aria-labelledby="weekly-plan-v3-assistant-confirm-title"
           className="rounded-2xl border border-kps-primary/20 bg-kps-primary/[0.04] p-5 dark:border-kps-primary/30 dark:bg-kps-primary/10"
         >
           <h3
-            id="weekly-plan-v3-confirm-title"
+            id="weekly-plan-v3-assistant-confirm-title"
             className="font-semibold text-gray-900 dark:text-white"
           >
             {t("confirmation.title")}
           </h3>
           <p className="mt-2 text-theme-sm text-gray-700 dark:text-gray-300">
             {t("confirmation.summary", {
-              total: summary.total,
-              accepted: summary.accepted,
-              changesRequested: summary.changesRequested,
+              total: confirmationSummary.total,
+              accepted: confirmationSummary.accepted,
+              changesRequested: confirmationSummary.changesRequested,
             })}
           </p>
+          <ul className="mt-3 space-y-1 text-theme-xs text-gray-600 dark:text-gray-300">
+            {confirmationDecisions.map((decision) => (
+              <li key={decision.assignee_id}>
+                {workflows.find(
+                  (workflow) => workflow.assignee.id === decision.assignee_id,
+                )?.assignee.name ?? `#${decision.assignee_id}`}{" "}
+                {" — "}
+                {t(`payload.${decision.decision}`)}
+                {" · "}
+                {t("confirmation.versions", {
+                  state: decision.expected_state_version,
+                  content: decision.expected_content_version,
+                })}
+              </li>
+            ))}
+          </ul>
           <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
             {t("confirmation.unselected")}
           </p>
@@ -300,7 +337,7 @@ export default function WeeklyPlanV3AssistantBatchReview({
               type="button"
               variant="outline"
               disabled={busy}
-              onClick={closeConfirmation}
+              onClick={() => setConfirming(false)}
             >
               {t("confirmation.cancel")}
             </Button>
@@ -309,8 +346,42 @@ export default function WeeklyPlanV3AssistantBatchReview({
               disabled={busy}
               onClick={() => void confirm()}
             >
-              {busy ? t("confirmation.submitting") : t("confirmation.submit")}
+              {busy
+                ? t("confirmation.submitting")
+                : pending
+                  ? t("recovery.retry")
+                  : t("confirmation.submit")}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {recoveryState && (
+        <div
+          role="alert"
+          className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-theme-sm text-warning-800 dark:border-warning-800 dark:bg-warning-500/10 dark:text-warning-300"
+        >
+          <p>{t(`recovery.${recoveryState}`)}</p>
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            {recoveryState === "AMBIGUOUS" && (
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => void confirm()}
+              >
+                {t("recovery.retry")}
+              </Button>
+            )}
+            {recoveryState === "STALE" && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => void reload()}
+              >
+                {t("recovery.reload")}
+              </Button>
+            )}
           </div>
         </div>
       )}

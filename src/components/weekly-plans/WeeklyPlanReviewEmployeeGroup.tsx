@@ -18,7 +18,7 @@ type Props = {
   onRequestChanges: () => void;
 };
 
-function WorkCard({
+export function WeeklyPlanReviewWorkCard({
   entry,
   multiple,
 }: {
@@ -260,7 +260,7 @@ export default function WeeklyPlanReviewEmployeeGroup({
             </div>
           ) : (
             group.entries.map((entry) => (
-              <WorkCard
+              <WeeklyPlanReviewWorkCard
                 key={entry.id}
                 entry={entry}
                 multiple={group.entries.length > 1}

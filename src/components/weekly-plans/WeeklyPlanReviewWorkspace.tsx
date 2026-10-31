@@ -11,7 +11,7 @@ import WeeklyPlanReviewFinalModal, {
   type WeeklyPlanReviewFinalAction,
 } from "@/components/weekly-plans/WeeklyPlanReviewFinalModal";
 import WeeklyPlanStatusBadge from "@/components/weekly-plans/WeeklyPlanStatusBadge";
-import WeeklyPlanV3AssistantBatchReview from "@/components/weekly-plans/WeeklyPlanV3AssistantBatchReview";
+import WeeklyPlanV3ReviewerWorkspace from "@/components/weekly-plans/WeeklyPlanV3ReviewerWorkspace";
 import { useModal } from "@/hooks/useModal";
 import { ApiServiceError } from "@/services/apiClient";
 import {
@@ -45,12 +45,14 @@ type Props = {
   plan: WeeklyPlan;
   onPlanChange: (plan: WeeklyPlan) => void;
   onAssistantCompleted: () => void;
+  onReload?: () => Promise<void>;
 };
 
 export default function WeeklyPlanReviewWorkspace({
   plan,
   onPlanChange,
   onAssistantCompleted,
+  onReload = async () => undefined,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.reviewWorkspace",
@@ -306,9 +308,11 @@ export default function WeeklyPlanReviewWorkspace({
       )}
 
       {isV3 ? (
-        <WeeklyPlanV3AssistantBatchReview
+        <WeeklyPlanV3ReviewerWorkspace
+          key={plan.id}
           plan={plan}
           onPlanChange={onPlanChange}
+          onReload={onReload}
         />
       ) : plan.review_workflow?.current_round ? (
         <>

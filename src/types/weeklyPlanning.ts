@@ -385,6 +385,35 @@ export type WeeklyPlanV3AssistantBatchResult = {
   }>;
 };
 
+export type WeeklyPlanV3OwnerDecision =
+  "ACCEPTED" | "CHANGES_REQUESTED" | "APPROVE_NO_WORK";
+
+export type WeeklyPlanV3OwnerBatchDecisionInput = {
+  assignee_id: number;
+  decision: WeeklyPlanV3OwnerDecision;
+  expected_state_version: number;
+  expected_content_version: number;
+};
+
+export type WeeklyPlanV3OwnerBatchResult = {
+  plan: WeeklyPlan;
+  batch: {
+    id: number;
+    stage: "OWNER";
+    confirmed_at: string;
+    accepted: number;
+    changes_requested: number;
+    no_work_approved: number;
+    published_task_count: number;
+    affected_employee_ids: number[];
+  };
+  results: Array<{
+    assignee_id: number;
+    to_state: "PUBLISHED" | "HR_CORRECTION" | "NO_WORK_APPROVED";
+    task_count: number;
+  }>;
+};
+
 export type WeeklyPlanV3CorrectionEmployeeInput = {
   assignee_id: number;
   expected_state_version: number;

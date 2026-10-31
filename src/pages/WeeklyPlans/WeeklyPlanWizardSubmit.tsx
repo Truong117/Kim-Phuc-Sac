@@ -11,6 +11,7 @@ import {
 } from "@/utils/weeklyPlanReviewWorkspace";
 import { weeklyPlanWorkCounts } from "@/utils/weeklyPlanWizard";
 import { activeWeeklyPlanReviewPath } from "@/utils/weeklyPlanReviewer";
+import { weeklyPlanV3HasHrCorrectionAccess } from "@/utils/weeklyPlanV3ReviewWorkspace";
 import { useTranslation } from "react-i18next";
 import { Navigate } from "react-router";
 
@@ -33,21 +34,27 @@ export default function WeeklyPlanWizardSubmit() {
     );
   }
 
-  const reviewPath = activeWeeklyPlanReviewPath(plan);
-  if (reviewPath) return <Navigate to={reviewPath} replace />;
-
   const isV3CorrectionWorkspace =
     plan.workflow_version === 3 &&
     (plan.employee_workflows ?? []).some(
       (workflow) => workflow.state === "HR_CORRECTION",
     );
+  const hasV3CorrectionAccess = weeklyPlanV3HasHrCorrectionAccess(plan);
+  const v3CorrectionWorkspace = (
+    <WeeklyPlanWizardLayout step="submit">
+      <WeeklyPlanV3HrCorrections />
+      <WeeklyPlanStep4DiscussionHistory />
+    </WeeklyPlanWizardLayout>
+  );
+  if (isV3CorrectionWorkspace && hasV3CorrectionAccess) {
+    return v3CorrectionWorkspace;
+  }
+
+  const reviewPath = activeWeeklyPlanReviewPath(plan);
+  if (reviewPath) return <Navigate to={reviewPath} replace />;
+
   if (isV3CorrectionWorkspace) {
-    return (
-      <WeeklyPlanWizardLayout step="submit">
-        <WeeklyPlanV3HrCorrections />
-        <WeeklyPlanStep4DiscussionHistory />
-      </WeeklyPlanWizardLayout>
-    );
+    return v3CorrectionWorkspace;
   }
 
   const counts = weeklyPlanWorkCounts(plan);
