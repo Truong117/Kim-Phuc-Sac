@@ -6,7 +6,12 @@ import type {
   WeeklyPlanV3AssistantBatchDecisionInput,
   WeeklyPlanV3OwnerBatchDecisionInput,
 } from "@/types/weeklyPlanning";
-import type { WeeklyPlanV3PendingBatchConfirmation } from "@/utils/weeklyPlanV3BatchConfirmation";
+import {
+  weeklyPlanV3BatchPayloadFingerprint,
+  type WeeklyPlanV3PendingBatchConfirmation,
+  type WeeklyPlanV3ReviewerStage,
+  type WeeklyPlanV3VersionedDecision,
+} from "./weeklyPlanV3BatchConfirmation.ts";
 
 export type WeeklyPlanV3ReviewerView = "OVERVIEW" | "ASSISTANT" | "OWNER";
 
@@ -39,6 +44,147 @@ export const createWeeklyPlanV3ReviewerWorkspaceState = (
   assistantPending: null,
   ownerPending: null,
 });
+
+type WeeklyPlanV3RecoveryStorage = Pick<
+  Storage,
+  "getItem" | "setItem" | "removeItem"
+>;
+
+const recoveryStorageKey = (planId: number): string =>
+  `kps:weekly-plan-v3-reviewer-recovery:${planId}`;
+
+const validDecision = (
+  value: unknown,
+  stage: WeeklyPlanV3ReviewerStage,
+): value is WeeklyPlanV3VersionedDecision => {
+  if (typeof value !== "object" || value === null) return false;
+  const decision = value as Partial<WeeklyPlanV3VersionedDecision>;
+  const allowed =
+    stage === "ASSISTANT"
+      ? ["ACCEPTED", "CHANGES_REQUESTED"]
+      : ["ACCEPTED", "CHANGES_REQUESTED", "APPROVE_NO_WORK"];
+
+  return (
+    Number.isInteger(decision.assignee_id) &&
+    Number(decision.assignee_id) > 0 &&
+    typeof decision.decision === "string" &&
+    allowed.includes(decision.decision) &&
+    Number.isInteger(decision.expected_state_version) &&
+    Number(decision.expected_state_version) >= 0 &&
+    Number.isInteger(decision.expected_content_version) &&
+    Number(decision.expected_content_version) >= 0
+  );
+};
+
+const validPending = <TDecision extends WeeklyPlanV3VersionedDecision>(
+  value: unknown,
+  planId: number,
+  stage: WeeklyPlanV3ReviewerStage,
+): value is WeeklyPlanV3PendingBatchConfirmation<TDecision> => {
+  if (typeof value !== "object" || value === null) return false;
+  const pending = value as Partial<
+    WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3VersionedDecision>
+  >;
+  if (
+    pending.planId !== planId ||
+    pending.stage !== stage ||
+    typeof pending.requestId !== "string" ||
+    pending.requestId.length === 0 ||
+    pending.requestId.length > 128 ||
+    typeof pending.payloadFingerprint !== "string" ||
+    !Array.isArray(pending.decisions) ||
+    pending.decisions.length === 0 ||
+    pending.decisions.length > 100 ||
+    !pending.decisions.every((decision) => validDecision(decision, stage))
+  ) {
+    return false;
+  }
+
+  return (
+    weeklyPlanV3BatchPayloadFingerprint(pending.decisions) ===
+    pending.payloadFingerprint
+  );
+};
+
+export const restoreWeeklyPlanV3ReviewerPending = (
+  planId: number,
+  storage: WeeklyPlanV3RecoveryStorage | null,
+): Pick<
+  WeeklyPlanV3ReviewerWorkspaceState,
+  "assistantPending" | "ownerPending"
+> => {
+  const empty = { assistantPending: null, ownerPending: null };
+  if (!storage) return empty;
+
+  try {
+    const raw = storage.getItem(recoveryStorageKey(planId));
+    if (!raw) return empty;
+    const value = JSON.parse(raw) as {
+      version?: unknown;
+      assistantPending?: unknown;
+      ownerPending?: unknown;
+    };
+    if (value.version !== 1) return empty;
+
+    const assistantPending =
+      validPending<WeeklyPlanV3AssistantBatchDecisionInput>(
+        value.assistantPending,
+        planId,
+        "ASSISTANT",
+      )
+        ? value.assistantPending
+        : null;
+    const ownerTaskCount =
+      typeof value.ownerPending === "object" &&
+      value.ownerPending !== null &&
+      "taskCountPreview" in value.ownerPending
+        ? value.ownerPending.taskCountPreview
+        : null;
+    const ownerPending =
+      validPending<WeeklyPlanV3OwnerBatchDecisionInput>(
+        value.ownerPending,
+        planId,
+        "OWNER",
+      ) &&
+      typeof ownerTaskCount === "number" &&
+      Number.isInteger(ownerTaskCount) &&
+      ownerTaskCount >= 0
+        ? { ...value.ownerPending, taskCountPreview: ownerTaskCount }
+        : null;
+
+    return { assistantPending, ownerPending };
+  } catch {
+    return empty;
+  }
+};
+
+export const persistWeeklyPlanV3ReviewerPending = (
+  planId: number,
+  state: Pick<
+    WeeklyPlanV3ReviewerWorkspaceState,
+    "assistantPending" | "ownerPending"
+  >,
+  storage: WeeklyPlanV3RecoveryStorage | null,
+): void => {
+  if (!storage) return;
+  const key = recoveryStorageKey(planId);
+  try {
+    if (!state.assistantPending && !state.ownerPending) {
+      storage.removeItem(key);
+      return;
+    }
+    storage.setItem(
+      key,
+      JSON.stringify({
+        version: 1,
+        assistantPending: state.assistantPending,
+        ownerPending: state.ownerPending,
+      }),
+    );
+  } catch {
+    // Recovery storage is best-effort; in-memory blocking remains authoritative.
+  }
+};
 
 export const weeklyPlanV3ReviewerWorkspaceReducer = (
   state: WeeklyPlanV3ReviewerWorkspaceState,

@@ -1543,7 +1543,8 @@
           "OWNER": "Hàng đợi OWNER",
           "openCorrections": "Mở Step 4 chỉnh sửa HR",
           "reconcileBeforeCorrections": "Đối soát yêu cầu đang chờ trước khi mở Step 4",
-          "unresolvedWarning": "Có yêu cầu xét duyệt chưa xác định kết quả. Bạn có thể chuyển giữa các hàng đợi mà không mất request; hãy quay lại đúng hàng đợi để thử lại hoặc đối soát trước khi rời trang."
+          "unresolvedWarning": "Có yêu cầu xét duyệt chưa xác định kết quả. Bạn có thể chuyển giữa các hàng đợi mà không mất request; hãy quay lại đúng hàng đợi để thử lại hoặc đối soát trước khi rời trang.",
+          "leaveWarning": "Kết quả của một yêu cầu xét duyệt vẫn chưa được xác định. Rời trang lúc này có thể trì hoãn việc đối soát. Chọn Hủy để ở lại và thử lại bằng đúng request hiện tại."
         },
         "overview": {
           "title": "Trạng thái theo nhân viên",

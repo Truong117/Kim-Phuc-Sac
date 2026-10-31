@@ -4,18 +4,29 @@ import WeeklyPlanV3EmployeeGroup from "@/components/weekly-plans/WeeklyPlanV3Emp
 import WeeklyPlanV3OwnerBatchReview from "@/components/weekly-plans/WeeklyPlanV3OwnerBatchReview";
 import WeeklyPlanV3PublicationSummary from "@/components/weekly-plans/WeeklyPlanV3PublicationSummary";
 import type { WeeklyPlan } from "@/types/weeklyPlanning";
+import { useWeeklyPlanV3NavigationSafety } from "@/utils/weeklyPlanV3NavigationSafety";
 import {
   createWeeklyPlanV3ReviewerWorkspaceState,
   filterWeeklyPlanV3Workflows,
+  persistWeeklyPlanV3ReviewerPending,
+  restoreWeeklyPlanV3ReviewerPending,
   weeklyPlanV3EntriesByAssignee,
   weeklyPlanV3HasHrCorrectionAccess,
   weeklyPlanV3ReviewerWorkspaceReducer,
   type WeeklyPlanV3EmployeeFilter,
   type WeeklyPlanV3ReviewerView,
+  type WeeklyPlanV3ReviewerWorkspaceState,
 } from "@/utils/weeklyPlanV3ReviewWorkspace";
-import { useCallback, useMemo, useReducer, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useBeforeUnload } from "react-router";
+import { Link } from "react-router";
 
 type Props = {
   plan: WeeklyPlan;
@@ -56,10 +67,40 @@ export default function WeeklyPlanV3ReviewerWorkspace({
       : hasOwnerWorkflow && !hasAssistantWorkflow
         ? "OWNER"
         : "OVERVIEW";
+  const recoveryStorage = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }, []);
   const [workspaceState, dispatch] = useReducer(
     weeklyPlanV3ReviewerWorkspaceReducer,
     initialView,
-    createWeeklyPlanV3ReviewerWorkspaceState,
+    (view) => ({
+      ...createWeeklyPlanV3ReviewerWorkspaceState(view),
+      ...restoreWeeklyPlanV3ReviewerPending(plan.id, recoveryStorage),
+    }),
+  );
+  const workspaceStateRef = useRef(workspaceState);
+  const changeAssistantPending = useCallback(
+    (pending: WeeklyPlanV3ReviewerWorkspaceState["assistantPending"]) => {
+      const next = { ...workspaceStateRef.current, assistantPending: pending };
+      workspaceStateRef.current = next;
+      persistWeeklyPlanV3ReviewerPending(plan.id, next, recoveryStorage);
+      dispatch({ type: "SET_ASSISTANT_PENDING", pending });
+    },
+    [plan.id, recoveryStorage],
+  );
+  const changeOwnerPending = useCallback(
+    (pending: WeeklyPlanV3ReviewerWorkspaceState["ownerPending"]) => {
+      const next = { ...workspaceStateRef.current, ownerPending: pending };
+      workspaceStateRef.current = next;
+      persistWeeklyPlanV3ReviewerPending(plan.id, next, recoveryStorage);
+      dispatch({ type: "SET_OWNER_PENDING", pending });
+    },
+    [plan.id, recoveryStorage],
   );
   const hasAssistantQueue =
     hasAssistantWorkflow || workspaceState.assistantPending !== null;
@@ -95,15 +136,18 @@ export default function WeeklyPlanV3ReviewerWorkspace({
     workspaceState.assistantPending !== null ||
     workspaceState.ownerPending !== null;
 
-  useBeforeUnload(
-    useCallback(
-      (event) => {
-        if (!hasUnresolvedRequest) return;
-        event.preventDefault();
-        event.returnValue = "";
-      },
-      [hasUnresolvedRequest],
-    ),
+  useEffect(
+    () =>
+      persistWeeklyPlanV3ReviewerPending(
+        plan.id,
+        workspaceState,
+        recoveryStorage,
+      ),
+    [plan.id, recoveryStorage, workspaceState],
+  );
+  useWeeklyPlanV3NavigationSafety(
+    hasUnresolvedRequest,
+    t("navigation.leaveWarning"),
   );
 
   return (
@@ -182,9 +226,7 @@ export default function WeeklyPlanV3ReviewerWorkspace({
           onPlanChange={onPlanChange}
           onReload={onReload}
           pending={workspaceState.assistantPending}
-          onPendingChange={(pending) =>
-            dispatch({ type: "SET_ASSISTANT_PENDING", pending })
-          }
+          onPendingChange={changeAssistantPending}
         />
       </div>
 
@@ -194,9 +236,7 @@ export default function WeeklyPlanV3ReviewerWorkspace({
           onPlanChange={onPlanChange}
           onReload={onReload}
           pending={workspaceState.ownerPending}
-          onPendingChange={(pending) =>
-            dispatch({ type: "SET_OWNER_PENDING", pending })
-          }
+          onPendingChange={changeOwnerPending}
         />
       </div>
 

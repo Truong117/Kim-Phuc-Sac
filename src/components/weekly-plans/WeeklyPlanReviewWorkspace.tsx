@@ -309,6 +309,7 @@ export default function WeeklyPlanReviewWorkspace({
 
       {isV3 ? (
         <WeeklyPlanV3ReviewerWorkspace
+          key={plan.id}
           plan={plan}
           onPlanChange={onPlanChange}
           onReload={onReload}
