@@ -15,7 +15,7 @@ not authorize deployment, migration, feature activation, or staging access.
 
 - Base commit: `48fe4f41e7b3f46da0bd78cab7baae2ef09bedc1`
   (`origin/staging`, merged PR #68).
-- Tested implementation commit: `IMPLEMENTATION_COMMIT_PENDING`.
+- Tested implementation commit: `d144b088a8696cbc05c363677ca668fd7cda38db`.
 - Branch: `feature/weekly-planning-v3-integration-readiness`.
 - V3 remained disabled by default. Tests enabled it only inside isolated test
   processes using synthetic fixtures.
