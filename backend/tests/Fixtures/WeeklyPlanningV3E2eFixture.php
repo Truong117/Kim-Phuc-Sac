@@ -14,6 +14,13 @@ final class WeeklyPlanningV3E2eFixture
 
     public const ACCOUNTS = [
         [
+            'name' => 'V3 E2E Security Assistant (Fake)',
+            'email' => 'security-assistant@weekly-plan-v3-e2e.example.test',
+            'primary_role' => 'EXECUTIVE_ASSISTANT',
+            'secondary_roles' => [],
+            'department' => 'HR_ADMIN',
+        ],
+        [
             'name' => 'V3 E2E HR (Fake)',
             'email' => 'hr@weekly-plan-v3-e2e.example.test',
             'primary_role' => 'HR_MANAGER',

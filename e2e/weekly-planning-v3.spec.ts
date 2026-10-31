@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { expect, test } from "@playwright/test";
+import { login } from "./helpers";
 
 const backendRoot = resolve("backend");
 
@@ -30,11 +31,7 @@ test("synthetic HR, Assistant, and OWNER complete mixed review with partial publ
   page,
 }) => {
   test.setTimeout(420_000);
-  await page.goto("/login");
-  await page.locator("#email").fill("hr@weekly-plan-v3-e2e.example.test");
-  await page.locator("#password").fill("Kps-V3-E2E-Only!2026");
-  await page.locator('form button[type="submit"]').click();
-  await expect(page).not.toHaveURL(/\/login$/);
+  await login(page, "hr");
 
   await page.goto("/weekly-plans/new");
   await expect(page.locator("#weekly-plan-workflow-version")).toBeVisible();
@@ -126,13 +123,7 @@ test("synthetic HR, Assistant, and OWNER complete mixed review with partial publ
 
   const assistantContext = await browser.newContext();
   const assistant = await assistantContext.newPage();
-  await assistant.goto("/login");
-  await assistant
-    .locator("#email")
-    .fill("assistant@weekly-plan-v3-e2e.example.test");
-  await assistant.locator("#password").fill("Kps-V3-E2E-Only!2026");
-  await assistant.locator('form button[type="submit"]').click();
-  await expect(assistant).not.toHaveURL(/\/login$/);
+  await login(assistant, "assistant");
   await assistant.goto("/weekly-plans");
   const reviewLink = assistant.locator(
     `a[href="/weekly-plans/${body.data.id}/review"]`,
@@ -257,11 +248,7 @@ test("synthetic HR, Assistant, and OWNER complete mixed review with partial publ
 
   const ownerContext = await browser.newContext();
   const owner = await ownerContext.newPage();
-  await owner.goto("/login");
-  await owner.locator("#email").fill("owner@weekly-plan-v3-e2e.example.test");
-  await owner.locator("#password").fill("Kps-V3-E2E-Only!2026");
-  await owner.locator('form button[type="submit"]').click();
-  await expect(owner).not.toHaveURL(/\/login$/);
+  await login(owner, "owner");
   await owner.goto(`/weekly-plans/${body.data.id}/review`);
   await expect(owner.locator('[data-workspace="v3-reviewer"]')).toBeVisible();
 
@@ -412,13 +399,7 @@ test("synthetic HR, Assistant, and OWNER complete mixed review with partial publ
 
   const assistantReturnContext = await browser.newContext();
   const assistantReturn = await assistantReturnContext.newPage();
-  await assistantReturn.goto("/login");
-  await assistantReturn
-    .locator("#email")
-    .fill("assistant@weekly-plan-v3-e2e.example.test");
-  await assistantReturn.locator("#password").fill("Kps-V3-E2E-Only!2026");
-  await assistantReturn.locator('form button[type="submit"]').click();
-  await expect(assistantReturn).not.toHaveURL(/\/login$/);
+  await login(assistantReturn, "assistant");
   await assistantReturn.goto(`/weekly-plans/${body.data.id}/review`);
   const correctedToggle = assistantReturn.getByRole("button", {
     name: /Employee B/,
@@ -446,13 +427,7 @@ test("synthetic HR, Assistant, and OWNER complete mixed review with partial publ
 
   const ownerReturnContext = await browser.newContext();
   const ownerReturn = await ownerReturnContext.newPage();
-  await ownerReturn.goto("/login");
-  await ownerReturn
-    .locator("#email")
-    .fill("owner@weekly-plan-v3-e2e.example.test");
-  await ownerReturn.locator("#password").fill("Kps-V3-E2E-Only!2026");
-  await ownerReturn.locator('form button[type="submit"]').click();
-  await expect(ownerReturn).not.toHaveURL(/\/login$/);
+  await login(ownerReturn, "owner");
   await ownerReturn.goto(`/weekly-plans/${body.data.id}/review`);
   const finalToggle = ownerReturn.getByRole("button", { name: /Employee B/ });
   if ((await finalToggle.getAttribute("aria-expanded")) !== "true") {

@@ -79,6 +79,7 @@ if ($mode === 'e2e') {
     }
 
     $app = require $backendRoot.'/bootstrap/app.php';
+    $app->loadEnvironmentFrom('.env.weekly-planning-v3-e2e');
     $app->make(Kernel::class)->bootstrap();
     WeeklyPlanV3IsolatedTestEnvironment::assertSafe(
         WeeklyPlanV3E2eRuntimeSafety::violations(

@@ -1,3 +1,4 @@
+param([switch]$V3Disabled, [Parameter(ValueFromRemainingArguments=$true)][string[]]$PlaywrightArgs)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $backend = Join-Path $repo 'backend'
@@ -14,6 +15,7 @@ foreach ($port in @(8001, 5174)) {
 
 Push-Location $backend
 try {
+    $env:KPS_V3_E2E_SCENARIO = if ($V3Disabled) { 'v3-disabled' } else { 'enabled' }
     if (Test-Path -LiteralPath $database) {
         & php 'tests/Infrastructure/weekly-plan-v3-environment-preflight.php' e2e verified-existing
         if ($LASTEXITCODE -ne 0) { throw 'Existing E2E database is unverified.' }
@@ -43,13 +45,14 @@ try {
         'node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5174', '--strictPort'
     ) -WorkingDirectory $repo -RedirectStandardOutput (Join-Path $resultRoot 'frontend.stdout.log') -RedirectStandardError (Join-Path $resultRoot 'frontend.stderr.log') -PassThru -WindowStyle Hidden
 
-    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test @args
+    & (Join-Path $repo 'node_modules/.bin/playwright.cmd') test @PlaywrightArgs
     $testExit = $LASTEXITCODE
 }
 finally {
     if ($frontendProcess) { Stop-Process -Id $frontendProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($backendProcess) { Stop-Process -Id $backendProcess.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:KPS_V3_E2E_SCENARIO -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 300
     Push-Location $backend
     try {

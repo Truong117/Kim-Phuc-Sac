@@ -40,12 +40,17 @@ foreach ([
 $tasks = $db->prepare('SELECT COUNT(*) FROM tasks JOIN weekly_plan_entries ON tasks.weekly_plan_entry_id = weekly_plan_entries.id WHERE weekly_plan_entries.weekly_plan_id = ?');
 $tasks->execute([$planId]);
 $counts['tasks'] = (int) $tasks->fetchColumn();
-$counts['user_notifications'] = (int) $db->query('SELECT COUNT(*) FROM user_notifications')->fetchColumn();
+$notifications = $db->prepare("SELECT COUNT(*) FROM user_notifications WHERE reference_type = 'TASK' AND reference_id IN (SELECT tasks.id FROM tasks JOIN weekly_plan_entries ON tasks.weekly_plan_entry_id = weekly_plan_entries.id WHERE weekly_plan_entries.weekly_plan_id = ?)");
+$notifications->execute([$planId]);
+$counts['user_notifications'] = (int) $notifications->fetchColumn();
 $workflows = $db->prepare('SELECT assignee_id, state, state_version, content_version FROM weekly_plan_employee_workflows WHERE weekly_plan_id = ? ORDER BY assignee_id');
 $workflows->execute([$planId]);
+$batches = $db->prepare('SELECT id, stage FROM weekly_plan_v3_review_batches WHERE weekly_plan_id = ? ORDER BY id');
+$batches->execute([$planId]);
 
 echo json_encode([
     'plan' => $record ?: null,
     'counts' => $counts,
     'workflows' => $workflows->fetchAll(PDO::FETCH_ASSOC),
+    'batches' => $batches->fetchAll(PDO::FETCH_ASSOC),
 ], JSON_THROW_ON_ERROR)."\n";
