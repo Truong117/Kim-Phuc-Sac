@@ -128,12 +128,39 @@ class AccountProfileTest extends TestCase
         $this->assertTrue(Hash::check('current-password', $user->refresh()->password));
     }
 
+    public function test_stale_profile_name_cannot_overwrite_a_newer_edit(): void
+    {
+        $user = $this->activeUser(['name' => 'Original']);
+        $this->actingAs($user, 'web')->patchJson('/api/account/profile', [
+            'name' => 'First', 'expected_name' => 'Original',
+        ])->assertOk();
+        $this->patchJson('/api/account/profile', [
+            'name' => 'Second', 'expected_name' => 'Original',
+        ])->assertConflict();
+        $this->assertSame('First', $user->refresh()->name);
+    }
+
+    public function test_password_change_preserves_the_stateful_session_password_hash(): void
+    {
+        $user = $this->activeUser(['password' => 'current-password']);
+        $this->withHeaders(['Origin' => 'http://localhost:5173', 'Referer' => 'http://localhost:5173/account']);
+        $this->actingAs($user, 'web')->withSession(['account-marker' => 'retained']);
+        $this->getJson('/api/auth/me')->assertOk();
+        $this->patchJson('/api/account/password', [
+            'current_password' => 'current-password', 'password' => 'new-password', 'password_confirmation' => 'new-password',
+        ])->assertOk()->assertSessionHas('account-marker', 'retained');
+        // Model the next request loading the user again from the database.
+        $this->actingAs($user->fresh(), 'web')->getJson('/api/auth/me')
+            ->assertOk()->assertSessionHas('account-marker', 'retained');
+    }
+
     /** @return array<string, array{string}> */
     public static function selfServiceRoleProvider(): array
     {
         return [
             'owner' => ['OWNER'],
             'admin' => ['ADMIN'],
+            'executive assistant' => ['EXECUTIVE_ASSISTANT'],
             'hr manager' => ['HR_MANAGER'],
             'department manager' => ['DEPARTMENT_MANAGER'],
             'office staff' => ['OFFICE_STAFF'],

@@ -2011,13 +2011,13 @@
     "metaTitle": "Hồ sơ cá nhân | KIM PHỤC SẮC",
     "metaDescription": "Quản lý hồ sơ cá nhân trong KPS Internal System",
     "title": "Hồ sơ cá nhân",
-    "subtitle": "Cập nhật thông tin hiển thị của bạn",
+    "subtitle": "Quản lý tên hiển thị và xem thông tin công việc của bạn",
     "personal": {
       "title": "Thông tin cá nhân",
-      "description": "Bạn có thể thay đổi tên hiển thị; email do quản trị viên hoặc HR quản lý",
+      "description": "Tên hiển thị được sử dụng trong hệ thống. Email và mật khẩu được quản lý tại Cài đặt tài khoản.",
       "name": "Họ và tên",
-      "email": "Email",
-      "emailNotice": "Liên hệ quản trị viên hoặc HR nếu cần thay đổi email.",
+      "reset": "Hoàn tác",
+      "conflict": "Hồ sơ đã được cập nhật ở nơi khác. Hãy tải lại trang trước khi lưu.",
       "save": "Lưu thay đổi",
       "saving": "Đang lưu...",
       "success": "Họ và tên đã được cập nhật.",
@@ -2029,7 +2029,7 @@
       "title": "Thông tin công việc",
       "description": "Thông tin tổ chức chỉ được cập nhật bởi quản trị viên hoặc HR",
       "organization": "Tổ chức",
-      "role": "Chức vụ",
+      "role": "Vai trò trong hệ thống",
       "department": "Phòng ban",
       "location": "Địa điểm",
       "notAssigned": "Chưa phân công"
@@ -2040,11 +2040,31 @@
     "metaDescription": "Quản lý thông tin đăng nhập và bảo mật tài khoản KPS",
     "title": "Cài đặt tài khoản",
     "subtitle": "Quản lý thông tin đăng nhập và bảo mật tài khoản",
+    "navigation": {
+      "label": "Hồ sơ và tài khoản",
+      "profile": "Tên hiển thị và thông tin công việc",
+      "account": "Email đăng nhập và bảo mật"
+    },
     "summary": {
       "title": "Thông tin tài khoản",
       "description": "Thông tin đăng nhập hiện tại của bạn",
-      "name": "Họ tên",
       "email": "Email đăng nhập"
+    },
+    "emailChange": {
+      "title": "Thay đổi email đăng nhập",
+      "description": "Nhập email mới và mật khẩu hiện tại để cập nhật. Phiên đăng nhập hiện tại được giữ nguyên.",
+      "newEmail": "Email mới",
+      "emailHint": "Nhập chính xác địa chỉ bạn sở hữu. Hệ thống chưa gửi email xác minh.",
+      "currentPassword": "Xác nhận mật khẩu hiện tại",
+      "passwordRequired": "Vui lòng nhập mật khẩu hiện tại.",
+      "passwordIncorrect": "Mật khẩu hiện tại không chính xác.",
+      "emailInvalid": "Vui lòng nhập địa chỉ email hợp lệ, tối đa 255 ký tự.",
+      "save": "Cập nhật email",
+      "saving": "Đang cập nhật...",
+      "success": "Email đăng nhập đã được cập nhật. Lần đăng nhập tiếp theo hãy dùng email mới.",
+      "conflict": "Email đã được cập nhật ở nơi khác. Hãy tải lại trang trước khi lưu.",
+      "rateLimited": "Bạn đã gửi quá nhiều yêu cầu. Vui lòng chờ trước khi thử lại.",
+      "error": "Không thể cập nhật email. Kiểm tra kết nối và thử lại."
     },
     "password": {
       "title": "Đổi mật khẩu",

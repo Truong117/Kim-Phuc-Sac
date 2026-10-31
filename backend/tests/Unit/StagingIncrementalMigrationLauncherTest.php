@@ -74,6 +74,7 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
             $payload['migration_21_path'],
         );
         $this->assertTrue($payload['unknown_migration_rejected']);
+        $this->assertSame('database/migrations/2026_10_31_000001_create_account_audit_events_table.php', $payload['migration_22_path']);
         $this->assertSame(0, $payload['kernel_handle_call_count']);
     }
 
@@ -153,6 +154,7 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
                     '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php',
                 );
                 $unknownMigrationRejected = false;
+                $migration22Input = runnerMigrationInput('2026_10_31_000001_create_account_audit_events_table.php');
                 try {
                     runnerMigrationInput('2099_01_01_000000_unknown.php');
                 } catch (RuntimeException) {
@@ -188,6 +190,7 @@ final class StagingIncrementalMigrationLauncherTest extends TestCase
                     'migration_19_path' => $migration19Input->getParameterOption('--path'),
                     'migration_20_path' => $migration20Input->getParameterOption('--path'),
                     'migration_21_path' => $migration21Input->getParameterOption('--path'),
+                    'migration_22_path' => $migration22Input->getParameterOption('--path'),
                     'unknown_migration_rejected' => $unknownMigrationRejected,
                     'kernel_handle_call_count' => 0,
                 ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);

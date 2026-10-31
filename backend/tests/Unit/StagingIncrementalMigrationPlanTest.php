@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 class StagingIncrementalMigrationPlanTest extends TestCase
 {
-    public function test_only_the_six_reviewed_migrations_are_allowlisted(): void
+    public function test_only_the_seven_reviewed_migrations_are_allowlisted(): void
     {
         $this->assertSame([
             StagingIncrementalMigrationPlan::MIGRATION_16,
@@ -19,6 +19,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             StagingIncrementalMigrationPlan::MIGRATION_19,
             StagingIncrementalMigrationPlan::MIGRATION_20,
             StagingIncrementalMigrationPlan::MIGRATION_21,
+            StagingIncrementalMigrationPlan::MIGRATION_22,
         ], StagingIncrementalMigrationPlan::allowedFiles());
 
         foreach ([
@@ -44,6 +45,87 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         ));
     }
 
+    public function test_allowlist_steps_follow_the_exact_manifest_without_gaps(): void
+    {
+        foreach (StagingIncrementalMigrationPlan::allowedFiles() as $offset => $file) {
+            $definition = StagingIncrementalMigrationPlan::definition($file);
+            $this->assertSame(15 + $offset, $definition['before']);
+            $this->assertSame(16 + $offset, $definition['after']);
+            $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS[15 + $offset], $definition['migration']);
+            $this->assertSame($definition['migration'].'.php', $file);
+        }
+    }
+
+    public function test_migration_22_requires_exact_21_ledger_and_every_prior_schema(): void
+    {
+        $valid = $this->stateForMigration22();
+        $this->assertSame([], StagingIncrementalMigrationPlan::preflightViolations(StagingIncrementalMigrationPlan::MIGRATION_22, $valid));
+        foreach (range(0, 20) as $count) {
+            $state = array_replace($valid, ['applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, $count)]);
+            $this->assertContains('migration_ledger_mismatch', StagingIncrementalMigrationPlan::preflightViolations(StagingIncrementalMigrationPlan::MIGRATION_22, $state));
+        }
+        foreach (range(16, 21) as $number) {
+            foreach (['absent', 'partial'] as $schema) {
+                $state = array_replace($valid, ["migration_{$number}_schema_state" => $schema]);
+                $this->assertContains('migration_22_prerequisite_schema_not_verified', StagingIncrementalMigrationPlan::preflightViolations(StagingIncrementalMigrationPlan::MIGRATION_22, $state));
+            }
+        }
+        foreach (['complete', 'partial'] as $schema) {
+            $state = array_replace($valid, ['migration_22_schema_state' => $schema]);
+            $this->assertContains('migration_22_partial_or_existing_schema', StagingIncrementalMigrationPlan::preflightViolations(StagingIncrementalMigrationPlan::MIGRATION_22, $state));
+        }
+        $reordered = $valid['applied_migrations'];
+        [$reordered[0], $reordered[1]] = [$reordered[1], $reordered[0]];
+        foreach ([$reordered, [...$valid['applied_migrations'], $valid['applied_migrations'][20]], StagingBootstrapPlan::EXPECTED_MIGRATIONS] as $ledger) {
+            $this->assertContains('migration_ledger_mismatch', StagingIncrementalMigrationPlan::preflightViolations(
+                StagingIncrementalMigrationPlan::MIGRATION_22, array_replace($valid, ['applied_migrations' => $ledger]),
+            ));
+        }
+    }
+
+    #[DataProvider('unsafeCommonStateProvider')]
+    public function test_migration_22_keeps_the_existing_identity_and_concurrency_guards(array $changes, string $expectedViolation): void
+    {
+        $this->assertContains($expectedViolation, StagingIncrementalMigrationPlan::preflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_22, array_replace($this->stateForMigration22(), $changes),
+        ));
+    }
+
+    public function test_migration_22_postflight_checks_exact_schema_empty_audit_and_preserved_baseline(): void
+    {
+        $state = array_replace($this->stateForMigration22(), [
+            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'migration_22_schema_state' => 'complete', 'account_audit_row_count' => 0,
+            'weekly_plan_count' => 4, 'weekly_plan_id_fingerprint' => str_repeat('d', 64), 'weekly_plan_entry_count' => 9,
+            'source_row_count' => 0, 'mapping_row_count' => 0, 'event_row_count' => 0,
+            'item_row_count' => 0, 'item_source_passage_row_count' => 0, 'uploaded_file_plan_count' => 4,
+            // Existing V3 business data is allowed; M22 must not reuse M21's empty-table gate.
+            'v3_correction_batch_count' => 3, 'v3_employee_workflow_count' => 7, 'v3_review_batch_count' => 5,
+        ]);
+        $postflight = static fn (array $candidate): array => StagingIncrementalMigrationPlan::postflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_22, $candidate, 4, str_repeat('d', 64), 9,
+        );
+        $this->assertSame([], $postflight($state));
+        foreach ([
+            [['account_audit_row_count' => 1], 'migration_22_audit_table_not_empty'],
+            [['account_audit_row_count' => null], 'migration_22_audit_table_not_empty'],
+            [['migration_22_schema_state' => 'partial'], 'migration_22_postflight_schema_mismatch'],
+            [['migration_21_schema_state' => 'partial'], 'migration_22_postflight_schema_mismatch'],
+            [['parent_prerequisites_verified' => false], 'migration_22_parent_prerequisites_not_verified'],
+            [['weekly_plan_count' => 5], 'weekly_plan_identity_baseline_changed'],
+            [['weekly_plan_id_fingerprint' => str_repeat('e', 64)], 'weekly_plan_identity_baseline_changed'],
+            [['weekly_plan_entry_count' => 10], 'weekly_plan_entry_count_baseline_changed'],
+            [['applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21)], 'postflight_migration_ledger_mismatch'],
+            [['unexpected_migrations' => ['unknown']], 'unexpected_migrations_detected'],
+        ] as [$changes, $violation]) {
+            $this->assertContains($violation, $postflight(array_replace($state, $changes)));
+        }
+        foreach (array_slice(StagingIncrementalMigrationPlan::allowedFiles(), 0, 6) as $older) {
+            $this->assertContains('migration_22_schema_exists_before_prerequisites', StagingIncrementalMigrationPlan::preflightViolations($older, $state));
+            $this->assertContains('migration_22_schema_exists_before_prerequisites', StagingIncrementalMigrationPlan::postflightViolations($older, $state, 4, str_repeat('d', 64), 9));
+        }
+    }
+
     #[DataProvider('unsafeCommonStateProvider')]
     public function test_wrong_identity_database_runtime_account_or_concurrency_fails_closed(
         array $changes,
@@ -61,6 +143,10 @@ class StagingIncrementalMigrationPlanTest extends TestCase
     public static function unsafeCommonStateProvider(): array
     {
         return [
+            'unverified target' => [['target_verified' => false], 'staging_identity_or_tls_not_verified'],
+            'unverified TLS' => [['tls_verified' => false], 'staging_identity_or_tls_not_verified'],
+            'unverified TiDB' => [['tidb_verified' => false], 'target_is_not_verified_tidb'],
+            'invalid grants' => [['migration_grants_verified' => false], 'migration_operator_grants_invalid'],
             'wrong database' => [['database' => 'kps_internal_prod'], 'wrong_database'],
             'wrong user' => [['authenticated_user' => 'StagePrefix.owner'], 'wrong_migration_operator'],
             'runtime account' => [[
@@ -339,7 +425,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         ));
 
         $state = array_replace($this->stateForMigration21(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21),
             'migration_21_schema_state' => 'complete',
             'weekly_plan_count' => 4,
             'weekly_plan_id_fingerprint' => str_repeat('d', 64),
@@ -354,6 +440,11 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             9,
         ));
 
+        $state['applied_migrations'] = StagingBootstrapPlan::EXPECTED_MIGRATIONS;
+        $this->assertContains('postflight_migration_ledger_mismatch', StagingIncrementalMigrationPlan::postflightViolations(
+            StagingIncrementalMigrationPlan::MIGRATION_21, $state, 4, str_repeat('d', 64), 9,
+        ));
+        $state['applied_migrations'] = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21);
         $state['v3_correction_batch_count'] = 1;
         $this->assertContains(
             'migration_21_correction_batch_table_not_empty',
@@ -465,6 +556,14 @@ class StagingIncrementalMigrationPlanTest extends TestCase
             'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 20),
             'migration_20_schema_state' => 'complete',
             'migration_21_schema_state' => 'absent',
+        ]);
+    }
+
+    private function stateForMigration22(): array
+    {
+        return array_replace($this->stateForMigration21(), [
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21),
+            'migration_21_schema_state' => 'complete', 'migration_22_schema_state' => 'absent',
         ]);
     }
 }

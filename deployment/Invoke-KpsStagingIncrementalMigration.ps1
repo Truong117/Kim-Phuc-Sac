@@ -7,7 +7,8 @@ param(
         '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
         '2026_10_29_000000_create_weekly_plan_staged_review_tables.php',
         '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php',
-        '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php'
+        '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php',
+        '2026_10_31_000001_create_account_audit_events_table.php'
     )]
     [string]$Migration,
     [switch]$Status,
@@ -54,7 +55,8 @@ $AllowedMigrations = @(
     '2026_10_28_000000_create_weekly_plan_entry_items_tables.php',
     '2026_10_29_000000_create_weekly_plan_staged_review_tables.php',
     '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php',
-    '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php'
+    '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php',
+    '2026_10_31_000001_create_account_audit_events_table.php'
 )
 
 if ($Migration -notin $AllowedMigrations -or [IO.Path]::GetFileName($Migration) -cne $Migration) {

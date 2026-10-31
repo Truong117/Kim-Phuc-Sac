@@ -30,7 +30,7 @@ function New-FakeInspectionResult {
             migration_grants_verified = $true
         }
         ledger = [pscustomobject]@{
-            expected_count = 21
+            expected_count = 22
             applied_count = 15
             pending_migrations = @(
                 '2026_10_27_000000_add_google_docs_source_to_weekly_plans',
@@ -38,7 +38,8 @@ function New-FakeInspectionResult {
                 '2026_10_28_000000_create_weekly_plan_entry_items_tables',
                 '2026_10_29_000000_create_weekly_plan_staged_review_tables',
                 '2026_10_30_000000_create_weekly_plan_v3_schema_foundation',
-                '2026_10_30_010000_create_weekly_plan_v3_correction_batches'
+                '2026_10_30_010000_create_weekly_plan_v3_correction_batches',
+                '2026_10_31_000001_create_account_audit_events_table'
             )
             unexpected_migrations = @()
         }
@@ -49,6 +50,8 @@ function New-FakeInspectionResult {
             migration_19_state = 'absent'
             migration_20_state = 'absent'
             migration_21_state = 'absent'
+            migration_22_state = 'absent'
+            account_audit_row_count = $null
             parent_prerequisites_verified = $true
             migration_18_parent_prerequisites = [pscustomobject]@{
                 weekly_plan_entries_id_referenceable = $true
@@ -456,7 +459,7 @@ echo json_encode([
 }
 
 Describe 'isolated child environment and file integrity' {
-    It 'accepts migrations 18 through 21 in both PowerShell and isolated PHP allowlists' {
+    It 'accepts migrations 18 through 22 in both PowerShell and isolated PHP allowlists' {
         $validateSet = (Get-Command $runnerPath).Parameters['Migration'].Attributes |
             Where-Object { $_ -is [Management.Automation.ValidateSetAttribute] } |
             Select-Object -First 1
@@ -464,8 +467,9 @@ Describe 'isolated child environment and file integrity' {
         $migration19 = '2026_10_29_000000_create_weekly_plan_staged_review_tables.php'
         $migration20 = '2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php'
         $migration21 = '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php'
+        $migration22 = '2026_10_31_000001_create_account_audit_events_table.php'
 
-        foreach ($migration in @($migration18, $migration19, $migration20, $migration21)) {
+        foreach ($migration in @($migration18, $migration19, $migration20, $migration21, $migration22)) {
             ($validateSet.ValidValues -contains $migration) | Should Be $true
             ($script:AllowedMigrations -contains $migration) | Should Be $true
         }
@@ -492,6 +496,20 @@ echo $input->getParameterOption('--path');
         $path21 = & php -r $probe $backendRoot $migration21
         $LASTEXITCODE | Should Be 0
         $path21 | Should Be ('database/migrations/' + $migration21)
+        $path22 = & php -r $probe $backendRoot $migration22
+        $LASTEXITCODE | Should Be 0
+        $path22 | Should Be ('database/migrations/' + $migration22)
+    }
+
+    It 'binds the audit schema and row count into the Plan digest' {
+        $inspection = New-FakeInspectionResult
+        $inspection.migration = '2026_10_31_000001_create_account_audit_events_table.php'
+        $before = Get-InspectionStateDigest $inspection
+        $inspection.schema.migration_22_state = 'partial'
+        (Get-InspectionStateDigest $inspection) | Should Not Be $before
+        $inspection.schema.migration_22_state = 'absent'
+        $inspection.schema.account_audit_row_count = 1
+        (Get-InspectionStateDigest $inspection) | Should Not Be $before
     }
 
     It 'atomically rejects reuse of a consumed receipt nonce' {
