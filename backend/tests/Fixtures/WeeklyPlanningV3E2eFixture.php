@@ -6,7 +6,8 @@ final class WeeklyPlanningV3E2eFixture
 {
     public const ORGANIZATION = [
         'name' => 'KPS Weekly Planning V3 E2E (Fake)',
-        'code' => 'KPS-V3-E2E',
+        // Runtime membership resolution uses the fixed KPS organization code.
+        'code' => 'KPS',
     ];
 
     public const PASSWORD = 'Kps-V3-E2E-Only!2026';

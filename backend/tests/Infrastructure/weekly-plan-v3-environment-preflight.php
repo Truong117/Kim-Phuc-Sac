@@ -3,6 +3,8 @@
 declare(strict_types=1);
 
 use Dotenv\Dotenv;
+use Illuminate\Contracts\Console\Kernel;
+use Tests\Support\WeeklyPlanV3E2eRuntimeSafety;
 use Tests\Support\WeeklyPlanV3IsolatedTestEnvironment;
 
 $backendRoot = dirname(__DIR__, 2);
@@ -45,6 +47,8 @@ $keys = [
     'KPS_V3_E2E_TEST_ENABLED',
     'KPS_V3_TIDB_PINNED_VERSION',
     'KPS_V3_TIDB_TEST_ENABLED',
+    'LOG_CHANNEL',
+    'LOG_DEPRECATIONS_CHANNEL',
     'MAIL_MAILER',
     'QUEUE_CONNECTION',
     'RENDER',
@@ -65,7 +69,26 @@ if ($mode === 'e2e') {
     WeeklyPlanV3IsolatedTestEnvironment::assertSafe(
         WeeklyPlanV3IsolatedTestEnvironment::e2eViolations($environment),
     );
-    fwrite(STDOUT, "PASS: isolated browser E2E profile is fail-closed and local-only.\n");
+
+    // A cached config can silently override the reviewed profile. Reject it
+    // before bootstrapping Laravel and before any database connection.
+    if (is_file($backendRoot.'/bootstrap/cache/config.php')) {
+        WeeklyPlanV3IsolatedTestEnvironment::assertSafe([
+            'Cached Laravel configuration is forbidden for browser E2E.',
+        ]);
+    }
+
+    $app = require $backendRoot.'/bootstrap/app.php';
+    $app->make(Kernel::class)->bootstrap();
+    WeeklyPlanV3IsolatedTestEnvironment::assertSafe(
+        WeeklyPlanV3E2eRuntimeSafety::violations(
+            $app['config']->all(),
+            $backendRoot,
+            $app->configurationIsCached(),
+            ($argv[2] ?? '') === 'verified-existing',
+        ),
+    );
+    fwrite(STDOUT, "PASS: isolated browser E2E profile, effective Laravel configuration, and filesystem paths verified.\n");
     exit(0);
 }
 
