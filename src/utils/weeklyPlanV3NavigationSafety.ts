@@ -22,7 +22,7 @@ type NavigationTarget = {
 };
 
 export type WeeklyPlanV3NavigationHost = {
-  location: { href: string };
+  location: { href: string; replace?: (url: string) => void };
   history: {
     state: unknown;
     go: (delta: number) => void;
@@ -43,6 +43,57 @@ export type WeeklyPlanV3NavigationHost = {
     listener: (event: NavigationEvent) => void,
     options?: boolean | EventListenerOptions,
   ) => void;
+};
+
+const historyGuards = new WeakMap<
+  object,
+  (event: NavigationEvent) => boolean
+>();
+
+// Gate BrowserRouter's own history callback: popstate cannot cancel traversal.
+export const guardWeeklyPlanV3HistoryListener =
+  (host: object, listener: (event: NavigationEvent) => void) =>
+  (event: NavigationEvent) => {
+    if (historyGuards.get(host)?.(event) !== false) listener(event);
+  };
+
+// Keep Declarative BrowserRouter and its native history implementation. Only
+// its popstate subscription is wrapped; rejected POPs never update React state.
+export const createWeeklyPlanV3NavigationWindow = (host: Window): Window => {
+  const wrappers = new Map<EventListenerOrEventListenerObject, EventListener>();
+  return new Proxy(host, {
+    get(target, property) {
+      if (property === "addEventListener")
+        return (
+          type: string,
+          listener: EventListenerOrEventListenerObject,
+          options?: boolean | AddEventListenerOptions,
+        ) => {
+          if (type !== "popstate")
+            return target.addEventListener(type, listener, options);
+          const wrapped = guardWeeklyPlanV3HistoryListener(host, (event) => {
+            if (typeof listener === "function")
+              listener.call(host, event as Event);
+            else listener.handleEvent(event as Event);
+          }) as EventListener;
+          wrappers.set(listener, wrapped);
+          target.addEventListener(type, wrapped, options);
+        };
+      if (property === "removeEventListener")
+        return (
+          type: string,
+          listener: EventListenerOrEventListenerObject,
+          options?: boolean | EventListenerOptions,
+        ) => {
+          const wrapped =
+            type === "popstate" ? wrappers.get(listener) : undefined;
+          target.removeEventListener(type, wrapped ?? listener, options);
+          if (wrapped) wrappers.delete(listener);
+        };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 };
 
 const historyIndex = (value: unknown): number | null => {
@@ -76,8 +127,7 @@ export const installWeeklyPlanV3NavigationSafety = (
   if (!enabled) return () => undefined;
 
   const currentHref = host.location.href;
-  const currentHistoryState = host.history.state;
-  const currentIndex = historyIndex(currentHistoryState);
+  const currentIndex = historyIndex(host.history.state);
   let restoringHistory = false;
 
   const onClick = (event: NavigationEvent) => {
@@ -97,6 +147,8 @@ export const installWeeklyPlanV3NavigationSafety = (
       !target?.href ||
       (target.target && target.target !== "_self") ||
       target.hasAttribute?.("download") ||
+      new URL(target.href, currentHref).origin !==
+        new URL(currentHref).origin ||
       new URL(target.href, currentHref).href === currentHref
     ) {
       return;
@@ -112,12 +164,10 @@ export const installWeeklyPlanV3NavigationSafety = (
   const onPopState = (event: NavigationEvent) => {
     if (restoringHistory) {
       restoringHistory = false;
-      return;
+      return false;
     }
-    if (host.confirm(warning)) return;
+    if (host.confirm(warning)) return true;
 
-    event.preventDefault();
-    event.stopImmediatePropagation?.();
     const nextIndex = historyIndex(event.state);
     if (
       currentIndex !== null &&
@@ -126,18 +176,21 @@ export const installWeeklyPlanV3NavigationSafety = (
     ) {
       restoringHistory = true;
       host.history.go(currentIndex - nextIndex);
-      return;
+      return false;
     }
 
-    host.history.pushState(currentHistoryState, "", currentHref);
+    // Unknown non-router history entries use document replacement and the
+    // existing sessionStorage recovery, without adding a duplicate entry.
+    host.location.replace?.(currentHref);
+    return false;
   };
 
   host.addEventListener("click", onClick, true);
-  host.addEventListener("popstate", onPopState, true);
+  historyGuards.set(host, onPopState);
 
   return () => {
     host.removeEventListener("click", onClick, true);
-    host.removeEventListener("popstate", onPopState, true);
+    if (historyGuards.get(host) === onPopState) historyGuards.delete(host);
   };
 };
 

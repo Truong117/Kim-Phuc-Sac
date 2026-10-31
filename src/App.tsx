@@ -29,11 +29,14 @@ import WeeklyPlanWizardSource from "./pages/WeeklyPlans/WeeklyPlanWizardSource";
 import WeeklyPlanWizardStructure from "./pages/WeeklyPlans/WeeklyPlanWizardStructure";
 import WeeklyPlanWizardSubmit from "./pages/WeeklyPlans/WeeklyPlanWizardSubmit";
 import WeeklyPlanWizardWork from "./pages/WeeklyPlans/WeeklyPlanWizardWork";
+import { createWeeklyPlanV3NavigationWindow } from "./utils/weeklyPlanV3NavigationSafety";
+
+const navigationWindow = createWeeklyPlanV3NavigationWindow(window);
 
 export default function App() {
   return (
     <>
-      <Router>
+      <Router window={navigationWindow}>
         <ScrollToTop />
         <Routes>
           <Route path="/login" element={<Login />} />

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { installWeeklyPlanV3NavigationSafety } from "../src/utils/weeklyPlanV3NavigationSafety.ts";
+import {
+  installWeeklyPlanV3NavigationSafety,
+  guardWeeklyPlanV3HistoryListener,
+} from "../src/utils/weeklyPlanV3NavigationSafety.ts";
 import {
   resolveWeeklyPlanV3BatchConfirmation,
   weeklyPlanV3BatchPayloadFingerprint,
@@ -150,11 +153,17 @@ test("Assistant unresolved request can cancel browser Back and preserve exact re
   installWeeklyPlanV3NavigationSafety(navigation.host, "Unresolved request");
   const event = navigationEvent({ state: { idx: 4, key: "list" } });
 
-  navigation.listeners.get("popstate")(event);
+  let acceptedPops = 0;
+  const routerListener = guardWeeklyPlanV3HistoryListener(
+    navigation.host,
+    () => acceptedPops++,
+  );
+  routerListener(event);
+  routerListener(navigationEvent({ state: { idx: 5 } }));
 
   assert.equal(navigation.confirmCount(), 1);
   assert.deepEqual(navigation.historyCalls, [{ type: "go", delta: 1 }]);
-  assert.ok(event.calls.includes("stopImmediatePropagation"));
+  assert.equal(acceptedPops, 0);
 
   const restored = restoreWeeklyPlanV3ReviewerPending(
     900,
@@ -241,4 +250,62 @@ test("successful reconciliation clears only the confirmed stage recovery", () =>
   const restored = restoreWeeklyPlanV3ReviewerPending(900, storage);
   assert.equal(restored.ownerPending, null);
   assert.deepEqual(restored.assistantPending, assistant);
+});
+
+test("router callback is gated for rejected Forward and restored after guard cleanup", () => {
+  const navigation = navigationHost({ confirmLeave: false, index: 5 });
+  const cleanup = installWeeklyPlanV3NavigationSafety(
+    navigation.host,
+    "Unresolved",
+  );
+  const accepted = [];
+  const routerListener = guardWeeklyPlanV3HistoryListener(
+    navigation.host,
+    (event) => accepted.push(event.state.idx),
+  );
+  routerListener(navigationEvent({ state: { idx: 6 } }));
+  routerListener(navigationEvent({ state: { idx: 5 } }));
+  assert.deepEqual(navigation.historyCalls, [{ type: "go", delta: -1 }]);
+  assert.deepEqual(accepted, []);
+  cleanup();
+  routerListener(navigationEvent({ state: { idx: 6 } }));
+  assert.deepEqual(accepted, [6]);
+});
+
+test("accepted history traversal is delegated once without synthetic history entries", () => {
+  const navigation = navigationHost({ confirmLeave: true });
+  const cleanup = installWeeklyPlanV3NavigationSafety(
+    navigation.host,
+    "Unresolved",
+  );
+  let accepted = 0;
+  guardWeeklyPlanV3HistoryListener(
+    navigation.host,
+    () => accepted++,
+  )(navigationEvent({ state: { idx: 4 } }));
+  assert.equal(accepted, 1);
+  assert.equal(navigation.confirmCount(), 1);
+  assert.deepEqual(navigation.historyCalls, []);
+  cleanup();
+});
+
+test("external document links rely on native unload protection without a second click prompt", () => {
+  const navigation = navigationHost({ confirmLeave: false });
+  const cleanup = installWeeklyPlanV3NavigationSafety(
+    navigation.host,
+    "Unresolved",
+  );
+  const event = navigationEvent({
+    target: {
+      closest: () => ({
+        href: "https://external.test/",
+        target: "",
+        hasAttribute: () => false,
+      }),
+    },
+  });
+  navigation.listeners.get("click")(event);
+  assert.equal(navigation.confirmCount(), 0);
+  assert.deepEqual(event.calls, []);
+  cleanup();
 });
