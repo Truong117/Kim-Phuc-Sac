@@ -396,7 +396,7 @@ and wrong TiDB versions.
 
 | Command                                       | Result                                                |
 | --------------------------------------------- | ----------------------------------------------------- |
-| Full backend `php artisan test --compact`     | PASS — 626 tests, 5,823 assertions                    |
+| Full backend `php artisan test --compact`     | PASS — 627 tests, 5,824 assertions                    |
 | Focused V3 + infrastructure tests             | PASS — 83 tests, 995 assertions                       |
 | Migration/environment safety tests            | PASS — 64 tests, 411 assertions                       |
 | Mock-only Pester migration orchestration      | PASS — 25 tests                                       |

@@ -28,7 +28,7 @@ gates, exact proposed setup commands, test design, and operational costs.
 This preparation does not upgrade any existing BLOCKED or NOT VERIFIED row to
 PASS. Browser E2E, migration 1-21 on TiDB, and all eight parallel TiDB races
 still require real execution and archived evidence. Phase 7B.1 validation
-passed 626 backend tests (5,823 assertions), 243 frontend tests, 25 mock-only
+passed 627 backend tests (5,824 assertions), 243 frontend tests, 25 mock-only
 Pester tests, lint, build, Pint, and changed-file formatting.
 
 Existing-suite validation on the preparation branch passed: full backend (624
