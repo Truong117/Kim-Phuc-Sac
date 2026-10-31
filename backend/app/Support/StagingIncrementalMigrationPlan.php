@@ -18,6 +18,8 @@ final class StagingIncrementalMigrationPlan
 
     public const MIGRATION_21 = '2026_10_30_010000_create_weekly_plan_v3_correction_batches.php';
 
+    public const MIGRATION_22 = '2026_10_31_000001_create_account_audit_events_table.php';
+
     /** @var array<string, array{migration: string, before: int, after: int}> */
     private const ALLOWLIST = [
         self::MIGRATION_16 => [
@@ -49,6 +51,11 @@ final class StagingIncrementalMigrationPlan
             'migration' => '2026_10_30_010000_create_weekly_plan_v3_correction_batches',
             'before' => 20,
             'after' => 21,
+        ],
+        self::MIGRATION_22 => [
+            'migration' => '2026_10_31_000001_create_account_audit_events_table',
+            'before' => 21,
+            'after' => 22,
         ],
     ];
 
@@ -88,6 +95,10 @@ final class StagingIncrementalMigrationPlan
      *     migration_16_schema_state: string,
      *     migration_17_schema_state: string,
      *     migration_18_schema_state: string,
+     *     migration_19_schema_state?: string,
+     *     migration_20_schema_state?: string,
+     *     migration_21_schema_state?: string,
+     *     migration_22_schema_state?: string,
      *     parent_prerequisites_verified: bool
      * }  $state
      * @return list<string>
@@ -110,9 +121,14 @@ final class StagingIncrementalMigrationPlan
             $violations[] = 'unexpected_migrations_detected';
         }
 
-        if ($migrationFile !== self::MIGRATION_21
+        if (! in_array($migrationFile, [self::MIGRATION_21, self::MIGRATION_22], true)
             && ($state['migration_21_schema_state'] ?? 'absent') !== 'absent') {
             $violations[] = 'migration_21_schema_exists_before_prerequisites';
+        }
+
+        if ($migrationFile !== self::MIGRATION_22
+            && ($state['migration_22_schema_state'] ?? 'absent') !== 'absent') {
+            $violations[] = 'migration_22_schema_exists_before_prerequisites';
         }
 
         if (! $state['parent_prerequisites_verified']) {
@@ -213,7 +229,7 @@ final class StagingIncrementalMigrationPlan
             if (($state['migration_21_schema_state'] ?? 'absent') !== 'absent') {
                 $violations[] = 'migration_21_schema_exists_before_migration_20';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_21) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
                 || $state['migration_18_schema_state'] !== 'complete'
@@ -223,6 +239,15 @@ final class StagingIncrementalMigrationPlan
             }
             if (($state['migration_21_schema_state'] ?? 'partial') !== 'absent') {
                 $violations[] = 'migration_21_partial_or_existing_schema';
+            }
+        } else {
+            foreach (range(16, 21) as $number) {
+                if (($state["migration_{$number}_schema_state"] ?? 'partial') !== 'complete') {
+                    $violations[] = 'migration_22_prerequisite_schema_not_verified';
+                }
+            }
+            if (($state['migration_22_schema_state'] ?? 'partial') !== 'absent') {
+                $violations[] = 'migration_22_partial_or_existing_schema';
             }
         }
 
@@ -248,6 +273,11 @@ final class StagingIncrementalMigrationPlan
      *     migration_16_schema_state: string,
      *     migration_17_schema_state: string,
      *     migration_18_schema_state: string,
+     *     migration_19_schema_state?: string,
+     *     migration_20_schema_state?: string,
+     *     migration_21_schema_state?: string,
+     *     migration_22_schema_state?: string,
+     *     account_audit_row_count?: int|null,
      *     source_row_count: int|null,
      *     mapping_row_count: int|null,
      *     event_row_count: int|null,
@@ -287,9 +317,14 @@ final class StagingIncrementalMigrationPlan
             $violations[] = 'unexpected_migrations_detected';
         }
 
-        if ($migrationFile !== self::MIGRATION_21
+        if (! in_array($migrationFile, [self::MIGRATION_21, self::MIGRATION_22], true)
             && ($state['migration_21_schema_state'] ?? 'absent') !== 'absent') {
             $violations[] = 'migration_21_schema_exists_before_prerequisites';
+        }
+
+        if ($migrationFile !== self::MIGRATION_22
+            && ($state['migration_22_schema_state'] ?? 'absent') !== 'absent') {
+            $violations[] = 'migration_22_schema_exists_before_prerequisites';
         }
 
         if ($state['weekly_plan_count'] !== $expectedWeeklyPlanCount
@@ -392,7 +427,7 @@ final class StagingIncrementalMigrationPlan
                 || ($state['v3_review_decision_count'] ?? -1) !== 0) {
                 $violations[] = 'migration_20_v2_baseline_or_empty_v3_tables_mismatch';
             }
-        } else {
+        } elseif ($migrationFile === self::MIGRATION_21) {
             if ($state['migration_16_schema_state'] !== 'complete'
                 || $state['migration_17_schema_state'] !== 'complete'
                 || $state['migration_18_schema_state'] !== 'complete'
@@ -407,6 +442,22 @@ final class StagingIncrementalMigrationPlan
             }
             if (($state['v3_correction_batch_count'] ?? -1) !== 0) {
                 $violations[] = 'migration_21_correction_batch_table_not_empty';
+            }
+        } else {
+            foreach (range(16, 22) as $number) {
+                if (($state["migration_{$number}_schema_state"] ?? 'partial') !== 'complete') {
+                    $violations[] = 'migration_22_postflight_schema_mismatch';
+                }
+            }
+            if (! $state['parent_prerequisites_verified']) {
+                $violations[] = 'migration_22_parent_prerequisites_not_verified';
+            }
+            if (($state['account_audit_row_count'] ?? -1) !== 0) {
+                $violations[] = 'migration_22_audit_table_not_empty';
+            }
+            if ($expectedWeeklyPlanEntryCount === null
+                || $state['weekly_plan_entry_count'] !== $expectedWeeklyPlanEntryCount) {
+                $violations[] = 'weekly_plan_entry_count_baseline_changed';
             }
         }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Account\UpdateEmailRequest;
 use App\Http\Requests\Account\UpdatePasswordRequest;
 use App\Http\Requests\Account\UpdateProfileRequest;
 use App\Models\User;
@@ -20,7 +21,7 @@ class AccountController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $updated = $this->accounts->updateName($user, $request->validated('name'));
+        $updated = $this->accounts->updateName($user, $request->validated('name'), $request->validated('expected_name'));
 
         return response()->json($this->userPayload->for($updated));
     }
@@ -29,7 +30,19 @@ class AccountController extends Controller
     {
         /** @var User $user */
         $user = $request->user();
-        $updated = $this->accounts->updatePassword($user, $request->validated('password'));
+        $updated = $this->accounts->updatePassword($user, $request->validated('password'), $request->validated('current_password'));
+
+        return response()->json($this->userPayload->for($updated));
+    }
+
+    public function updateEmail(UpdateEmailRequest $request): JsonResponse
+    {
+        $updated = $this->accounts->updateEmail(
+            $request->user(),
+            $request->validated('email'),
+            $request->validated('current_password'),
+            $request->validated('expected_email'),
+        );
 
         return response()->json($this->userPayload->for($updated));
     }

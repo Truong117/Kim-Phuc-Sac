@@ -949,6 +949,45 @@ function incrementalMigration21SchemaState(PDO $pdo): string
 }
 
 /**
+ * @param  list<array<string, mixed>>  $columns
+ * @param  array<string, mixed>  $indexes
+ * @param  array<string, mixed>  $foreignKeys
+ */
+function incrementalMigration22SchemaStateFromMetadata(array $columns, array $indexes, array $foreignKeys): string
+{
+    if ($columns === [] && $indexes === [] && $foreignKeys === []) {
+        return 'absent';
+    }
+
+    $columnsValid = incrementalColumnsMatch($columns, [
+        'id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'PRI', extra: 'auto_increment'),
+        'event_type' => incrementalExpectedColumn('/^varchar\(64\)$/'),
+        'actor_user_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/'),
+        'subject_user_id' => incrementalExpectedColumn('/^bigint(?:\(\d+\))? unsigned$/', key: 'MUL'),
+        'previous_email' => incrementalExpectedColumn('/^varchar\(255\)$/'),
+        'email' => incrementalExpectedColumn('/^varchar\(255\)$/'),
+        'created_at' => incrementalExpectedColumn('/^timestamp(?:\(\d+\))?$/'),
+    ]);
+    $indexesValid = StagingIncrementalSchema::indexesMatch($indexes, [
+        'PRIMARY' => incrementalExpectedIndex(0, ['id']),
+        'account_audit_events_subject_user_id_created_at_index' => incrementalExpectedIndex(1, ['subject_user_id', 'created_at']),
+    ]);
+
+    // Historical actor/subject identifiers deliberately have no cascading foreign keys.
+    return $columnsValid && $indexesValid && StagingIncrementalSchema::foreignKeysMatch($foreignKeys, [])
+        ? 'complete' : 'partial';
+}
+
+function incrementalMigration22SchemaState(PDO $pdo): string
+{
+    return incrementalMigration22SchemaStateFromMetadata(
+        incrementalColumns($pdo, 'account_audit_events'),
+        incrementalIndexes($pdo, 'account_audit_events'),
+        incrementalForeignKeys($pdo, 'account_audit_events'),
+    );
+}
+
+/**
  * @param  list<array<string, mixed>>  $entryColumns
  * @param  array<string, mixed>  $entryIndexes
  * @param  list<array<string, mixed>>  $passageColumns
@@ -999,7 +1038,18 @@ function incrementalParentPrerequisitesVerified(
     string $migration18State = 'complete',
     string $migration19State = 'complete',
     string $migration20State = 'complete',
+    string $migration21State = 'absent',
 ): bool {
+    if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_22) {
+        return $migration16State === 'complete'
+            && $migration17State === 'complete'
+            && $migration18State === 'complete'
+            && $migration19State === 'complete'
+            && $migration20State === 'complete'
+            && $migration21State === 'complete'
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'users')
+            && incrementalReferenceableUnsignedBigIntExists($pdo, 'weekly_plans');
+    }
     if ($migrationFile === StagingIncrementalMigrationPlan::MIGRATION_21) {
         return $migration16State === 'complete'
             && $migration17State === 'complete'
@@ -1081,6 +1131,7 @@ function incrementalCountRows(PDO $pdo, string $table, array $tables): ?int
         'weekly_plan_v3_review_batches',
         'weekly_plan_v3_review_decisions',
         'weekly_plan_v3_correction_batches',
+        'account_audit_events',
     ];
 
     if (! in_array($table, $allowed, true)) {
@@ -1290,6 +1341,7 @@ $migration17State = incrementalMigration17SchemaState($pdo);
 $migration18State = incrementalMigration18SchemaState($pdo);
 $migration19State = incrementalMigration19SchemaState($pdo);
 $migration21State = incrementalMigration21SchemaState($pdo);
+$migration22State = incrementalMigration22SchemaState($pdo);
 $migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);
 $weeklyPlanIdFingerprint = hash('sha256', implode(',', $weeklyPlanIds));
@@ -1362,6 +1414,7 @@ $state = [
     'migration_19_schema_state' => $migration19State,
     'migration_20_schema_state' => $migration20State,
     'migration_21_schema_state' => $migration21State,
+    'migration_22_schema_state' => $migration22State,
     'parent_prerequisites_verified' => incrementalParentPrerequisitesVerified(
         $pdo,
         $migrationFile,
@@ -1371,6 +1424,7 @@ $state = [
         $migration18State,
         $migration19State,
         $migration20State,
+        $migration21State,
     ),
     'source_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_sources', $tables),
     'mapping_row_count' => incrementalCountRows($pdo, 'weekly_plan_google_docs_tab_mappings', $tables),
@@ -1389,6 +1443,7 @@ $state = [
     'v3_review_batch_count' => incrementalCountRows($pdo, 'weekly_plan_v3_review_batches', $tables),
     'v3_review_decision_count' => incrementalCountRows($pdo, 'weekly_plan_v3_review_decisions', $tables),
     'v3_correction_batch_count' => incrementalCountRows($pdo, 'weekly_plan_v3_correction_batches', $tables),
+    'account_audit_row_count' => incrementalCountRows($pdo, 'account_audit_events', $tables),
     'legacy_employee_review_count' => $legacyEmployeeReviewCount,
     'legacy_status_plan_count' => (int) ($legacyStatusPlanCountRows[0]['aggregate'] ?? -1),
     'owner_review_plan_count' => (int) ($ownerReviewPlanCountRows[0]['aggregate'] ?? -1),
@@ -1474,6 +1529,7 @@ incrementalFinish([
         'migration_19_state' => $migration19State,
         'migration_20_state' => $migration20State,
         'migration_21_state' => $migration21State,
+        'migration_22_state' => $migration22State,
         'parent_prerequisites_verified' => $state['parent_prerequisites_verified'],
         'migration_18_parent_prerequisites' => $migration18ParentEvidence,
         'source_row_count' => $state['source_row_count'],
@@ -1487,6 +1543,7 @@ incrementalFinish([
         'v3_review_batch_count' => $state['v3_review_batch_count'],
         'v3_review_decision_count' => $state['v3_review_decision_count'],
         'v3_correction_batch_count' => $state['v3_correction_batch_count'],
+        'account_audit_row_count' => $state['account_audit_row_count'],
     ],
     'concurrency' => [
         'ddl_jobs_verified' => $state['ddl_jobs_verified'],

@@ -486,6 +486,58 @@ final class StagingIncrementalMigrationInspectorTest extends TestCase
         ));
     }
 
+    public function test_migration_22_audit_metadata_requires_exact_columns_indexes_and_no_foreign_keys(): void
+    {
+        $this->assertSame('absent', \incrementalMigration22SchemaStateFromMetadata([], [], []));
+        $columns = [
+            $this->column('id', 1, 'bigint unsigned', 'NO', null, 'PRI', 'auto_increment'),
+            $this->column('event_type', 2, 'varchar(64)', 'NO'),
+            $this->column('actor_user_id', 3, 'bigint unsigned', 'NO'),
+            $this->column('subject_user_id', 4, 'bigint unsigned', 'NO', null, 'MUL'),
+            $this->column('previous_email', 5, 'varchar(255)', 'NO'),
+            $this->column('email', 6, 'varchar(255)', 'NO'),
+            $this->column('created_at', 7, 'timestamp', 'NO'),
+        ];
+        $indexes = [
+            'PRIMARY' => $this->actualIndex(0, ['id']),
+            'account_audit_events_subject_user_id_created_at_index' => $this->actualIndex(1, ['subject_user_id', 'created_at']),
+        ];
+        $this->assertSame('complete', \incrementalMigration22SchemaStateFromMetadata($columns, $indexes, []));
+        foreach ([
+            [0, 'EXTRA', ''], [0, 'COLUMN_TYPE', 'bigint'], [1, 'COLUMN_TYPE', 'varchar(255)'],
+            [2, 'IS_NULLABLE', 'YES'], [4, 'COLUMN_DEFAULT', 'unexpected'],
+            [6, 'COLUMN_TYPE', 'datetime'], [5, 'ORDINAL_POSITION', 4],
+        ] as [$offset, $field, $value]) {
+            $invalid = $columns;
+            $invalid[$offset][$field] = $value;
+            $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata($invalid, $indexes, []));
+        }
+        $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata(array_slice($columns, 0, 6), $indexes, []));
+        foreach ([
+            ['PRIMARY' => $indexes['PRIMARY']],
+            [...$indexes, 'unexpected_index' => $this->actualIndex(1, ['email'])],
+            ['PRIMARY' => $indexes['PRIMARY'], 'account_audit_events_subject_user_id_created_at_index' => $this->actualIndex(0, ['subject_user_id', 'created_at'])],
+            ['PRIMARY' => $indexes['PRIMARY'], 'account_audit_events_subject_user_id_created_at_index' => $this->actualIndex(1, ['created_at', 'subject_user_id'])],
+        ] as $invalid) {
+            $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata($columns, $invalid, []));
+        }
+        $prefixIndex = $indexes;
+        $prefixIndex['account_audit_events_subject_user_id_created_at_index']['columns'][0]['sub_part'] = 8;
+        $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata($columns, $prefixIndex, []));
+        $hiddenIndex = $indexes;
+        $hiddenIndex['account_audit_events_subject_user_id_created_at_index']['visible'] = 'NO';
+        $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata($columns, $hiddenIndex, []));
+        $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata($columns, $indexes, [
+            'unexpected_subject_foreign' => $this->actualForeignKey(['subject_user_id'], 'users', ['id'], 'CASCADE'),
+        ]));
+        $this->assertSame('partial', \incrementalMigration22SchemaStateFromMetadata([], $indexes, []));
+    }
+
+    public function test_m16_inspection_remains_compatible_with_the_exact_22_migration_ledger(): void
+    {
+        $this->assertSame('complete', $this->migration16State($this->migration16Metadata(true), 22, 'complete'));
+    }
+
     /** @return array<string, mixed> */
     private function migration18Metadata(): array
     {

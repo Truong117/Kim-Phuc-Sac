@@ -43,7 +43,10 @@ Route::prefix('auth')->group(function () {
 Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () {
     Route::prefix('account')->group(function () {
         Route::patch('/profile', [AccountController::class, 'updateProfile']);
-        Route::patch('/password', [AccountController::class, 'updatePassword']);
+        Route::patch('/password', [AccountController::class, 'updatePassword'])
+            ->middleware('throttle:6,1,account-password');
+        Route::patch('/email', [AccountController::class, 'updateEmail'])
+            ->middleware(['throttle:3,1,account-email', 'throttle:12,60,account-email-hour']);
     });
 
     Route::get('/navigation', NavigationController::class);
