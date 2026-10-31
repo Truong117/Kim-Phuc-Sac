@@ -49,7 +49,9 @@ export const weeklyPlanSourceReady = (
 export const hasRemainingSourceWork = (plan: WeeklyPlan): boolean =>
   plan.source_type === "GOOGLE_DOCS"
     ? (plan.source_document.google_docs?.remaining_tab_ids.length ?? 0) > 0
-    : plan.entries.length === 0;
+    : plan.workflow_version === 3
+      ? false
+      : plan.entries.length === 0;
 
 export const inferWeeklyPlanWizardStep = (
   plan: WeeklyPlan,
@@ -58,7 +60,9 @@ export const inferWeeklyPlanWizardStep = (
   if (!isEditableWizardPlan(plan)) return "submit";
   if (!weeklyPlanSourceReady(plan, mappings)) return "source";
   if (hasRemainingSourceWork(plan)) return "structure";
-  return plan.entries.length > 0 ? "work" : "structure";
+  return plan.entries.length > 0 || plan.workflow_version === 3
+    ? "work"
+    : "structure";
 };
 
 export const guardWeeklyPlanWizardStep = (
@@ -71,7 +75,8 @@ export const guardWeeklyPlanWizardStep = (
   if (!weeklyPlanSourceReady(plan, mappings)) return "source";
   if (requested === "structure") return "structure";
   if (hasRemainingSourceWork(plan)) return "structure";
-  if (plan.entries.length === 0) return "structure";
+  if (plan.entries.length === 0 && plan.workflow_version !== 3)
+    return "structure";
   return requested;
 };
 
@@ -149,11 +154,14 @@ export const groupWeeklyPlanEntriesByEmployee = (
 };
 
 export const weeklyPlanWorkCounts = (plan: WeeklyPlan) => ({
-  employeeCount: new Set(
-    plan.entries
-      .map((entry) => entry.assignee?.id)
-      .filter((id): id is number => id !== undefined),
-  ).size,
+  employeeCount:
+    plan.workflow_version === 3
+      ? (plan.employee_workflows?.length ?? 0)
+      : new Set(
+          plan.entries
+            .map((entry) => entry.assignee?.id)
+            .filter((id): id is number => id !== undefined),
+        ).size,
   entryCount: plan.entries.length,
   itemCount: plan.entries.reduce(
     (total, entry) => total + entry.items.length,
@@ -176,6 +184,7 @@ export type WeeklyPlanSubmissionReadiness = {
 
 export const weeklyPlanSubmissionReadiness = (
   entries: WeeklyPlanEntry[],
+  allowEmpty = false,
 ): WeeklyPlanSubmissionReadiness => {
   const missingAssignee = entries.filter((entry) => !entry.assignee).length;
   const invalidEntries = entries.filter(
@@ -187,7 +196,7 @@ export const weeklyPlanSubmissionReadiness = (
   const missingDates = entries.filter(
     (entry) => !entry.start_date || !entry.due_date,
   ).length;
-  const noEntries = entries.length === 0 ? 1 : 0;
+  const noEntries = !allowEmpty && entries.length === 0 ? 1 : 0;
   const totalBlocking =
     noEntries +
     entries.filter(

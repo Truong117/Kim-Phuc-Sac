@@ -3,6 +3,7 @@
 namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
+use App\Enums\WeeklyPlanStatus;
 use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEmployeeWorkflow;
@@ -33,7 +34,8 @@ final class WeeklyPlanV3ProjectionService
         $viewerMembership = $this->scope->membership($viewer);
         if ($viewerMembership === null
             || $viewerMembership->organization_id !== $plan->organization_id
-            || ! $this->scope->allows($viewer, 'weekly_plans.view')) {
+            || (! $this->scope->allows($viewer, 'weekly_plans.view')
+                && ! $this->scope->allows($viewer, 'weekly_plans.manage_draft'))) {
             throw new AccessDeniedHttpException;
         }
 
@@ -41,9 +43,17 @@ final class WeeklyPlanV3ProjectionService
         $workflows = $plan->employeeWorkflows()
             ->orderBy('id')
             ->get();
+        $plan->loadMissing('entries.items');
 
         try {
             $this->integrity->assertForPlan($plan, $workflows);
+            if ($plan->status !== WeeklyPlanStatus::DRAFT) {
+                $this->integrity->assertCompleteForSubmittedPlan(
+                    $plan,
+                    $workflows,
+                    $plan->entries,
+                );
+            }
         } catch (WeeklyPlanEmployeeLifecycleConflictException $exception) {
             throw new ConflictHttpException(
                 'Dữ liệu quy trình nhân viên của kế hoạch không hợp lệ.',
@@ -57,7 +67,6 @@ final class WeeklyPlanV3ProjectionService
         ]);
 
         $plan->setRelation('employeeWorkflows', $workflows);
-        $plan->loadMissing('entries.items');
         $entriesByAssignee = $plan->entries
             ->filter(fn ($entry): bool => $entry->assignee_id !== null)
             ->groupBy(fn ($entry): int => (int) $entry->assignee_id);

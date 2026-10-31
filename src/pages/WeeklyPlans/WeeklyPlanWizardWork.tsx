@@ -43,8 +43,12 @@ export default function WeeklyPlanWizardWork() {
   );
   const counts = plan ? weeklyPlanWorkCounts(plan) : null;
   const readiness = useMemo(
-    () => weeklyPlanSubmissionReadiness(plan?.entries ?? []),
-    [plan?.entries],
+    () =>
+      weeklyPlanSubmissionReadiness(
+        plan?.entries ?? [],
+        plan?.workflow_version === 3,
+      ),
+    [plan?.entries, plan?.workflow_version],
   );
 
   return (

@@ -6,6 +6,7 @@ use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\OrganizationMembership;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEmployeeWorkflow;
+use App\Models\WeeklyPlanEntry;
 use Illuminate\Support\Collection;
 
 final class WeeklyPlanEmployeeWorkflowIntegrityService
@@ -74,5 +75,40 @@ final class WeeklyPlanEmployeeWorkflowIntegrityService
         $this->assertForPlan($plan, collect([$workflow]));
 
         return $plan;
+    }
+
+    /**
+     * @param  Collection<int, WeeklyPlanEmployeeWorkflow>  $workflows
+     * @param  Collection<int, WeeklyPlanEntry>  $entries
+     */
+    public function assertCompleteForSubmittedPlan(
+        WeeklyPlan $plan,
+        Collection $workflows,
+        Collection $entries,
+    ): void {
+        $this->assertForPlan($plan, $workflows);
+
+        if ($workflows->isEmpty()) {
+            throw new WeeklyPlanEmployeeLifecycleConflictException(
+                WeeklyPlanEmployeeLifecycleConflictException::EMPTY_EMPLOYEE_ROSTER,
+                'A submitted V3 weekly plan requires at least one employee workflow.',
+            );
+        }
+
+        $workflowAssigneeIds = collect($workflows->pluck('assignee_id')->map(
+            fn (mixed $id): int => (int) $id,
+        )->all());
+        $entryAssigneeIds = collect($entries->map(
+            fn (WeeklyPlanEntry $entry): ?int => $entry->assignee_id === null
+                ? null
+                : (int) $entry->assignee_id,
+        )->all());
+        if ($entryAssigneeIds->contains(null)
+            || $entryAssigneeIds->filter()->diff($workflowAssigneeIds)->isNotEmpty()) {
+            throw new WeeklyPlanEmployeeLifecycleConflictException(
+                WeeklyPlanEmployeeLifecycleConflictException::ENTRY_OUTSIDE_EMPLOYEE_ROSTER,
+                'Every V3 weekly plan entry must belong to a roster employee workflow.',
+            );
+        }
     }
 }

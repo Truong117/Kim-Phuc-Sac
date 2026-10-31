@@ -14,6 +14,10 @@ final class WeeklyPlanEmployeeLifecycleConflictException extends DomainException
 
     public const ASSIGNEE_ORGANIZATION_MISMATCH = 'ASSIGNEE_ORGANIZATION_MISMATCH';
 
+    public const EMPTY_EMPLOYEE_ROSTER = 'EMPTY_EMPLOYEE_ROSTER';
+
+    public const ENTRY_OUTSIDE_EMPLOYEE_ROSTER = 'ENTRY_OUTSIDE_EMPLOYEE_ROSTER';
+
     public const STALE_STATE_VERSION = 'STALE_STATE_VERSION';
 
     public const STALE_CONTENT_VERSION = 'STALE_CONTENT_VERSION';

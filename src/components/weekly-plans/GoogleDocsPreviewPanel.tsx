@@ -64,9 +64,13 @@ function TabTree({ nodes, passagesLabel, charactersLabel }: TabTreeProps) {
 
 type Props = {
   onImported: (plan: WeeklyPlan) => void;
+  workflowVersion?: 2 | 3;
 };
 
-export default function GoogleDocsPreviewPanel({ onImported }: Props) {
+export default function GoogleDocsPreviewPanel({
+  onImported,
+  workflowVersion = 2,
+}: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.googleDocsPreview",
   });
@@ -149,11 +153,7 @@ export default function GoogleDocsPreviewPanel({ onImported }: Props) {
   const tabTree = preview ? buildGoogleDocsTabTree(preview.tabs) : [];
 
   const confirmSource = async () => {
-    if (
-      !preview ||
-      !requestId ||
-      !claimGoogleDocsSourceRequest(importingRef)
-    )
+    if (!preview || !requestId || !claimGoogleDocsSourceRequest(importingRef))
       return;
 
     const controller = new AbortController();
@@ -166,16 +166,17 @@ export default function GoogleDocsPreviewPanel({ onImported }: Props) {
         trimmedUrl,
         preview.snapshot_sha256,
         requestId,
+        workflowVersion,
         controller.signal,
       );
-      if (
-        importController.current === controller &&
-        !controller.signal.aborted
-      )
+      if (importController.current === controller && !controller.signal.aborted)
         onImported(plan);
     } catch (nextError) {
       if (importController.current !== controller) return;
-      if (nextError instanceof DOMException && nextError.name === "AbortError") {
+      if (
+        nextError instanceof DOMException &&
+        nextError.name === "AbortError"
+      ) {
         return;
       }
       if (nextError instanceof ApiServiceError) {
@@ -184,7 +185,9 @@ export default function GoogleDocsPreviewPanel({ onImported }: Props) {
           setRequestId(null);
           setError(nextError.message || t("errors.changed"));
         } else {
-          setError(t(`errors.${getGoogleDocsPreviewErrorKey(nextError.status)}`));
+          setError(
+            t(`errors.${getGoogleDocsPreviewErrorKey(nextError.status)}`),
+          );
         }
       } else {
         setError(t("errors.confirm"));

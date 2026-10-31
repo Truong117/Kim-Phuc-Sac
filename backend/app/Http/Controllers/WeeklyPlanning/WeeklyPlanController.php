@@ -19,6 +19,7 @@ use App\Http\Requests\WeeklyPlanning\ReparseWeeklyPlanRequest;
 use App\Http\Requests\WeeklyPlanning\ReplaceWeeklyPlanSourceRequest;
 use App\Http\Requests\WeeklyPlanning\ReviewWeeklyPlanEmployeeRequest;
 use App\Http\Requests\WeeklyPlanning\StoreWeeklyPlanCommentRequest;
+use App\Http\Requests\WeeklyPlanning\UpdateWeeklyPlanV3RosterRequest;
 use App\Http\Requests\WeeklyPlanning\WeeklyPlanEntryRequest;
 use App\Http\Requests\WeeklyPlanning\WeeklyPlanV3CorrectionEntryRequest;
 use App\Http\Resources\WeeklyPlanResource;
@@ -90,7 +91,12 @@ class WeeklyPlanController extends Controller
         $file = $request->file('file');
 
         return (new WeeklyPlanResource(
-            $this->plans->import($user, $file, $request->mapping()),
+            $this->plans->import(
+                $user,
+                $file,
+                $request->mapping(),
+                $request->workflowVersion(),
+            ),
         ))->response()->setStatusCode(201);
     }
 
@@ -230,6 +236,18 @@ class WeeklyPlanController extends Controller
         $user = $request->user();
 
         return new WeeklyPlanResource($this->plans->submit($user, $id));
+    }
+
+    public function updateV3Roster(
+        UpdateWeeklyPlanV3RosterRequest $request,
+        int $id,
+    ): WeeklyPlanResource {
+        /** @var User $user */
+        $user = $request->user();
+
+        return new WeeklyPlanResource(
+            $this->plans->updateV3Roster($user, $id, $request->assigneeIds()),
+        );
     }
 
     public function analyze(Request $request, int $id): WeeklyPlanResource

@@ -164,6 +164,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/{id}/submit', [WeeklyPlanController::class, 'submit'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.submit,organization');
+        Route::put('/{id}/v3-roster', [WeeklyPlanController::class, 'updateV3Roster'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/analyze', [WeeklyPlanController::class, 'analyze'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');

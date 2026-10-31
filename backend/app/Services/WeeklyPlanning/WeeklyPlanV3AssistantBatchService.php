@@ -116,12 +116,30 @@ final class WeeklyPlanV3AssistantBatchService
         $assigneeIds = $decisions->pluck('assigneeId')->all();
 
         /** @var Collection<int, WeeklyPlanEmployeeWorkflow> $workflows */
-        $workflows = WeeklyPlanEmployeeWorkflow::query()
+        $allWorkflows = WeeklyPlanEmployeeWorkflow::query()
             ->where('weekly_plan_id', $plan->id)
-            ->whereIn('assignee_id', $assigneeIds)
             ->orderBy('assignee_id')
             ->lockForUpdate()
             ->get();
+        /** @var Collection<int, WeeklyPlanEntry> $allEntries */
+        $allEntries = WeeklyPlanEntry::query()
+            ->where('weekly_plan_id', $plan->id)
+            ->orderBy('assignee_id')
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+        try {
+            $this->integrity->assertCompleteForSubmittedPlan($plan, $allWorkflows, $allEntries);
+        } catch (WeeklyPlanEmployeeLifecycleConflictException $exception) {
+            throw new WeeklyPlanV3BatchException(
+                $exception->reason,
+                'Dữ liệu quy trình nhân viên không hoàn chỉnh.',
+            );
+        }
+        $workflows = $allWorkflows
+            ->whereIn('assignee_id', $assigneeIds)
+            ->values();
         if ($workflows->count() !== $decisions->count()) {
             throw new WeeklyPlanV3BatchException(
                 'EMPLOYEE_NOT_ELIGIBLE',
@@ -139,14 +157,7 @@ final class WeeklyPlanV3AssistantBatchService
         }
 
         /** @var Collection<int, WeeklyPlanEntry> $entries */
-        $entries = WeeklyPlanEntry::query()
-            ->where('weekly_plan_id', $plan->id)
-            ->whereIn('assignee_id', $assigneeIds)
-            ->orderBy('assignee_id')
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get();
+        $entries = $allEntries->whereIn('assignee_id', $assigneeIds)->values();
         $items = WeeklyPlanEntryItem::query()
             ->whereIn('weekly_plan_entry_id', $entries->pluck('id')->all())
             ->orderBy('weekly_plan_entry_id')
