@@ -5,22 +5,23 @@ import WeeklyPlanV3OwnerBatchReview from "@/components/weekly-plans/WeeklyPlanV3
 import WeeklyPlanV3PublicationSummary from "@/components/weekly-plans/WeeklyPlanV3PublicationSummary";
 import type { WeeklyPlan } from "@/types/weeklyPlanning";
 import {
+  createWeeklyPlanV3ReviewerWorkspaceState,
   filterWeeklyPlanV3Workflows,
   weeklyPlanV3EntriesByAssignee,
   weeklyPlanV3HasHrCorrectionAccess,
+  weeklyPlanV3ReviewerWorkspaceReducer,
   type WeeklyPlanV3EmployeeFilter,
+  type WeeklyPlanV3ReviewerView,
 } from "@/utils/weeklyPlanV3ReviewWorkspace";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useReducer, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router";
+import { Link, useBeforeUnload } from "react-router";
 
 type Props = {
   plan: WeeklyPlan;
   onPlanChange: (plan: WeeklyPlan) => void;
   onReload: () => Promise<void>;
 };
-
-type WorkspaceView = "OVERVIEW" | "ASSISTANT" | "OWNER";
 
 const filters: WeeklyPlanV3EmployeeFilter[] = [
   "MY_REVIEW",
@@ -43,19 +44,27 @@ export default function WeeklyPlanV3ReviewerWorkspace({
     () => plan.employee_workflows ?? [],
     [plan.employee_workflows],
   );
-  const hasAssistantQueue = workflows.some(
+  const hasAssistantWorkflow = workflows.some(
     (workflow) => workflow.viewer_context.mode === "ASSISTANT_REVIEW",
   );
-  const hasOwnerQueue = workflows.some(
+  const hasOwnerWorkflow = workflows.some(
     (workflow) => workflow.viewer_context.mode === "OWNER_REVIEW",
   );
-  const initialView: WorkspaceView =
-    hasAssistantQueue && !hasOwnerQueue
+  const initialView: WeeklyPlanV3ReviewerView =
+    hasAssistantWorkflow && !hasOwnerWorkflow
       ? "ASSISTANT"
-      : hasOwnerQueue && !hasAssistantQueue
+      : hasOwnerWorkflow && !hasAssistantWorkflow
         ? "OWNER"
         : "OVERVIEW";
-  const [view, setView] = useState<WorkspaceView>(initialView);
+  const [workspaceState, dispatch] = useReducer(
+    weeklyPlanV3ReviewerWorkspaceReducer,
+    initialView,
+    createWeeklyPlanV3ReviewerWorkspaceState,
+  );
+  const hasAssistantQueue =
+    hasAssistantWorkflow || workspaceState.assistantPending !== null;
+  const hasOwnerQueue =
+    hasOwnerWorkflow || workspaceState.ownerPending !== null;
   const [filter, setFilter] = useState<WeeklyPlanV3EmployeeFilter>(
     workflows.some(
       (workflow) =>
@@ -77,11 +86,25 @@ export default function WeeklyPlanV3ReviewerWorkspace({
     [filter, workflows],
   );
   const activeView =
-    (view === "ASSISTANT" && !hasAssistantQueue) ||
-    (view === "OWNER" && !hasOwnerQueue)
+    (workspaceState.view === "ASSISTANT" && !hasAssistantQueue) ||
+    (workspaceState.view === "OWNER" && !hasOwnerQueue)
       ? "OVERVIEW"
-      : view;
+      : workspaceState.view;
   const hasHrCorrections = weeklyPlanV3HasHrCorrectionAccess(plan);
+  const hasUnresolvedRequest =
+    workspaceState.assistantPending !== null ||
+    workspaceState.ownerPending !== null;
+
+  useBeforeUnload(
+    useCallback(
+      (event) => {
+        if (!hasUnresolvedRequest) return;
+        event.preventDefault();
+        event.returnValue = "";
+      },
+      [hasUnresolvedRequest],
+    ),
+  );
 
   return (
     <div className="space-y-5" data-workspace="v3-reviewer">
@@ -97,13 +120,18 @@ export default function WeeklyPlanV3ReviewerWorkspace({
               {t("navigation.description")}
             </p>
           </div>
-          {hasHrCorrections && (
+          {hasHrCorrections && !hasUnresolvedRequest && (
             <Link
               to={`/weekly-plans/${plan.id}/submit`}
               className="inline-flex items-center justify-center rounded-lg border border-warning-300 px-3 py-2 text-theme-sm font-semibold text-warning-700 transition hover:bg-warning-50 focus-visible:ring-3 focus-visible:ring-warning-500/25 focus-visible:outline-none dark:border-warning-700 dark:text-warning-300 dark:hover:bg-warning-500/10"
             >
               {t("navigation.openCorrections")}
             </Link>
+          )}
+          {hasHrCorrections && hasUnresolvedRequest && (
+            <span className="inline-flex items-center rounded-lg border border-warning-300 px-3 py-2 text-theme-sm font-semibold text-warning-700 dark:border-warning-700 dark:text-warning-300">
+              {t("navigation.reconcileBeforeCorrections")}
+            </span>
           )}
         </div>
         <div
@@ -130,7 +158,7 @@ export default function WeeklyPlanV3ReviewerWorkspace({
                       ? "bg-brand-500 text-white shadow-theme-xs hover:bg-brand-600"
                       : "bg-white text-gray-700 ring-1 ring-gray-300 ring-inset hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700 dark:hover:bg-white/3"
                   }`}
-                  onClick={() => setView(item)}
+                  onClick={() => dispatch({ type: "SET_VIEW", view: item })}
                 >
                   {t(`navigation.${item}`)}
                 </button>
@@ -139,19 +167,40 @@ export default function WeeklyPlanV3ReviewerWorkspace({
         </div>
       </section>
 
-      {activeView === "ASSISTANT" ? (
+      {hasUnresolvedRequest && (
+        <p
+          role="alert"
+          className="rounded-xl border border-warning-200 bg-warning-50 p-4 text-theme-sm font-medium text-warning-800 dark:border-warning-800 dark:bg-warning-500/10 dark:text-warning-300"
+        >
+          {t("navigation.unresolvedWarning")}
+        </p>
+      )}
+
+      <div hidden={activeView !== "ASSISTANT"}>
         <WeeklyPlanV3AssistantBatchReview
           plan={plan}
           onPlanChange={onPlanChange}
           onReload={onReload}
+          pending={workspaceState.assistantPending}
+          onPendingChange={(pending) =>
+            dispatch({ type: "SET_ASSISTANT_PENDING", pending })
+          }
         />
-      ) : activeView === "OWNER" ? (
+      </div>
+
+      <div hidden={activeView !== "OWNER"}>
         <WeeklyPlanV3OwnerBatchReview
           plan={plan}
           onPlanChange={onPlanChange}
           onReload={onReload}
+          pending={workspaceState.ownerPending}
+          onPendingChange={(pending) =>
+            dispatch({ type: "SET_OWNER_PENDING", pending })
+          }
         />
-      ) : (
+      </div>
+
+      {activeView === "OVERVIEW" && (
         <section aria-labelledby="weekly-plan-v3-employees-title">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>

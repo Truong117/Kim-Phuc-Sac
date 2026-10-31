@@ -1,5 +1,7 @@
 export type WeeklyPlanV3BatchFailureMode = "AMBIGUOUS" | "STALE" | "VALIDATION";
 
+export type WeeklyPlanV3ReviewerStage = "ASSISTANT" | "OWNER";
+
 export type WeeklyPlanV3VersionedDecision = {
   assignee_id: number;
   decision: string;
@@ -11,6 +13,7 @@ export type WeeklyPlanV3PendingBatchConfirmation<
   TDecision extends WeeklyPlanV3VersionedDecision,
 > = {
   planId: number;
+  stage: WeeklyPlanV3ReviewerStage;
   requestId: string;
   decisions: TDecision[];
   payloadFingerprint: string;
@@ -41,21 +44,26 @@ export const resolveWeeklyPlanV3BatchConfirmation = <
 >(
   pending: WeeklyPlanV3PendingBatchConfirmation<TDecision> | null,
   planId: number,
+  stage: WeeklyPlanV3ReviewerStage,
   currentDecisions: TDecision[],
   createRequestId: () => string,
 ): WeeklyPlanV3BatchConfirmationResolution<TDecision> => {
   const currentFingerprint =
     weeklyPlanV3BatchPayloadFingerprint(currentDecisions);
-  if (pending?.planId === planId) {
+  if (pending) {
     return {
       confirmation: pending,
-      reconciliationRequired: pending.payloadFingerprint !== currentFingerprint,
+      reconciliationRequired:
+        pending.planId !== planId ||
+        pending.stage !== stage ||
+        pending.payloadFingerprint !== currentFingerprint,
     };
   }
 
   return {
     confirmation: {
       planId,
+      stage,
       requestId: createRequestId(),
       decisions: canonicalDecisions(currentDecisions),
       payloadFingerprint: currentFingerprint,

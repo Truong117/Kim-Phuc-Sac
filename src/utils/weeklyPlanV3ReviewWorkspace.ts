@@ -3,7 +3,56 @@ import type {
   WeeklyPlanEmployeeWorkflow,
   WeeklyPlanEntry,
   WeeklyPlanPublicationSummary,
+  WeeklyPlanV3AssistantBatchDecisionInput,
+  WeeklyPlanV3OwnerBatchDecisionInput,
 } from "@/types/weeklyPlanning";
+import type { WeeklyPlanV3PendingBatchConfirmation } from "@/utils/weeklyPlanV3BatchConfirmation";
+
+export type WeeklyPlanV3ReviewerView = "OVERVIEW" | "ASSISTANT" | "OWNER";
+
+export type WeeklyPlanV3OwnerPendingConfirmation =
+  WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3OwnerBatchDecisionInput> & {
+    taskCountPreview: number;
+  };
+
+export type WeeklyPlanV3ReviewerWorkspaceState = {
+  view: WeeklyPlanV3ReviewerView;
+  assistantPending: WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3AssistantBatchDecisionInput> | null;
+  ownerPending: WeeklyPlanV3OwnerPendingConfirmation | null;
+};
+
+export type WeeklyPlanV3ReviewerWorkspaceAction =
+  | { type: "SET_VIEW"; view: WeeklyPlanV3ReviewerView }
+  | {
+      type: "SET_ASSISTANT_PENDING";
+      pending: WeeklyPlanV3ReviewerWorkspaceState["assistantPending"];
+    }
+  | {
+      type: "SET_OWNER_PENDING";
+      pending: WeeklyPlanV3ReviewerWorkspaceState["ownerPending"];
+    };
+
+export const createWeeklyPlanV3ReviewerWorkspaceState = (
+  view: WeeklyPlanV3ReviewerView,
+): WeeklyPlanV3ReviewerWorkspaceState => ({
+  view,
+  assistantPending: null,
+  ownerPending: null,
+});
+
+export const weeklyPlanV3ReviewerWorkspaceReducer = (
+  state: WeeklyPlanV3ReviewerWorkspaceState,
+  action: WeeklyPlanV3ReviewerWorkspaceAction,
+): WeeklyPlanV3ReviewerWorkspaceState => {
+  switch (action.type) {
+    case "SET_VIEW":
+      return { ...state, view: action.view };
+    case "SET_ASSISTANT_PENDING":
+      return { ...state, assistantPending: action.pending };
+    case "SET_OWNER_PENDING":
+      return { ...state, ownerPending: action.pending };
+  }
+};
 
 export type WeeklyPlanV3EmployeeFilter =
   | "MY_REVIEW"

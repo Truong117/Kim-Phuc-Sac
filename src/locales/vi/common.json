@@ -1541,7 +1541,9 @@
           "OVERVIEW": "Tổng quan",
           "ASSISTANT": "Hàng đợi Trợ lý",
           "OWNER": "Hàng đợi OWNER",
-          "openCorrections": "Mở Step 4 chỉnh sửa HR"
+          "openCorrections": "Mở Step 4 chỉnh sửa HR",
+          "reconcileBeforeCorrections": "Đối soát yêu cầu đang chờ trước khi mở Step 4",
+          "unresolvedWarning": "Có yêu cầu xét duyệt chưa xác định kết quả. Bạn có thể chuyển giữa các hàng đợi mà không mất request; hãy quay lại đúng hàng đợi để thử lại hoặc đối soát trước khi rời trang."
         },
         "overview": {
           "title": "Trạng thái theo nhân viên",
@@ -1607,6 +1609,10 @@
           "ACCEPTED": "Nháp: Chấp nhận",
           "CHANGES_REQUESTED": "Nháp: Yêu cầu chỉnh sửa"
         },
+        "payload": {
+          "ACCEPTED": "Chấp nhận",
+          "CHANGES_REQUESTED": "Yêu cầu chỉnh sửa"
+        },
         "zeroWork": "Nhân viên này hiện không có công việc. Bạn vẫn có thể chấp nhận trạng thái không có công việc.",
         "accept": "Chấp nhận",
         "decisionTitle": "Quyết định nháp của Trợ lý",
@@ -1618,6 +1624,7 @@
         "confirmation": {
           "title": "Xác nhận lô xét duyệt?",
           "summary": "{total} nhân viên · {accepted} chấp nhận · {changesRequested} yêu cầu chỉnh sửa",
+          "versions": "phiên bản trạng thái {state}, nội dung {content}",
           "unselected": "Nhân viên chưa được chọn sẽ giữ nguyên trạng thái và có thể được xét duyệt trong lô sau.",
           "cancel": "Quay lại",
           "submit": "Xác nhận lô",
@@ -1646,6 +1653,11 @@
           "CHANGES_REQUESTED": "Nháp: Yêu cầu HR chỉnh sửa",
           "APPROVE_NO_WORK": "Nháp: Duyệt không có công việc"
         },
+        "payload": {
+          "ACCEPTED": "Phê duyệt và tạo Task",
+          "CHANGES_REQUESTED": "Yêu cầu HR chỉnh sửa",
+          "APPROVE_NO_WORK": "Duyệt không có công việc"
+        },
         "publish": "Phê duyệt và tạo Task",
         "requestChanges": "Yêu cầu HR chỉnh sửa",
         "approveNoWork": "Duyệt không có công việc",
@@ -1655,6 +1667,7 @@
         "confirmation": {
           "title": "Xác nhận phê duyệt và phát hành lô?",
           "summary": "{total} nhân viên · {accepted} phát hành · {tasks} Task dự kiến · {changesRequested} trả HR · {noWorkApproved} duyệt không việc",
+          "versions": "phiên bản trạng thái {state}, nội dung {content}",
           "effects": "Khi xác nhận, hệ thống sẽ tạo Task thật và thông báo giao việc cho các nhân viên được phê duyệt.",
           "unselected": "Nhân viên chưa chọn sẽ giữ nguyên hoàn toàn và có thể được xử lý trong lô sau.",
           "cancel": "Quay lại",

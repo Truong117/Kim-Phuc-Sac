@@ -16,8 +16,10 @@ import {
   summarizeWeeklyPlanV3OwnerDraft,
 } from "../src/utils/weeklyPlanV3OwnerBatch.ts";
 import {
+  createWeeklyPlanV3ReviewerWorkspaceState,
   filterWeeklyPlanV3Workflows,
   weeklyPlanV3HasHrCorrectionAccess,
+  weeklyPlanV3ReviewerWorkspaceReducer,
   weeklyPlanV3TerminalProgress,
 } from "../src/utils/weeklyPlanV3ReviewWorkspace.ts";
 
@@ -383,12 +385,14 @@ test("ambiguous review retry preserves immutable identity and changed selections
   const first = resolveWeeklyPlanV3BatchConfirmation(
     null,
     900,
+    "OWNER",
     original,
     createRequestId,
   );
   const changed = resolveWeeklyPlanV3BatchConfirmation(
     first.confirmation,
     900,
+    "OWNER",
     [{ ...original[0], decision: "CHANGES_REQUESTED" }],
     createRequestId,
   );
@@ -396,8 +400,136 @@ test("ambiguous review retry preserves immutable identity and changed selections
   assert.equal(changed.confirmation, first.confirmation);
   assert.deepEqual(changed.confirmation.decisions, original);
   assert.equal(changed.confirmation.requestId, "review-request-1");
+  assert.equal(changed.confirmation.stage, "OWNER");
   assert.equal(changed.reconciliationRequired, true);
   assert.equal(sequence, 1);
+});
+
+test("reviewer tab interactions preserve separate unresolved stage confirmations", () => {
+  const ownerPending = {
+    planId: 900,
+    stage: "OWNER",
+    requestId: "owner-request-1",
+    decisions: [
+      {
+        assignee_id: 22,
+        decision: "ACCEPTED",
+        expected_state_version: 2,
+        expected_content_version: 3,
+      },
+    ],
+    payloadFingerprint: "owner-fingerprint",
+    taskCountPreview: 4,
+  };
+  const assistantPending = {
+    planId: 900,
+    stage: "ASSISTANT",
+    requestId: "assistant-request-1",
+    decisions: [
+      {
+        assignee_id: 11,
+        decision: "CHANGES_REQUESTED",
+        expected_state_version: 5,
+        expected_content_version: 6,
+      },
+    ],
+    payloadFingerprint: "assistant-fingerprint",
+  };
+
+  let state = createWeeklyPlanV3ReviewerWorkspaceState("OWNER");
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_OWNER_PENDING",
+    pending: ownerPending,
+  });
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_VIEW",
+    view: "OVERVIEW",
+  });
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_VIEW",
+    view: "OWNER",
+  });
+
+  assert.equal(state.ownerPending, ownerPending);
+  assert.equal(state.ownerPending.requestId, "owner-request-1");
+  assert.deepEqual(state.ownerPending.decisions, ownerPending.decisions);
+  assert.equal(state.ownerPending.taskCountPreview, 4);
+
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_ASSISTANT_PENDING",
+    pending: assistantPending,
+  });
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_VIEW",
+    view: "ASSISTANT",
+  });
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_VIEW",
+    view: "OWNER",
+  });
+  state = weeklyPlanV3ReviewerWorkspaceReducer(state, {
+    type: "SET_VIEW",
+    view: "ASSISTANT",
+  });
+
+  assert.equal(state.assistantPending, assistantPending);
+  assert.equal(state.ownerPending, ownerPending);
+  assert.notEqual(
+    state.assistantPending.requestId,
+    state.ownerPending.requestId,
+  );
+});
+
+test("queue changes cannot replace an unresolved request or its confirmation snapshot", () => {
+  let requestSequence = 0;
+  const createRequestId = () => `request-${++requestSequence}`;
+  const original = [
+    {
+      assignee_id: 22,
+      decision: "ACCEPTED",
+      expected_state_version: 2,
+      expected_content_version: 3,
+    },
+  ];
+  const first = resolveWeeklyPlanV3BatchConfirmation(
+    null,
+    900,
+    "OWNER",
+    original,
+    createRequestId,
+  );
+  const pending = { ...first.confirmation, taskCountPreview: 4 };
+  const afterQueueChange = resolveWeeklyPlanV3BatchConfirmation(
+    pending,
+    900,
+    "OWNER",
+    [],
+    createRequestId,
+  );
+  const afterPlanChange = resolveWeeklyPlanV3BatchConfirmation(
+    pending,
+    901,
+    "OWNER",
+    [],
+    createRequestId,
+  );
+  const afterStageChange = resolveWeeklyPlanV3BatchConfirmation(
+    pending,
+    900,
+    "ASSISTANT",
+    [],
+    createRequestId,
+  );
+
+  assert.equal(afterQueueChange.confirmation, pending);
+  assert.equal(afterPlanChange.confirmation, pending);
+  assert.equal(afterStageChange.confirmation, pending);
+  assert.equal(afterQueueChange.reconciliationRequired, true);
+  assert.equal(afterPlanChange.reconciliationRequired, true);
+  assert.equal(afterStageChange.reconciliationRequired, true);
+  assert.equal(requestSequence, 1);
+  assert.deepEqual(afterQueueChange.confirmation.decisions, original);
+  assert.equal(pending.taskCountPreview, 4);
 });
 
 test("review failure classification is conservative and drafts survive server outcomes", () => {
@@ -437,6 +569,14 @@ test("review UI stays on V3 endpoints and keeps comments independent", async () 
   );
 
   assert.match(owner, /confirmWeeklyPlanOwnerBatch/);
+  assert.match(
+    owner,
+    /confirmationDecisions = pending\?\.decisions \?\? decisions/,
+  );
+  assert.match(
+    owner,
+    /pending\?\.taskCountPreview \?\? confirmationSummary\.taskCount/,
+  );
   assert.match(owner, /onPlanChange\(result\.plan\)/);
   assert.match(owner, /submitting\.current/);
   assert.doesNotMatch(

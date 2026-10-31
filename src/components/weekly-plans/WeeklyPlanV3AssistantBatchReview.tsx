@@ -29,6 +29,10 @@ type Props = {
   plan: WeeklyPlan;
   onPlanChange: (plan: WeeklyPlan) => void;
   onReload: () => Promise<void>;
+  pending: WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3AssistantBatchDecisionInput> | null;
+  onPendingChange: (
+    pending: WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3AssistantBatchDecisionInput> | null,
+  ) => void;
 };
 
 const requestId = (): string =>
@@ -38,16 +42,14 @@ export default function WeeklyPlanV3AssistantBatchReview({
   plan,
   onPlanChange,
   onReload,
+  pending,
+  onPendingChange,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.reviewWorkspace.v3Assistant",
   });
   const [draft, setDraft] = useState<WeeklyPlanV3AssistantDraft>({});
   const [confirming, setConfirming] = useState(false);
-  const [pending, setPending] =
-    useState<WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3AssistantBatchDecisionInput> | null>(
-      null,
-    );
   const [recoveryState, setRecoveryState] = useState<
     WeeklyPlanV3BatchFailureMode | "RECONCILED" | null
   >(null);
@@ -71,9 +73,10 @@ export default function WeeklyPlanV3AssistantBatchReview({
     () => buildWeeklyPlanV3AssistantBatch(plan, draft),
     [draft, plan],
   );
-  const summary = useMemo(
-    () => summarizeWeeklyPlanV3AssistantDraft(decisions),
-    [decisions],
+  const confirmationDecisions = pending?.decisions ?? decisions;
+  const confirmationSummary = useMemo(
+    () => summarizeWeeklyPlanV3AssistantDraft(confirmationDecisions),
+    [confirmationDecisions],
   );
 
   const updateDecision = (
@@ -110,10 +113,11 @@ export default function WeeklyPlanV3AssistantBatchReview({
     const resolution = resolveWeeklyPlanV3BatchConfirmation(
       pending,
       plan.id,
+      "ASSISTANT",
       decisions,
       requestId,
     );
-    setPending(resolution.confirmation);
+    onPendingChange(resolution.confirmation);
     submitting.current = true;
     setBusy(true);
     setError(null);
@@ -129,7 +133,7 @@ export default function WeeklyPlanV3AssistantBatchReview({
         clearConfirmedWeeklyPlanV3AssistantDraft(current, result.results),
       );
       setConfirming(false);
-      setPending(null);
+      onPendingChange(null);
       setRecoveryState(resolution.reconciliationRequired ? "RECONCILED" : null);
     } catch (nextError) {
       const mode = weeklyPlanV3BatchFailureMode(nextError);
@@ -137,7 +141,7 @@ export default function WeeklyPlanV3AssistantBatchReview({
         nextError instanceof ApiServiceError
           ? Object.values(nextError.validationErrors ?? {})[0]?.[0]
           : undefined;
-      if (mode !== "AMBIGUOUS") setPending(null);
+      if (mode !== "AMBIGUOUS") onPendingChange(null);
       setRecoveryState(mode);
       setError(
         validation ??
@@ -304,11 +308,27 @@ export default function WeeklyPlanV3AssistantBatchReview({
           </h3>
           <p className="mt-2 text-theme-sm text-gray-700 dark:text-gray-300">
             {t("confirmation.summary", {
-              total: pending?.decisions.length ?? summary.total,
-              accepted: summary.accepted,
-              changesRequested: summary.changesRequested,
+              total: confirmationSummary.total,
+              accepted: confirmationSummary.accepted,
+              changesRequested: confirmationSummary.changesRequested,
             })}
           </p>
+          <ul className="mt-3 space-y-1 text-theme-xs text-gray-600 dark:text-gray-300">
+            {confirmationDecisions.map((decision) => (
+              <li key={decision.assignee_id}>
+                {workflows.find(
+                  (workflow) => workflow.assignee.id === decision.assignee_id,
+                )?.assignee.name ?? `#${decision.assignee_id}`}{" "}
+                {" — "}
+                {t(`payload.${decision.decision}`)}
+                {" · "}
+                {t("confirmation.versions", {
+                  state: decision.expected_state_version,
+                  content: decision.expected_content_version,
+                })}
+              </li>
+            ))}
+          </ul>
           <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
             {t("confirmation.unselected")}
           </p>

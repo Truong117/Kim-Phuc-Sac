@@ -5,14 +5,12 @@ import { confirmWeeklyPlanOwnerBatch } from "@/services/weeklyPlanningService";
 import type {
   WeeklyPlan,
   WeeklyPlanEmployeeWorkflow,
-  WeeklyPlanV3OwnerBatchDecisionInput,
   WeeklyPlanV3OwnerDecision,
 } from "@/types/weeklyPlanning";
 import {
   resolveWeeklyPlanV3BatchConfirmation,
   weeklyPlanV3BatchFailureMode,
   type WeeklyPlanV3BatchFailureMode,
-  type WeeklyPlanV3PendingBatchConfirmation,
 } from "@/utils/weeklyPlanV3BatchConfirmation";
 import {
   buildWeeklyPlanV3OwnerBatch,
@@ -22,6 +20,7 @@ import {
   type WeeklyPlanV3OwnerDraft,
 } from "@/utils/weeklyPlanV3OwnerBatch";
 import { weeklyPlanV3EntriesByAssignee } from "@/utils/weeklyPlanV3ReviewWorkspace";
+import type { WeeklyPlanV3OwnerPendingConfirmation } from "@/utils/weeklyPlanV3ReviewWorkspace";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -29,6 +28,10 @@ type Props = {
   plan: WeeklyPlan;
   onPlanChange: (plan: WeeklyPlan) => void;
   onReload: () => Promise<void>;
+  pending: WeeklyPlanV3OwnerPendingConfirmation | null;
+  onPendingChange: (
+    pending: WeeklyPlanV3OwnerPendingConfirmation | null,
+  ) => void;
 };
 
 const requestId = (): string =>
@@ -38,16 +41,14 @@ export default function WeeklyPlanV3OwnerBatchReview({
   plan,
   onPlanChange,
   onReload,
+  pending,
+  onPendingChange,
 }: Props) {
   const { t } = useTranslation("common", {
     keyPrefix: "weeklyPlanning.reviewWorkspace.v3Owner",
   });
   const [draft, setDraft] = useState<WeeklyPlanV3OwnerDraft>({});
   const [confirming, setConfirming] = useState(false);
-  const [pending, setPending] =
-    useState<WeeklyPlanV3PendingBatchConfirmation<WeeklyPlanV3OwnerBatchDecisionInput> | null>(
-      null,
-    );
   const [recoveryState, setRecoveryState] = useState<
     WeeklyPlanV3BatchFailureMode | "RECONCILED" | null
   >(null);
@@ -81,10 +82,17 @@ export default function WeeklyPlanV3OwnerBatchReview({
     () => buildWeeklyPlanV3OwnerBatch(plan, draft),
     [draft, plan],
   );
-  const summary = useMemo(
+  const draftSummary = useMemo(
     () => summarizeWeeklyPlanV3OwnerDraft(decisions, entryCounts),
     [decisions, entryCounts],
   );
+  const confirmationDecisions = pending?.decisions ?? decisions;
+  const confirmationSummary = useMemo(
+    () => summarizeWeeklyPlanV3OwnerDraft(confirmationDecisions, entryCounts),
+    [confirmationDecisions, entryCounts],
+  );
+  const confirmationTaskCount =
+    pending?.taskCountPreview ?? confirmationSummary.taskCount;
 
   const updateDecision = (
     workflow: WeeklyPlanEmployeeWorkflow,
@@ -126,26 +134,31 @@ export default function WeeklyPlanV3OwnerBatchReview({
     const resolution = resolveWeeklyPlanV3BatchConfirmation(
       pending,
       plan.id,
+      "OWNER",
       decisions,
       requestId,
     );
-    setPending(resolution.confirmation);
+    const confirmation: WeeklyPlanV3OwnerPendingConfirmation = pending ?? {
+      ...resolution.confirmation,
+      taskCountPreview: draftSummary.taskCount,
+    };
+    onPendingChange(confirmation);
     submitting.current = true;
     setBusy(true);
     setError(null);
     setRecoveryState(null);
     try {
       const result = await confirmWeeklyPlanOwnerBatch(
-        resolution.confirmation.planId,
-        resolution.confirmation.decisions,
-        resolution.confirmation.requestId,
+        confirmation.planId,
+        confirmation.decisions,
+        confirmation.requestId,
       );
       onPlanChange(result.plan);
       setDraft((current) =>
         clearConfirmedWeeklyPlanV3OwnerDraft(current, result.results),
       );
       setConfirming(false);
-      setPending(null);
+      onPendingChange(null);
       setRecoveryState(resolution.reconciliationRequired ? "RECONCILED" : null);
     } catch (nextError) {
       const mode = weeklyPlanV3BatchFailureMode(nextError);
@@ -153,7 +166,7 @@ export default function WeeklyPlanV3OwnerBatchReview({
         nextError instanceof ApiServiceError
           ? Object.values(nextError.validationErrors ?? {})[0]?.[0]
           : undefined;
-      if (mode !== "AMBIGUOUS") setPending(null);
+      if (mode !== "AMBIGUOUS") onPendingChange(null);
       setRecoveryState(mode);
       setError(
         validation ??
@@ -339,13 +352,29 @@ export default function WeeklyPlanV3OwnerBatchReview({
           </h3>
           <p className="mt-2 text-theme-sm text-gray-700 dark:text-gray-300">
             {t("confirmation.summary", {
-              total: pending?.decisions.length ?? summary.total,
-              accepted: summary.accepted,
-              tasks: summary.taskCount,
-              changesRequested: summary.changesRequested,
-              noWorkApproved: summary.noWorkApproved,
+              total: confirmationSummary.total,
+              accepted: confirmationSummary.accepted,
+              tasks: confirmationTaskCount,
+              changesRequested: confirmationSummary.changesRequested,
+              noWorkApproved: confirmationSummary.noWorkApproved,
             })}
           </p>
+          <ul className="mt-3 space-y-1 text-theme-xs text-gray-600 dark:text-gray-300">
+            {confirmationDecisions.map((decision) => (
+              <li key={decision.assignee_id}>
+                {workflows.find(
+                  (workflow) => workflow.assignee.id === decision.assignee_id,
+                )?.assignee.name ?? `#${decision.assignee_id}`}{" "}
+                {" — "}
+                {t(`payload.${decision.decision}`)}
+                {" · "}
+                {t("confirmation.versions", {
+                  state: decision.expected_state_version,
+                  content: decision.expected_content_version,
+                })}
+              </li>
+            ))}
+          </ul>
           <p className="mt-2 text-theme-sm font-medium text-warning-700 dark:text-warning-400">
             {t("confirmation.effects")}
           </p>

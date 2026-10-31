@@ -349,5 +349,8 @@ test("V3 workspace is isolated while discussion notes and V2 rendering stay unch
   assert.match(component, /submitting\.current/);
   assert.match(component, /resolveWeeklyPlanV3BatchConfirmation/);
   assert.match(component, /resolution\.confirmation\.requestId/);
-  assert.match(component, /if \(mode !== "AMBIGUOUS"\) setPending\(null\)/);
+  assert.match(
+    component,
+    /if \(mode !== "AMBIGUOUS"\) onPendingChange\(null\)/,
+  );
 });
