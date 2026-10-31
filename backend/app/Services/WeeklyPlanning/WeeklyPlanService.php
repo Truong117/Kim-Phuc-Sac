@@ -66,6 +66,7 @@ class WeeklyPlanService
         private readonly WeeklyPlanV3AssistantEligibilityService $v3AssistantEligibility,
         private readonly WeeklyPlanV3OwnerEligibilityService $v3OwnerEligibility,
         private readonly WeeklyPlanV3RosterService $v3Rosters,
+        private readonly WeeklyPlanV3SourceReadinessService $v3SourceReadiness,
         private readonly WeeklyPlanV3SubmissionService $v3Submissions,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
@@ -238,6 +239,18 @@ class WeeklyPlanService
                 $week,
                 $workflowVersion,
             ): WeeklyPlan {
+                if ($workflowVersion === WeeklyPlanWorkflowVersion::V3) {
+                    $authorizedMembership = $this->scope->freshAuthorizedMembership(
+                        $actor,
+                        'weekly_plans.manage_draft',
+                    );
+                    if ($authorizedMembership === null
+                        || (int) $authorizedMembership->id !== (int) $membership->id
+                        || (int) $authorizedMembership->organization_id !== (int) $membership->organization_id) {
+                        throw new AccessDeniedHttpException;
+                    }
+                }
+
                 $plan = WeeklyPlan::query()->create([
                     'organization_id' => $membership->organization_id,
                     'created_by' => $actor->id,
@@ -1957,6 +1970,8 @@ class WeeklyPlanService
             : null;
         $sourceProcessingComplete = ! $isGoogleDocs
             || ($googleDocsProcessing['remaining_tab_ids'] ?? []) === [];
+        $v3SourceProcessingComplete = $v2Workflow
+            || $this->v3SourceReadiness->isComplete($plan, $googleDocsProcessing);
         $sourceWorkAvailable = ! $isGoogleDocs || ! $sourceProcessingComplete;
         $plan->setAttribute('google_docs_processing', $googleDocsProcessing);
         $plan->setAttribute('source_document', [
@@ -2170,7 +2185,7 @@ class WeeklyPlanService
                 }
             }
             $actions['can_submit'] = $v3Ready
-                && $sourceProcessingComplete
+                && $v3SourceProcessingComplete
                 && $this->scope->allows($viewer, 'weekly_plans.submit');
             $actions['can_open_review_workspace'] = (
                 $hasAssistantReviewPermission

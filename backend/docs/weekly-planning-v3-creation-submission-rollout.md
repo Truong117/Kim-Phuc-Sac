@@ -21,6 +21,14 @@ to `IN_REVIEW`.
 
 No V2 review round, Task, or notification is created during V3 submission.
 
+For V3 uploaded sources, `weekly_plans.parse_status` is the authoritative
+source-completion state. Initial submission requires `PARSED`; both
+`NEEDS_MAPPING` and `FAILED` remain non-submittable even when HR manually adds
+entries. A successfully mapped upload may be `PARSED` with zero entries, and
+that is a valid zero-work plan only when it also has an explicit nonempty
+employee roster. Google Docs completion continues to require an empty
+`remaining_tab_ids` projection.
+
 ## Controlled migration order
 
 This phase adds no schema. A target database must already have the reviewed

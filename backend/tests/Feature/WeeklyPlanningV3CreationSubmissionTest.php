@@ -4,14 +4,17 @@ namespace Tests\Feature;
 
 use App\Enums\DataScope;
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
+use App\Enums\WeeklyPlanParseStatus;
 use App\Enums\WeeklyPlanStatus;
 use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\OrganizationMembership;
 use App\Models\User;
 use App\Models\WeeklyPlan;
+use App\Services\WeeklyPlanning\WeeklyPlanFileParser;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
@@ -72,7 +75,7 @@ class WeeklyPlanningV3CreationSubmissionTest extends TestCase
 
         $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'workflow_version' => 3,
-            'file' => $this->xlsx([['Unmapped'], ['V3 source']]),
+            'file' => $this->xlsx([['Cong viec', 'Deadline']]),
         ])->assertCreated()
             ->assertJsonPath('data.workflow_version', 3)
             ->assertJsonPath('data.status', 'DRAFT');
@@ -148,6 +151,121 @@ class WeeklyPlanningV3CreationSubmissionTest extends TestCase
             1,
             $plan->events()->where('event_type', 'V3_SUBMITTED')->count(),
         );
+    }
+
+    public function test_incomplete_uploaded_source_cannot_submit_or_expose_submit_action(): void
+    {
+        config()->set('weekly_plans.workflow_v3_enabled', true);
+        [$hr] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$employee] = $this->actor([]);
+        $plan = $this->v3Plan($hr, WeeklyPlanParseStatus::NEEDS_MAPPING);
+        $this->actingAs($hr)->putJson("/api/weekly-plans/{$plan->id}/v3-roster", [
+            'assignee_ids' => [$employee->id],
+        ])->assertOk()->assertJsonPath('data.actions.can_submit', false);
+
+        foreach ([WeeklyPlanParseStatus::NEEDS_MAPPING, WeeklyPlanParseStatus::FAILED] as $status) {
+            $plan->forceFill(['parse_status' => $status])->save();
+            $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+                ->assertOk()
+                ->assertJsonPath('data.actions.can_submit', false);
+            $this->actingAs($hr)->postJson("/api/weekly-plans/{$plan->id}/submit")
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('plan');
+            $this->assertSame(WeeklyPlanStatus::DRAFT, $plan->fresh()->status);
+            $this->assertNull($plan->fresh()->submitted_at);
+        }
+
+        $this->assertDatabaseMissing('weekly_plan_events', [
+            'weekly_plan_id' => $plan->id,
+            'event_type' => 'V3_SUBMITTED',
+        ]);
+        $this->assertDatabaseCount('weekly_plan_review_decisions', 0);
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseCount('user_notifications', 0);
+    }
+
+    public function test_completing_uploaded_mapping_allows_zero_work_roster_submission(): void
+    {
+        config()->set('weekly_plans.workflow_v3_enabled', true);
+        [$hr] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$zeroWorkEmployee] = $this->actor([]);
+
+        $created = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'workflow_version' => 3,
+            'file' => $this->xlsx([['Work', 'Finish']]),
+        ])->assertCreated()
+            ->assertJsonPath('data.parse_status', 'NEEDS_MAPPING');
+        $planId = (int) $created->json('data.id');
+        $this->actingAs($hr)->putJson("/api/weekly-plans/{$planId}/v3-roster", [
+            'assignee_ids' => [$zeroWorkEmployee->id],
+        ])->assertOk()->assertJsonPath('data.actions.can_submit', false);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('plan');
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/reparse", [
+            'column_mapping' => [
+                'title' => 'Work',
+                'due_date' => 'Finish',
+            ],
+        ])->assertOk()
+            ->assertJsonPath('data.parse_status', 'PARSED')
+            ->assertJsonCount(0, 'data.entries')
+            ->assertJsonPath('data.actions.can_submit', true);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'IN_REVIEW')
+            ->assertJsonCount(1, 'data.employee_workflows');
+        $this->assertDatabaseHas('weekly_plan_employee_workflows', [
+            'weekly_plan_id' => $planId,
+            'assignee_id' => $zeroWorkEmployee->id,
+            'state' => WeeklyPlanEmployeeWorkflowState::AWAITING_ASSISTANT->value,
+        ]);
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+        $this->assertDatabaseCount('user_notifications', 0);
+    }
+
+    public function test_v3_upload_rechecks_manage_draft_authorization_before_commit(): void
+    {
+        config()->set('weekly_plans.workflow_v3_enabled', true);
+        [$hr] = $this->actor([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $this->app->bind(WeeklyPlanFileParser::class, fn () => new class extends WeeklyPlanFileParser
+        {
+            public function parse(string $path, string $extension, array $mapping = []): array
+            {
+                $parsed = parent::parse($path, $extension, $mapping);
+                $permissionId = DB::table('permissions')
+                    ->where('code', 'weekly_plans.manage_draft')
+                    ->value('id');
+                DB::table('role_permissions')
+                    ->where('permission_id', $permissionId)
+                    ->delete();
+
+                return $parsed;
+            }
+        });
+
+        $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'workflow_version' => 3,
+            'file' => $this->xlsx([['Cong viec', 'Deadline']]),
+        ])->assertForbidden();
+
+        $this->assertDatabaseCount('weekly_plans', 0);
+        $this->assertDatabaseCount('weekly_plan_events', 0);
+        $this->assertSame([], Storage::disk('local')->allFiles('weekly-plans'));
     }
 
     public function test_roster_rejects_duplicates_cross_organization_and_entries_outside_selection(): void
@@ -238,7 +356,7 @@ class WeeklyPlanningV3CreationSubmissionTest extends TestCase
 
         $created = $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'workflow_version' => 3,
-            'file' => $this->xlsx([['Unmapped'], ['End-to-end source']]),
+            'file' => $this->xlsx([['Cong viec', 'Deadline']]),
         ])->assertCreated();
         $planId = (int) $created->json('data.id');
         $this->actingAs($hr)->putJson("/api/weekly-plans/{$planId}/v3-roster", [
@@ -357,8 +475,10 @@ class WeeklyPlanningV3CreationSubmissionTest extends TestCase
         return [$user, $membership['organization_id']];
     }
 
-    private function v3Plan(User $creator): WeeklyPlan
-    {
+    private function v3Plan(
+        User $creator,
+        WeeklyPlanParseStatus $parseStatus = WeeklyPlanParseStatus::PARSED,
+    ): WeeklyPlan {
         $organizationId = (int) OrganizationMembership::query()
             ->where('user_id', $creator->id)
             ->where('is_default', true)
@@ -377,7 +497,7 @@ class WeeklyPlanningV3CreationSubmissionTest extends TestCase
             'source_mime' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'source_size' => 1,
             'source_sha256' => str_repeat('a', 64),
-            'parse_status' => 'PARSED',
+            'parse_status' => $parseStatus,
             'parse_metadata' => [],
             'uploaded_at' => now(),
         ]);

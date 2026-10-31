@@ -3,7 +3,6 @@
 namespace App\Services\WeeklyPlanning;
 
 use App\Enums\WeeklyPlanEmployeeWorkflowState;
-use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
 use App\Models\User;
 use App\Models\WeeklyPlan;
@@ -11,7 +10,6 @@ use App\Models\WeeklyPlanEmployeeWorkflow;
 use App\Models\WeeklyPlanEntry;
 use App\Models\WeeklyPlanEntryItem;
 use App\Models\WeeklyPlanEvent;
-use App\Services\WeeklyPlanning\GoogleDocs\GoogleDocsAiAssignmentService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -25,7 +23,7 @@ final class WeeklyPlanV3SubmissionService
         private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
         private readonly WeeklyPlanEmployeeWorkflowIntegrityService $integrity,
         private readonly WeeklyPlanReadinessService $readiness,
-        private readonly GoogleDocsAiAssignmentService $googleDocsAssignments,
+        private readonly WeeklyPlanV3SourceReadinessService $sourceReadiness,
     ) {}
 
     public function submit(User $actor, int $planId): void
@@ -42,7 +40,7 @@ final class WeeklyPlanV3SubmissionService
                 || $plan->submitted_by !== null) {
                 throw new ConflictHttpException('Kế hoạch V3 không còn ở trạng thái có thể gửi xét duyệt.');
             }
-            $this->assertSourceComplete($plan);
+            $this->sourceReadiness->assertComplete($plan);
 
             $workflows = WeeklyPlanEmployeeWorkflow::query()
                 ->where('weekly_plan_id', $plan->id)
@@ -117,19 +115,6 @@ final class WeeklyPlanV3SubmissionService
         $membership = $this->scope->freshAuthorizedMembership($actor, 'weekly_plans.submit');
         if ($membership === null || (int) $membership->organization_id !== (int) $plan->organization_id) {
             throw new AccessDeniedHttpException;
-        }
-    }
-
-    private function assertSourceComplete(WeeklyPlan $plan): void
-    {
-        if ($plan->source_type !== WeeklyPlanSourceType::GOOGLE_DOCS) {
-            return;
-        }
-
-        if (($this->googleDocsAssignments->processingState($plan)['remaining_tab_ids'] ?? []) !== []) {
-            throw ValidationException::withMessages([
-                'plan' => ['Vẫn còn nhóm Google Docs chưa được xử lý.'],
-            ]);
         }
     }
 }
