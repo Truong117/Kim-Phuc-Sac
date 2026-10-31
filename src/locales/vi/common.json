@@ -900,6 +900,10 @@
       "fileLabel": "File Excel hoặc Word",
       "fileHint": "Chấp nhận .xlsx hoặc .docx, tối đa 5 MB. Không hỗ trợ macro, công thức hoặc liên kết ngoài.",
       "fileRequired": "Vui lòng chọn file kế hoạch.",
+      "workflowVersionLabel": "Quy trình xét duyệt",
+      "workflowVersionV2": "V2 — Xét duyệt toàn bộ kế hoạch",
+      "workflowVersionV3": "V3 — Xét duyệt theo từng nhân viên",
+      "workflowVersionHint": "V3 chỉ áp dụng cho kế hoạch mới và không thể chuyển đổi sau khi tạo.",
       "downloadTemplate": "Tải file Excel mẫu",
       "downloading": "Đang tải...",
       "processing": "Đang đọc file...",
@@ -1106,6 +1110,16 @@
       "submit": {
         "title": "Gửi xét duyệt",
         "description": "Kiểm tra tóm tắt cuối trước khi gửi Trợ lý Giám đốc xét duyệt.",
+        "workflowVersion": "Quy trình {version}",
+        "v3Description": "Mỗi nhân viên sẽ có vòng đời xét duyệt và phát hành độc lập.",
+        "roster": {
+          "title": "Danh sách nhân viên V3",
+          "description": "Chọn rõ nhân viên thuộc kế hoạch, kể cả người không có công việc trong tuần.",
+          "hasWork": "Có công việc · bắt buộc trong danh sách",
+          "zeroWork": "Không có công việc",
+          "summary": "Đã chọn {selected} nhân viên · {zeroWork} người không có công việc",
+          "save": "Lưu danh sách"
+        },
         "action": "Gửi Trợ lý Giám đốc xét duyệt",
         "resubmitAction": "Gửi lại sau chỉnh sửa",
         "openReview": "Mở không gian xét duyệt",

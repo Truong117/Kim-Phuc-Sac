@@ -1,6 +1,7 @@
 import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
+import Select from "@/components/form/Select";
 import GoogleDocsPreviewPanel from "@/components/weekly-plans/GoogleDocsPreviewPanel";
 import Button from "@/components/ui/button/Button";
 import { ApiServiceError } from "@/services/apiClient";
@@ -18,8 +19,11 @@ import { useNavigate } from "react-router";
 export default function WeeklyPlanImport() {
   const { t } = useTranslation("common", { keyPrefix: "weeklyPlanning" });
   const navigate = useNavigate();
-  const [references, setReferences] = useState<WeeklyPlanReferences | null>(null);
+  const [references, setReferences] = useState<WeeklyPlanReferences | null>(
+    null,
+  );
   const [file, setFile] = useState<File | null>(null);
+  const [workflowVersion, setWorkflowVersion] = useState<2 | 3>(2);
   const [touched, setTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -35,7 +39,10 @@ export default function WeeklyPlanImport() {
         if (!next.actions.can_import) setError(t("errors.forbidden"));
       })
       .catch((nextError: unknown) => {
-        if (nextError instanceof DOMException && nextError.name === "AbortError") {
+        if (
+          nextError instanceof DOMException &&
+          nextError.name === "AbortError"
+        ) {
           return;
         }
         if (nextError instanceof ApiServiceError) {
@@ -87,18 +94,40 @@ export default function WeeklyPlanImport() {
 
   return (
     <>
-      <PageMeta title={t("import.metaTitle")} description={t("import.metaDescription")} />
+      <PageMeta
+        title={t("import.metaTitle")}
+        description={t("import.metaDescription")}
+      />
       <PageBreadCrumb pageTitle={t("import.title")} />
       {loading ? (
         <div className="h-80 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
       ) : (
         <div className="space-y-6">
+          {references?.actions.can_create_v3 && (
+            <ComponentCard title={t("import.workflowVersionLabel")} compact>
+              <Select
+                id="weekly-plan-workflow-version"
+                value={String(workflowVersion)}
+                options={[
+                  { value: "2", label: t("import.workflowVersionV2") },
+                  { value: "3", label: t("import.workflowVersionV3") },
+                ]}
+                onChange={(value) => setWorkflowVersion(value === "3" ? 3 : 2)}
+                hint={t("import.workflowVersionHint")}
+              />
+            </ComponentCard>
+          )}
           {references?.actions.can_import && (
             <GoogleDocsPreviewPanel
+              workflowVersion={workflowVersion}
               onImported={(plan) => navigate("/weekly-plans/" + plan.id)}
             />
           )}
-          <ComponentCard title={t("import.cardTitle")} desc={t("import.cardDescription")} compact>
+          <ComponentCard
+            title={t("import.cardTitle")}
+            desc={t("import.cardDescription")}
+            compact
+          >
             {references && (
               <p className="rounded-xl bg-kps-primary/8 px-4 py-3 text-theme-sm text-gray-700 dark:text-gray-300">
                 {t("import.period", {
@@ -108,7 +137,10 @@ export default function WeeklyPlanImport() {
               </p>
             )}
             {error && (
-              <p role="alert" className="rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400">
+              <p
+                role="alert"
+                className="rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400"
+              >
                 {error}
               </p>
             )}
@@ -122,7 +154,11 @@ export default function WeeklyPlanImport() {
                 setSaving(true);
                 setError(null);
                 try {
-                  const plan = await importWeeklyPlan(file);
+                  const plan = await importWeeklyPlan(
+                    file,
+                    {},
+                    workflowVersion,
+                  );
                   navigate("/weekly-plans/" + plan.id);
                 } catch (nextError) {
                   if (nextError instanceof ApiServiceError) {
@@ -159,7 +195,11 @@ export default function WeeklyPlanImport() {
                   }}
                   className="block w-full rounded-lg border border-gray-300 bg-white p-3 text-theme-sm text-gray-700 file:me-4 file:rounded-lg file:border-0 file:bg-kps-primary/10 file:px-4 file:py-2 file:font-semibold file:text-kps-primary hover:file:bg-kps-primary/15 focus-visible:ring-3 focus-visible:ring-kps-primary/25 focus-visible:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
                 />
-                {fileError && <p className="mt-1.5 text-theme-xs text-error-500">{fileError}</p>}
+                {fileError && (
+                  <p className="mt-1.5 text-theme-xs text-error-500">
+                    {fileError}
+                  </p>
+                )}
                 <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
                   {t("import.fileHint")}
                 </p>
@@ -171,10 +211,16 @@ export default function WeeklyPlanImport() {
                   disabled={downloading}
                   onClick={() => void downloadTemplate()}
                 >
-                  {downloading ? t("import.downloading") : t("import.downloadTemplate")}
+                  {downloading
+                    ? t("import.downloading")
+                    : t("import.downloadTemplate")}
                 </Button>
                 <div className="flex gap-3">
-                  <Button type="button" variant="outline" onClick={() => navigate("/weekly-plans")}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate("/weekly-plans")}
+                  >
                     {t("actions.cancel")}
                   </Button>
                   <Button

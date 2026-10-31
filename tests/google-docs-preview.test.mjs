@@ -201,6 +201,7 @@ test("source confirmation sends only URL, expected snapshot and idempotency key"
     document_url: validUrl,
     expected_snapshot_sha256: "a".repeat(64),
     request_id: "06c958ed-49df-4bb5-a3fe-a64380321466",
+    workflow_version: 2,
   });
   assert.equal("organization_id" in JSON.parse(calls[0].init.body), false);
   assert.equal("document_id" in JSON.parse(calls[0].init.body), false);
@@ -500,21 +501,24 @@ test("mocked authorization, validation, rate-limit and unavailable failures stay
 });
 
 test("preview UI confirms the exact snapshot without creating entries, tasks or AI runs", async () => {
-  const [panel, importPage, service, previewRequest, sourceRequest, translationsSource] =
-    await Promise.all([
-      readSource("src/components/weekly-plans/GoogleDocsPreviewPanel.tsx"),
-      readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
-      readSource("src/services/weeklyPlanningService.ts"),
-      readSource("src/services/googleDocsPreviewRequest.ts"),
-      readSource("src/services/googleDocsSourceRequest.ts"),
-      readSource("src/locales/vi/common.json"),
-    ]);
+  const [
+    panel,
+    importPage,
+    service,
+    previewRequest,
+    sourceRequest,
+    translationsSource,
+  ] = await Promise.all([
+    readSource("src/components/weekly-plans/GoogleDocsPreviewPanel.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
+    readSource("src/services/weeklyPlanningService.ts"),
+    readSource("src/services/googleDocsPreviewRequest.ts"),
+    readSource("src/services/googleDocsSourceRequest.ts"),
+    readSource("src/locales/vi/common.json"),
+  ]);
   const translations = JSON.parse(translationsSource);
 
-  assert.match(
-    importPage,
-    /references\?\.actions\.can_import && \(/,
-  );
+  assert.match(importPage, /references\?\.actions\.can_import && \(/);
   assert.match(panel, /setLoading\(true\)/);
   assert.match(panel, /setLoading\(false\)/);
   assert.match(panel, /setPreview\(null\)/);

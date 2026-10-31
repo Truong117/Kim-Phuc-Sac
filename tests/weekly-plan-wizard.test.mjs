@@ -253,6 +253,22 @@ test("wizard default inference and guards enforce source, structure, work, and s
   );
 });
 
+test("V3 permits an explicit zero-work roster to reach submit without weakening V2", () => {
+  const v3 = plan({
+    workflow_version: 3,
+    source_type: "UPLOADED_FILE",
+    entries: [],
+    source_document: { status: "UNSUPPORTED", google_docs: null },
+  });
+  const v2 = { ...v3, workflow_version: 2 };
+
+  assert.equal(inferWeeklyPlanWizardStep(v3, null), "work");
+  assert.equal(guardWeeklyPlanWizardStep("submit", v3, null), "submit");
+  assert.equal(weeklyPlanSubmissionReadiness([], true).ready, true);
+  assert.equal(inferWeeklyPlanWizardStep(v2, null), "structure");
+  assert.equal(weeklyPlanSubmissionReadiness([]).ready, false);
+});
+
 test("partial Google Docs processing blocks every downstream wizard step", () => {
   const ready = mappings([tab("VERIFIED"), tab("VERIFIED", "tab-b")]);
   const partial = plan({
@@ -459,6 +475,18 @@ test("work counts and employee groups aggregate multiple source tabs under one K
       source_document: { google_docs: { processed_tab_count: 2 } },
     }),
     { employeeCount: 1, entryCount: 2, itemCount: 5, processedTabCount: 2 },
+  );
+  assert.equal(
+    weeklyPlanWorkCounts({
+      workflow_version: 3,
+      employee_workflows: [
+        { assignee: employee },
+        { assignee: { id: 8, name: "Zero work" } },
+      ],
+      entries,
+      source_document: { google_docs: null },
+    }).employeeCount,
+    2,
   );
 });
 

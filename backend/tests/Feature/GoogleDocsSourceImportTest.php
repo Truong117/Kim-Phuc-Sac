@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\DataScope;
 use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Http\Resources\WeeklyPlanResource;
 use App\Models\Organization;
 use App\Models\OrganizationGoogleDocsFolder;
@@ -132,6 +133,34 @@ class GoogleDocsSourceImportTest extends TestCase
         $this->assertStringNotContainsString('approved_folder_registry_id', $response->getContent());
         Log::shouldNotHaveReceived('debug');
         Log::shouldNotHaveReceived('info');
+    }
+
+    public function test_google_docs_creation_explicitly_persists_v3_and_binds_version_to_idempotency(): void
+    {
+        config()->set('weekly_plans.workflow_v3_enabled', true);
+        [$hr, $organizationId] = $this->userWithManageDraft();
+        $this->approveFolder($organizationId, $hr);
+        $this->bindGoogleFakes(
+            new SourceSequenceDriveClient([$this->metadata(), $this->metadata()]),
+            new SourceGoogleDocsClient($this->document()),
+        );
+        $requestId = 'c1d777b8-2bbf-4e71-a436-f8b68934bf30';
+        $payload = $this->validPayload($requestId) + ['workflow_version' => 3];
+
+        $response = $this->actingAs($hr)
+            ->postJson('/api/weekly-plans/google-docs/import', $payload)
+            ->assertCreated()
+            ->assertJsonPath('data.workflow_version', 3)
+            ->assertJsonPath('data.status', 'DRAFT');
+
+        $plan = WeeklyPlan::query()->findOrFail((int) $response->json('data.id'));
+        $this->assertSame(WeeklyPlanWorkflowVersion::V3, $plan->workflow_version);
+
+        $this->actingAs($hr)->postJson(
+            '/api/weekly-plans/google-docs/import',
+            $this->validPayload($requestId) + ['workflow_version' => 2],
+        )->assertConflict()->assertJsonPath('code', 'GOOGLE_DOCS_REQUEST_CONFLICT');
+        $this->assertDatabaseCount('weekly_plans', 1);
     }
 
     public function test_google_source_ai_extraction_requires_completed_mappings_before_the_gateway(): void
@@ -422,6 +451,15 @@ class GoogleDocsSourceImportTest extends TestCase
             )
             ->assertCreated()
             ->assertJsonPath('data.id', fn ($id): bool => $id === $concurrentPlan?->id);
+
+        config()->set('weekly_plans.workflow_v3_enabled', true);
+        $this->actingAs($hr)
+            ->postJson(
+                '/api/weekly-plans/google-docs/import',
+                $this->validPayload($requestId) + ['workflow_version' => 3],
+            )
+            ->assertConflict()
+            ->assertJsonPath('code', 'GOOGLE_DOCS_REQUEST_CONFLICT');
 
         $this->assertSame(2, $drive->calls);
         $this->assertSame(1, $docs->calls);

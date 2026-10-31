@@ -356,7 +356,7 @@ export type WeeklyPlan = {
   submitted_at: string | null;
   approved_at: string | null;
   published_at: string | null;
-  workflow_version?: 3;
+  workflow_version?: 2 | 3;
   employee_workflows?: WeeklyPlanEmployeeWorkflow[];
   publication_summary?: WeeklyPlanPublicationSummary;
   actions: WeeklyPlanActions;
@@ -470,7 +470,7 @@ export type WeeklyPlanListResponse = {
 export type WeeklyPlanReferences = {
   next_week: { start: string; end: string };
   employees: WeeklyPlanEmployee[];
-  actions: { can_import: boolean };
+  actions: { can_import: boolean; can_create_v3: boolean };
 };
 
 export type WeeklyPlanGoogleDocsSourceGroup = {

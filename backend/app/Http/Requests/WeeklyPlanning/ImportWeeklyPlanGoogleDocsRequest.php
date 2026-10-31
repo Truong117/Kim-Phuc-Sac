@@ -31,6 +31,7 @@ class ImportWeeklyPlanGoogleDocsRequest extends FormRequest
             ],
             'expected_snapshot_sha256' => ['required', 'string', 'regex:/\A[a-f0-9]{64}\z/'],
             'request_id' => ['required', 'uuid'],
+            'workflow_version' => ['sometimes', 'integer', 'in:2,3'],
             'organization_id' => ['prohibited'],
             'user_id' => ['prohibited'],
             'document_id' => ['prohibited'],
@@ -42,5 +43,10 @@ class ImportWeeklyPlanGoogleDocsRequest extends FormRequest
     public function documentUrl(): string
     {
         return (string) $this->validated('document_url');
+    }
+
+    public function workflowVersion(): int
+    {
+        return (int) $this->validated('workflow_version', 2);
     }
 }

@@ -62,6 +62,45 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/apply/);
   assert.match(service, /\/source\/group/);
   assert.match(service, /\/source\/ai-extract/);
+  assert.match(service, /workflow_version/);
+  assert.match(service, /\/v3-roster/);
+});
+
+test("V3 creation and roster controls are explicit and remain feature-gated", async () => {
+  const [importPage, submitPage, types, translationsSource] = await Promise.all(
+    [
+      readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+      readSource("src/types/weeklyPlanning.ts"),
+      readSource("src/locales/vi/common.json"),
+    ],
+  );
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.match(importPage, /actions\.can_create_v3/);
+  assert.match(importPage, /workflowVersionV2/);
+  assert.match(importPage, /workflowVersionV3/);
+  assert.match(
+    importPage,
+    /importWeeklyPlan\(\s*file,\s*\{\},\s*workflowVersion,\s*\)/s,
+  );
+  const versionSelector = importPage.indexOf(
+    'id="weekly-plan-workflow-version"',
+  );
+  assert.ok(versionSelector >= 0);
+  assert.ok(versionSelector < importPage.indexOf("<GoogleDocsPreviewPanel"));
+  assert.ok(versionSelector < importPage.indexOf("importWeeklyPlan("));
+  assert.match(submitPage, /updateWeeklyPlanV3Roster/);
+  assert.match(submitPage, /plan\.workflow_version === 3/);
+  assert.match(submitPage, /submit\.roster\.zeroWork/);
+  assert.match(submitPage, /hasUnsavedRosterChanges/);
+  assert.match(
+    submitPage,
+    /plan\.actions\.can_submit\s*&&\s*\(!isV3Draft \|\| !hasUnsavedRosterChanges\)/,
+  );
+  assert.match(types, /can_create_v3:\s*boolean/);
+  assert.equal(copy.import.workflowVersionV3.includes("V3"), true);
+  assert.equal(copy.wizard.submit.roster.save, "Lưu danh sách");
 });
 
 test("stage reviewers receive direct list navigation while active labels stay action-specific", async () => {

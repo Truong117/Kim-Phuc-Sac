@@ -295,7 +295,7 @@ class WeeklyPlanningV3ReadProjectionTest extends TestCase
         $this->workflow($plan, $employee, WeeklyPlanEmployeeWorkflowState::HR_CORRECTION);
     }
 
-    public function test_v2_detail_contract_is_unchanged_and_import_cannot_create_v3(): void
+    public function test_v2_detail_contract_is_unchanged_and_disabled_v3_import_is_rejected(): void
     {
         [$hr, $organizationId] = $this->actor([
             'weekly_plans.view',
@@ -311,19 +311,16 @@ class WeeklyPlanningV3ReadProjectionTest extends TestCase
             ->assertJsonMissingPath('data.employee_workflows')
             ->assertJsonMissingPath('data.publication_summary');
 
-        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+        $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'workflow_version' => 3,
             'file' => $this->xlsx([
                 ['Unmapped column'],
                 ['V2 remains the import default'],
             ]),
-        ])->assertCreated()
-            ->assertJsonMissingPath('data.workflow_version')
-            ->assertJsonMissingPath('data.employee_workflows')
-            ->assertJsonMissingPath('data.publication_summary');
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors('workflow_version');
 
-        $imported = WeeklyPlan::query()->findOrFail((int) $response->json('data.id'));
-        $this->assertSame(WeeklyPlanWorkflowVersion::V2, $imported->workflow_version);
+        $this->assertSame(1, WeeklyPlan::query()->count());
         $this->assertDatabaseCount('weekly_plan_employee_workflows', 0);
     }
 

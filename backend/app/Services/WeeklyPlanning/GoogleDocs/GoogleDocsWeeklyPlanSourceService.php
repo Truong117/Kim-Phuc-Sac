@@ -5,6 +5,7 @@ namespace App\Services\WeeklyPlanning\GoogleDocs;
 use App\Enums\WeeklyPlanParseStatus;
 use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use App\Models\OrganizationGoogleDocsFolder;
 use App\Models\User;
 use App\Models\WeeklyPlan;
@@ -12,6 +13,7 @@ use App\Models\WeeklyPlanEvent;
 use App\Models\WeeklyPlanGoogleDocsSource;
 use App\Services\WeeklyPlanning\WeeklyPlanClock;
 use App\Services\WeeklyPlanning\WeeklyPlanScopeService;
+use App\Services\WeeklyPlanning\WeeklyPlanWorkflowVersionGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -26,6 +28,7 @@ final class GoogleDocsWeeklyPlanSourceService
         private readonly WeeklyPlanClock $clock,
         private readonly GoogleDocsPreviewService $previews,
         private readonly GoogleDocsSnapshotValidator $snapshots,
+        private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
     ) {}
 
     public function confirm(
@@ -33,6 +36,7 @@ final class GoogleDocsWeeklyPlanSourceService
         string $documentUrl,
         string $expectedSnapshotSha256,
         string $requestId,
+        int $requestedWorkflowVersion = 2,
     ): WeeklyPlan {
         $membership = $this->scope->freshAuthorizedMembership(
             $actor,
@@ -43,11 +47,21 @@ final class GoogleDocsWeeklyPlanSourceService
         }
 
         $organizationId = (int) $membership->organization_id;
+        $workflowVersion = $this->workflowVersions->creationVersion($requestedWorkflowVersion);
         $documentId = GoogleDocsDocumentReference::documentIdFromUrl($documentUrl);
-        $payloadSha256 = hash('sha256', $documentId.'|'.$expectedSnapshotSha256);
+        $legacyPayloadSha256 = hash('sha256', $documentId.'|'.$expectedSnapshotSha256);
+        $payloadSha256 = hash(
+            'sha256',
+            $documentId.'|'.$expectedSnapshotSha256.'|'.$workflowVersion->value,
+        );
         $existing = $this->existingRequest($organizationId, $requestId);
         if ($existing !== null) {
-            return $this->resolveIdempotentPlan($existing, $payloadSha256);
+            return $this->resolveIdempotentPlan(
+                $existing,
+                $payloadSha256,
+                $legacyPayloadSha256,
+                $workflowVersion,
+            );
         }
 
         $week = $this->clock->nextWeek();
@@ -80,11 +94,13 @@ final class GoogleDocsWeeklyPlanSourceService
                 $documentId,
                 $expectedSnapshotSha256,
                 $organizationId,
+                $legacyPayloadSha256,
                 $payloadSha256,
                 $requestId,
                 $snapshot,
                 $validated,
                 $week,
+                $workflowVersion,
             ): WeeklyPlan {
                 // Google calls may take long enough for membership or role
                 // grants to change. Re-read both immediately before any write.
@@ -96,7 +112,12 @@ final class GoogleDocsWeeklyPlanSourceService
                     ->lockForUpdate()
                     ->first();
                 if ($existing !== null) {
-                    return $this->resolveIdempotentPlan($existing, $payloadSha256);
+                    return $this->resolveIdempotentPlan(
+                        $existing,
+                        $payloadSha256,
+                        $legacyPayloadSha256,
+                        $workflowVersion,
+                    );
                 }
 
                 $folder = OrganizationGoogleDocsFolder::query()
@@ -121,7 +142,12 @@ final class GoogleDocsWeeklyPlanSourceService
                     ->where('request_id', $requestId)
                     ->first();
                 if ($existing !== null) {
-                    return $this->resolveIdempotentPlan($existing, $payloadSha256);
+                    return $this->resolveIdempotentPlan(
+                        $existing,
+                        $payloadSha256,
+                        $legacyPayloadSha256,
+                        $workflowVersion,
+                    );
                 }
 
                 if (WeeklyPlan::query()
@@ -142,6 +168,7 @@ final class GoogleDocsWeeklyPlanSourceService
                     'week_start' => $week['start'],
                     'week_end' => $week['end'],
                     'status' => WeeklyPlanStatus::DRAFT,
+                    'workflow_version' => $workflowVersion,
                     'source_type' => WeeklyPlanSourceType::GOOGLE_DOCS,
                     'source_disk' => null,
                     'source_path' => null,
@@ -210,7 +237,12 @@ final class GoogleDocsWeeklyPlanSourceService
         } catch (QueryException $exception) {
             $existing = $this->existingRequest($organizationId, $requestId);
             if ($existing !== null) {
-                return $this->resolveIdempotentPlan($existing, $payloadSha256);
+                return $this->resolveIdempotentPlan(
+                    $existing,
+                    $payloadSha256,
+                    $legacyPayloadSha256,
+                    $workflowVersion,
+                );
             }
             if ($this->planForWeekExists($organizationId, $week['start'])) {
                 throw $this->planExists($exception);
@@ -231,8 +263,15 @@ final class GoogleDocsWeeklyPlanSourceService
     private function resolveIdempotentPlan(
         WeeklyPlanGoogleDocsSource $source,
         string $payloadSha256,
+        string $legacyPayloadSha256,
+        WeeklyPlanWorkflowVersion $requestedWorkflowVersion,
     ): WeeklyPlan {
-        if (! hash_equals($source->request_payload_sha256, $payloadSha256)) {
+        $plan = $source->plan()->firstOrFail();
+        $legacyV2Replay = $requestedWorkflowVersion === WeeklyPlanWorkflowVersion::V2
+            && $plan->workflow_version === WeeklyPlanWorkflowVersion::V2
+            && hash_equals($source->request_payload_sha256, $legacyPayloadSha256);
+        if (! hash_equals($source->request_payload_sha256, $payloadSha256)
+            && ! $legacyV2Replay) {
             throw new GoogleDocsSourceException(
                 'GOOGLE_DOCS_REQUEST_CONFLICT',
                 409,
@@ -240,7 +279,7 @@ final class GoogleDocsWeeklyPlanSourceService
             );
         }
 
-        return $source->plan()->firstOrFail();
+        return $plan;
     }
 
     private function planForWeekExists(int $organizationId, string $weekStart): bool

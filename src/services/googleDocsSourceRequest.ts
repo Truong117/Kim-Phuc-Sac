@@ -29,6 +29,7 @@ export const requestGoogleDocsSource = async (
   documentUrl: string,
   expectedSnapshotSha256: string,
   requestId: string,
+  workflowVersion: 2 | 3 = 2,
   signal?: AbortSignal,
 ): Promise<WeeklyPlan> => {
   const response = await request<GoogleDocsSourceResponse>(
@@ -39,6 +40,7 @@ export const requestGoogleDocsSource = async (
         document_url: documentUrl.trim(),
         expected_snapshot_sha256: expectedSnapshotSha256,
         request_id: requestId,
+        workflow_version: workflowVersion,
       }),
       signal,
     },

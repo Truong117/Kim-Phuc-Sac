@@ -65,6 +65,9 @@ class WeeklyPlanService
         private readonly WeeklyPlanV3ProjectionService $v3Projections,
         private readonly WeeklyPlanV3AssistantEligibilityService $v3AssistantEligibility,
         private readonly WeeklyPlanV3OwnerEligibilityService $v3OwnerEligibility,
+        private readonly WeeklyPlanV3RosterService $v3Rosters,
+        private readonly WeeklyPlanV3SourceReadinessService $v3SourceReadiness,
+        private readonly WeeklyPlanV3SubmissionService $v3Submissions,
         private readonly WeeklyPlanTaskExtractionService $taskExtraction,
         private readonly GoogleDocsAiAssignmentService $googleDocsAiAssignments,
     ) {}
@@ -98,7 +101,7 @@ class WeeklyPlanService
                     && $hasOwnerReviewPermission
                     && $this->v3OwnerEligibility->planAllowsReview($plan);
                 $plan->setAttribute('actions', [
-                    'can_delete' => $v2Workflow
+                    'can_delete' => ($v2Workflow || $this->workflowVersions->v3Enabled())
                         && $canManageDrafts
                         && $plan->status === WeeklyPlanStatus::DRAFT,
                     'can_assistant_review' => $v2Workflow
@@ -127,6 +130,7 @@ class WeeklyPlanService
     public function references(User $viewer): array
     {
         $membership = $this->membershipOrFail($viewer);
+        $canImport = $this->scope->allows($viewer, 'weekly_plans.manage_draft');
         $employees = OrganizationMembership::query()
             ->where('organization_id', $membership->organization_id)
             ->where('is_default', true)
@@ -149,7 +153,8 @@ class WeeklyPlanService
             'next_week' => $this->clock->nextWeek(),
             'employees' => $employees,
             'actions' => [
-                'can_import' => $this->scope->allows($viewer, 'weekly_plans.manage_draft'),
+                'can_import' => $canImport,
+                'can_create_v3' => $canImport && $this->workflowVersions->v3Enabled(),
             ],
         ];
     }
@@ -166,9 +171,14 @@ class WeeklyPlanService
     }
 
     /** @param array<string, string> $mapping */
-    public function import(User $actor, UploadedFile $file, array $mapping): WeeklyPlan
-    {
+    public function import(
+        User $actor,
+        UploadedFile $file,
+        array $mapping,
+        int $requestedWorkflowVersion = WeeklyPlanWorkflowVersion::V2->value,
+    ): WeeklyPlan {
         $this->assertPermission($actor, 'weekly_plans.manage_draft');
+        $workflowVersion = $this->workflowVersions->creationVersion($requestedWorkflowVersion);
         $membership = $this->membershipOrFail($actor);
         $extension = mb_strtolower($file->getClientOriginalExtension());
         $mime = (string) $file->getMimeType();
@@ -227,13 +237,27 @@ class WeeklyPlanService
                 $path,
                 $storedPath,
                 $week,
+                $workflowVersion,
             ): WeeklyPlan {
+                if ($workflowVersion === WeeklyPlanWorkflowVersion::V3) {
+                    $authorizedMembership = $this->scope->freshAuthorizedMembership(
+                        $actor,
+                        'weekly_plans.manage_draft',
+                    );
+                    if ($authorizedMembership === null
+                        || (int) $authorizedMembership->id !== (int) $membership->id
+                        || (int) $authorizedMembership->organization_id !== (int) $membership->organization_id) {
+                        throw new AccessDeniedHttpException;
+                    }
+                }
+
                 $plan = WeeklyPlan::query()->create([
                     'organization_id' => $membership->organization_id,
                     'created_by' => $actor->id,
                     'week_start' => $week['start'],
                     'week_end' => $week['end'],
                     'status' => WeeklyPlanStatus::DRAFT,
+                    'workflow_version' => $workflowVersion,
                     'source_type' => WeeklyPlanSourceType::UPLOADED_FILE,
                     'source_disk' => $disk,
                     'source_path' => $storedPath,
@@ -656,6 +680,7 @@ class WeeklyPlanService
                 $attributes['source_origin'] = 'DOCUMENT_PASSAGES';
                 $attributes['source_passage_ids'] = $sourcePassageIds;
                 $prepared = $this->entryContent->prepareEntry($locked, $attributes);
+                $this->assertV3RosterContainsAssignee($locked, $prepared['assignee_id'] ?? null);
                 if ($prepared['validation_errors'] !== []) {
                     $validationErrors['entries.'.$index] = $prepared['validation_errors'];
                 }
@@ -981,7 +1006,7 @@ class WeeklyPlanService
 
         DB::transaction(function () use ($actor, $attributes, $entryId, $plan): void {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
-            $this->workflowVersions->assertV2($locked);
+            $this->assertEntryEditingAllowed($locked);
             $isDraftEditor = $this->scope->allows($actor, 'weekly_plans.manage_draft')
                 && in_array($locked->status, self::EDITABLE_STATUSES, true);
             $isCorrectionEditor = $this->scope->allows($actor, 'weekly_plans.manage_draft')
@@ -991,6 +1016,10 @@ class WeeklyPlanService
 
             if (! $isDraftEditor && ! $isCorrectionEditor && ! $isReviewer) {
                 throw new ConflictHttpException('Kế hoạch không ở trạng thái có thể xét duyệt.');
+            }
+            if ($locked->workflow_version === WeeklyPlanWorkflowVersion::V3
+                && (! $isDraftEditor || $locked->status !== WeeklyPlanStatus::DRAFT)) {
+                throw new ConflictHttpException('Chỉ có thể chỉnh sửa nội dung V3 trong bản nháp.');
             }
             $entry = $locked->entries()->whereKey($entryId)->lockForUpdate()->firstOrFail();
             if ($isCorrectionEditor) {
@@ -1015,6 +1044,7 @@ class WeeklyPlanService
                 $locked,
                 $attributes + ['source_row' => $entry->source_row],
             );
+            $this->assertV3RosterContainsAssignee($locked, $prepared['assignee_id'] ?? null);
             $entry->forceFill($prepared)->save();
             if ($hasItems) {
                 $parentSourceIds = $entry->sourcePassages()->pluck('weekly_plan_source_passages.id')->all();
@@ -1076,7 +1106,11 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
                 ->lockForUpdate()
                 ->findOrFail($planId);
-            $this->workflowVersions->assertV2($plan);
+            if ($plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+                $this->workflowVersions->assertV3Enabled($plan);
+            } else {
+                $this->workflowVersions->assertV2($plan);
+            }
 
             if ($plan->status !== WeeklyPlanStatus::DRAFT) {
                 throw new ConflictHttpException('Chỉ có thể đặt lại kế hoạch đang ở trạng thái nháp.');
@@ -1115,7 +1149,11 @@ class WeeklyPlanService
             $plan = $this->scope->queryFor($actor, 'weekly_plans.manage_draft')
                 ->lockForUpdate()
                 ->findOrFail($planId);
-            $this->workflowVersions->assertV2($plan);
+            if ($plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+                $this->workflowVersions->assertV3Enabled($plan);
+            } else {
+                $this->workflowVersions->assertV2($plan);
+            }
 
             if ($plan->status !== WeeklyPlanStatus::DRAFT) {
                 throw new ConflictHttpException('Chỉ có thể xóa kế hoạch đang ở trạng thái nháp.');
@@ -1159,6 +1197,13 @@ class WeeklyPlanService
     public function submit(User $actor, int $planId): WeeklyPlan
     {
         $this->assertPermission($actor, 'weekly_plans.submit');
+        $candidate = $this->scope->queryFor($actor, 'weekly_plans.submit')->findOrFail($planId);
+        if ($candidate->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+            $this->v3Submissions->submit($actor, $planId);
+
+            return $this->findVisible($actor, $planId);
+        }
+
         DB::transaction(function () use ($actor, $planId): void {
             $plan = $this->scope->queryFor($actor, 'weekly_plans.submit')
                 ->lockForUpdate()
@@ -1186,6 +1231,14 @@ class WeeklyPlanService
                 $this->reviewWorkflow->startAssistantReview($plan, $actor);
             }
         });
+
+        return $this->findVisible($actor, $planId);
+    }
+
+    /** @param list<int> $assigneeIds */
+    public function updateV3Roster(User $actor, int $planId, array $assigneeIds): WeeklyPlan
+    {
+        $this->v3Rosters->update($actor, $planId, $assigneeIds);
 
         return $this->findVisible($actor, $planId);
     }
@@ -1388,9 +1441,9 @@ class WeeklyPlanService
     {
         $items = $attributes['items'] ?? [];
         unset($attributes['items']);
-        $entry = $plan->entries()->create(
-            $this->prepareEntry($plan, $attributes) + ['sort_order' => $sortOrder],
-        );
+        $preparedEntry = $this->prepareEntry($plan, $attributes);
+        $this->assertV3RosterContainsAssignee($plan, $preparedEntry['assignee_id'] ?? null);
+        $entry = $plan->entries()->create($preparedEntry + ['sort_order' => $sortOrder]);
         $validationErrors = [];
         $preparedItems = $this->prepareItems($items, [], false, 'items', $validationErrors);
         if ($validationErrors !== []) {
@@ -1520,6 +1573,23 @@ class WeeklyPlanService
         return $date !== false && $date->format('Y-m-d') === $value ? $value : null;
     }
 
+    private function assertV3RosterContainsAssignee(
+        WeeklyPlan $plan,
+        mixed $assigneeId,
+    ): void {
+        if ($plan->workflow_version !== WeeklyPlanWorkflowVersion::V3
+            || ! $plan->employeeWorkflows()->exists()) {
+            return;
+        }
+
+        if (! is_numeric($assigneeId)
+            || ! $plan->employeeWorkflows()->where('assignee_id', (int) $assigneeId)->exists()) {
+            throw ValidationException::withMessages([
+                'assignee_id' => ['Nhân viên phải thuộc danh sách V3 đã chọn.'],
+            ]);
+        }
+    }
+
     private function editablePlan(User $actor, int $planId): WeeklyPlan
     {
         $this->assertPermission($actor, 'weekly_plans.manage_draft');
@@ -1540,6 +1610,15 @@ class WeeklyPlanService
 
     private function assertEditable(WeeklyPlan $plan): void
     {
+        if ($plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+            $this->workflowVersions->assertV3Enabled($plan);
+            if ($plan->status !== WeeklyPlanStatus::DRAFT) {
+                throw new ConflictHttpException('Kế hoạch V3 không còn ở trạng thái có thể chỉnh sửa.');
+            }
+
+            return;
+        }
+
         $this->workflowVersions->assertV2($plan);
 
         if (! in_array($plan->status, self::EDITABLE_STATUSES, true)) {
@@ -1549,6 +1628,15 @@ class WeeklyPlanService
 
     private function assertEntryEditingAllowed(WeeklyPlan $plan): void
     {
+        if ($plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+            $this->workflowVersions->assertV3Enabled($plan);
+            if ($plan->status !== WeeklyPlanStatus::DRAFT) {
+                throw new ConflictHttpException('Kế hoạch V3 không còn ở trạng thái có thể chỉnh sửa.');
+            }
+
+            return;
+        }
+
         $this->workflowVersions->assertV2($plan);
 
         if (in_array($plan->status, self::EDITABLE_STATUSES, true)
@@ -1596,6 +1684,10 @@ class WeeklyPlanService
 
     private function syncReviews(WeeklyPlan $plan): void
     {
+        if ($plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
+            return;
+        }
+
         // WeeklyPlan::entries() has a presentation order. Do not inherit that
         // ORDER BY in this DISTINCT projection: MySQL/TiDB rejects ordering by
         // sort_order when only assignee_id is selected.
@@ -1773,7 +1865,7 @@ class WeeklyPlanService
 
     private function resetEmployeeReview(WeeklyPlan $plan, ?int $assigneeId): void
     {
-        if ($assigneeId === null) {
+        if ($assigneeId === null || $plan->workflow_version === WeeklyPlanWorkflowVersion::V3) {
             return;
         }
         $plan->employeeReviews()->where('assignee_id', $assigneeId)->update([
@@ -1878,6 +1970,8 @@ class WeeklyPlanService
             : null;
         $sourceProcessingComplete = ! $isGoogleDocs
             || ($googleDocsProcessing['remaining_tab_ids'] ?? []) === [];
+        $v3SourceProcessingComplete = $v2Workflow
+            || $this->v3SourceReadiness->isComplete($plan, $googleDocsProcessing);
         $sourceWorkAvailable = ! $isGoogleDocs || ! $sourceProcessingComplete;
         $plan->setAttribute('google_docs_processing', $googleDocsProcessing);
         $plan->setAttribute('source_document', [
@@ -2058,11 +2152,41 @@ class WeeklyPlanService
         ];
 
         if (! $v2Workflow) {
+            $v3DraftEnabled = $this->workflowVersions->v3Enabled()
+                && $plan->status === WeeklyPlanStatus::DRAFT;
+            $v3RosterIds = $plan->employeeWorkflows()
+                ->pluck('assignee_id')
+                ->map(fn (mixed $id): int => (int) $id);
+            $v3EntryAssigneeIds = $plan->entries
+                ->pluck('assignee_id')
+                ->map(fn (mixed $id): ?int => $id === null ? null : (int) $id);
+            $v3Ready = $v3DraftEnabled
+                && $v3RosterIds->isNotEmpty()
+                && ! $v3EntryAssigneeIds->contains(null)
+                && $v3EntryAssigneeIds->filter()->diff($v3RosterIds)->isEmpty()
+                && $this->planReadiness->evaluateCorrectionResubmission($plan)['ready'];
+            $draftActions = [
+                'can_edit',
+                'can_reset',
+                'can_delete',
+                'can_analyze',
+                'can_extract_source',
+                'can_replace_source',
+                'can_apply_source',
+                'can_group_source',
+                'can_ai_extract_source',
+                'can_ai_extract_selected_source',
+                'can_manage_google_docs_mappings',
+            ];
             foreach (array_keys($actions) as $action) {
-                if ($action !== 'can_comment') {
+                if ($action !== 'can_comment'
+                    && (! $v3DraftEnabled || ! in_array($action, $draftActions, true))) {
                     $actions[$action] = false;
                 }
             }
+            $actions['can_submit'] = $v3Ready
+                && $v3SourceProcessingComplete
+                && $this->scope->allows($viewer, 'weekly_plans.submit');
             $actions['can_open_review_workspace'] = (
                 $hasAssistantReviewPermission
                 && $this->v3AssistantEligibility->planAllowsReview($plan)

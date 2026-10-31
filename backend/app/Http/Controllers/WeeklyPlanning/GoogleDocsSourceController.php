@@ -28,6 +28,7 @@ class GoogleDocsSourceController extends Controller
                 $request->documentUrl(),
                 (string) $request->validated('expected_snapshot_sha256'),
                 (string) $request->validated('request_id'),
+                $request->workflowVersion(),
             );
 
             return (new WeeklyPlanResource(

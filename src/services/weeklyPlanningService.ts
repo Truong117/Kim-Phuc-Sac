@@ -71,6 +71,7 @@ export const importWeeklyPlanGoogleDocs = async (
   documentUrl: string,
   expectedSnapshotSha256: string,
   requestId: string,
+  workflowVersion: 2 | 3 = 2,
   signal?: AbortSignal,
 ): Promise<WeeklyPlan> => {
   return requestGoogleDocsSource(
@@ -78,6 +79,7 @@ export const importWeeklyPlanGoogleDocs = async (
     documentUrl,
     expectedSnapshotSha256,
     requestId,
+    workflowVersion,
     signal,
   );
 };
@@ -133,15 +135,31 @@ export const updateWeeklyPlanGoogleDocsEmployeeMappingsBatch = async (
 export const importWeeklyPlan = async (
   file: File,
   mapping: Record<string, string> = {},
+  workflowVersion: 2 | 3 = 2,
 ): Promise<WeeklyPlan> => {
   const body = new FormData();
   body.append("file", file);
+  body.append("workflow_version", String(workflowVersion));
   Object.entries(mapping).forEach(([key, value]) => {
     if (value) body.append("column_mapping[" + key + "]", value);
   });
   const response = await apiRequest<WeeklyPlanResponse>(
     "/api/weekly-plans/import",
     { method: "POST", body },
+  );
+  return response.data;
+};
+
+export const updateWeeklyPlanV3Roster = async (
+  id: number,
+  assigneeIds: number[],
+): Promise<WeeklyPlan> => {
+  const response = await apiRequest<WeeklyPlanResponse>(
+    `/api/weekly-plans/${id}/v3-roster`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ assignee_ids: assigneeIds }),
+    },
   );
   return response.data;
 };
