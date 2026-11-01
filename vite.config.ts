@@ -20,20 +20,6 @@ export default defineConfig(({ mode }) => {
       },
     },
     plugins: [
-      {
-        name: "kps-release-metadata",
-        generateBundle() {
-          const sha = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.GITHUB_SHA;
-          this.emitFile({
-            type: "asset",
-            fileName: "release.json",
-            source: JSON.stringify({
-              sha: sha && /^[a-f0-9]{40}$/.test(sha) ? sha : null,
-              environment: process.env.VITE_KPS_ENVIRONMENT ?? "development",
-            }),
-          });
-        },
-      },
       react(),
       svgr({
         svgrOptions: {

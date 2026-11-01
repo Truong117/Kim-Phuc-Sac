@@ -1150,7 +1150,7 @@ if (realpath((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) !== __FILE__) {
 $mode = incrementalRequiredEnvironment('KPS_STAGING_INCREMENTAL_MODE');
 $migrationFile = incrementalRequiredEnvironment('KPS_STAGING_INCREMENTAL_MIGRATION');
 
-if (! in_array($mode, ['status', 'plan', 'preflight', 'postflight', 'release'], true)) {
+if (! in_array($mode, ['status', 'plan', 'preflight', 'postflight'], true)) {
     incrementalFinish(['status' => 'FAIL', 'reason' => 'unsupported_mode'], 2);
 }
 
@@ -1454,9 +1454,7 @@ $state = [
     'uploaded_file_plan_count' => $uploadedFilePlanCount,
 ];
 
-if ($mode === 'release') {
-    $violations = StagingIncrementalMigrationPlan::releaseViolations($state);
-} elseif ($mode === 'postflight') {
+if ($mode === 'postflight') {
     $expectedWeeklyPlanCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_COUNT');
     $expectedWeeklyPlanIdFingerprint = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_ID_FINGERPRINT');
     $expectedWeeklyPlanEntryCount = incrementalRequiredEnvironment('KPS_STAGING_EXPECTED_WEEKLY_PLAN_ENTRY_COUNT');
