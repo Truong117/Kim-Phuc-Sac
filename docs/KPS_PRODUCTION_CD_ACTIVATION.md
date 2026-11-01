@@ -2,7 +2,7 @@
 
 ## Current safe state
 
-This is an **opt-in manual Production release pipeline**, not an unattended
+This is an **opt-in merge-triggered Production release pipeline**, not an unattended
 database migrator. It is deliberately unavailable until merged to the protected
 main branch, the **production** GitHub Environment is approved/configured, and
 the reviewed baseline and recovery gate is complete.
@@ -16,9 +16,13 @@ the reviewed baseline and recovery gate is complete.
   independent Production identity/ledger/schema, current backend/frontend SHA,
   business smoke and recovery evidence have been recorded and reviewed.
   `RISK_ACCEPTED_NOT_VERIFIED` is **not** a successful restore drill.
-- The workflow requires exact `main` HEAD and operator confirmation. It can
-  only be started manually via `workflow_dispatch`; merge to main alone must
-  not start it.
+- Push to `main` automatically starts CI. **Production deploy is skipped** until
+  repository variable `PRODUCTION_CD_ENABLED=true` is explicitly armed. After
+  activation, only an exact merged `staging → main` PR SHA can enter the guarded
+  deployment job; direct pushes and hotfix merges do not auto-deploy.
+- The protected GitHub Environment still requires operator approval before
+  credentials are made available. Manual `workflow_dispatch` additionally
+  requires exact `main` SHA and typed confirmation.
 - Render Free is preserved. Neither Pre-Deploy Command nor background worker
   nor maintenance mode is required; automatic migration/rollback never occurs.
 
@@ -47,12 +51,15 @@ the reviewed baseline and recovery gate is complete.
      only after validation of that version). No credentials in chat or source.
    - Render API key must be scoped to the existing Production workspace/service.
      Do not pass DB root, APP_KEY or any AI keys to Actions.
-5. Refresh `deployment/production-baseline.json` in a **reviewed PR** only
+5. Leave repository Actions variable `PRODUCTION_CD_ENABLED` unset until
+   the required-reviewer Environment, secrets and rehearsals actually PASS.
+   Set it to `true` only in a separate, explicit activation step.
+6. Refresh `deployment/production-baseline.json` in a **reviewed PR** only
    with actual evidence. Confirm current migration ledger 22/22, schema and
    P0 business data; document backup and independent restore result or leave
    the gate blocked. No unilateral `verified=true` based solely on source
    files or row counts.
-6. In staging first, verify the same build/release metadata, health and
+7. In staging first, verify the same build/release metadata, health and
    same-origin proxy routes using the existing Phase 1 coordinator. Test a
    failure before backend deploy and a failure between backend and frontend.
    Explicitly rehearse removing the retained Git lock only after both
@@ -60,14 +67,15 @@ the reviewed baseline and recovery gate is complete.
 
 ## Release procedure
 
-1. Merge reviewed changes through the branch rules; wait for all checks.
-   Ensure schema changes and DB migrations are already applied and verified
-   separately, or stop.
-2. GitHub → **Actions → Production release (manual, ordered) → Run workflow**,
-   select `main`, paste its full 40-character commit SHA, and enter
-   `DEPLOY_KPS_PRODUCTION`. Approve the protected Environment review after
-   checking the candidate, backup, P0, and expected service identities.
-3. Workflow re-runs CI; checks baseline and pinned migration policy; verifies
+1. Merge reviewed changes through the branch rules. **A staging-to-main PR
+   merge automatically triggers the Production CI workflow.** Pushes to main
+   through any other route cannot auto-deploy.
+2. After CI passes and `PRODUCTION_CD_ENABLED=true`, GitHub requests
+   approval for the **production** Environment. Approve only after checking
+   database migrations, verified baseline, recovery, P0 and expected service
+   identities. A manual alternative remains available in Actions with exact
+   SHA and `DEPLOY_KPS_PRODUCTION` confirmation.
+3. Workflow runs all CI; checks baseline and pinned migration policy; verifies
    `main` has not advanced, Render is the approved single-instance Free
    service with Auto-Deploy Off, Vercel points to the approved project with
    Git automatic deploy disabled, and no other Render deploy is in flight.
@@ -80,6 +88,12 @@ the reviewed baseline and recovery gate is complete.
    `vercel promote` and repeats checks on the public Production domain.
 6. Only after final backend verification does it release the Git ref lock and
    publish the redacted evidence artifact (30-day retention).
+
+**Pending migrations are still a hard stop.** Automated Production DDL is
+**not yet implemented**; it needs a separate approved migrator profile, TiDB
+identity/ledger/schema inspector, backup/restore evidence, additive allowlist,
+and isolated rehearsal. Neither source sync nor a successful Staging migration
+proves Production can apply the same change safely.
 
 The workflow does not run `artisan migrate`, seeder, user updates, SQL,
 backup restore, Docker Command override, or rollback. It does not guarantee
