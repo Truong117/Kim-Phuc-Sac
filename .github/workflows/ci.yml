@@ -5,6 +5,9 @@ on:
     branches:
       - staging
       - main
+  push:
+    branches:
+      - main
   workflow_call:
   workflow_dispatch:
 
