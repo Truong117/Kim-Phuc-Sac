@@ -29,7 +29,18 @@ export function validateReleaseInput(env) {
       env.KPS_RELEASE_EXPECTED_SHA !== env.GITHUB_SHA) {
     throw new Error("Production release denied: confirmation, target, or exact main SHA mismatch.");
   }
+  if (env.GITHUB_EVENT_NAME === "push" && env.PRODUCTION_CD_ENABLED !== "true") {
+    throw new Error("Automatic Production release is not armed.");
+  }
   return env.GITHUB_SHA;
+}
+
+export function assertApprovedMainMerge(pulls, sha) {
+  if (!Array.isArray(pulls) || !pulls.some((pr) => pr.merged_at &&
+      pr.base?.ref === "main" && pr.head?.ref === "staging" &&
+      pr.merge_commit_sha === sha)) {
+    throw new Error("Production auto-release requires a merged staging-to-main PR for the exact SHA.");
+  }
 }
 
 export function assertDeploymentTargets(render, project) {
@@ -127,6 +138,9 @@ export async function productionRelease(env) {
     await verifyMigrationPolicy(root);
     const branch = await gh("branches/main");
     if (branch.commit.sha !== sha) throw new Error("main moved; candidate is stale.");
+    if (env.GITHUB_EVENT_NAME === "push") {
+      assertApprovedMainMerge(await gh("commits/" + sha + "/pulls"), sha);
+    }
     const service = await render("");
     const project = await vercel("/v9/projects/" + PROJECT);
     assertDeploymentTargets(service, project);
