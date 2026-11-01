@@ -1,0 +1,21 @@
+{
+  "prompts": 10,
+  "promptTypes": [
+    "confirm",
+    "confirm",
+    "confirm",
+    "confirm",
+    "confirm",
+    "beforeunload",
+    "beforeunload",
+    "confirm",
+    "confirm",
+    "confirm"
+  ],
+  "mutations": 2,
+  "browser": "156.0.8078.4",
+  "batchCount": 1,
+  "batches": [{ "id": 2, "stage": "ASSISTANT" }],
+  "tasks": 0,
+  "notifications": 0
+}

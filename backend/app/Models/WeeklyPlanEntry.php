@@ -6,6 +6,7 @@ use App\Enums\TaskPriority;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class WeeklyPlanEntry extends Model
@@ -63,6 +64,13 @@ class WeeklyPlanEntry extends Model
             'weekly_plan_entry_source_passage',
             'weekly_plan_entry_id',
             'weekly_plan_source_passage_id',
-        )->orderBy('sequence');
+        )->orderBy('sequence')->orderBy('weekly_plan_source_passages.id');
+    }
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanEntryItem::class)
+            ->orderBy('sort_order')
+            ->orderBy('id');
     }
 }

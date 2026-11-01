@@ -18,12 +18,14 @@ class WeeklyPlanPublisher
     public function __construct(
         private readonly WeeklyPlanEntryValidator $validator,
         private readonly TaskService $tasks,
+        private readonly WeeklyPlanWorkflowVersionGuard $workflowVersions,
     ) {}
 
     public function publish(User $publisher, WeeklyPlan $plan): WeeklyPlan
     {
         return DB::transaction(function () use ($plan, $publisher): WeeklyPlan {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            $this->workflowVersions->assertV2($locked);
 
             if ($locked->status === WeeklyPlanStatus::PUBLISHED) {
                 return $locked;
@@ -40,6 +42,7 @@ class WeeklyPlanPublisher
     {
         return DB::transaction(function () use ($plan, $publisher): WeeklyPlan {
             $locked = WeeklyPlan::query()->lockForUpdate()->findOrFail($plan->id);
+            $this->workflowVersions->assertV2($locked);
 
             if ($locked->status === WeeklyPlanStatus::PUBLISHED) {
                 return $locked;

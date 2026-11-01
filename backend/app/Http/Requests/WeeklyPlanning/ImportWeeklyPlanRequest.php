@@ -15,9 +15,15 @@ class ImportWeeklyPlanRequest extends FormRequest
     {
         return [
             'file' => ['required', 'file', 'max:'.config('weekly_plans.max_file_kb', 5120)],
+            'workflow_version' => ['sometimes', 'integer', 'in:2,3'],
             'column_mapping' => ['nullable', 'array'],
             'column_mapping.*' => ['nullable', 'string', 'max:255'],
         ];
+    }
+
+    public function workflowVersion(): int
+    {
+        return (int) $this->validated('workflow_version', 2);
     }
 
     /** @return array<string, string> */

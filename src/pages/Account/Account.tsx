@@ -1,5 +1,7 @@
 import AccountPasswordSection from "@/components/account/AccountPasswordSection";
 import AccountSummary from "@/components/account/AccountSummary";
+import AccountNavigation from "@/components/account/AccountNavigation";
+import AccountEmailSection from "@/components/account/AccountEmailSection";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,7 +22,9 @@ export default function Account() {
       </p>
 
       <div className="mx-auto max-w-5xl space-y-4">
+        <AccountNavigation />
         <AccountSummary user={currentUser} />
+        <AccountEmailSection key={String(currentUser.id)} />
         <AccountPasswordSection />
       </div>
     </>

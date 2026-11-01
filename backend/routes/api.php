@@ -15,6 +15,10 @@ use App\Http\Controllers\Reports\TodayReportController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsEmployeeMappingController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsFolderRegistryController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsPreviewController;
+use App\Http\Controllers\WeeklyPlanning\GoogleDocsSourceController;
 use App\Http\Controllers\WeeklyPlanning\WeeklyPlanController;
 use Illuminate\Support\Facades\Route;
 
@@ -39,7 +43,10 @@ Route::prefix('auth')->group(function () {
 Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () {
     Route::prefix('account')->group(function () {
         Route::patch('/profile', [AccountController::class, 'updateProfile']);
-        Route::patch('/password', [AccountController::class, 'updatePassword']);
+        Route::patch('/password', [AccountController::class, 'updatePassword'])
+            ->middleware('throttle:6,1,account-password');
+        Route::patch('/email', [AccountController::class, 'updateEmail'])
+            ->middleware(['throttle:3,1,account-email', 'throttle:12,60,account-email-hour']);
     });
 
     Route::get('/navigation', NavigationController::class);
@@ -87,6 +94,20 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         ->middleware('permission:tasks.manage');
 
     Route::prefix('weekly-plans')->group(function (): void {
+        Route::post('/google-docs/preview', GoogleDocsPreviewController::class)
+            ->middleware([
+                'permission:weekly_plans.manage_draft,organization',
+                'throttle:google-docs-preview',
+            ]);
+        Route::post('/google-docs/import', GoogleDocsSourceController::class)
+            ->middleware([
+                'permission:weekly_plans.manage_draft,organization',
+                'throttle:google-docs-preview',
+            ]);
+        Route::put('/google-docs/folder', [GoogleDocsFolderRegistryController::class, 'update'])
+            ->middleware('permission:weekly_plans.google_docs.configure,organization');
+        Route::delete('/google-docs/folder', [GoogleDocsFolderRegistryController::class, 'destroy'])
+            ->middleware('permission:weekly_plans.google_docs.configure,organization');
         Route::get('/references', [WeeklyPlanController::class, 'references'])
             ->middleware('permission:weekly_plans.view,organization');
         Route::get('/template', [WeeklyPlanController::class, 'template'])
@@ -95,9 +116,24 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
             ->middleware('permission:weekly_plans.view,organization');
         Route::post('/import', [WeeklyPlanController::class, 'import'])
             ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::get('/{id}/google-docs/employee-mappings', [GoogleDocsEmployeeMappingController::class, 'index'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.view,organization');
+        Route::put('/{id}/google-docs/employee-mappings', [GoogleDocsEmployeeMappingController::class, 'update'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::put('/{id}/google-docs/employee-mappings/batch', [GoogleDocsEmployeeMappingController::class, 'updateBatch'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::get('/{id}', [WeeklyPlanController::class, 'show'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.view,organization');
+        Route::delete('/{id}', [WeeklyPlanController::class, 'destroy'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{id}/reset', [WeeklyPlanController::class, 'reset'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/reparse', [WeeklyPlanController::class, 'reparse'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');
@@ -115,7 +151,10 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
             ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/source/ai-extract', [WeeklyPlanController::class, 'extractSourceWithAi'])
             ->whereNumber('id')
-            ->middleware('permission:weekly_plans.manage_draft,organization');
+            ->middleware([
+                'permission:weekly_plans.manage_draft,organization',
+                'throttle:2,1',
+            ]);
         Route::post('/{id}/entries', [WeeklyPlanController::class, 'storeEntry'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');
@@ -128,12 +167,38 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/{id}/submit', [WeeklyPlanController::class, 'submit'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.submit,organization');
+        Route::put('/{id}/v3-roster', [WeeklyPlanController::class, 'updateV3Roster'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/analyze', [WeeklyPlanController::class, 'analyze'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.manage_draft,organization');
         Route::post('/{id}/employee-reviews', [WeeklyPlanController::class, 'reviewEmployee'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.review,organization');
+        Route::post('/{id}/review-decisions/{assigneeId}', [WeeklyPlanController::class, 'decideReview'])
+            ->whereNumber('id')->whereNumber('assigneeId');
+        Route::post('/{plan}/assistant-review-batches', [WeeklyPlanController::class, 'confirmV3AssistantBatch'])
+            ->whereNumber('plan')
+            ->middleware('permission:weekly_plans.assistant_review,organization');
+        Route::post('/{plan}/owner-review-batches', [WeeklyPlanController::class, 'confirmV3OwnerBatch'])
+            ->whereNumber('plan')
+            ->middleware('permission:weekly_plans.review,organization');
+        Route::post('/{plan}/v3-corrections/{assignee}/entries', [WeeklyPlanController::class, 'storeV3CorrectionEntry'])
+            ->whereNumber('plan')->whereNumber('assignee')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::patch('/{plan}/v3-corrections/{assignee}/entries/{entry}', [WeeklyPlanController::class, 'updateV3CorrectionEntry'])
+            ->whereNumber('plan')->whereNumber('assignee')->whereNumber('entry')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::delete('/{plan}/v3-corrections/{assignee}/entries/{entry}', [WeeklyPlanController::class, 'destroyV3CorrectionEntry'])
+            ->whereNumber('plan')->whereNumber('assignee')->whereNumber('entry')
+            ->middleware('permission:weekly_plans.manage_draft,organization');
+        Route::post('/{plan}/correction-batches', [WeeklyPlanController::class, 'confirmV3CorrectionBatch'])
+            ->whereNumber('plan')
+            ->middleware('permission:weekly_plans.submit,organization');
+        Route::post('/{id}/finalize-assistant-review', [WeeklyPlanController::class, 'finalizeAssistantReview'])
+            ->whereNumber('id')
+            ->middleware('permission:weekly_plans.assistant_review,organization');
         Route::post('/{id}/approve', [WeeklyPlanController::class, 'approve'])
             ->whereNumber('id')
             ->middleware('permission:weekly_plans.approve,organization');

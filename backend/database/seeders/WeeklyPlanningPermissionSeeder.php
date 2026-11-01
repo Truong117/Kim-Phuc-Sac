@@ -16,9 +16,11 @@ class WeeklyPlanningPermissionSeeder extends Seeder
         'weekly_plans.view' => 'Xem kế hoạch công việc tuần',
         'weekly_plans.manage_draft' => 'Tạo, nhập và chỉnh sửa kế hoạch tuần',
         'weekly_plans.submit' => 'Gửi kế hoạch tuần để xét duyệt',
+        'weekly_plans.assistant_review' => 'Trợ lý Giám đốc xét duyệt kế hoạch tuần',
         'weekly_plans.review' => 'Xét duyệt kế hoạch theo nhân viên',
         'weekly_plans.approve' => 'Phê duyệt cuối kế hoạch tuần',
         'weekly_plans.publish' => 'Phát hành kế hoạch tuần thành công việc',
+        'weekly_plans.google_docs.configure' => 'Cấu hình thư mục Google Docs được phê duyệt',
     ];
 
     public function run(): void
@@ -36,9 +38,11 @@ class WeeklyPlanningPermissionSeeder extends Seeder
             $hr = Role::query()->where('code', 'HR_MANAGER')->first();
             $owner = Role::query()->where('code', 'OWNER')->first();
             $admin = Role::query()->where('code', 'ADMIN')->first();
+            $assistant = Role::query()->where('code', 'EXECUTIVE_ASSISTANT')->first();
 
-            if (! $hr instanceof Role || ! $owner instanceof Role || ! $admin instanceof Role) {
-                throw new LogicException('Missing required OWNER, ADMIN or HR_MANAGER role.');
+            if (! $hr instanceof Role || ! $owner instanceof Role || ! $admin instanceof Role
+                || ! $assistant instanceof Role) {
+                throw new LogicException('Missing required OWNER, ADMIN, HR_MANAGER or EXECUTIVE_ASSISTANT role.');
             }
 
             foreach (['weekly_plans.view', 'weekly_plans.manage_draft', 'weekly_plans.submit'] as $code) {
@@ -53,9 +57,17 @@ class WeeklyPlanningPermissionSeeder extends Seeder
                 ]);
             }
 
-            $admin->permissions()->syncWithoutDetaching([
-                $permissions['weekly_plans.view']->id => ['data_scope' => DataScope::ALL->value],
-            ]);
+            foreach (['weekly_plans.view', 'weekly_plans.assistant_review'] as $code) {
+                $assistant->permissions()->syncWithoutDetaching([
+                    $permissions[$code]->id => ['data_scope' => DataScope::ORGANIZATION->value],
+                ]);
+            }
+
+            foreach (['weekly_plans.view', 'weekly_plans.google_docs.configure'] as $code) {
+                $admin->permissions()->syncWithoutDetaching([
+                    $permissions[$code]->id => ['data_scope' => DataScope::ALL->value],
+                ]);
+            }
         });
     }
 }

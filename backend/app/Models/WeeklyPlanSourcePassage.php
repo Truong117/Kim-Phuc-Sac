@@ -40,4 +40,14 @@ class WeeklyPlanSourcePassage extends Model
             'weekly_plan_entry_id',
         );
     }
+
+    public function entryItems(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            WeeklyPlanEntryItem::class,
+            'weekly_plan_entry_item_source_passage',
+            'weekly_plan_source_passage_id',
+            'weekly_plan_entry_item_id',
+        );
+    }
 }

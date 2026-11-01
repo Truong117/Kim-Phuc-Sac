@@ -21,6 +21,9 @@ type Props = {
   weekStart: string;
   weekEnd: string;
   reviewerEdit?: boolean;
+  lockAssignee?: boolean;
+  lockedAssignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email">;
+  assigneeSourceTitle?: string;
   serverErrors?: Record<string, string[]>;
   serverErrorVersion?: number;
   submitLabel?: string;
@@ -43,6 +46,14 @@ const initialValues = (
   due_date: initialInput.due_date ?? entry?.due_date ?? weekEnd,
   priority: initialInput.priority ?? entry?.priority ?? "MEDIUM",
   note: initialInput.note ?? entry?.note ?? "",
+  items:
+    initialInput.items ??
+    entry?.items.map((item) => ({
+      title: item.title,
+      content: item.content,
+      source_passage_ids: [...item.source_passage_ids],
+    })) ??
+    [],
 });
 
 export default function WeeklyPlanEntryForm({
@@ -52,6 +63,9 @@ export default function WeeklyPlanEntryForm({
   weekStart,
   weekEnd,
   reviewerEdit = false,
+  lockAssignee = false,
+  lockedAssignee,
+  assigneeSourceTitle,
   serverErrors = {},
   serverErrorVersion = 0,
   submitLabel,
@@ -72,7 +86,14 @@ export default function WeeklyPlanEntryForm({
   >({});
   const errors = useMemo(() => {
     const result: Record<string, string> = {};
-    if (!values.assignee_id) result.assignee_id = t("assigneeRequired");
+    if (
+      !values.assignee_id ||
+      (lockAssignee && lockedAssignee?.id !== values.assignee_id)
+    ) {
+      result.assignee_id = lockAssignee
+        ? t("mappedAssigneeUnavailable")
+        : t("assigneeRequired");
+    }
     if (!values.title.trim()) result.title = t("titleRequired");
     if (!values.start_date) result.start_date = t("startRequired");
     if (!values.due_date) result.due_date = t("dueRequired");
@@ -84,7 +105,7 @@ export default function WeeklyPlanEntryForm({
       result.due_date = t("dateOrder");
     }
     return result;
-  }, [t, values]);
+  }, [lockAssignee, lockedAssignee?.id, t, values]);
   const visibleError = (field: string) =>
     (submitted || touched[field] ? errors[field] : undefined) ??
     (clearedServerErrors[field] === serverErrorVersion
@@ -114,28 +135,59 @@ export default function WeeklyPlanEntryForm({
     >
       <div>
         <Label htmlFor="weekly-entry-assignee">{t("assignee")}</Label>
-        <Select
-          id="weekly-entry-assignee"
-          value={String(values.assignee_id || "")}
-          disabled={reviewerEdit}
-          placeholder={t("assigneePlaceholder")}
-          options={employees.map((employee) => ({
-            value: String(employee.id),
-            label: employee.name + " — " + employee.email,
-          }))}
-          error={Boolean(visibleError("assignee_id"))}
-          hint={visibleError("assignee_id")}
-          onBlur={() =>
-            setTouched((current) => ({ ...current, assignee_id: true }))
-          }
-          onChange={(value) => {
-            clearServerError("assignee_id");
-            setValues((current) => ({
-              ...current,
-              assignee_id: Number(value),
-            }));
-          }}
-        />
+        {lockAssignee ? (
+          <div
+            id="weekly-entry-assignee"
+            role="textbox"
+            aria-readonly="true"
+            className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-800/60"
+          >
+            {lockedAssignee ? (
+              <>
+                <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                  {lockedAssignee.name}
+                </p>
+                <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+                  {lockedAssignee.email}
+                </p>
+                {assigneeSourceTitle && (
+                  <p className="mt-2 text-theme-xs font-medium text-kps-primary dark:text-sidebar-selected">
+                    {t("lockedAssigneeSource", {
+                      source: assigneeSourceTitle,
+                    })}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-theme-xs text-error-600 dark:text-error-400">
+                {t("mappedAssigneeUnavailable")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <Select
+            id="weekly-entry-assignee"
+            value={String(values.assignee_id || "")}
+            disabled={reviewerEdit}
+            placeholder={t("assigneePlaceholder")}
+            options={employees.map((employee) => ({
+              value: String(employee.id),
+              label: employee.name + " — " + employee.email,
+            }))}
+            error={Boolean(visibleError("assignee_id"))}
+            hint={visibleError("assignee_id")}
+            onBlur={() =>
+              setTouched((current) => ({ ...current, assignee_id: true }))
+            }
+            onChange={(value) => {
+              clearServerError("assignee_id");
+              setValues((current) => ({
+                ...current,
+                assignee_id: Number(value),
+              }));
+            }}
+          />
+        )}
       </div>
       <div>
         <Label htmlFor="weekly-entry-title">{t("title")}</Label>
@@ -152,12 +204,14 @@ export default function WeeklyPlanEntryForm({
           }}
         />
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
+      <div className="grid items-stretch gap-4 md:grid-cols-2">
+        <div className="flex h-full flex-col">
           <Label htmlFor="weekly-entry-content">{t("content")}</Label>
           <TextArea
             id="weekly-entry-content"
             rows={3}
+            containerClassName="flex flex-1"
+            className="h-full min-h-32"
             value={values.content ?? ""}
             onChange={(value) => {
               clearServerError("content");
@@ -167,11 +221,13 @@ export default function WeeklyPlanEntryForm({
             hint={visibleError("content")}
           />
         </div>
-        <div>
+        <div className="flex h-full flex-col">
           <Label htmlFor="weekly-entry-result">{t("expectedResult")}</Label>
           <TextArea
             id="weekly-entry-result"
             rows={3}
+            containerClassName="flex flex-1"
+            className="h-full min-h-32"
             value={values.expected_result ?? ""}
             onChange={(value) => {
               clearServerError("expected_result");
@@ -262,6 +318,135 @@ export default function WeeklyPlanEntryForm({
           error={Boolean(visibleError("note"))}
           hint={visibleError("note")}
         />
+      </div>
+      <div className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-white">
+              {t("itemsTitle")}
+            </p>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+              {t("itemsDescription")}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              setValues((current) => ({
+                ...current,
+                items: [...(current.items ?? []), { title: "", content: null }],
+              }))
+            }
+          >
+            {t("addItem")}
+          </Button>
+        </div>
+        {(values.items ?? []).map((item, index) => (
+          <div
+            key={`entry-item-${index}`}
+            className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60"
+          >
+            <div className="grid gap-3 md:grid-cols-2">
+              <div>
+                <Label htmlFor={`weekly-entry-item-title-${index}`}>
+                  {t("itemTitle", { index: index + 1 })}
+                </Label>
+                <Input
+                  id={`weekly-entry-item-title-${index}`}
+                  value={item.title}
+                  maxLength={255}
+                  onChange={(event) =>
+                    setValues((current) => ({
+                      ...current,
+                      items: (current.items ?? []).map(
+                        (currentItem, itemIndex) =>
+                          itemIndex === index
+                            ? { ...currentItem, title: event.target.value }
+                            : currentItem,
+                      ),
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor={`weekly-entry-item-content-${index}`}>
+                  {t("itemContent")}
+                </Label>
+                <TextArea
+                  id={`weekly-entry-item-content-${index}`}
+                  rows={2}
+                  value={item.content ?? ""}
+                  onChange={(content) =>
+                    setValues((current) => ({
+                      ...current,
+                      items: (current.items ?? []).map(
+                        (currentItem, itemIndex) =>
+                          itemIndex === index
+                            ? { ...currentItem, content }
+                            : currentItem,
+                      ),
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="mt-2 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={index === 0}
+                onClick={() =>
+                  setValues((current) => {
+                    const items = [...(current.items ?? [])];
+                    [items[index - 1], items[index]] = [
+                      items[index],
+                      items[index - 1],
+                    ];
+                    return { ...current, items };
+                  })
+                }
+              >
+                {t("moveUp")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={index === (values.items?.length ?? 0) - 1}
+                onClick={() =>
+                  setValues((current) => {
+                    const items = [...(current.items ?? [])];
+                    [items[index], items[index + 1]] = [
+                      items[index + 1],
+                      items[index],
+                    ];
+                    return { ...current, items };
+                  })
+                }
+              >
+                {t("moveDown")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setValues((current) => ({
+                    ...current,
+                    items: (current.items ?? []).filter(
+                      (_, itemIndex) => itemIndex !== index,
+                    ),
+                  }))
+                }
+              >
+                {t("removeItem")}
+              </Button>
+            </div>
+          </div>
+        ))}
       </div>
       <div className="flex justify-end gap-3">
         <Button type="button" variant="outline" onClick={onCancel}>

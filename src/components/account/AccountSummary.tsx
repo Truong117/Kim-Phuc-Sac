@@ -9,14 +9,11 @@ interface AccountSummaryProps {
 export default function AccountSummary({ user }: AccountSummaryProps) {
   const { t } = useTranslation("common", { keyPrefix: "account.summary" });
 
-  const items = [
-    [t("name"), user.name],
-    [t("email"), user.email],
-  ];
+  const items = [[t("email"), user.email]];
 
   return (
     <ComponentCard title={t("title")} desc={t("description")} compact>
-      <dl className="grid gap-4 sm:grid-cols-2">
+      <dl className="grid gap-4">
         {items.map(([label, value]) => (
           <div
             key={label}
@@ -25,7 +22,7 @@ export default function AccountSummary({ user }: AccountSummaryProps) {
             <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
               {label}
             </dt>
-            <dd className="mt-1 text-theme-sm font-medium text-gray-800 dark:text-white/90">
+            <dd className="mt-1 text-theme-sm font-medium break-all text-gray-800 dark:text-white/90">
               {value}
             </dd>
           </div>

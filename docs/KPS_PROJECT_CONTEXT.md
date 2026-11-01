@@ -317,6 +317,12 @@ All routes require `auth:sanctum`, an active KPS membership, `ai.insights.view`,
 
 V1 accepts only the most recent 30 business dates and requires today's reporting window to be closed. A new run is rejected before persistence/dispatch when the selected date has no locked report in the requester's current scope; requester history and legacy empty runs remain readable through the history/detail endpoints. Run payloads decorate source IDs with only the scoped report author's display name and department snapshot so the UI can label source links without exposing email, membership, or authorization data. `KPS_AI_DRIVER=fake` is the safe default: the deterministic provider makes no network request. The database queue job checks permissions again when it executes, and completed/cached results remain subject to current report scope. OWNER/ADMIN receive the existing seeded AI permission; a department manager needs an explicit AI grant and then remains constrained by the existing department-scoped `reports.view` grant.
 
+### Backend AI Gateway and Weekly Planning extraction
+
+AI Gateway V1 centralizes OpenAI Responses API calls behind backend-only configuration, strict Structured Outputs, `store=false`, bounded retries, input/output limits, duplicate suppression and a monthly cost ledger. Prompt/document content is never logged; cached structured output is encrypted with `APP_KEY`. The new ledger migration is the repository's 14th migration and must be reviewed/applied separately before any real provider is enabled.
+
+Weekly Planning keeps `WEEKLY_PLAN_DOCUMENT_AI_DRIVER=none` by default. When explicitly set to `openai` with a complete budget/key/model/price configuration, an authorized HR draft manager can request a preview from already-persisted DOCX passages or resolved Google Docs tabs. The backend validates source keys, date bounds, schema and provenance. DOCX keeps manual assignee review; Google Docs excludes `NOT_APPLICABLE` tabs, uses only current HR-verified tab mappings for assignee identity, rejects cross-tab tasks, and revalidates mappings during one atomic Apply All request. No AI preview creates a Weekly Plan Entry, Task, approval or publication by itself. `KPS_AI_DRIVER=fake` remains independent and keeps AI Daily Report deterministic. Operational details are in `docs/AI_GATEWAY_V1.md`.
+
 ### Backend AI Executive Dashboard route
 
 `GET /api/ai/executive-dashboard?period=7d|30d` is the backend-only Executive Dashboard V1 contract. It requires `auth:sanctum`, an active KPS membership, organization-wide `ai.dashboard.view`, and organization-wide `reports.view`. The seeded permission is granted only to OWNER and ADMIN. Every report query starts from `ReportScopeService`, is constrained to the active KPS organization, and includes only reports whose persisted `locked_at` is not later than the server-generated timestamp.
@@ -568,7 +574,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 ### Verified
 
 - The application is configured as a Vercel SPA.
-- `vercel.json` currently rewrites `/(.*)` to `/index.html`.
+- `vercel.mjs` builds environment-specific rewrites: `/api` and `/sanctum` are proxied to the validated `KPS_BACKEND_ORIGIN` before the SPA fallback. Production/Preview browser requests use `VITE_API_BASE_URL=/`; missing or unsafe upstream configuration fails closed.
 - Demo URL from the project handoff: `https://kimphucsac.vercel.app/`.
 - Authentication V1 is implemented with Sanctum first-party SPA authentication, Laravel's `web` session guard, CSRF protection, credentialed CORS, and `auth:sanctum` on protected endpoints.
 - Authorization V1 remains backend-owned. It now resolves the active/default membership specifically for organization code `KPS`, aggregates all assigned roles, and exposes a `permission:<code>` middleware for protected backend actions.
@@ -587,7 +593,7 @@ Do not encode assumptions for these questions without confirmed requirements.
 - Every future protected business endpoint must apply backend permission enforcement; frontend checks must never be treated as sufficient.
 - Data-scope-aware CRM query filtering is future work and must be implemented with the business repositories/queries rather than trusted frontend filters.
 - External dealer and external spa tenancy remain future work; Authorization V1 models only the internal `KPS` organization.
-- Revisit the catch-all Vercel rewrite if `/api` is later served on the same domain.
+- Keep Vercel and Render authentication first-party through the same-origin proxy unless approved sibling custom domains are configured and browser-tested. Direct `vercel.app` → `onrender.com` Sanctum cookie authentication is not supported.
 - Use mock data only until real customer-data handling has been approved. Production CRM data will require authentication, backend authorization, secure APIs/secrets, access controls, and appropriate auditability.
 
 ## 16. Pancake integration direction

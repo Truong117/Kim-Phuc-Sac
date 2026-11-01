@@ -65,6 +65,13 @@ return [
             'replace_placeholders' => true,
         ],
 
+        'weekly_plan_e2e' => [
+            'driver' => 'single',
+            'path' => storage_path('framework/testing/weekly-plan-v3-e2e/logs/laravel.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

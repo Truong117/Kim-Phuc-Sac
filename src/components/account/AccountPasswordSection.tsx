@@ -2,6 +2,7 @@ import ComponentCard from "@/components/common/ComponentCard";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { useAuth } from "@/hooks/useAuth";
+import Button from "@/components/ui/button/Button";
 import { updatePassword } from "@/services/accountService";
 import { ApiServiceError } from "@/services/apiClient";
 import { useState } from "react";
@@ -74,75 +75,94 @@ export default function AccountPasswordSection() {
 
   return (
     <ComponentCard title={t("title")} desc={t("description")} compact>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <Label htmlFor="account-current-password">{t("current")}</Label>
-          <Input
-            id="account-current-password"
-            name="current_password"
-            type="password"
-            value={values.currentPassword}
-            autoComplete="current-password"
-            showPasswordToggle
-            onChange={(event) => setField("currentPassword", event.target.value)}
-            className="focus:border-kps-primary focus:ring-kps-primary/20 dark:focus:border-kps-primary"
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4"
+        aria-busy={isSubmitting}
+      >
+        <fieldset disabled={isSubmitting} className="space-y-4">
           <div>
-            <Label htmlFor="account-new-password">{t("new")}</Label>
+            <Label htmlFor="account-current-password">{t("current")}</Label>
             <Input
-              id="account-new-password"
-              name="password"
+              id="account-current-password"
+              name="current_password"
               type="password"
-              value={values.password}
-              autoComplete="new-password"
-              showPasswordToggle
-              onChange={(event) => setField("password", event.target.value)}
-              className="focus:border-kps-primary focus:ring-kps-primary/20 dark:focus:border-kps-primary"
-            />
-          </div>
-          <div>
-            <Label htmlFor="account-password-confirmation">
-              {t("confirmation")}
-            </Label>
-            <Input
-              id="account-password-confirmation"
-              name="password_confirmation"
-              type="password"
-              value={values.passwordConfirmation}
-              autoComplete="new-password"
+              value={values.currentPassword}
+              autoComplete="current-password"
+              required
               showPasswordToggle
               onChange={(event) =>
-                setField("passwordConfirmation", event.target.value)
+                setField("currentPassword", event.target.value)
               }
               className="focus:border-kps-primary focus:ring-kps-primary/20 dark:focus:border-kps-primary"
             />
           </div>
-        </div>
 
-        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-          <div aria-live="polite">
-            {error && (
-              <p className="text-theme-sm text-error-600 dark:text-error-400">
-                {error}
-              </p>
-            )}
-            {success && (
-              <p className="text-theme-sm text-success-600 dark:text-success-400">
-                {success}
-              </p>
-            )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="account-new-password">{t("new")}</Label>
+              <Input
+                id="account-new-password"
+                name="password"
+                type="password"
+                value={values.password}
+                autoComplete="new-password"
+                required
+                minLength={8}
+                maxLength={72}
+                showPasswordToggle
+                onChange={(event) => setField("password", event.target.value)}
+                className="focus:border-kps-primary focus:ring-kps-primary/20 dark:focus:border-kps-primary"
+              />
+            </div>
+            <div>
+              <Label htmlFor="account-password-confirmation">
+                {t("confirmation")}
+              </Label>
+              <Input
+                id="account-password-confirmation"
+                name="password_confirmation"
+                type="password"
+                value={values.passwordConfirmation}
+                autoComplete="new-password"
+                required
+                minLength={8}
+                maxLength={72}
+                showPasswordToggle
+                onChange={(event) =>
+                  setField("passwordConfirmation", event.target.value)
+                }
+                className="focus:border-kps-primary focus:ring-kps-primary/20 dark:focus:border-kps-primary"
+              />
+            </div>
           </div>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="inline-flex items-center justify-center rounded-lg bg-kps-primary px-4 py-2.5 text-theme-sm font-semibold text-white transition-colors hover:bg-kps-primary-hover focus-visible:ring-2 focus-visible:ring-kps-primary/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {isSubmitting ? t("saving") : t("save")}
-          </button>
-        </div>
+
+          <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div aria-live="polite">
+              {error && (
+                <p
+                  role="alert"
+                  className="text-theme-sm text-error-600 dark:text-error-400"
+                >
+                  {error}
+                </p>
+              )}
+              {success && (
+                <p className="text-theme-sm text-success-600 dark:text-success-400">
+                  {success}
+                </p>
+              )}
+            </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting}
+              className="!bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none disabled:!bg-kps-primary dark:!bg-kps-primary dark:hover:!bg-kps-primary-hover"
+            >
+              {isSubmitting ? t("saving") : t("save")}
+            </Button>
+          </div>
+        </fieldset>
       </form>
     </ComponentCard>
   );

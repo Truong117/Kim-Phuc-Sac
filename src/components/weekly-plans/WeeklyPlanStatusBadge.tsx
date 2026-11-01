@@ -3,20 +3,27 @@ import type {
   WeeklyPlanStatus,
 } from "@/types/weeklyPlanning";
 import { cn } from "@/utils";
+import {
+  actorRelativeWeeklyPlanStatusKey,
+  type WeeklyPlanReviewerActions,
+} from "@/utils/weeklyPlanReviewer";
 import { useTranslation } from "react-i18next";
 
 type Props = {
   status: WeeklyPlanStatus | WeeklyPlanReviewStatus;
+  actions?: WeeklyPlanReviewerActions;
 };
 
-export default function WeeklyPlanStatusBadge({ status }: Props) {
-  const { t } = useTranslation("common", {
-    keyPrefix: "weeklyPlanning.status",
-  });
+export default function WeeklyPlanStatusBadge({ status, actions }: Props) {
+  const { t } = useTranslation("common");
   const positive = ["ACCEPTED", "APPROVED", "PUBLISHED"].includes(status);
-  const warning = ["CHANGES_REQUESTED", "IN_REVIEW", "SUBMITTED"].includes(
-    status,
-  );
+  const warning = [
+    "CHANGES_REQUESTED",
+    "ASSISTANT_CHANGES_REQUESTED",
+    "OWNER_CHANGES_REQUESTED",
+    "IN_REVIEW",
+    "SUBMITTED",
+  ].includes(status);
 
   return (
     <span
@@ -29,7 +36,11 @@ export default function WeeklyPlanStatusBadge({ status }: Props) {
             : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
       )}
     >
-      {t(status)}
+      {t(
+        (status === "ASSISTANT_REVIEW" || status === "OWNER_REVIEW"
+          ? actorRelativeWeeklyPlanStatusKey(status, actions)
+          : null) ?? `weeklyPlanning.status.${status}`,
+      )}
     </span>
   );
 }

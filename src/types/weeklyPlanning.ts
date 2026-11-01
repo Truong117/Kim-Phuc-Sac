@@ -5,13 +5,66 @@ export type WeeklyPlanStatus =
   | "SUBMITTED"
   | "IN_REVIEW"
   | "CHANGES_REQUESTED"
+  | "ASSISTANT_REVIEW"
+  | "ASSISTANT_CHANGES_REQUESTED"
+  | "OWNER_REVIEW"
+  | "OWNER_CHANGES_REQUESTED"
   | "APPROVED"
   | "PUBLISHED";
 
 export type WeeklyPlanReviewStatus =
-  | "PENDING"
-  | "CHANGES_REQUESTED"
-  | "ACCEPTED";
+  "PENDING" | "CHANGES_REQUESTED" | "ACCEPTED";
+
+export type WeeklyPlanReviewStage = "ASSISTANT" | "OWNER";
+
+export type WeeklyPlanEmployeeWorkflowState =
+  | "AWAITING_ASSISTANT"
+  | "STAGED_FOR_OWNER"
+  | "HR_CORRECTION"
+  | "PUBLISHED"
+  | "NO_WORK_APPROVED";
+
+export type WeeklyPlanEmployeeWorkflow = {
+  id: number;
+  assignee: { id: number; name: string };
+  state: WeeklyPlanEmployeeWorkflowState;
+  state_version: number;
+  content_version: number;
+  correction_origin_stage: WeeklyPlanReviewStage | null;
+  active_entry_count: number;
+  active_child_item_count: number;
+  publication: {
+    published_by: { id: number; name: string } | null;
+    published_at: string | null;
+    task_count: number;
+  };
+  viewer_context: {
+    mode: "ASSISTANT_REVIEW" | "OWNER_REVIEW" | "HR_CORRECTION" | "OBSERVER";
+    read_only: boolean;
+  };
+  actions: {
+    can_accept: boolean;
+    can_request_changes: boolean;
+    can_correct: boolean;
+    can_resubmit: boolean;
+    can_publish: boolean;
+    can_approve_no_work: boolean;
+  };
+};
+
+export type WeeklyPlanPublicationSummary = {
+  total: number;
+  awaiting_assistant: number;
+  staged_for_owner: number;
+  hr_correction: number;
+  published: number;
+  no_work_approved: number;
+  phase:
+    "NOT_STARTED" | "IN_REVIEW" | "PARTIALLY_PUBLISHED" | "FULLY_PUBLISHED";
+};
+
+export type WeeklyPlanReviewRoundStatus =
+  "OPEN" | "CHANGES_REQUESTED" | "COMPLETED" | "SUPERSEDED";
 
 export type WeeklyPlanEmployee = {
   id: number;
@@ -20,6 +73,25 @@ export type WeeklyPlanEmployee = {
   department: { id: number; name: string } | null;
   location: { id: number; name: string } | null;
 };
+
+export type WeeklyPlanGoogleDocsTabEvidence = {
+  type: "GOOGLE_DOCS_TAB";
+  tab_id: string | null;
+  parent_tab_id: string | null;
+  nesting_level: number | null;
+  index: number | null;
+};
+
+export type WeeklyPlanSourceEvidence =
+  | WeeklyPlanGoogleDocsTabEvidence
+  | {
+      type: string | null;
+      section?: number | null;
+      start_sequence?: number | null;
+      end_sequence?: number | null;
+      start_source_key?: string | null;
+      end_source_key?: string | null;
+    };
 
 export type WeeklyPlanEntry = {
   id: number;
@@ -38,9 +110,29 @@ export type WeeklyPlanEntry = {
   sort_order: number;
   validation_status: "VALID" | "INVALID";
   validation_errors: string[];
+  items: WeeklyPlanEntryItem[];
   source_passages: Array<
-    Pick<WeeklyPlanSourcePassage, "id" | "source_key" | "kind" | "text">
+    Pick<
+      WeeklyPlanSourcePassage,
+      "id" | "source_key" | "kind" | "text" | "source_context" | "source_group"
+    >
   >;
+};
+
+export type WeeklyPlanEntryItem = {
+  id: number;
+  title: string;
+  content: string | null;
+  sort_order: number;
+  source_passage_ids: number[];
+};
+
+export type WeeklyPlanResetCounts = {
+  entry_count: number;
+  item_count: number;
+  suggestion_count: number;
+  employee_review_count: number;
+  entry_comment_count: number;
 };
 
 export type WeeklyPlanSourcePassage = {
@@ -53,9 +145,9 @@ export type WeeklyPlanSourcePassage = {
   source_context: {
     version: number;
     key: string;
-    origin: "DOCX_SECTION";
+    origin: "DOCX_SECTION" | "GOOGLE_DOCS_TAB";
     order: number;
-    evidence: Record<string, unknown>;
+    evidence: WeeklyPlanSourceEvidence;
   } | null;
   source_group: {
     version: number;
@@ -64,7 +156,7 @@ export type WeeklyPlanSourcePassage = {
     origin: "MANUAL" | "GOOGLE_DOCS_TAB";
     order: number;
     identity_verified: false;
-    evidence: Record<string, unknown>;
+    evidence: WeeklyPlanSourceEvidence;
   } | null;
 };
 
@@ -74,6 +166,43 @@ export type WeeklyPlanReview = {
   status: WeeklyPlanReviewStatus;
   comment: string | null;
   reviewed_at: string | null;
+};
+
+export type WeeklyPlanReviewDecision = {
+  id: number;
+  assignee: { id: number; name: string };
+  status: WeeklyPlanReviewStatus;
+  reviewed_by: { id: number; name: string } | null;
+  reviewed_at: string | null;
+  actions: {
+    can_request_changes: boolean;
+  };
+};
+
+export type WeeklyPlanReviewRound = {
+  id: number;
+  stage: WeeklyPlanReviewStage;
+  round_number: number;
+  status: WeeklyPlanReviewRoundStatus;
+  started_by: { id: number; name: string } | null;
+  started_at: string;
+  completed_by: { id: number; name: string } | null;
+  completed_at: string | null;
+  decisions: WeeklyPlanReviewDecision[];
+};
+
+export type WeeklyPlanReviewSummary = {
+  total: number;
+  accepted: number;
+  changes_requested: number;
+  pending: number;
+};
+
+export type WeeklyPlanReviewWorkflow = {
+  stage: WeeklyPlanReviewStage | null;
+  current_round: WeeklyPlanReviewRound | null;
+  assistant_summary: WeeklyPlanReviewSummary;
+  owner_summary: WeeklyPlanReviewSummary;
 };
 
 export type WeeklyPlanSuggestion = {
@@ -105,10 +234,18 @@ export type WeeklyPlanEvent = {
 
 export type WeeklyPlanActions = {
   can_edit: boolean;
+  can_correct_requested_changes: boolean;
+  can_resubmit_changes: boolean;
+  can_reset: boolean;
+  can_delete: boolean;
   can_analyze: boolean;
   can_submit: boolean;
   can_review: boolean;
   can_review_edit: boolean;
+  can_assistant_review: boolean;
+  can_finalize_assistant_review: boolean;
+  can_owner_review: boolean;
+  can_open_review_workspace: boolean;
   can_approve: boolean;
   can_publish: boolean;
   can_approve_and_publish: boolean;
@@ -118,6 +255,34 @@ export type WeeklyPlanActions = {
   can_apply_source: boolean;
   can_group_source: boolean;
   can_ai_extract_source: boolean;
+  can_ai_extract_selected_source: boolean;
+  can_manage_google_docs_mappings: boolean;
+};
+
+export type WeeklyPlanGoogleDocsMappingStatus =
+  "UNVERIFIED" | "VERIFIED" | "NEEDS_REVIEW" | "NOT_APPLICABLE";
+
+export type WeeklyPlanGoogleDocsEmployeeMappingTab = {
+  tab_id: string;
+  title: string;
+  parent_tab_id: string | null;
+  nesting_level: number;
+  order: number;
+  status: WeeklyPlanGoogleDocsMappingStatus;
+  employee: WeeklyPlanEmployee | null;
+  suggestion: {
+    employee: WeeklyPlanEmployee;
+    basis: "CONFIRMED_EXACT" | "CONFIRMED_ALIAS";
+  } | null;
+  version: number;
+  verified_at: string | null;
+  reason: "EMPLOYEE_INELIGIBLE" | null;
+};
+
+export type WeeklyPlanGoogleDocsEmployeeMappings = {
+  tabs: WeeklyPlanGoogleDocsEmployeeMappingTab[];
+  employees: WeeklyPlanEmployee[];
+  actions: { can_update: boolean };
 };
 
 export type WeeklyPlan = {
@@ -125,6 +290,7 @@ export type WeeklyPlan = {
   week_start: string;
   week_end: string;
   status: WeeklyPlanStatus;
+  source_type: "UPLOADED_FILE" | "GOOGLE_DOCS";
   parse_status: "PARSED" | "NEEDS_MAPPING" | "FAILED";
   parse_metadata: {
     headers?: string[];
@@ -139,6 +305,8 @@ export type WeeklyPlan = {
     size: number;
     sha256: string;
     uploaded_at: string | null;
+    availability:
+      "AVAILABLE" | "MISSING" | "UNAVAILABLE" | "NOT_APPLICABLE" | null;
   };
   source_document: {
     status:
@@ -156,6 +324,17 @@ export type WeeklyPlan = {
       max_passages_per_entry: number;
       max_entries_per_request: number;
     };
+    google_docs:
+      | (Omit<WeeklyPlanGoogleDocsPreview, "revision_id"> & {
+          captured_at: string;
+          last_verified_at: string;
+          stale_at: string | null;
+          processed_tab_ids: string[];
+          remaining_tab_ids: string[];
+          relevant_tab_count: number;
+          processed_tab_count: number;
+        })
+      | null;
     passages: WeeklyPlanSourcePassage[];
   };
   creator: { id: number; name: string };
@@ -164,18 +343,98 @@ export type WeeklyPlan = {
     employee_count: number;
     matched_employee_count: number;
     entry_count: number;
+    item_count: number;
     invalid_entry_count: number;
     departments: string[];
   };
   entries: WeeklyPlanEntry[];
   employee_reviews: WeeklyPlanReview[];
+  review_workflow: WeeklyPlanReviewWorkflow | null;
   suggestions: WeeklyPlanSuggestion[];
   comments: WeeklyPlanComment[];
   events: WeeklyPlanEvent[];
   submitted_at: string | null;
   approved_at: string | null;
   published_at: string | null;
+  workflow_version?: 2 | 3;
+  employee_workflows?: WeeklyPlanEmployeeWorkflow[];
+  publication_summary?: WeeklyPlanPublicationSummary;
   actions: WeeklyPlanActions;
+};
+
+export type WeeklyPlanV3AssistantBatchDecisionInput = {
+  assignee_id: number;
+  decision: Exclude<WeeklyPlanReviewStatus, "PENDING">;
+  expected_state_version: number;
+  expected_content_version: number;
+};
+
+export type WeeklyPlanV3AssistantBatchResult = {
+  plan: WeeklyPlan;
+  batch: {
+    id: number;
+    stage: "ASSISTANT";
+    confirmed_at: string;
+    accepted: number;
+    changes_requested: number;
+    affected_employee_ids: number[];
+  };
+  results: Array<{
+    assignee_id: number;
+    to_state: "STAGED_FOR_OWNER" | "HR_CORRECTION";
+  }>;
+};
+
+export type WeeklyPlanV3OwnerDecision =
+  "ACCEPTED" | "CHANGES_REQUESTED" | "APPROVE_NO_WORK";
+
+export type WeeklyPlanV3OwnerBatchDecisionInput = {
+  assignee_id: number;
+  decision: WeeklyPlanV3OwnerDecision;
+  expected_state_version: number;
+  expected_content_version: number;
+};
+
+export type WeeklyPlanV3OwnerBatchResult = {
+  plan: WeeklyPlan;
+  batch: {
+    id: number;
+    stage: "OWNER";
+    confirmed_at: string;
+    accepted: number;
+    changes_requested: number;
+    no_work_approved: number;
+    published_task_count: number;
+    affected_employee_ids: number[];
+  };
+  results: Array<{
+    assignee_id: number;
+    to_state: "PUBLISHED" | "HR_CORRECTION" | "NO_WORK_APPROVED";
+    task_count: number;
+  }>;
+};
+
+export type WeeklyPlanV3CorrectionEmployeeInput = {
+  assignee_id: number;
+  expected_state_version: number;
+  expected_content_version: number;
+};
+
+export type WeeklyPlanV3CorrectionBatchResult = {
+  plan: WeeklyPlan;
+  batch: {
+    id: number;
+    confirmed_at: string;
+    affected_employee_ids: number[];
+  };
+  results: Array<{
+    assignee_id: number;
+    from_state: "HR_CORRECTION";
+    to_state: "AWAITING_ASSISTANT";
+    from_state_version: number;
+    to_state_version: number;
+    content_version: number;
+  }>;
 };
 
 export type WeeklyPlanListItem = Pick<
@@ -188,7 +447,15 @@ export type WeeklyPlanListItem = Pick<
   | "source_file"
   | "creator"
   | "entries_count"
->;
+> & {
+  actions: Pick<
+    WeeklyPlanActions,
+    | "can_delete"
+    | "can_assistant_review"
+    | "can_owner_review"
+    | "can_open_review_workspace"
+  >;
+};
 
 export type WeeklyPlanListResponse = {
   data: WeeklyPlanListItem[];
@@ -203,7 +470,39 @@ export type WeeklyPlanListResponse = {
 export type WeeklyPlanReferences = {
   next_week: { start: string; end: string };
   employees: WeeklyPlanEmployee[];
-  actions: { can_import: boolean };
+  actions: { can_import: boolean; can_create_v3: boolean };
+};
+
+export type WeeklyPlanGoogleDocsSourceGroup = {
+  version: number;
+  key: string;
+  title: string;
+  origin: "GOOGLE_DOCS_TAB";
+  order: number;
+  identity_verified: false;
+  evidence: WeeklyPlanGoogleDocsTabEvidence;
+};
+
+export type WeeklyPlanGoogleDocsPreviewTab = {
+  tab_id: string;
+  title: string;
+  parent_tab_id: string | null;
+  nesting_level: number;
+  order: number;
+  passage_count: number;
+  character_count: number;
+  source_group: WeeklyPlanGoogleDocsSourceGroup;
+};
+
+export type WeeklyPlanGoogleDocsPreview = {
+  title: string;
+  revision_id: string | null;
+  snapshot_sha256: string;
+  identity_verified: false;
+  tab_count: number;
+  passage_count: number;
+  character_count: number;
+  tabs: WeeklyPlanGoogleDocsPreviewTab[];
 };
 
 export type WeeklyPlanEntryInput = {
@@ -215,8 +514,70 @@ export type WeeklyPlanEntryInput = {
   due_date: string;
   priority: TaskPriority;
   note: string | null;
+  items?: WeeklyPlanEntryItemInput[];
+};
+
+export type WeeklyPlanEntryItemInput = {
+  title: string;
+  content: string | null;
+  source_passage_ids?: number[];
 };
 
 export type WeeklyPlanSourceEntryInput = WeeklyPlanEntryInput & {
   source_passage_ids: number[];
+};
+
+export type WeeklyPlanAiDetailSuggestionBasis =
+  "SOURCE_DERIVED" | "AI_SUGGESTION";
+
+export type WeeklyPlanAiDetailSuggestion = {
+  value: string;
+  basis: WeeklyPlanAiDetailSuggestionBasis;
+};
+
+export type WeeklyPlanAiDetailSuggestions = {
+  channel: WeeklyPlanAiDetailSuggestion | null;
+  account: WeeklyPlanAiDetailSuggestion | null;
+  frequency: WeeklyPlanAiDetailSuggestion | null;
+  format: WeeklyPlanAiDetailSuggestion | null;
+  content_direction: WeeklyPlanAiDetailSuggestion | null;
+  objective: WeeklyPlanAiDetailSuggestion | null;
+  notes: WeeklyPlanAiDetailSuggestion | null;
+};
+
+export type WeeklyPlanAiSuggestion = {
+  source_keys: string[];
+  title: string;
+  content: string | null;
+  expected_result: string | null;
+  employee_identifier: string | null;
+  start_date: string | null;
+  due_date: string | null;
+  priority: TaskPriority | null;
+  note: string | null;
+  grouping_basis?: "SOURCE_STRUCTURE" | "AI_GROUPED" | "ATOMIC";
+  items?: WeeklyPlanAiSuggestionItem[];
+  source_tab?: { tab_id: string; title: string } | null;
+  assignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email"> | null;
+  assignment_source?: "VERIFIED_GOOGLE_DOCS_TAB_MAPPING" | null;
+  detail_suggestions?: WeeklyPlanAiDetailSuggestions | null;
+  verification_fields: string[];
+  evidence: string;
+  provenance: Record<
+    | "title"
+    | "content"
+    | "expected_result"
+    | "employee_identifier"
+    | "start_date"
+    | "due_date"
+    | "priority"
+    | "note",
+    "VERBATIM" | "INFERRED" | "SUGGESTED"
+  >;
+};
+
+export type WeeklyPlanAiSuggestionItem = {
+  title: string;
+  content: string | null;
+  source_keys: string[];
 };

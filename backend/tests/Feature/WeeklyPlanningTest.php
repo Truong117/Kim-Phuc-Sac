@@ -41,6 +41,34 @@ class WeeklyPlanningTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_import_uses_the_configured_disk_without_exposing_its_location(): void
+    {
+        Storage::fake('s3');
+        config()->set('weekly_plans.storage_disk', 's3');
+
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx([
+                ['Unmapped column'],
+                ['Private storage contract'],
+            ]),
+        ])->assertCreated()
+            ->assertJsonMissingPath('data.source_disk')
+            ->assertJsonMissingPath('data.source_path')
+            ->assertJsonMissingPath('data.source_file.url')
+            ->assertJsonPath('data.source_file.availability', 'AVAILABLE');
+
+        $plan = WeeklyPlan::query()->findOrFail((int) $response->json('data.id'));
+
+        $this->assertSame('s3', $plan->source_disk);
+        $this->assertIsString($plan->source_path);
+        Storage::disk('s3')->assertExists($plan->source_path);
+    }
+
     public function test_hr_imports_reviews_and_owner_publishes_tasks_only_after_final_approval(): void
     {
         [$hr] = $this->userWithPermissions([
@@ -55,6 +83,10 @@ class WeeklyPlanningTest extends TestCase
             'weekly_plans.publish',
             'tasks.manage',
             'tasks.view',
+        ]);
+        [$assistant] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
         ]);
         [$assignee] = $this->userWithPermissions(['tasks.view', 'tasks.status.update']);
 
@@ -84,22 +116,27 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
             ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED')
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
             ->assertJsonPath('data.actions.can_approve', false);
         $this->assertDatabaseCount('tasks', 0);
 
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
-            ->assertUnprocessable();
+            ->assertConflict();
         $this->assertDatabaseCount('tasks', 0);
 
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/employee-reviews", [
-            'assignee_id' => $assignee->id,
-            'status' => 'ACCEPTED',
-        ])->assertOk()
-            ->assertJsonPath('data.status', 'IN_REVIEW')
-            ->assertJsonPath('data.actions.can_approve_and_publish', true);
-
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($assistant)->postJson(
+            "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+            ['decision' => 'ACCEPTED'],
+        )->assertOk();
+        $this->actingAs($assistant)->postJson("/api/weekly-plans/{$planId}/finalize-assistant-review")
+            ->assertOk()->assertJsonPath('data.status', 'OWNER_REVIEW');
+        $this->actingAs($owner)->postJson(
+            "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+            ['decision' => 'ACCEPTED'],
+        )->assertOk()->assertJsonPath('data.actions.can_approve', true);
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve")
+            ->assertOk()->assertJsonPath('data.status', 'APPROVED');
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', 'PUBLISHED');
         $this->assertDatabaseCount('tasks', 1);
@@ -120,10 +157,199 @@ class WeeklyPlanningTest extends TestCase
             'event_type' => 'PUBLISHED',
         ]);
 
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', 'PUBLISHED');
         $this->assertDatabaseCount('tasks', 1);
+    }
+
+    public function test_submit_readiness_requires_expected_results_without_requiring_analysis(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx([
+                ['Email', 'Nội dung công việc', 'Ngày bắt đầu', 'Hạn hoàn thành'],
+                [$assignee->email, 'Công việc thiếu kết quả', '2026-10-26', '2026-10-31'],
+            ]),
+        ])->assertCreated()
+            ->assertJsonPath('data.entries.0.validation_status', 'VALID')
+            ->assertJsonPath('data.actions.can_submit', false);
+
+        $planId = (int) $response->json('data.id');
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('expected_result');
+
+        $entryId = (int) $response->json('data.entries.0.id');
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/entries/{$entryId}", [
+            'assignee_id' => $assignee->id,
+            'title' => 'Công việc thiếu kết quả',
+            'content' => null,
+            'expected_result' => 'Bàn giao kết quả hoàn chỉnh',
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'priority' => 'MEDIUM',
+            'note' => null,
+        ])->assertOk()
+            ->assertJsonPath('data.actions.can_submit', true);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
+        $this->assertDatabaseMissing('weekly_plan_events', [
+            'weekly_plan_id' => $planId,
+            'event_type' => 'ANALYZED',
+        ]);
+    }
+
+    public function test_submit_readiness_fails_closed_for_assignee_dates_and_validation_status(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $planId = $this->importValidPlan($hr, $assignee);
+        $entryId = (int) WeeklyPlan::query()->findOrFail($planId)->entries()->value('id');
+        $baseline = [
+            'assignee_id' => $assignee->id,
+            'expected_result' => 'Kết quả rõ ràng',
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'validation_status' => 'VALID',
+            'validation_errors' => null,
+        ];
+        $cases = [
+            ['changes' => ['assignee_id' => null], 'error' => 'assignee'],
+            ['changes' => ['start_date' => null], 'error' => 'dates'],
+            ['changes' => ['due_date' => null], 'error' => 'dates'],
+            [
+                'changes' => [
+                    'validation_status' => 'INVALID',
+                    'validation_errors' => json_encode(['invalid'], JSON_THROW_ON_ERROR),
+                ],
+                'error' => 'entries',
+            ],
+        ];
+
+        foreach ($cases as $case) {
+            DB::table('weekly_plan_entries')->where('id', $entryId)->update([
+                ...$baseline,
+                ...$case['changes'],
+                'updated_at' => now(),
+            ]);
+
+            $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+                ->assertOk()
+                ->assertJsonPath('data.actions.can_submit', false);
+            $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors($case['error']);
+            $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'DRAFT']);
+        }
+    }
+
+    public function test_unresolved_advisory_suggestions_never_block_submit(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx([
+                ['Email', 'Nội dung công việc', 'Kết quả cần đạt', 'Ngày bắt đầu', 'Hạn hoàn thành'],
+                [$assignee->email, str_repeat('W', 181), 'Kết quả rõ ràng', '2026-10-26', '2026-10-31'],
+            ]),
+        ])->assertCreated();
+        $planId = (int) $response->json('data.id');
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
+            ->assertOk()
+            ->assertJsonPath('data.suggestions.0.type', 'LARGE_WORK_ITEM')
+            ->assertJsonPath('data.suggestions.0.status', 'PENDING')
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
+    }
+
+    public function test_stale_analysis_never_blocks_an_otherwise_complete_plan(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+            'weekly_plans.submit',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $planId = $this->importValidPlan($hr, $assignee);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
+            ->assertOk();
+        $entry = WeeklyPlan::query()->findOrFail($planId)->entries()->firstOrFail();
+        $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/entries/{$entry->id}", [
+            'assignee_id' => $assignee->id,
+            'title' => $entry->title,
+            'content' => $entry->content,
+            'expected_result' => $entry->expected_result,
+            'start_date' => $entry->start_date->toDateString(),
+            'due_date' => $entry->due_date->toDateString(),
+            'priority' => $entry->priority->value,
+            'note' => 'Thay đổi sau khi kiểm tra',
+        ])->assertOk()
+            ->assertJsonPath('data.actions.can_submit', true);
+        $this->assertDatabaseHas('weekly_plan_events', [
+            'weekly_plan_id' => $planId,
+            'event_type' => 'SUGGESTIONS_INVALIDATED',
+        ]);
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW');
+    }
+
+    public function test_rule_engine_v2_omits_deadline_and_missing_result_noise_but_keeps_advisories(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $rows = [
+            ['Email', 'Nội dung công việc', 'Kết quả cần đạt', 'Ngày bắt đầu', 'Hạn hoàn thành'],
+        ];
+        for ($index = 0; $index < 10; $index++) {
+            $title = $index < 2
+                ? 'Công việc trùng'
+                : ($index === 9 ? str_repeat('L', 181) : "Công việc {$index}");
+            $rows[] = [
+                $assignee->email,
+                $title,
+                $index === 8 ? '' : "Kết quả {$index}",
+                '2026-10-26',
+                '2026-10-31',
+            ];
+        }
+
+        $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->xlsx($rows),
+        ])->assertCreated();
+        $planId = (int) $response->json('data.id');
+        $analyzed = $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
+            ->assertOk();
+        $types = collect($analyzed->json('data.suggestions'))->pluck('type');
+
+        $this->assertSame(2, $types->filter(fn (string $type): bool => $type === 'POSSIBLE_DUPLICATE')->count());
+        $this->assertSame(1, $types->filter(fn (string $type): bool => $type === 'LARGE_WORK_ITEM')->count());
+        $this->assertFalse($types->contains('MISSING_EXPECTED_RESULT'));
+        $this->assertFalse($types->contains('DEADLINE_CONCENTRATION'));
+        $this->assertCount(3, $types);
     }
 
     public function test_first_import_uses_tidb_compatible_assignee_query_and_second_import_conflicts(): void
@@ -264,7 +490,8 @@ class WeeklyPlanningTest extends TestCase
         ])->assertCreated()
             ->assertJsonPath('data.parse_status', 'NEEDS_MAPPING')
             ->assertJsonPath('data.entries_count', 0)
-            ->assertJsonPath('data.source_document.status', 'NOT_EXTRACTED');
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonCount(6, 'data.source_document.passages');
         $planId = (int) $imported->json('data.id');
 
         $this->actingAs($viewer)->postJson("/api/weekly-plans/{$planId}/source/extract")
@@ -290,6 +517,16 @@ class WeeklyPlanningTest extends TestCase
             ->assertJsonCount(6, 'data.source_document.passages')
             ->assertJsonPath('data.actions.can_apply_source', false)
             ->assertJsonPath('data.actions.can_group_source', false);
+
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.source_file.availability', 'MISSING')
+            ->assertJsonPath('data.source_document.status', 'EXTRACTED')
+            ->assertJsonPath('data.actions.can_apply_source', true)
+            ->assertJsonPath('data.actions.can_group_source', true)
+            ->assertJsonCount(6, 'data.source_document.passages');
 
         $passageIds = [
             (int) $extracted->json('data.source_document.passages.1.id'),
@@ -374,6 +611,96 @@ class WeeklyPlanningTest extends TestCase
             $this->assertArrayNotHasKey('source_group', $passage['metadata']);
         }
 
+        $this->assertDatabaseCount('weekly_plan_entries', 0);
+        $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_resource_allowlists_google_tab_evidence_without_merging_duplicate_titles_or_verifying_identity(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $this->sectionedNarrativeDocx(),
+        ])->assertCreated();
+        $plan = WeeklyPlan::query()->findOrFail((int) $imported->json('data.id'));
+        $passages = $plan->sourcePassages()->orderBy('sequence')->take(3)->get();
+
+        foreach ([
+            [
+                'passage' => $passages[0],
+                'key' => 'google-docs-tab:first',
+                'tab_id' => 'tab-first',
+                'parent_tab_id' => null,
+                'nesting_level' => 0,
+                'index' => 0,
+                'order' => 1,
+            ],
+            [
+                'passage' => $passages[1],
+                'key' => 'google-docs-tab:second',
+                'tab_id' => 'tab-second',
+                'parent_tab_id' => 'tab-first',
+                'nesting_level' => 1,
+                'index' => 0,
+                'order' => 2,
+            ],
+        ] as $tab) {
+            $evidence = [
+                'type' => 'GOOGLE_DOCS_TAB',
+                'tab_id' => $tab['tab_id'],
+                'parent_tab_id' => $tab['parent_tab_id'],
+                'nesting_level' => $tab['nesting_level'],
+                'index' => $tab['index'],
+                'internal_document_id' => 'must-not-be-exposed',
+            ];
+            $tab['passage']->forceFill(['metadata' => [
+                'tab_id' => $tab['tab_id'],
+                'tab_title' => 'Tên trùng nhau',
+                'raw_google_url' => 'https://docs.google.com/document/d/must-not-be-exposed',
+                'provider_payload' => ['credential' => 'must-not-be-exposed'],
+                'source_context' => [
+                    'version' => 1,
+                    'key' => $tab['key'],
+                    'origin' => 'GOOGLE_DOCS_TAB',
+                    'order' => $tab['order'],
+                    'evidence' => $evidence,
+                ],
+                'source_group' => [
+                    'version' => 1,
+                    'key' => $tab['key'],
+                    'title' => 'Tên trùng nhau',
+                    'origin' => 'GOOGLE_DOCS_TAB',
+                    'order' => $tab['order'],
+                    'identity_verified' => true,
+                    'evidence' => $evidence,
+                ],
+            ]])->save();
+        }
+
+        $response = $this->actingAs($hr)->getJson("/api/weekly-plans/{$plan->id}")
+            ->assertOk()
+            ->assertJsonPath('data.source_document.passages.0.metadata', [])
+            ->assertJsonPath('data.source_document.passages.0.source_context.origin', 'GOOGLE_DOCS_TAB')
+            ->assertJsonPath('data.source_document.passages.0.source_context.order', 1)
+            ->assertJsonPath('data.source_document.passages.0.source_context.evidence.tab_id', 'tab-first')
+            ->assertJsonPath('data.source_document.passages.1.source_group.title', 'Tên trùng nhau')
+            ->assertJsonPath('data.source_document.passages.1.source_group.order', 2)
+            ->assertJsonPath('data.source_document.passages.1.source_group.identity_verified', false)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.tab_id', 'tab-second')
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.parent_tab_id', 'tab-first')
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.nesting_level', 1)
+            ->assertJsonPath('data.source_document.passages.1.source_group.evidence.index', 0)
+            ->assertJsonPath('data.source_document.passages.2.source_context.origin', 'DOCX_SECTION')
+            ->assertJsonPath('data.source_document.passages.2.source_context.evidence.type', 'OOXML_SECTION');
+
+        $this->assertNotSame(
+            $response->json('data.source_document.passages.0.source_group.key'),
+            $response->json('data.source_document.passages.1.source_group.key'),
+        );
+        $serialized = json_encode($response->json('data'), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('must-not-be-exposed', $serialized);
         $this->assertDatabaseCount('weekly_plan_entries', 0);
         $this->assertDatabaseCount('tasks', 0);
     }
@@ -708,7 +1035,16 @@ class WeeklyPlanningTest extends TestCase
                         'note' => null,
                         'verification_fields' => ['assignee_id'],
                         'evidence' => 'Không có bằng chứng hợp lệ.',
-                        'provenance' => ['title' => 'INFERRED'],
+                        'provenance' => [
+                            'title' => 'INFERRED',
+                            'content' => 'SUGGESTED',
+                            'expected_result' => 'SUGGESTED',
+                            'employee_identifier' => 'SUGGESTED',
+                            'start_date' => 'VERBATIM',
+                            'due_date' => 'VERBATIM',
+                            'priority' => 'SUGGESTED',
+                            'note' => 'SUGGESTED',
+                        ],
                     ]];
                 }
             },
@@ -747,7 +1083,8 @@ class WeeklyPlanningTest extends TestCase
         Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
         $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
             ->assertOk()
-            ->assertJsonPath('data.source_document.status', 'MISSING')
+            ->assertJsonPath('data.source_file.availability', 'MISSING')
+            ->assertJsonPath('data.source_document.status', 'EMPTY')
             ->assertJsonPath('data.actions.can_replace_source', true);
 
         $this->actingAs($hr)->post("/api/weekly-plans/{$planId}/source/replace", [
@@ -797,6 +1134,61 @@ class WeeklyPlanningTest extends TestCase
             ->count());
     }
 
+    public function test_missing_xlsx_returns_a_safe_conflict_and_can_be_reuploaded_without_losing_saved_entries(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions([]);
+        $upload = $this->xlsx([
+            ['Email', 'Nội dung công việc', 'Ngày bắt đầu', 'Hạn hoàn thành', 'Mức độ ưu tiên'],
+            [$assignee->email, 'Dữ liệu đã chuẩn hóa', '2026-10-26', '2026-10-31', 'Cao'],
+        ]);
+        $contents = file_get_contents((string) $upload->getRealPath());
+        $this->assertIsString($contents);
+
+        $imported = $this->actingAs($hr)->post('/api/weekly-plans/import', [
+            'file' => $upload,
+        ])->assertCreated()
+            ->assertJsonPath('data.entries.0.title', 'Dữ liệu đã chuẩn hóa')
+            ->assertJsonPath('data.source_file.availability', 'AVAILABLE');
+        $planId = (int) $imported->json('data.id');
+
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        Storage::disk((string) $plan->source_disk)->delete((string) $plan->source_path);
+
+        $this->actingAs($hr)->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.source_file.availability', 'MISSING')
+            ->assertJsonPath('data.entries.0.title', 'Dữ liệu đã chuẩn hóa')
+            ->assertJsonPath('data.actions.can_replace_source', true);
+
+        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/reparse", [
+            'column_mapping' => [
+                'employee_identifier' => 'Email',
+                'title' => 'Nội dung công việc',
+                'start_date' => 'Ngày bắt đầu',
+                'due_date' => 'Hạn hoàn thành',
+            ],
+        ])->assertConflict()
+            ->assertJsonPath('message', 'File nguồn không còn khả dụng. Vui lòng tải lại file để đọc lại dữ liệu.');
+
+        $this->assertDatabaseHas('weekly_plan_entries', [
+            'weekly_plan_id' => $planId,
+            'title' => 'Dữ liệu đã chuẩn hóa',
+        ]);
+
+        $this->actingAs($hr)->post("/api/weekly-plans/{$planId}/source/replace", [
+            'file' => UploadedFile::fake()->createWithContent('replacement.xlsx', $contents),
+        ])->assertOk()
+            ->assertJsonPath('data.source_file.availability', 'AVAILABLE')
+            ->assertJsonPath('data.entries.0.title', 'Dữ liệu đã chuẩn hóa');
+
+        $this->assertDatabaseCount('weekly_plans', 1);
+        $this->assertDatabaseCount('weekly_plan_entries', 1);
+    }
+
     public function test_import_keeps_unresolved_and_invalid_rows_instead_of_guessing_or_skipping(): void
     {
         [$hr] = $this->userWithPermissions([
@@ -829,7 +1221,7 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
-    public function test_hr_can_fix_a_draft_and_requested_employee_is_reset_before_resubmission(): void
+    public function test_selective_revision_loop_remains_closed_until_the_follow_up_stack_lands(): void
     {
         [$hr] = $this->userWithPermissions([
             'weekly_plans.view',
@@ -849,7 +1241,7 @@ class WeeklyPlanningTest extends TestCase
             'assignee_id' => $assignee->id,
             'status' => 'CHANGES_REQUESTED',
             'comment' => 'Cần làm rõ kết quả.',
-        ])->assertOk()->assertJsonPath('data.status', 'CHANGES_REQUESTED');
+        ])->assertConflict();
 
         $entryId = WeeklyPlan::query()->findOrFail($planId)->entries()->value('id');
         $this->actingAs($hr)->patchJson("/api/weekly-plans/{$planId}/entries/{$entryId}", [
@@ -861,11 +1253,11 @@ class WeeklyPlanningTest extends TestCase
             'due_date' => '2026-10-31',
             'priority' => 'HIGH',
             'note' => null,
-        ])->assertOk()->assertJsonPath('data.employee_reviews.0.status', 'PENDING');
-
-        $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")
-            ->assertOk()
-            ->assertJsonPath('data.status', 'SUBMITTED');
+        ])->assertForbidden();
+        $this->assertDatabaseHas('weekly_plans', [
+            'id' => $planId,
+            'status' => 'ASSISTANT_REVIEW',
+        ]);
     }
 
     public function test_security_boundaries_and_state_transitions_fail_closed(): void
@@ -919,7 +1311,7 @@ class WeeklyPlanningTest extends TestCase
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")->assertOk();
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve")
-            ->assertUnprocessable();
+            ->assertConflict();
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
             ->assertForbidden();
 
@@ -982,7 +1374,7 @@ class WeeklyPlanningTest extends TestCase
         $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'file' => $this->xlsx([
                 ['Người thực hiện', 'Việc dự kiến', 'Khởi động', 'Kết thúc'],
-                [$assignee->email, 'Đầu việc cần ánh xạ', '2026-10-26', '2026-10-31'],
+                [$assignee->email, str_repeat('A', 181), '2026-10-26', '2026-10-31'],
             ]),
         ])->assertCreated()
             ->assertJsonPath('data.parse_status', 'NEEDS_MAPPING')
@@ -1006,13 +1398,37 @@ class WeeklyPlanningTest extends TestCase
         $entryBefore = WeeklyPlan::query()->findOrFail($planId)->entries()->firstOrFail()->only([
             'assignee_id', 'title', 'content', 'expected_result', 'start_date', 'due_date', 'priority',
         ]);
+        $plan = WeeklyPlan::query()->findOrFail($planId);
+        $fingerprint = hash('sha256', $plan->entries()
+            ->orderBy('sort_order')
+            ->get([
+                'assignee_id', 'title', 'content', 'expected_result', 'start_date',
+                'due_date', 'priority', 'note', 'sort_order',
+            ])->toJson());
+        $plan->events()->create([
+            'actor_id' => $hr->id,
+            'event_type' => 'ANALYZED',
+            'metadata' => [
+                'analyzer' => 'RULE_BASED_V1',
+                'suggestion_count' => 0,
+                'content_fingerprint' => $fingerprint,
+                'reused' => false,
+            ],
+        ]);
+
         $analyzed = $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
             ->assertOk()
-            ->assertJsonPath('data.suggestions.0.type', 'MISSING_EXPECTED_RESULT');
+            ->assertJsonPath('data.suggestions.0.type', 'LARGE_WORK_ITEM');
+        $latestAnalysis = $plan->events()->where('event_type', 'ANALYZED')->reorder()->latest('id')->firstOrFail();
+        $this->assertSame('RULE_BASED_V2', $latestAnalysis->metadata['analyzer']);
+        $this->assertFalse($latestAnalysis->metadata['reused']);
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/analyze")
             ->assertOk()
             ->assertJsonCount(1, 'data.suggestions');
+        $this->assertTrue(
+            $plan->events()->where('event_type', 'ANALYZED')->reorder()->latest('id')->firstOrFail()->metadata['reused'],
+        );
         $this->assertDatabaseCount('weekly_plan_suggestions', 1);
         $this->assertEquals(
             $entryBefore,
@@ -1088,7 +1504,7 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('tasks', 0);
     }
 
-    public function test_owner_can_comment_and_edit_review_fields_without_reassigning_or_changing_start_date(): void
+    public function test_owner_comment_is_state_neutral_and_owner_edit_is_closed_during_assistant_review(): void
     {
         [$hr] = $this->userWithPermissions([
             'weekly_plans.view',
@@ -1116,17 +1532,14 @@ class WeeklyPlanningTest extends TestCase
             'due_date' => '2026-10-30',
             'priority' => 'URGENT',
             'note' => 'Cần ưu tiên',
-        ])->assertOk()
-            ->assertJsonPath('data.entries.0.assignee.id', $assignee->id)
-            ->assertJsonPath('data.entries.0.start_date', '2026-10-26')
-            ->assertJsonPath('data.entries.0.due_date', '2026-10-30')
-            ->assertJsonPath('data.entries.0.priority', 'URGENT');
+        ])->assertForbidden();
 
         $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/comments", [
             'content' => 'Nhận xét riêng cho đầu việc.',
             'entry_id' => $entryId,
             'assignee_id' => $assignee->id,
         ])->assertCreated()
+            ->assertJsonPath('data.status', 'ASSISTANT_REVIEW')
             ->assertJsonPath('data.comments.0.entry_id', $entryId)
             ->assertJsonPath('data.comments.0.assignee_id', $assignee->id);
 
@@ -1152,6 +1565,10 @@ class WeeklyPlanningTest extends TestCase
             'tasks.manage',
             'tasks.view',
         ]);
+        [$assistant] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.assistant_review',
+        ]);
         [$first] = $this->userWithPermissions([]);
         [$second, $secondMembershipId] = $this->userWithPermissions([]);
 
@@ -1166,21 +1583,30 @@ class WeeklyPlanningTest extends TestCase
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/submit")->assertOk();
         foreach ([$first, $second] as $assignee) {
-            $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/employee-reviews", [
-                'assignee_id' => $assignee->id,
-                'status' => 'ACCEPTED',
-            ])->assertOk();
+            $this->actingAs($assistant)->postJson(
+                "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+                ['decision' => 'ACCEPTED'],
+            )->assertOk();
         }
+        $this->actingAs($assistant)->postJson("/api/weekly-plans/{$planId}/finalize-assistant-review")
+            ->assertOk();
+        foreach ([$first, $second] as $assignee) {
+            $this->actingAs($owner)->postJson(
+                "/api/weekly-plans/{$planId}/review-decisions/{$assignee->id}",
+                ['decision' => 'ACCEPTED'],
+            )->assertOk();
+        }
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve")->assertOk();
         DB::table('organization_memberships')->where('id', $secondMembershipId)->update([
             'is_active' => false,
             'updated_at' => now(),
         ]);
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertUnprocessable();
         $this->assertDatabaseCount('tasks', 0);
         $this->assertDatabaseCount('user_notifications', 0);
-        $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'IN_REVIEW']);
-        $this->assertDatabaseMissing('weekly_plan_events', [
+        $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'APPROVED']);
+        $this->assertDatabaseHas('weekly_plan_events', [
             'weekly_plan_id' => $planId,
             'event_type' => 'APPROVED',
         ]);
@@ -1189,7 +1615,7 @@ class WeeklyPlanningTest extends TestCase
             'is_active' => true,
             'updated_at' => now(),
         ]);
-        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/approve-and-publish")
+        $this->actingAs($owner)->postJson("/api/weekly-plans/{$planId}/publish")
             ->assertOk()
             ->assertJsonPath('data.status', 'PUBLISHED');
         $this->assertDatabaseCount('tasks', 2);
@@ -1239,7 +1665,7 @@ class WeeklyPlanningTest extends TestCase
         $response = $this->actingAs($hr)->post('/api/weekly-plans/import', [
             'file' => $this->xlsx([
                 ['Email', 'Nội dung công việc', 'Ngày bắt đầu', 'Hạn hoàn thành', 'Mức độ ưu tiên'],
-                [$assignee->email, 'Công việc cần ADMIN kiểm tra', '2026-10-26', '2026-10-31', 'Cao'],
+                [$assignee->email, str_repeat('B', 181), '2026-10-26', '2026-10-31', 'Cao'],
             ]),
         ])->assertCreated();
         $planId = (int) $response->json('data.id');
@@ -1248,7 +1674,7 @@ class WeeklyPlanningTest extends TestCase
         $analyzed = $this->actingAs($hr)
             ->postJson("/api/weekly-plans/{$planId}/analyze")
             ->assertOk()
-            ->assertJsonPath('data.suggestions.0.type', 'MISSING_EXPECTED_RESULT');
+            ->assertJsonPath('data.suggestions.0.type', 'LARGE_WORK_ITEM');
         $suggestionId = (int) $analyzed->json('data.suggestions.0.id');
 
         $this->actingAs($hr)->postJson("/api/weekly-plans/{$planId}/comments", [
@@ -1365,6 +1791,62 @@ class WeeklyPlanningTest extends TestCase
         $this->assertDatabaseCount('weekly_plan_comments', 1);
         $this->assertDatabaseHas('weekly_plans', ['id' => $planId, 'status' => 'DRAFT']);
         $this->assertDatabaseCount('tasks', 0);
+    }
+
+    public function test_manual_entry_create_update_and_delete_support_ordered_items(): void
+    {
+        [$hr] = $this->userWithPermissions([
+            'weekly_plans.view',
+            'weekly_plans.manage_draft',
+        ]);
+        [$assignee] = $this->userWithPermissions(['tasks.view']);
+        $planId = $this->importValidPlan($hr, $assignee);
+        $this->actingAs($hr)
+            ->getJson("/api/weekly-plans/{$planId}")
+            ->assertOk()
+            ->assertJsonPath('data.summary.item_count', 0)
+            ->assertJsonCount(0, 'data.entries.0.items');
+        $input = [
+            'assignee_id' => $assignee->id,
+            'title' => 'Grouped manual work',
+            'content' => null,
+            'expected_result' => 'Completed',
+            'start_date' => '2026-10-26',
+            'due_date' => '2026-10-31',
+            'priority' => 'MEDIUM',
+            'note' => null,
+            'items' => [
+                ['title' => 'First item', 'content' => null],
+                ['title' => 'Second item', 'content' => 'Details'],
+            ],
+        ];
+
+        $created = $this->actingAs($hr)
+            ->postJson("/api/weekly-plans/{$planId}/entries", $input)
+            ->assertCreated()
+            ->assertJsonPath('data.summary.item_count', 2)
+            ->assertJsonPath('data.entries.1.items.0.title', 'First item')
+            ->assertJsonPath('data.entries.1.items.0.sort_order', 1)
+            ->assertJsonPath('data.entries.1.items.1.title', 'Second item')
+            ->assertJsonPath('data.entries.1.items.1.sort_order', 2);
+        $entryId = (int) $created->json('data.entries.1.id');
+
+        $input['items'] = [
+            ['title' => 'Second item revised', 'content' => null],
+        ];
+        $this->actingAs($hr)
+            ->patchJson("/api/weekly-plans/{$planId}/entries/{$entryId}", $input)
+            ->assertOk()
+            ->assertJsonPath('data.summary.item_count', 1)
+            ->assertJsonCount(1, 'data.entries.1.items')
+            ->assertJsonPath('data.entries.1.items.0.title', 'Second item revised')
+            ->assertJsonPath('data.entries.1.items.0.sort_order', 1);
+
+        $this->actingAs($hr)
+            ->deleteJson("/api/weekly-plans/{$planId}/entries/{$entryId}")
+            ->assertOk()
+            ->assertJsonPath('data.summary.item_count', 0);
+        $this->assertDatabaseCount('weekly_plan_entry_items', 0);
     }
 
     /** @return array{User, int} */

@@ -6,14 +6,15 @@ Weekly Work Planning prepares next week's Monday–Saturday work in a private dr
 
 All endpoints require `auth:sanctum` and an active default KPS membership. Weekly Planning permissions require an `ORGANIZATION` or `ALL` data scope; narrower and unsupported scopes fail closed.
 
-| Permission | Default grant prepared by the isolated seeder | Purpose |
-| --- | --- | --- |
-| `weekly_plans.view` | HR_MANAGER / OWNER / ADMIN | List and read plans in the active organization; ADMIN is read-only |
-| `weekly_plans.manage_draft` | HR_MANAGER | Import, reparse, add, update, delete and decide suggestions |
-| `weekly_plans.submit` | HR_MANAGER | Submit or resubmit a valid plan |
-| `weekly_plans.review` | OWNER | Review an employee and edit allowed entry fields during review |
-| `weekly_plans.approve` | OWNER | Final approval after every employee is accepted |
-| `weekly_plans.publish` | OWNER | Atomically publish approved entries as Tasks |
+| Permission                      | Default grant prepared by the isolated seeder    | Purpose                                                                 |
+| ------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------- |
+| `weekly_plans.view`             | HR_MANAGER / EXECUTIVE_ASSISTANT / OWNER / ADMIN | List and read plans in the active organization; ADMIN is read-only      |
+| `weekly_plans.manage_draft`     | HR_MANAGER                                       | Import, reparse, add, update, delete and decide suggestions             |
+| `weekly_plans.submit`           | HR_MANAGER                                       | Submit or resubmit a valid plan                                         |
+| `weekly_plans.assistant_review` | EXECUTIVE_ASSISTANT                              | Review employees and explicitly transfer an all-accepted round to OWNER |
+| `weekly_plans.review`           | OWNER                                            | Review an employee and edit allowed entry fields during review          |
+| `weekly_plans.approve`          | OWNER                                            | Final approval after every employee is accepted                         |
+| `weekly_plans.publish`          | OWNER                                            | Atomically publish approved entries as Tasks                            |
 
 `WeeklyPlanningPermissionSeeder` is additive and idempotent. ADMIN receives only `weekly_plans.view` with `ALL` scope; it does not receive import, edit, analyze, submit, review, approve or publish permissions. The seeder is intentionally not called automatically.
 
@@ -22,39 +23,44 @@ The frontend keeps `weekly-plans` as an opaque navigation/route-authorization ke
 ## State machine
 
 ```text
-DRAFT -> SUBMITTED -> IN_REVIEW -> APPROVED -> PUBLISHED
-                         |
-                         -> CHANGES_REQUESTED -> SUBMITTED
+DRAFT -> ASSISTANT_REVIEW -> OWNER_REVIEW -> APPROVED -> PUBLISHED
+             |                    |
+             v                    v
+ASSISTANT_CHANGES_REQUESTED  OWNER_CHANGES_REQUESTED
 ```
 
-Employee review status is `PENDING`, `CHANGES_REQUESTED`, or `ACCEPTED`. Editing an employee's entries resets that employee's review to `PENDING`. The OWNER UI uses one final `approve-and-publish` action; the legacy `approve` and `publish` endpoints remain available for compatibility.
+Staged employee decisions are stored per Assistant/OWNER review round and use `PENDING`, `CHANGES_REQUESTED`, or `ACCEPTED`. Assistant completion is explicit and creates OWNER round 1 only after all Assistant decisions are accepted. OWNER approval remains separate from publication. The legacy `SUBMITTED`, `IN_REVIEW`, `CHANGES_REQUESTED`, employee-review table, and endpoint remain compatibility-only during the stacked rollout.
+
+`POST /api/weekly-plans/{id}/review-decisions/{assigneeId}` accepts only `{"decision":"ACCEPTED"}` or `{"decision":"CHANGES_REQUESTED"}`. The server derives the stage from plan status and permission; clients never select a stage. `POST /api/weekly-plans/{id}/finalize-assistant-review` performs the deliberate Assistant-to-OWNER transition.
+
+Comments remain separate records and state-neutral. Adding a plan, employee, or work comment never changes a staged decision, review round, or plan status.
 
 ## Endpoints
 
-| Method | Path | Result |
-| --- | --- | --- |
-| GET | `/api/weekly-plans` | Paginated organization list |
-| GET | `/api/weekly-plans/references` | Next business week, active organization users, opaque import action |
-| GET | `/api/weekly-plans/template` | Generated `.xlsx` template |
-| POST | `/api/weekly-plans/import` | Multipart import of one `.xlsx` or structured-table `.docx` |
-| GET | `/api/weekly-plans/{id}` | Entries, reviews, suggestions, comments, audit events and opaque actions |
-| POST | `/api/weekly-plans/{id}/reparse` | Reparse the private source with `column_mapping` |
-| POST | `/api/weekly-plans/{id}/source/extract` | Read ordered paragraphs, headings, lists and table rows from the current private DOCX |
-| POST | `/api/weekly-plans/{id}/source/replace` | Replace a missing DOCX source on the same draft plan, then extract its text |
-| PATCH | `/api/weekly-plans/{id}/source/group` | Assign one manual document-group label to a contiguous passage range |
-| POST | `/api/weekly-plans/{id}/source/apply` | Atomically append HR-confirmed draft entries linked to selected source passages |
-| POST | `/api/weekly-plans/{id}/source/ai-extract` | Provider boundary for structured task extraction; returns `409` while no real provider is configured |
-| POST | `/api/weekly-plans/{id}/entries` | Add a draft entry |
-| PATCH | `/api/weekly-plans/{id}/entries/{entryId}` | Edit a draft or an OWNER-reviewable entry |
-| DELETE | `/api/weekly-plans/{id}/entries/{entryId}` | Remove a draft entry |
-| POST | `/api/weekly-plans/{id}/submit` | Submit/resubmit a valid draft |
-| POST | `/api/weekly-plans/{id}/analyze` | Run the rule-based V1 analyzer explicitly on normalized draft entries |
-| POST | `/api/weekly-plans/{id}/employee-reviews` | Accept or request changes for one employee |
-| POST | `/api/weekly-plans/{id}/comments` | Append a plan, employee or entry comment for a draft manager or reviewer; view-only ADMIN is rejected |
-| PATCH | `/api/weekly-plans/{id}/suggestions/{suggestionId}` | Accept or reject a rule-based suggestion record |
-| POST | `/api/weekly-plans/{id}/approve` | Final approval; does not create Tasks |
-| POST | `/api/weekly-plans/{id}/publish` | Atomically create Tasks and mark the plan published |
-| POST | `/api/weekly-plans/{id}/approve-and-publish` | Atomically approve, create Tasks and publish after every employee is accepted |
+| Method | Path                                                | Result                                                                                                                                                                         |
+| ------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/api/weekly-plans`                                 | Paginated organization list                                                                                                                                                    |
+| GET    | `/api/weekly-plans/references`                      | Next business week, active organization users, opaque import action                                                                                                            |
+| GET    | `/api/weekly-plans/template`                        | Generated `.xlsx` template                                                                                                                                                     |
+| POST   | `/api/weekly-plans/import`                          | Multipart import of one `.xlsx` or structured-table `.docx`                                                                                                                    |
+| GET    | `/api/weekly-plans/{id}`                            | Entries, reviews, suggestions, comments, audit events and opaque actions                                                                                                       |
+| POST   | `/api/weekly-plans/{id}/reparse`                    | Reparse the private source with `column_mapping`                                                                                                                               |
+| POST   | `/api/weekly-plans/{id}/source/extract`             | Read ordered paragraphs, headings, lists and table rows from the current private DOCX                                                                                          |
+| POST   | `/api/weekly-plans/{id}/source/replace`             | Replace a missing DOCX source on the same draft plan, then extract its text                                                                                                    |
+| PATCH  | `/api/weekly-plans/{id}/source/group`               | Assign one manual document-group label to a contiguous passage range                                                                                                           |
+| POST   | `/api/weekly-plans/{id}/source/apply`               | Atomically append HR-confirmed draft entries linked to selected source passages                                                                                                |
+| POST   | `/api/weekly-plans/{id}/source/ai-extract`          | Scoped, throttled Structured Output preview from persisted passages; Google Docs accepts optional `source_passage_ids`; returns `409` while no approved provider is configured |
+| POST   | `/api/weekly-plans/{id}/entries`                    | Add a draft entry                                                                                                                                                              |
+| PATCH  | `/api/weekly-plans/{id}/entries/{entryId}`          | Edit a draft or an OWNER-reviewable entry                                                                                                                                      |
+| DELETE | `/api/weekly-plans/{id}/entries/{entryId}`          | Remove a draft entry                                                                                                                                                           |
+| POST   | `/api/weekly-plans/{id}/submit`                     | Submit/resubmit a valid draft                                                                                                                                                  |
+| POST   | `/api/weekly-plans/{id}/analyze`                    | Run the rule-based V1 analyzer explicitly on normalized draft entries                                                                                                          |
+| POST   | `/api/weekly-plans/{id}/employee-reviews`           | Accept or request changes for one employee                                                                                                                                     |
+| POST   | `/api/weekly-plans/{id}/comments`                   | Append a plan, employee or entry comment for a draft manager or reviewer; view-only ADMIN is rejected                                                                          |
+| PATCH  | `/api/weekly-plans/{id}/suggestions/{suggestionId}` | Accept or reject a rule-based suggestion record                                                                                                                                |
+| POST   | `/api/weekly-plans/{id}/approve`                    | Final approval; does not create Tasks                                                                                                                                          |
+| POST   | `/api/weekly-plans/{id}/publish`                    | Atomically create Tasks and mark the plan published                                                                                                                            |
+| POST   | `/api/weekly-plans/{id}/approve-and-publish`        | Atomically approve, create Tasks and publish after every employee is accepted                                                                                                  |
 
 Dates are `YYYY-MM-DD` in the API. The business timezone is `Asia/Ho_Chi_Minh`; the generated next-week period always covers Monday through Saturday.
 
@@ -108,7 +114,11 @@ Applying passages requires a UUID `request_id`. Repeating the same request and p
 }
 ```
 
-Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. The structured task extractor is behind `WeeklyPlanTaskExtractor`; V1 binds the unavailable implementation and exposes “Chưa kết nối AI”. No external AI request or fabricated suggestion occurs. `WEEKLY_PLAN_DOCUMENT_AI_DRIVER=none` is the safe default.
+Document extraction is bounded by `WEEKLY_PLAN_MAX_SOURCE_PASSAGES`, `WEEKLY_PLAN_MAX_SOURCE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGE_CHARACTERS`, `WEEKLY_PLAN_MAX_SOURCE_PASSAGES_PER_ENTRY` and `WEEKLY_PLAN_MAX_SOURCE_ENTRIES_PER_REQUEST`. AI output is also bounded by `WEEKLY_PLAN_AI_MAX_TASKS_PER_RESPONSE`; the effective task limit is the smaller of that value and the one-request apply limit. Oversized output is rejected without truncation. The structured task extractor remains behind `WeeklyPlanTaskExtractor`: `none` is the safe default and `openai` uses the shared budgeted AI Gateway only after its key, model, prices and positive budget are configured. It reads persisted passages, returns proposals with source keys/evidence/provenance, and never creates entries or Tasks. DOCX retains manual assignee review. Google Docs may optionally send `{ "source_passage_ids": [31, 32] }` to analyze one explicit current-source selection; omitting the field keeps the all-eligible-verified-tabs behavior. The server rejects unknown, stale, unresolved and `NOT_APPLICABLE` passages before the provider call. One bounded provider request receives only the selected `VERIFIED` passages and no employee identity, while trusted assignees are injected server-side. Each returned task must still reference exactly one tab, and the assignment is revalidated in the existing idempotent atomic `source/apply` flow. See `docs/AI_GATEWAY_V1.md`.
+
+Google Docs AI review uses a compact employee-grouped UI and does not expose provenance, raw source keys or source excerpts to normal users; those values remain in the server response and continue to drive source/mapping validation and audit-safe Apply All. Optional `detail_suggestions` use seven bounded fields (`channel`, `account`, `frequency`, `format`, `content_direction`, `objective`, `notes`). Every non-null field has a `value` plus a `basis` of `SOURCE_DERIVED` or `AI_SUGGESTION`; the latter must never be represented as a company fact.
+
+For this review only, the two UI priority choices map to existing enums: `Không` → `MEDIUM`, `Cao` → `HIGH`. An AI `HIGH` or `URGENT` hint initializes `Cao`; every other or missing hint initializes `Không`. HR may change this before applying. Date inputs are intentionally absent: for Google Docs the server normalizes provider dates to `weekly_plans.week_start`/`weekly_plans.week_end` before returning the preview, and each included suggestion is submitted with the same deterministic dates. The existing request and domain validators still require and validate both dates inside the Monday–Saturday plan period. DOCX, manual-entry and other Task workflows retain their existing date and priority behavior.
 
 ### Explicit rule-based analysis
 
@@ -159,12 +169,18 @@ The combined endpoint locks the plan row, requires every employee review to be `
 
 ## Private storage and deployment
 
-Normalized rows are durable database records. The original file is stored through a configurable private Laravel Storage disk and its disk/path are never returned by the public resource.
+Normalized rows and DOCX source passages are durable database records. Import parses the uploaded file immediately; the original file is stored through a configurable private Laravel Storage disk and its disk/path are never returned by the public resource.
 
 - Local development/tests: `WEEKLY_PLAN_STORAGE_DISK=local`.
-- Production: configure a private persistent object-storage disk (for example `s3`) plus provider credentials, bucket, endpoint, and path-style setting as applicable.
-- Render's local filesystem is ephemeral and must not be used as the production source-file guarantee.
-- The current Composer lock does not install the optional S3 Flysystem adapter. Add and validate `league/flysystem-aws-s3-v3` in a separately approved dependency/deployment step before selecting the `s3` disk.
+- Staging may temporarily use private local ephemeral storage only with `APP_ENV=staging` and `KPS_STAGING_EPHEMERAL_FILES=true`. This exception is rejected in production.
+- Production defaults to private persistent object storage (for example `s3`). A temporary Owner-approved exception permits only the private `local` disk with `APP_ENV=production`, `APP_DEBUG=false`, `KPS_DATABASE_ENVIRONMENT=production` and `KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true`. Missing/false opt-in rejects local storage; the staging flag cannot authorize Production. Public/served/unsafe local roots remain forbidden. Keep `FILESYSTEM_DISK` and database/session configuration unchanged. See the [Production runbook](ENVIRONMENT_DEPLOYMENT_SAFETY.md#ngoại-lệ-production-render-free-file-weekly-planning-ephemeral).
+- Render's local filesystem is ephemeral. Weekly source files can be permanently lost after restart/redeploy in either opted-in environment; Owner accepts this risk for Weekly documents only. The API exposes `source_file.availability=MISSING`, keeps saved plan data intact and lets an authorized HR user upload the same file type again for `DRAFT`/`CHANGES_REQUESTED` plans. Other statuses retain their edit restrictions. Reparse requiring a lost file returns 409; inaccessible storage reports `UNAVAILABLE` and replacement returns 503. There is no source-file download endpoint; GET `/api/weekly-plans/template` generates a new Excel template independently.
+- The Composer lock includes `league/flysystem-aws-s3-v3`. Before selecting the `s3` disk, configure a private non-production bucket first and validate provider-specific endpoint, region, credentials/IAM and prefix settings.
+
+Dependency after import:
+
+- Works without the original file: view/edit saved entries, rule-based analysis, review/approval/publication, view/group/apply persisted passages, and AI extraction that consumes those persisted passages.
+- Still needs the original file: reparse with a new column mapping and first-time extraction for legacy DOCX plans imported before immediate passage persistence. Re-upload restores only the source object/metadata; it does not silently rewrite existing entries.
 
 Do not log provider secrets, expose a public source URL, or run the general authorization seeder merely to enable this module.
 
@@ -179,4 +195,10 @@ Do not log provider secrets, expose a public source URL, or run the general auth
 7. Smoke-test import, review, approval, publication, Task linkage and assignment notification with isolated test users.
 8. Roll out the frontend only after backend routes, storage and permissions are ready.
 
-The current Docker entry point runs `php artisan migrate --force` on startup. Do not deploy the image until this automatic migration behavior is explicitly accepted for the target environment or separated into a controlled release command.
+The Docker entry point does not run migrations. Keep schema changes in a separately approved Render pre-deploy/one-off operation and follow [`ENVIRONMENT_DEPLOYMENT_SAFETY.md`](ENVIRONMENT_DEPLOYMENT_SAFETY.md); never add migrations back to container startup.
+
+# Durable Google Docs source (V1)
+
+`POST /api/weekly-plans/google-docs/import` xác nhận snapshot đã xem trước và tạo Weekly Plan draft mới. Payload chỉ gồm `document_url`, `expected_snapshot_sha256`, `request_id`; organization, Google document ID, passages và assignee không được nhận từ client. Chi tiết authorization, persistence, idempotency và migration xem tại [GOOGLE_DOCS_DURABLE_SOURCE_V1.md](./GOOGLE_DOCS_DURABLE_SOURCE_V1.md).
+
+Replay cùng organization/request/payload chỉ trả plan durable đã có khi active membership và `weekly_plans.manage_draft` vẫn hợp lệ; folder bị disable/replace không làm replay gọi Google hoặc ghi thêm dữ liệu. Với Google Docs, `can_ai_extract_source=true` chỉ khi mọi tab đã là `VERIFIED` hoặc `NOT_APPLICABLE`, có ít nhất một tab `VERIFIED`, và mọi nhân viên mapping còn hợp lệ. Direct AI extraction fail-closed trước gateway nếu mapping chưa hoàn tất. AI extraction của DOCX giữ nguyên.

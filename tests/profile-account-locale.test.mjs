@@ -56,7 +56,7 @@ test("profile excludes password management and account owns it", async () => {
     messages.account.subtitle,
     "Quản lý thông tin đăng nhập và bảo mật tài khoản",
   );
-  assert.equal(messages.account.summary.name, "Họ tên");
+  assert.equal(messages.account.summary.name, undefined);
   assert.equal(messages.account.summary.email, "Email đăng nhập");
   assert.equal(messages.account.password.title, "Đổi mật khẩu");
   assert.equal(messages.profile.password, undefined);

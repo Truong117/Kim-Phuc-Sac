@@ -833,26 +833,60 @@
       "SUBMITTED": "Đã gửi",
       "IN_REVIEW": "Đang xét duyệt",
       "CHANGES_REQUESTED": "Cần chỉnh sửa",
+      "ASSISTANT_REVIEW": "Trợ lý Giám đốc đang xét duyệt",
+      "ASSISTANT_CHANGES_REQUESTED": "Trợ lý yêu cầu chỉnh sửa",
+      "OWNER_REVIEW": "Giám đốc đang xét duyệt",
+      "OWNER_CHANGES_REQUESTED": "Giám đốc yêu cầu chỉnh sửa",
       "APPROVED": "Đã phê duyệt",
       "PUBLISHED": "Đã phát hành",
-      "PENDING": "Chờ xem xét",
-      "ACCEPTED": "Đã chấp nhận"
+      "PENDING": "Chờ xét duyệt",
+      "ACCEPTED": "Đã chấp nhận",
+      "reviewRequired": "Cần xét duyệt"
     },
     "parseStatus": {
       "PARSED": "Đã đọc dữ liệu",
       "NEEDS_MAPPING": "Cần ánh xạ cột",
       "FAILED": "Đọc tệp thất bại"
     },
+    "discussion": {
+      "employeeLabel": "Nhân viên",
+      "wholePlan": "Toàn bộ kế hoạch",
+      "employeeSearch": "Tìm nhân viên...",
+      "noEmployees": "Không tìm thấy nhân viên phù hợp.",
+      "workLabel": "Công việc",
+      "allEmployeeWorksOption": "Tất cả công việc của nhân viên",
+      "allEmployeeWorks": "Toàn bộ công việc",
+      "workSearch": "Tìm công việc...",
+      "noWorks": "Không tìm thấy công việc phù hợp.",
+      "contentLabel": "Nội dung ghi chú",
+      "contentPlaceholder": "Nhập nội dung trao đổi hoặc lưu ý cho OWNER...",
+      "targetChanged": "Công việc đã thay đổi. Vui lòng chọn lại công việc trước khi thêm trao đổi.",
+      "unavailableEmployee": "Nhân viên không còn khả dụng",
+      "unavailableWork": "Công việc không còn khả dụng"
+    },
     "list": {
       "metaTitle": "Kế hoạch công việc tuần | KIM PHỤC SẮC",
       "metaDescription": "Danh sách kế hoạch công việc tuần",
       "title": "Kế hoạch công việc tuần",
       "subtitle": "Chuẩn bị, xét duyệt và phát hành công việc cho tuần tiếp theo.",
+      "assistantReviewCompleted": "Đã hoàn tất vòng xét duyệt của Trợ lý Giám đốc và chuyển kế hoạch sang OWNER.",
       "create": "Thêm kế hoạch tuần",
       "loading": "Đang tải danh sách kế hoạch tuần",
       "period": "Tuần {start} – {end}",
-      "summary": "Người tạo: {creator} · {count} đầu việc",
+      "summary": "Người tạo: {creator} · {count} công việc",
       "open": "Mở kế hoạch",
+      "review": "Xét duyệt",
+      "viewReview": "Xem xét duyệt",
+      "openReviewWorkspace": "Mở không gian xét duyệt",
+      "delete": {
+        "action": "Xóa kế hoạch",
+        "title": "Xóa kế hoạch tuần?",
+        "description": "Bạn có chắc muốn xóa vĩnh viễn kế hoạch tuần {start} – {end}? Toàn bộ {count} công việc, đầu mục, nguồn và dữ liệu bản nháp của kế hoạch này sẽ bị xóa. Thao tác này không thể hoàn tác.",
+        "cancel": "Hủy",
+        "confirm": "Xóa kế hoạch",
+        "deleting": "Đang xóa...",
+        "error": "Không thể xóa kế hoạch. Danh sách hiện tại vẫn được giữ nguyên."
+      },
       "emptyTitle": "Chưa có kế hoạch tuần",
       "emptyDescription": "Các bản kế hoạch đã tạo sẽ xuất hiện tại đây."
     },
@@ -866,10 +900,253 @@
       "fileLabel": "File Excel hoặc Word",
       "fileHint": "Chấp nhận .xlsx hoặc .docx, tối đa 5 MB. Không hỗ trợ macro, công thức hoặc liên kết ngoài.",
       "fileRequired": "Vui lòng chọn file kế hoạch.",
+      "workflowVersionLabel": "Quy trình xét duyệt",
+      "workflowVersionV2": "V2 — Xét duyệt toàn bộ kế hoạch",
+      "workflowVersionV3": "V3 — Xét duyệt theo từng nhân viên",
+      "workflowVersionHint": "V3 chỉ áp dụng cho kế hoạch mới và không thể chuyển đổi sau khi tạo.",
       "downloadTemplate": "Tải file Excel mẫu",
       "downloading": "Đang tải...",
       "processing": "Đang đọc file...",
       "submit": "Tải lên và kiểm tra"
+    },
+    "googleDocsPreview": {
+      "title": "Đọc kế hoạch từ Google Docs",
+      "description": "Xem trước cấu trúc tài liệu trong thư mục đã được KPS phê duyệt. Thao tác này không tạo kế hoạch hoặc công việc.",
+      "urlLabel": "Đường dẫn Google Docs",
+      "urlPlaceholder": "https://docs.google.com/document/d/...",
+      "urlHint": "Dán liên kết Google Docs nằm trực tiếp trong thư mục đã được phê duyệt.",
+      "urlRequired": "Vui lòng nhập đường dẫn Google Docs.",
+      "submit": "Đọc tài liệu",
+      "loading": "Đang đọc tài liệu...",
+      "documentTitle": "Tài liệu",
+      "identityUnverified": "Tên tab chỉ phản ánh cấu trúc tài liệu, chưa được xác minh với tài khoản nhân viên KPS.",
+      "metrics": {
+        "tabs": "Số tab",
+        "passages": "Đoạn nội dung",
+        "characters": "Ký tự"
+      },
+      "tabsTitle": "Cấu trúc tab",
+      "tabPassages": "{count} đoạn",
+      "tabCharacters": "{count} ký tự",
+      "emptyTabs": "Tài liệu không có tab có thể hiển thị.",
+      "previewOnly": "Đây là bản xem trước chỉ đọc. Hệ thống không tự nhận diện nhân viên, tạo công việc hoặc chạy AI.",
+      "confirmHint": "Khi xác nhận, hệ thống sẽ đọc lại và chỉ lưu đúng snapshot này làm nguồn cho bản nháp tuần kế tiếp.",
+      "confirm": "Xác nhận làm nguồn",
+      "confirming": "Đang xác nhận nguồn...",
+      "errors": {
+        "invalidUrl": "Đường dẫn Google Docs không hợp lệ.",
+        "network": "Không thể kết nối đến máy chủ KPS. Vui lòng kiểm tra mạng và thử lại.",
+        "timeout": "Yêu cầu đọc tài liệu đã hết thời gian chờ. Vui lòng thử lại.",
+        "sessionExpired": "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+        "forbidden": "Bạn không có quyền đọc tài liệu Google Docs cho kế hoạch tuần.",
+        "notFound": "Không tìm thấy tài liệu trong thư mục được phê duyệt hoặc tài liệu không thể truy cập.",
+        "changed": "Quyền hoặc vị trí tài liệu đã thay đổi trong lúc đọc. Vui lòng thử lại.",
+        "validation": "Yêu cầu không hợp lệ hoặc tài liệu vượt quá giới hạn cho phép để xem trước.",
+        "rateLimited": "Đang có quá nhiều yêu cầu đọc tài liệu. Vui lòng thử lại sau.",
+        "providerResponse": "Google không cho phép đọc tài liệu hoặc trả về dữ liệu không hợp lệ.",
+        "unavailable": "Tích hợp Google Docs chưa được cấu hình hoặc dịch vụ đang tạm thời không khả dụng trên môi trường này.",
+        "unknown": "Không thể đọc tài liệu. Vui lòng thử lại.",
+        "confirm": "Không thể xác nhận tài liệu làm nguồn kế hoạch. Vui lòng thử lại."
+      }
+    },
+    "googleDocsEmployeeMapping": {
+      "title": "Xác minh nhân viên theo tab",
+      "description": "Đối chiếu từng tab Google Docs với nhân viên đang hoạt động trong tổ chức. Hệ thống không tự tạo công việc hoặc giao việc từ mapping này.",
+      "empty": "Tài liệu không có tab để xác minh.",
+      "untitledTab": "Tab chưa có tên",
+      "tabPosition": "Thứ tự {order} · Cấp lồng {level}",
+      "statusLabel": "Trạng thái xác minh",
+      "employeeLabel": "Nhân viên KPS",
+      "employeePlaceholder": "Chọn nhân viên",
+      "employeeIneligible": "Nhân viên đã xác minh trước đây không còn đủ điều kiện nhận công việc. Vui lòng chọn lại.",
+      "suggestion": {
+        "exact": "Gợi ý an toàn từ xác minh trước của tab này: {name}",
+        "alias": "Gợi ý an toàn từ tên tab đã xác minh trước đây: {name}"
+      },
+      "prefill": {
+        "exact": "Đã điền từ xác minh trước của tab này",
+        "alias": "Đã điền từ tên tab đã xác minh trước đây — vui lòng kiểm tra"
+      },
+      "useSuggestion": "Dùng gợi ý",
+      "save": "Lưu xác minh",
+      "saving": "Đang lưu...",
+      "saveAll": "Lưu tất cả xác minh",
+      "savingAll": "Đang lưu tất cả...",
+      "savedAll": "Đã lưu tất cả thay đổi xác minh.",
+      "selectionProgress": "Đã có lựa chọn: {selected}/{total}",
+      "persistedProgress": "Đã lưu xác minh: {persisted}/{total}",
+      "pendingConfirmation": "{count} mapping đang chờ xác nhận",
+      "unresolved": "{count} mapping chưa có lựa chọn",
+      "completed": "Đã hoàn tất xác minh tab",
+      "readyForAi": "Sẵn sàng phân tích công việc bằng AI",
+      "processedReadonly": "Đã xử lý · Chỉ đọc",
+      "unsaved": "Có thay đổi chưa lưu",
+      "conflict": {
+        "description": "Mapping này đã được cập nhật ở nơi khác. Lựa chọn của bạn vẫn được giữ lại. Hãy dùng dữ liệu máy chủ hoặc xác nhận lại lựa chọn hiện tại trước khi lưu.",
+        "refreshPending": "Đã phát hiện xung đột nhưng chưa tải được dữ liệu mới nhất. Lựa chọn của bạn vẫn được giữ và chưa thể lưu cho đến khi tải lại thành công.",
+        "retryRefresh": "Thử tải lại dữ liệu",
+        "refreshing": "Đang tải lại...",
+        "useServer": "Dùng dữ liệu máy chủ",
+        "keepDraft": "Giữ lựa chọn của tôi"
+      },
+      "privacyNotice": "Tên tab chỉ là dữ liệu nguồn. Danh tính chỉ được xác minh sau khi HR chủ động lưu lựa chọn.",
+      "statuses": {
+        "UNVERIFIED": "Chưa xác minh",
+        "VERIFIED": "Đã xác minh",
+        "VERIFIED_PENDING": "Đã chọn, chờ lưu xác minh",
+        "NEEDS_REVIEW": "Cần kiểm tra",
+        "NOT_APPLICABLE": "Không áp dụng"
+      },
+      "errors": {
+        "load": "Không thể tải dữ liệu xác minh nhân viên.",
+        "save": "Không thể lưu xác minh nhân viên. Vui lòng thử lại.",
+        "batchConflict": "Không có thay đổi nào được lưu vì một hoặc nhiều tab đã được cập nhật ở nơi khác. Hãy xem lại các tab xung đột trước khi lưu lại.",
+        "conflictRefresh": "Chưa thể tải dữ liệu mapping mới nhất. Lựa chọn của bạn vẫn được giữ; vui lòng thử tải lại.",
+        "conflictSnapshotStale": "Máy chủ chưa trả về phiên bản mapping mới hơn yêu cầu bị xung đột. Lựa chọn của bạn vẫn được giữ; vui lòng thử tải lại.",
+        "staleResponse": "Phản hồi mapping cũ đã bị bỏ qua. Vui lòng tải lại dữ liệu trước khi tiếp tục.",
+        "forbidden": "Bạn không còn quyền quản lý mapping nhân viên của kế hoạch này.",
+        "employeeRequired": "Vui lòng chọn nhân viên trước khi xác nhận."
+      }
+    },
+    "wizard": {
+      "pageTitle": "Kế hoạch tuần | KIM PHỤC SẮC",
+      "pageDescription": "Quy trình hoàn thiện kế hoạch công việc tuần",
+      "loading": "Đang tải kế hoạch tuần...",
+      "loadError": "Không thể tải kế hoạch tuần.",
+      "eyebrow": "Kế hoạch tuần",
+      "createdBy": "Người tạo: {name}",
+      "stepperLabel": "Các bước hoàn thiện kế hoạch tuần",
+      "back": "Quay lại",
+      "backToPlanList": "Quay lại danh sách kế hoạch",
+      "steps": {
+        "source": "Nguồn & nhân viên",
+        "structure": "Phân tích công việc",
+        "work": "Hoàn thiện & kiểm tra",
+        "submit": "Gửi xét duyệt"
+      },
+      "counts": {
+        "entries": "Công việc",
+        "items": "Đầu mục",
+        "employees": "Nhân viên",
+        "processedTabs": "Nhóm Google Docs đã xử lý"
+      },
+      "groupingBasis": {
+        "SOURCE_STRUCTURE": "Theo cấu trúc nguồn",
+        "AI_GROUPED": "AI đề xuất nhóm",
+        "ATOMIC": "Công việc độc lập"
+      },
+      "source": {
+        "title": "Nguồn & nhân viên",
+        "description": "Kiểm tra nguồn dữ liệu và xác minh nhân viên trước khi phân tích.",
+        "sourceName": "Tài liệu nguồn",
+        "state": "Trạng thái",
+        "passages": "Đoạn nội dung",
+        "tabs": "Số tab",
+        "characters": "Ký tự",
+        "capturedAt": "Thời điểm chụp nguồn",
+        "processing": "Tiến độ xử lý",
+        "processedCount": "{processed}/{relevant} nhóm",
+        "continue": "Tiếp tục: Phân tích công việc →"
+      },
+      "structure": {
+        "completeTitle": "✓ Đã hoàn thành phân tích nguồn",
+        "completeDescription": "Toàn bộ nhóm nguồn phù hợp đã được áp dụng vào bản nháp.",
+        "progress": "Đã xử lý {processed}/{relevant} nhóm",
+        "continue": "Tiếp tục: Hoàn thiện kế hoạch →"
+      },
+      "work": {
+        "title": "Kế hoạch tuần",
+        "description": "Hoàn thiện công việc và đầu mục theo từng tài khoản KPS.",
+        "unassigned": "Chưa xác định nhân viên",
+        "sources": "Nguồn: {sources}",
+        "groupCounts": "{entries} công việc · {items} đầu mục",
+        "entriesTitle": "Công việc theo nhân viên",
+        "addEntry": "Thêm công việc",
+        "editEntry": "Chỉnh sửa công việc",
+        "deleteEntry": "Xóa công việc này khỏi bản nháp?",
+        "continue": "Tiếp tục: Gửi xét duyệt →",
+        "continueBlocked": "Hoàn thiện các vấn đề trong Kiểm tra nhanh trước khi tiếp tục."
+      },
+      "reset": {
+        "action": "Đặt lại kế hoạch",
+        "title": "Đặt lại kế hoạch",
+        "description": "Đặt lại kế hoạch sẽ xóa toàn bộ công việc và đầu mục hiện tại để bạn phân tích lại từ nguồn. Tài liệu Google Docs và mapping nhân viên sẽ được giữ nguyên.",
+        "cancel": "Hủy",
+        "confirm": "Đặt lại kế hoạch"
+      },
+      "quickCheck": {
+        "title": "Kiểm tra nhanh",
+        "description": "Xác nhận điều kiện bắt buộc và kiểm tra nhanh bằng quy tắc hệ thống trước khi gửi.",
+        "ready": "✓ Kế hoạch đã đủ điều kiện gửi xét duyệt",
+        "blocked": "{count} vấn đề cần xử lý trước khi gửi",
+        "checks": {
+          "validEntries": "Công việc hợp lệ",
+          "assignedEmployees": "Nhân viên được phân công",
+          "expectedResults": "Có kết quả cần đạt",
+          "dates": "Có đủ thời gian"
+        },
+        "blockers": {
+          "noEntries": "Chưa có công việc nào",
+          "missingAssignee": "{count} công việc chưa có nhân viên phụ trách",
+          "invalidEntries": "{count} công việc chưa hợp lệ",
+          "missingExpectedResult": "{count} công việc chưa có kết quả cần đạt",
+          "missingDates": "{count} công việc chưa đủ ngày bắt đầu hoặc hạn hoàn thành"
+        },
+        "warnings": {
+          "title": "Nội dung nên kiểm tra",
+          "notRun": "Chưa kiểm tra cảnh báo bổ sung.",
+          "stale": "Kế hoạch đã thay đổi từ lần kiểm tra gần nhất.",
+          "clean": "Không phát hiện cảnh báo theo quy tắc hiện tại.",
+          "found": "Phát hiện {count} cảnh báo tham khảo. Mở từng nhóm để xem chi tiết.",
+          "run": "Kiểm tra kế hoạch",
+          "runAgain": "Kiểm tra lại",
+          "unassigned": "Chưa phân công",
+          "types": {
+            "POSSIBLE_DUPLICATE": "Công việc có thể trùng lặp",
+            "LARGE_WORK_ITEM": "Công việc có nội dung dài"
+          }
+        }
+      },
+      "submit": {
+        "title": "Gửi xét duyệt",
+        "description": "Kiểm tra tóm tắt cuối trước khi gửi Trợ lý Giám đốc xét duyệt.",
+        "workflowVersion": "Quy trình {version}",
+        "v3Description": "Mỗi nhân viên sẽ có vòng đời xét duyệt và phát hành độc lập.",
+        "roster": {
+          "title": "Danh sách nhân viên V3",
+          "description": "Chọn rõ nhân viên thuộc kế hoạch, kể cả người không có công việc trong tuần.",
+          "hasWork": "Có công việc · bắt buộc trong danh sách",
+          "zeroWork": "Không có công việc",
+          "summary": "Đã chọn {selected} nhân viên · {zeroWork} người không có công việc",
+          "save": "Lưu danh sách"
+        },
+        "action": "Gửi Trợ lý Giám đốc xét duyệt",
+        "resubmitAction": "Gửi lại sau chỉnh sửa",
+        "openReview": "Mở không gian xét duyệt",
+        "comments": "Trao đổi",
+        "noComments": "Chưa có trao đổi.",
+        "commentTarget": "Phạm vi trao đổi",
+        "addComment": "Thêm trao đổi",
+        "history": "Lịch sử hoạt động",
+        "systemActor": "Hệ thống",
+        "status": {
+          "assistantReview": "Đã gửi Trợ lý Giám đốc xét duyệt",
+          "assistantChangesRequested": "Trợ lý Giám đốc yêu cầu chỉnh sửa",
+          "ownerReview": "Đã chuyển OWNER xét duyệt",
+          "ownerChangesRequested": "OWNER yêu cầu chỉnh sửa",
+          "approved": "Đã phê duyệt",
+          "published": "Đã phát hành",
+          "submittedLegacy": "Đã gửi xét duyệt"
+        },
+        "correction": {
+          "title": "Đang có yêu cầu chỉnh sửa",
+          "single": "{stage} yêu cầu chỉnh sửa phần kế hoạch của {employee}.",
+          "multiple": "{count} nhân viên cần chỉnh sửa.",
+          "scope": "Chỉ các phần được yêu cầu chỉnh sửa mới có thể thay đổi.",
+          "ASSISTANT": "Trợ lý Giám đốc",
+          "OWNER": "OWNER"
+        }
+      }
     },
     "detail": {
       "metaTitle": "Chi tiết kế hoạch tuần | KIM PHỤC SẮC",
@@ -881,20 +1158,21 @@
       "fileTitle": "Thông tin file nguồn",
       "fileName": "Tên file",
       "parseStatus": "Trạng thái đọc file",
-      "entryCount": "Số đầu việc",
+      "entryCount": "Số công việc",
       "employeeCount": "Số nhân viên",
       "matchedEmployeeCount": "Đã đối chiếu tài khoản",
-      "invalidEntryCount": "Đầu việc cần xử lý",
+      "invalidEntryCount": "Công việc cần xử lý",
       "departments": "Phòng ban trong kế hoạch",
       "noDepartment": "Chưa có thông tin phòng ban",
       "fileSize": "Dung lượng",
+      "characterCount": "Ký tự nguồn",
       "entriesTitle": "Kế hoạch theo nhân viên",
-      "entriesDescription": "Mỗi đầu việc phải được đối chiếu với một tài khoản KPS đang hoạt động.",
-      "addEntry": "Thêm đầu việc",
-      "noEntries": "Chưa có đầu việc trong kế hoạch.",
+      "entriesDescription": "Mỗi công việc phải được đối chiếu với một tài khoản KPS đang hoạt động.",
+      "addEntry": "Thêm công việc",
+      "noEntries": "Chưa có công việc trong kế hoạch.",
       "unresolvedEmployee": "Chưa xác định nhân viên",
       "untitled": "Chưa có nội dung",
-      "noFilteredEntries": "Không có đầu việc phù hợp với bộ lọc hiện tại.",
+      "noFilteredEntries": "Không có công việc phù hợp với bộ lọc hiện tại.",
       "needsAssignment": "Cần chọn nhân viên",
       "sourceEmployeeName": "Tên trong tài liệu: {name}",
       "missingValue": "Chưa có thông tin",
@@ -904,7 +1182,7 @@
       "collapseAll": "Thu gọn tất cả",
       "metrics": {
         "employees": "Tổng nhân viên",
-        "entries": "Tổng đầu việc",
+        "entries": "Tổng công việc",
         "needsAttention": "Cần bổ sung thông tin",
         "acceptedEmployees": "OWNER đã chấp nhận"
       },
@@ -916,10 +1194,10 @@
         "validation": "Kiểm tra dữ liệu",
         "allValidation": "Tất cả trạng thái",
         "completeness": "Thông tin còn thiếu",
-        "allCompleteness": "Tất cả đầu việc",
+        "allCompleteness": "Tất cả công việc",
         "missingResult": "Thiếu kết quả cần đạt",
         "missingDate": "Thiếu ngày hoặc deadline",
-        "resultCount": "Hiển thị {entries} đầu việc trong {groups} nhóm",
+        "resultCount": "Hiển thị {entries} công việc trong {groups} nhóm",
         "clear": "Xóa bộ lọc"
       },
       "validation": {
@@ -927,13 +1205,15 @@
         "INVALID": "Cần bổ sung"
       },
       "groupCounts": {
-        "total": "{count} đầu việc",
+        "total": "{count} công việc",
         "valid": "{count} hợp lệ",
         "missing": "{count} cần xử lý"
       },
       "sourceRow": "Dòng {row}",
       "expectedResult": "Kết quả cần đạt",
       "sourceReferences": "Trích dẫn từ tài liệu nguồn",
+      "items": "{count} đầu mục",
+      "noItems": "Công việc này chưa có đầu mục.",
       "edit": "Chỉnh sửa",
       "delete": "Loại bỏ",
       "requestChanges": "Yêu cầu chỉnh sửa",
@@ -956,12 +1236,6 @@
       "commentsTitle": "Nhận xét và trao đổi",
       "noComments": "Chưa có nhận xét.",
       "commentTarget": "Phạm vi nhận xét",
-      "commentWholePlan": "Toàn bộ kế hoạch",
-      "commentEmployee": "Nhân viên: {name}",
-      "commentEntry": "Đầu việc #{id}: {title}",
-      "commentForEntry": "Đầu việc #{id}",
-      "commentForEmployee": "Theo nhân viên: {name}",
-      "commentPlaceholder": "Nhập nhận xét về kế hoạch...",
       "addComment": "Thêm nhận xét",
       "historyTitle": "Lịch sử thay đổi",
       "noHistory": "Chưa có lịch sử thay đổi.",
@@ -976,14 +1250,157 @@
     },
     "sourceDocument": {
       "title": "Nội dung tài liệu nguồn",
-      "description": "Đọc các đoạn văn, danh sách và bảng trong file Word để HR kiểm tra trước khi tạo đầu việc.",
+      "description": "Đọc các đoạn văn, danh sách và bảng trong file Word để HR kiểm tra trước khi tạo công việc.",
       "aiNotConnected": "Chưa kết nối AI",
       "extractWithAi": "Trích xuất bằng AI",
+      "analyzeRemainingGoogleDocsWithAi": "Phân tích tất cả nhóm còn lại bằng AI",
+      "aiExtracting": "AI đang phân tích...",
+      "aiFailed": "Không thể phân tích tài liệu bằng AI. Dữ liệu kế hoạch hiện tại không bị thay đổi.",
+      "aiInvalidResponse": "Kết quả phân tích AI không đúng định dạng an toàn. Không có thay đổi nào được áp dụng vào kế hoạch.",
+      "aiUntrustedAssignment": "Kết quả phân tích AI không có mapping nhân viên Google Docs đã xác minh. Không có thay đổi nào được áp dụng vào kế hoạch.",
+      "aiPreview": {
+        "title": "Bản đề xuất từ AI",
+        "description": "AI chỉ tạo bản đề xuất từ nội dung đã lưu. HR phải kiểm tra, chọn đúng tài khoản KPS và xác nhận từng công việc trước khi áp dụng.",
+        "verificationWarning": "Nội dung này chưa phải Task và chưa được giao cho nhân viên. Các trường suy luận hoặc còn thiếu cần được HR xác minh.",
+        "empty": "AI không tìm thấy công việc có đủ căn cứ trong tài liệu này.",
+        "employeeHint": "Định danh trong tài liệu: {identifier}",
+        "employeeMissing": "Tài liệu không cung cấp định danh nhân viên rõ ràng.",
+        "review": "Kiểm tra và áp dụng",
+        "content": "Mô tả đề xuất",
+        "expectedResult": "Kết quả cần đạt",
+        "period": "Thời gian đề xuất",
+        "priority": "Mức độ ưu tiên",
+        "priorityValues": {
+          "LOW": "Thấp",
+          "MEDIUM": "Trung bình",
+          "HIGH": "Cao",
+          "URGENT": "Khẩn cấp"
+        },
+        "notProvided": "Chưa có căn cứ",
+        "evidence": "Bằng chứng nguồn",
+        "sources": "Đoạn nguồn: {sources}",
+        "sourceExcerpt": "Nội dung {sourceKey}",
+        "sourceUnavailable": "Không tìm thấy đoạn nguồn tương ứng.",
+        "verificationFields": "Cần xác minh: {fields}",
+        "provenance": "Nguồn gốc trường: {values}",
+        "fields": {
+          "title": "Tiêu đề",
+          "content": "Mô tả",
+          "expected_result": "Kết quả",
+          "employee_identifier": "Định danh nhân viên",
+          "start_date": "Ngày bắt đầu",
+          "due_date": "Hạn hoàn thành",
+          "priority": "Ưu tiên",
+          "note": "Ghi chú"
+        },
+        "origins": {
+          "VERBATIM": "Nguyên văn",
+          "INFERRED": "Suy luận",
+          "SUGGESTED": "Đề xuất"
+        },
+        "googleDocs": {
+          "itemCount": "{count} đầu mục",
+          "groupingBasis": {
+            "SOURCE_STRUCTURE": "Theo cấu trúc nguồn",
+            "AI_GROUPED": "AI đề xuất nhóm",
+            "ATOMIC": "Công việc độc lập"
+          },
+          "itemsTitle": "Đầu mục",
+          "noItems": "Chưa có đầu mục.",
+          "itemTitle": "Tên đầu mục",
+          "itemContent": "Nội dung đầu mục",
+          "itemTitleColumn": "Tên đầu mục",
+          "itemContentColumn": "Nội dung",
+          "itemActions": "Thao tác",
+          "itemTitleAria": "Tên đầu mục {index}",
+          "itemContentAria": "Nội dung đầu mục {index}",
+          "moveItemUpAria": "Di chuyển đầu mục {index} lên",
+          "moveItemDownAria": "Di chuyển đầu mục {index} xuống",
+          "removeItemAria": "Xóa đầu mục {index}",
+          "addItem": "Thêm đầu mục",
+          "removeItem": "Xóa đầu mục",
+          "moveUp": "Di chuyển lên",
+          "moveDown": "Di chuyển xuống",
+          "moveItemUp": "Di chuyển lên",
+          "moveItemDown": "Di chuyển xuống",
+          "splitGroup": "Tách thành công việc riêng",
+          "generalInfo": "Thông tin chung",
+          "title": "Kết quả phân tích bằng AI",
+          "description": "Xem nhanh công việc theo từng nhân viên, chỉnh sửa khi cần và chỉ áp dụng những công việc đã chọn.",
+          "assignmentAuthority": "Người phụ trách được lấy từ mapping tab đã được HR xác minh, không phải do AI suy luận.",
+          "tab": "Tab",
+          "employee": "Nhân viên",
+          "verifiedBadge": "Đã xác minh từ mapping",
+          "assigneeLocked": "Nhân viên được lấy từ mapping tab đã được HR xác minh.",
+          "jobCount": "{count} công việc",
+          "validCount": "{valid}/{total} ✓",
+          "untitledJob": "Công việc chưa có tiêu đề",
+          "include": "Chọn",
+          "toggleJob": "Mở hoặc thu gọn công việc {title}",
+          "priorityNone": "Không",
+          "priorityHigh": "Cao",
+          "dateStrategy": "Ngày bắt đầu và hạn hoàn thành được đặt theo toàn bộ kỳ kế hoạch khi áp dụng.",
+          "completeRequired": "Vui lòng hoàn tất các công việc đã chọn trước khi áp dụng.",
+          "selectAtLeastOne": "Vui lòng chọn ít nhất một công việc để áp dụng.",
+          "applyAll": "Áp dụng tất cả ({count} công việc)",
+          "applyPlacement": {
+            "top": "Nút áp dụng ở đầu kết quả",
+            "bottom": "Nút áp dụng ở cuối kết quả"
+          },
+          "applying": "Đang áp dụng...",
+          "applyConflict": "Mapping có thể đã thay đổi. Bản chỉnh sửa vẫn được giữ lại để HR kiểm tra.",
+          "applyFailed": "Không thể áp dụng các công việc. Bản chỉnh sửa vẫn được giữ lại.",
+          "summary": {
+            "employees": "Nhân viên",
+            "employeeCount": "{count} nhân viên",
+            "jobs": "Tổng công việc",
+            "highPriority": "Ưu tiên cao",
+            "highPriorityCount": "{count} ưu tiên cao",
+            "status": "Trạng thái",
+            "ready": "Sẵn sàng áp dụng",
+            "needsReview": "Cần kiểm tra"
+          },
+          "detailSuggestions": {
+            "title": "Gợi ý chi tiết từ AI",
+            "secondaryTitle": "Chi tiết AI",
+            "aiMarker": "· AI",
+            "compactFields": {
+              "channel": "Kênh",
+              "account": "Tài khoản",
+              "frequency": "Tần suất",
+              "format": "Định dạng"
+            },
+            "fields": {
+              "channel": "Kênh đăng",
+              "account": "Tài khoản / trang",
+              "frequency": "Tần suất",
+              "format": "Định dạng",
+              "content_direction": "Nội dung gợi ý",
+              "objective": "Mục tiêu / kết quả",
+              "notes": "Lưu ý"
+            },
+            "basis": {
+              "SOURCE_DERIVED": "Từ nguồn",
+              "AI_SUGGESTION": "Gợi ý AI"
+            }
+          },
+          "validation": {
+            "assigneeRequired": "Không còn nhân viên đã xác minh cho tab này.",
+            "titleRequired": "Vui lòng nhập tiêu đề.",
+            "priorityRequired": "Vui lòng chọn mức độ ưu tiên.",
+            "sourceRequired": "Không tìm thấy đầy đủ đoạn nguồn đã tham chiếu.",
+            "verifiedMappingRequired": "Mapping tab đã xác minh không còn hợp lệ."
+          }
+        },
+        "renderError": {
+          "title": "Không thể hiển thị kết quả phân tích AI.",
+          "description": "Không có thay đổi nào được áp dụng vào kế hoạch.",
+          "retry": "Thử phân tích lại"
+        },
+        "close": "Đóng"
+      },
       "extract": "Đọc nội dung file Word",
       "extracting": "Đang đọc nội dung...",
-      "missingHelp": "File nguồn không còn khả dụng. Chọn lại file DOCX để khôi phục nội dung trên chính bản kế hoạch này.",
-      "replace": "Thay file nguồn",
-      "uploading": "Đang tải lên...",
       "status": {
         "NOT_EXTRACTED": "Chưa đọc nội dung tài liệu",
         "EXTRACTED": "Đã đọc nội dung tài liệu",
@@ -1009,15 +1426,28 @@
         "UNGROUPED": "Chưa phân nhóm"
       },
       "identityUnverified": "Chưa xác minh tài khoản KPS",
+      "googleDocsMapping": {
+        "verified": "Đã map: {name}",
+        "notApplicable": "Không áp dụng",
+        "unverified": "Chưa xác minh nhân viên",
+        "help": "Trạng thái nhân viên được lấy từ mapping Google Docs đã lưu."
+      },
       "passageCount": "{count} đoạn nguồn",
+      "blockSelectedCount": "{selected}/{total} đoạn đã chọn",
       "groupEvidence": "Dấu vết: {evidence}",
       "groupIdentityHelp": "Tên nhóm từ tài liệu không phải là tài khoản KPS đã xác minh.",
       "contextIdentityHelp": "Nhóm này chỉ phản ánh cấu trúc tài liệu, không xác định người phụ trách.",
       "selectGroup": "Chọn cả nhóm",
+      "selectedGroup": "✓ Đã chọn nhóm",
+      "selectRemainingGroup": "Chọn phần còn lại",
+      "selectedIndicator": "✓ Đã chọn",
+      "partialIndicator": "Chọn một phần",
       "deselectGroup": "Bỏ chọn nhóm",
       "expandAll": "Mở tất cả",
       "collapseAll": "Thu gọn tất cả",
       "selectedCount": "Đã chọn {count} đoạn nguồn",
+      "googleDocsSelectionSummary": "Đã chọn {passages} đoạn từ {groups} nhóm",
+      "unresolvedSelectedTabs": "Cần xác minh nhân viên cho: {tabs}",
       "assignGroup": "Gán nhãn nhóm",
       "groupRangeRequired": "Các đoạn dùng để gán nhóm phải nằm liền nhau theo thứ tự tài liệu.",
       "groupModalTitle": "Gán nhãn nhóm trong tài liệu",
@@ -1026,16 +1456,21 @@
       "groupTitlePlaceholder": "Ví dụ: Nhân viên A",
       "groupTitleHelp": "Đây chỉ là nhãn tài liệu; hệ thống không tự ghép với nhân viên KPS.",
       "groupTitleRequired": "Vui lòng nhập tên nhóm.",
-      "groupAssigneeWarning": "HR vẫn phải chọn và xác nhận tài khoản KPS phụ trách khi tạo đầu việc.",
+      "groupAssigneeWarning": "HR vẫn phải chọn và xác nhận tài khoản KPS phụ trách khi tạo công việc.",
       "groupSave": "Lưu nhãn nhóm",
       "groupSaving": "Đang lưu nhãn...",
       "groupSaveFailed": "Không thể lưu nhãn nhóm. Vui lòng kiểm tra và thử lại.",
-      "createDraft": "Tạo đầu việc nháp",
-      "createFromSelection": "Tạo đầu việc từ đoạn đã chọn",
+      "createDraft": "Tạo công việc nháp",
+      "createFromSelection": "Tạo công việc từ đoạn đã chọn",
+      "createManualEntry": "Tạo công việc thủ công",
+      "extractSelectedGroupsWithAi": "Phân tích {count} nhóm đã chọn bằng AI",
       "applyToDraft": "Áp dụng vào bản nháp",
       "selectRequired": "Vui lòng chọn ít nhất một đoạn nguồn.",
-      "entryGroupSelectionRequired": "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo đầu việc.",
-      "selectionLimit": "Mỗi đầu việc chỉ được gắn tối đa {count} đoạn nguồn.",
+      "googleDocsMappingRequired": "Vui lòng xác minh mapping nhân viên Google Docs trước khi tạo công việc.",
+      "manualPassageLimit": "Nhóm này có {selected} đoạn nguồn. Tạo thủ công chỉ hỗ trợ tối đa {limit} đoạn cho một công việc. Hãy dùng AI để phân tích thành nhiều công việc/đầu mục hoặc chọn ít đoạn hơn.",
+      "entryGroupSelectionRequired": "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo công việc.",
+      "multiTabAssignmentWarning": "Bạn đang chọn nội dung từ nhiều tab. Mỗi tab có thể thuộc một nhân viên khác nhau. Hãy xác minh nhân viên theo tab; việc phân tích thành công việc sẽ được thực hiện ở bước AI.",
+      "selectionLimit": "Mỗi công việc chỉ được gắn tối đa {count} đoạn nguồn.",
       "selectionTooLong": "Nội dung đã chọn quá dài. Vui lòng chọn ít đoạn hơn.",
       "empty": {
         "NOT_EXTRACTED": "HR có thể đọc nội dung file Word để bắt đầu.",
@@ -1045,7 +1480,7 @@
         "UNSUPPORTED": "Trích xuất văn bản V1 chỉ áp dụng cho file DOCX.",
         "UNAVAILABLE": "Không thể tải nội dung tài liệu nguồn lúc này."
       },
-      "draftTitle": "Tạo đầu việc từ tài liệu",
+      "draftTitle": "Tạo công việc từ tài liệu",
       "draftDescription": "{count} đoạn nguồn đã chọn. HR kiểm tra và chỉnh sửa trước khi thêm vào bản nháp.",
       "assigneeLabel": "Chọn nhân viên phụ trách",
       "assigneePlaceholder": "Chọn tài khoản KPS hợp lệ",
@@ -1056,6 +1491,10 @@
       "metaTitle": "Xét duyệt kế hoạch tuần | KIM PHỤC SẮC",
       "title": "Xét duyệt kế hoạch tuần",
       "changeCommentPrompt": "Nhập nội dung cần HR chỉnh sửa:",
+      "addComment": "Thêm ghi chú",
+      "acceptDecision": "Chấp nhận",
+      "requestChangesDecision": "Yêu cầu chỉnh sửa",
+      "finalizeAssistantReview": "Chuyển OWNER xét duyệt",
       "approve": "Phê duyệt cuối",
       "publish": "Phát hành thành công việc",
       "approveAndPublish": "Phê duyệt & Giao việc",
@@ -1064,15 +1503,315 @@
       "confirmDescription": "Kế hoạch gồm {employees} nhân viên và {tasks} Task sẽ được tạo.",
       "confirmSafety": "Hệ thống chỉ tạo Task khi toàn bộ dữ liệu và người phụ trách vẫn hợp lệ."
     },
+    "reviewWorkspace": {
+      "metaTitle": "Xét duyệt kế hoạch tuần | KIM PHỤC SẮC",
+      "metaDescription": "Không gian xét duyệt kế hoạch tuần theo từng nhân viên",
+      "loading": "Đang tải không gian xét duyệt...",
+      "retry": "Thử lại",
+      "back": "Quay lại danh sách kế hoạch tuần",
+      "legacyUnavailable": "Kế hoạch này chưa có dữ liệu vòng xét duyệt theo giai đoạn. Vui lòng quay lại trang chi tiết để xem thông tin kế hoạch.",
+      "header": {
+        "title": "Xét duyệt kế hoạch tuần",
+        "period": "{start} – {end}",
+        "creator": "Người lập: {name}"
+      },
+      "stage": {
+        "ASSISTANT": "Vòng Trợ lý Giám đốc",
+        "OWNER": "Vòng OWNER"
+      },
+      "summary": {
+        "title": "Tiến độ xét duyệt",
+        "round": "Vòng {round}",
+        "total": "{count} nhân viên",
+        "accepted": "Đã chấp nhận",
+        "changesRequested": "Cần chỉnh sửa",
+        "pending": "Chờ xét duyệt"
+      },
+      "v3": {
+        "summary": {
+          "title": "Tiến độ phát hành theo nhân viên",
+          "phase": {
+            "NOT_STARTED": "Chưa bắt đầu quy trình theo nhân viên",
+            "IN_REVIEW": "Đang xét duyệt theo nhân viên",
+            "PARTIALLY_PUBLISHED": "Đã phát hành một phần",
+            "FULLY_PUBLISHED": "Đã hoàn tất phát hành"
+          },
+          "terminalProgress": "{terminal}/{total} nhân viên hoàn tất · {percentage}%",
+          "progressLabel": "Tiến độ hoàn tất theo nhân viên",
+          "metrics": {
+            "total": "Tổng nhân viên",
+            "awaitingAssistant": "Chờ Trợ lý",
+            "stagedForOwner": "Chờ OWNER",
+            "hrCorrection": "HR chỉnh sửa",
+            "published": "Đã phát hành",
+            "noWorkApproved": "Duyệt không việc"
+          },
+          "empty": "Kế hoạch chưa có dữ liệu quy trình nhân viên. Trạng thái này không được xem là đã hoàn tất."
+        },
+        "navigation": {
+          "title": "Không gian xét duyệt V3",
+          "description": "Chọn đúng hàng đợi nghiệp vụ. Quyền thao tác được lấy trực tiếp từ phản hồi backend.",
+          "label": "Chọn hàng đợi xét duyệt",
+          "OVERVIEW": "Tổng quan",
+          "ASSISTANT": "Hàng đợi Trợ lý",
+          "OWNER": "Hàng đợi OWNER",
+          "openCorrections": "Mở Step 4 chỉnh sửa HR",
+          "reconcileBeforeCorrections": "Đối soát yêu cầu đang chờ trước khi mở Step 4",
+          "unresolvedWarning": "Có yêu cầu xét duyệt chưa xác định kết quả. Bạn có thể chuyển giữa các hàng đợi mà không mất request; hãy quay lại đúng hàng đợi để thử lại hoặc đối soát trước khi rời trang.",
+          "leaveWarning": "Kết quả của một yêu cầu xét duyệt vẫn chưa được xác định. Rời trang lúc này có thể trì hoãn việc đối soát. Chọn Hủy để ở lại và thử lại bằng đúng request hiện tại."
+        },
+        "overview": {
+          "title": "Trạng thái theo nhân viên",
+          "empty": "Không có nhân viên phù hợp với bộ lọc này."
+        },
+        "filters": {
+          "MY_REVIEW": "Cần tôi xét duyệt",
+          "OTHER_REVIEW": "Chờ người khác",
+          "HR_CORRECTION": "Cần HR chỉnh sửa",
+          "PUBLISHED": "Đã phát hành",
+          "NO_WORK_APPROVED": "Đã duyệt không việc",
+          "ALL": "Tất cả"
+        },
+        "employee": {
+          "counts": "{entries} công việc · {items} đầu mục",
+          "state": {
+            "AWAITING_ASSISTANT": "Chờ Trợ lý xét duyệt",
+            "STAGED_FOR_OWNER": "Chờ OWNER xét duyệt",
+            "HR_CORRECTION": "Chờ HR chỉnh sửa",
+            "PUBLISHED": "Đã phát hành Task",
+            "NO_WORK_APPROVED": "Đã duyệt không có công việc"
+          },
+          "mode": {
+            "ASSISTANT_REVIEW": "Hàng đợi Trợ lý",
+            "OWNER_REVIEW": "Hàng đợi OWNER",
+            "HR_CORRECTION": "Không gian chỉnh sửa HR",
+            "OBSERVER": "Chỉ xem"
+          },
+          "stage": {
+            "ASSISTANT": "Trợ lý Giám đốc",
+            "OWNER": "OWNER"
+          },
+          "context": "Ngữ cảnh người xem",
+          "correctionOrigin": "Nguồn yêu cầu chỉnh sửa",
+          "publishedBy": "Người phát hành",
+          "taskCount": "Task đã tạo",
+          "publishedAt": "Thời điểm phát hành",
+          "zeroWorkTitle": "Nhân viên không có công việc",
+          "zeroWorkDescription": "Nhân viên vẫn được hiển thị để có thể xét duyệt trạng thái không có công việc một cách rõ ràng.",
+          "discussion": "Trao đổi liên quan ({count})",
+          "notApplicable": "Không áp dụng"
+        }
+      },
+      "employee": {
+        "title": "Kế hoạch theo nhân viên",
+        "noDepartment": "Chưa có thông tin phòng ban",
+        "counts": "{entries} công việc · {items} đầu mục",
+        "zeroWorkTitle": "Không còn công việc sau chỉnh sửa.",
+        "zeroWorkDescription": "Phần công việc của nhân viên này đã được loại bỏ trong lần chỉnh sửa gần nhất. Bạn vẫn cần xác nhận thay đổi này."
+      },
+      "v3Assistant": {
+        "title": "Xét duyệt theo lô của Trợ lý Giám đốc",
+        "description": "Chọn quyết định nháp cho từng nhân viên, sau đó xác nhận một lần. Ghi chú trao đổi được lưu riêng và không tự tạo quyết định.",
+        "counts": "{entries} công việc · {items} đầu mục",
+        "state": {
+          "AWAITING_ASSISTANT": "Chờ Trợ lý xét duyệt",
+          "STAGED_FOR_OWNER": "Đã chuyển OWNER",
+          "HR_CORRECTION": "Chờ Nhân sự chỉnh sửa",
+          "PUBLISHED": "Đã phát hành",
+          "NO_WORK_APPROVED": "Đã duyệt không có công việc"
+        },
+        "draft": {
+          "ACCEPTED": "Nháp: Chấp nhận",
+          "CHANGES_REQUESTED": "Nháp: Yêu cầu chỉnh sửa"
+        },
+        "payload": {
+          "ACCEPTED": "Chấp nhận",
+          "CHANGES_REQUESTED": "Yêu cầu chỉnh sửa"
+        },
+        "zeroWork": "Nhân viên này hiện không có công việc. Bạn vẫn có thể chấp nhận trạng thái không có công việc.",
+        "accept": "Chấp nhận",
+        "decisionTitle": "Quyết định nháp của Trợ lý",
+        "requestChanges": "Yêu cầu chỉnh sửa",
+        "clear": "Bỏ lựa chọn",
+        "readOnly": "Phần kế hoạch này hiện chỉ có thể xem.",
+        "empty": "Chưa có dữ liệu quy trình nhân viên để xét duyệt.",
+        "reviewBatch": "Xem lại lô ({count})",
+        "confirmation": {
+          "title": "Xác nhận lô xét duyệt?",
+          "summary": "{total} nhân viên · {accepted} chấp nhận · {changesRequested} yêu cầu chỉnh sửa",
+          "versions": "phiên bản trạng thái {state}, nội dung {content}",
+          "unselected": "Nhân viên chưa được chọn sẽ giữ nguyên trạng thái và có thể được xét duyệt trong lô sau.",
+          "cancel": "Quay lại",
+          "submit": "Xác nhận lô",
+          "submitting": "Đang xác nhận..."
+        },
+        "errors": {
+          "submit": "Không thể xác nhận lô xét duyệt. Các lựa chọn nháp vẫn được giữ nguyên để bạn thử lại."
+        },
+        "recovery": {
+          "AMBIGUOUS": "Chưa thể xác định yêu cầu trước đã được xử lý hay chưa. Hãy thử lại đúng lô này trước khi tạo lô mới.",
+          "STALE": "Trạng thái hoặc nội dung đã thay đổi. Lựa chọn nháp vẫn được giữ; hãy tải lại và kiểm tra.",
+          "VALIDATION": "Lô xét duyệt chưa hợp lệ. Lựa chọn nháp vẫn được giữ để bạn điều chỉnh.",
+          "RECONCILED": "Yêu cầu trước đã được đối soát thành công. Các lựa chọn mới vẫn được giữ nguyên.",
+          "retry": "Thử lại và đối soát",
+          "reload": "Tải lại kế hoạch",
+          "reloadFailed": "Không thể tải lại kế hoạch. Lựa chọn nháp vẫn được giữ nguyên; vui lòng thử lại."
+        }
+      },
+      "v3Owner": {
+        "title": "Xét duyệt và phát hành theo lô của OWNER",
+        "description": "Chọn quyết định cho từng nhân viên. Chỉ quyết định Chấp nhận mới tạo Task thật khi xác nhận lô.",
+        "decisionTitle": "Quyết định nháp của OWNER",
+        "decisionDescription": "Quyết định chỉ có hiệu lực sau khi xác nhận lô. Ghi chú trao đổi không tự thay đổi quyết định.",
+        "draft": {
+          "ACCEPTED": "Nháp: Phê duyệt và giao Task",
+          "CHANGES_REQUESTED": "Nháp: Yêu cầu HR chỉnh sửa",
+          "APPROVE_NO_WORK": "Nháp: Duyệt không có công việc"
+        },
+        "payload": {
+          "ACCEPTED": "Phê duyệt và tạo Task",
+          "CHANGES_REQUESTED": "Yêu cầu HR chỉnh sửa",
+          "APPROVE_NO_WORK": "Duyệt không có công việc"
+        },
+        "publish": "Phê duyệt và tạo Task",
+        "requestChanges": "Yêu cầu HR chỉnh sửa",
+        "approveNoWork": "Duyệt không có công việc",
+        "clear": "Bỏ lựa chọn",
+        "empty": "Không có nhân viên nào trong hàng đợi OWNER của bạn.",
+        "reviewBatch": "Xem lại lô OWNER ({count})",
+        "confirmation": {
+          "title": "Xác nhận phê duyệt và phát hành lô?",
+          "summary": "{total} nhân viên · {accepted} phát hành · {tasks} Task dự kiến · {changesRequested} trả HR · {noWorkApproved} duyệt không việc",
+          "versions": "phiên bản trạng thái {state}, nội dung {content}",
+          "effects": "Khi xác nhận, hệ thống sẽ tạo Task thật và thông báo giao việc cho các nhân viên được phê duyệt.",
+          "unselected": "Nhân viên chưa chọn sẽ giữ nguyên hoàn toàn và có thể được xử lý trong lô sau.",
+          "cancel": "Quay lại",
+          "submit": "Xác nhận và phát hành",
+          "submitting": "Đang xác nhận..."
+        },
+        "recovery": {
+          "AMBIGUOUS": "Chưa thể xác định lô trước đã được xử lý hay chưa. Hãy thử lại đúng request và payload cũ để đối soát.",
+          "STALE": "Trạng thái hoặc nội dung nhân viên đã thay đổi. Lựa chọn nháp vẫn được giữ; hãy tải lại và kiểm tra.",
+          "VALIDATION": "Lô OWNER chưa hợp lệ. Lựa chọn nháp vẫn được giữ để bạn điều chỉnh.",
+          "RECONCILED": "Lô trước đã được đối soát thành công. Các lựa chọn mới vẫn được giữ nguyên.",
+          "retry": "Thử lại và đối soát",
+          "reload": "Tải lại kế hoạch",
+          "reloadFailed": "Không thể tải lại kế hoạch. Lựa chọn nháp vẫn được giữ nguyên; vui lòng thử lại."
+        }
+      },
+      "work": {
+        "untitled": "Công việc chưa có tiêu đề",
+        "missingValue": "Chưa có thông tin",
+        "compactSummary": "Kết quả: {result} · {start} – {due}",
+        "priority": "Ưu tiên: {priority}",
+        "itemCount": "{count} đầu mục",
+        "content": "Nội dung",
+        "expectedResult": "Kết quả cần đạt",
+        "startDate": "Ngày bắt đầu",
+        "dueDate": "Hạn hoàn thành",
+        "priorityLabel": "Mức độ ưu tiên",
+        "note": "Ghi chú",
+        "items": "Đầu mục ({count})",
+        "noItems": "Không có đầu mục.",
+        "sourceInformation": "Thông tin nguồn",
+        "expanded": "Đang mở chi tiết công việc"
+      },
+      "decision": {
+        "title": "Quyết định xét duyệt chính thức",
+        "description": "Quyết định này thay đổi trạng thái xét duyệt và hoàn toàn tách biệt với ghi chú.",
+        "currentAcceptedHelp": "Đã chấp nhận trong vòng xét duyệt này. Bạn vẫn có thể yêu cầu chỉnh sửa trước khi hoàn tất vòng.",
+        "requestChanges": "Yêu cầu chỉnh sửa",
+        "accept": "Chấp nhận"
+      },
+      "decisionModal": {
+        "changeTitle": "Yêu cầu chỉnh sửa cho {employee}?",
+        "changeDescription": "Nhân sự sẽ chỉ có thể chỉnh sửa công việc thuộc nhân viên này. Các nhân viên đã được chấp nhận vẫn được giữ nguyên trạng thái.",
+        "acceptTitle": "Chấp nhận phần kế hoạch của {employee}?",
+        "acceptDescription": "Bạn vẫn có thể thêm ghi chú riêng mà không thay đổi quyết định.",
+        "noteLabel": "Nội dung cần chỉnh sửa",
+        "noteHelp": "Nội dung này là ghi chú trao đổi. Ghi chú sẽ được lưu trước khi gửi quyết định chính thức.",
+        "cancel": "Hủy",
+        "confirmChange": "Xác nhận yêu cầu chỉnh sửa",
+        "confirmAccept": "Xác nhận chấp nhận"
+      },
+      "waiting": {
+        "title": "Đang chờ Nhân sự chỉnh sửa và gửi lại.",
+        "description": "Các quyết định hiện tại chỉ để tham khảo. Thao tác xét duyệt sẽ mở lại sau khi Nhân sự gửi vòng chỉnh sửa mới."
+      },
+      "discussion": {
+        "title": "Ghi chú và trao đổi",
+        "neutralHelp": "Ghi chú chỉ dùng để trao đổi và không làm thay đổi trạng thái xét duyệt.",
+        "empty": "Chưa có ghi chú trao đổi.",
+        "add": "Thêm ghi chú"
+      },
+      "final": {
+        "title": "Hoàn tất giai đoạn",
+        "finalizeAssistant": "Chuyển OWNER xét duyệt",
+        "approve": "Phê duyệt kế hoạch",
+        "publish": "Phát hành công việc",
+        "unavailable": "Hiện không có thao tác giai đoạn nào khả dụng."
+      },
+      "finalModal": {
+        "workCount": "Công việc",
+        "FINALIZE_ASSISTANT": {
+          "title": "Chuyển kế hoạch sang OWNER xét duyệt?",
+          "description": "Sau khi chuyển, OWNER sẽ thực hiện vòng xét duyệt cuối.",
+          "confirm": "Chuyển OWNER xét duyệt"
+        },
+        "APPROVE": {
+          "title": "Phê duyệt kế hoạch?",
+          "description": "Kế hoạch sẽ chuyển sang trạng thái đã phê duyệt. Công việc chưa được phát hành ở bước này.",
+          "confirm": "Phê duyệt kế hoạch"
+        },
+        "PUBLISH": {
+          "title": "Phát hành công việc cho nhân viên?",
+          "description": "Thao tác này tạo hoặc áp dụng công việc thực tế cho nhân viên theo nội dung kế hoạch đã được phê duyệt.",
+          "confirm": "Phát hành công việc"
+        }
+      },
+      "history": {
+        "title": "Lịch sử xét duyệt",
+        "unknownEvent": "Hoạt động hệ thống",
+        "systemActor": "Hệ thống"
+      },
+      "errors": {
+        "load": "Không thể tải không gian xét duyệt.",
+        "notFound": "Không tìm thấy kế hoạch tuần.",
+        "forbidden": "Bạn không có quyền xem kế hoạch tuần này.",
+        "action": "Không thể hoàn tất thao tác. Vui lòng thử lại."
+      }
+    },
     "events": {
+      "ENTRY_CREATED": "Đã thêm công việc",
+      "PLAN_RESET": "Đã đặt lại kế hoạch",
       "IMPORTED": "Đã nhập file kế hoạch",
       "REPARSED": "Đã đọc lại file theo ánh xạ cột",
-      "ENTRY_ADDED": "Đã thêm đầu việc",
-      "ENTRY_UPDATED": "Đã cập nhật đầu việc",
-      "ENTRY_DELETED": "Đã loại bỏ đầu việc",
+      "ENTRY_ADDED": "Đã thêm công việc",
+      "ENTRY_UPDATED": "Đã cập nhật công việc",
+      "ENTRY_DELETED": "Đã loại bỏ công việc",
       "SUBMITTED": "Đã gửi OWNER xét duyệt",
       "EMPLOYEE_ACCEPTED": "Đã chấp nhận kế hoạch của nhân viên",
       "EMPLOYEE_CHANGES_REQUESTED": "Đã yêu cầu chỉnh sửa kế hoạch của nhân viên",
+      "ASSISTANT_REVIEW_STARTED": "Trợ lý Giám đốc bắt đầu xét duyệt",
+      "ASSISTANT_REVIEW_RESUBMITTED": "Nhân sự đã gửi lại vòng xét duyệt cho Trợ lý Giám đốc",
+      "ASSISTANT_EMPLOYEE_ACCEPTED": "Trợ lý đã chấp nhận kế hoạch của nhân viên",
+      "ASSISTANT_EMPLOYEE_CHANGES_REQUESTED": "Trợ lý đã yêu cầu nhân viên chỉnh sửa",
+      "ASSISTANT_REVIEW_COMPLETED": "Trợ lý đã hoàn tất xét duyệt",
+      "OWNER_REVIEW_STARTED": "OWNER bắt đầu xét duyệt",
+      "OWNER_REVIEW_RESUBMITTED": "Nhân sự đã gửi lại vòng xét duyệt cho OWNER",
+      "OWNER_EMPLOYEE_ACCEPTED": "OWNER đã chấp nhận kế hoạch của nhân viên",
+      "OWNER_EMPLOYEE_CHANGES_REQUESTED": "OWNER đã yêu cầu nhân viên chỉnh sửa",
+      "OWNER_REVIEW_COMPLETED": "OWNER đã hoàn tất xét duyệt",
+      "V3_ASSISTANT_BATCH_CONFIRMED": "Trợ lý đã xác nhận lô xét duyệt V3",
+      "V3_EMPLOYEE_ENTRY_ADDED": "Nhân sự đã thêm công việc cần chỉnh sửa",
+      "V3_EMPLOYEE_ENTRY_UPDATED": "Nhân sự đã cập nhật công việc cần chỉnh sửa",
+      "V3_EMPLOYEE_ENTRY_DELETED": "Nhân sự đã xóa công việc cần chỉnh sửa",
+      "V3_EMPLOYEE_CORRECTION_RESUBMITTED": "Nhân sự đã gửi lại kế hoạch của nhân viên cho Trợ lý",
+      "V3_HR_CORRECTION_BATCH_CONFIRMED": "Nhân sự đã xác nhận lô chỉnh sửa V3",
+      "V3_OWNER_EMPLOYEE_PUBLISHED": "OWNER đã phát hành công việc của nhân viên thành Task",
+      "V3_OWNER_EMPLOYEE_CHANGES_REQUESTED": "OWNER đã yêu cầu HR chỉnh sửa công việc của nhân viên",
+      "V3_OWNER_EMPLOYEE_NO_WORK_APPROVED": "OWNER đã duyệt nhân viên không có công việc",
+      "V3_OWNER_BATCH_CONFIRMED": "OWNER đã xác nhận lô xét duyệt và phát hành V3",
       "COMMENT_ADDED": "Đã thêm nhận xét",
       "SUGGESTION_DECIDED": "Đã xử lý gợi ý theo quy tắc",
       "ANALYZED": "Đã chạy phân tích theo quy tắc",
@@ -1080,16 +1819,53 @@
       "SOURCE_TEXT_EXTRACTED": "Đã đọc nội dung tài liệu nguồn",
       "SOURCE_FILE_REPLACED": "Đã thay file tài liệu nguồn",
       "SOURCE_GROUP_ASSIGNED": "Đã gán nhãn nhóm cho nội dung tài liệu",
-      "SOURCE_ENTRIES_APPLIED": "Đã tạo đầu việc nháp từ tài liệu nguồn",
+      "SOURCE_ENTRIES_APPLIED": "Đã tạo công việc nháp từ tài liệu nguồn",
       "APPROVED": "Đã phê duyệt cuối",
       "PUBLISHED": "Đã phát hành thành Task"
     },
+    "v3Corrections": {
+      "title": "Chỉnh sửa theo nhân viên",
+      "description": "Chỉ cập nhật các nhân viên được yêu cầu chỉnh sửa, sau đó gửi lại cho Trợ lý Giám đốc.",
+      "origin": "Yêu cầu từ {stage}",
+      "stages": {
+        "ASSISTANT": "Trợ lý Giám đốc",
+        "OWNER": "OWNER"
+      },
+      "counts": "{entries} công việc · {items} đầu mục",
+      "addEntry": "Thêm công việc",
+      "select": "Chọn gửi lại",
+      "deleteConfirm": "Xóa công việc này? Thảo luận và công việc đã xuất bản sẽ được bảo vệ.",
+      "discussion": "Thảo luận liên quan ({count})",
+      "empty": "Không còn nhân viên nào đang chờ chỉnh sửa.",
+      "resubmit": "Gửi lại {count} nhân viên",
+      "confirmTitle": "Xác nhận gửi lại cho Trợ lý",
+      "confirmDescription": "{count} nhân viên đã chọn sẽ quay lại vòng xét duyệt của Trợ lý Giám đốc.",
+      "cancel": "Hủy",
+      "confirm": "Xác nhận gửi lại",
+      "recovery": {
+        "AMBIGUOUS": "Chưa thể xác định yêu cầu trước đã được xử lý hay chưa. Hãy thử lại để đối soát đúng yêu cầu đó trước khi gửi lô mới.",
+        "STALE": "Phiên bản nội dung hoặc trạng thái đã thay đổi. Dữ liệu bạn đang nhập vẫn được giữ lại; hãy tải lại kế hoạch và kiểm tra trước khi xác nhận.",
+        "VALIDATION": "Lô chỉnh sửa chưa hợp lệ. Các lựa chọn và nội dung chưa gửi vẫn được giữ lại để bạn kiểm tra.",
+        "RECONCILED": "Yêu cầu trước đã được đối soát thành công. Các nhân viên mới chọn vẫn được giữ lại; hãy xác nhận lô mới khi sẵn sàng.",
+        "retry": "Thử lại và đối soát",
+        "reload": "Tải lại kế hoạch"
+      },
+      "states": {
+        "AWAITING_ASSISTANT": "Đang chờ Trợ lý xét duyệt",
+        "STAGED_FOR_OWNER": "Đã chuyển OWNER",
+        "HR_CORRECTION": "Đang chờ chỉnh sửa",
+        "PUBLISHED": "Đã phát hành Task",
+        "NO_WORK_APPROVED": "Đã duyệt không có công việc"
+      }
+    },
     "entryForm": {
-      "addTitle": "Thêm đầu việc",
-      "editTitle": "Chỉnh sửa đầu việc",
+      "addTitle": "Thêm công việc",
+      "editTitle": "Chỉnh sửa công việc",
       "assignee": "Người phụ trách",
       "assigneePlaceholder": "Chọn tài khoản KPS",
       "assigneeRequired": "Vui lòng chọn người phụ trách.",
+      "lockedAssigneeSource": "Được xác định từ mapping Google Docs: {source}",
+      "mappedAssigneeUnavailable": "Mapping Google Docs chưa có nhân viên hợp lệ.",
       "title": "Nội dung công việc",
       "titleRequired": "Vui lòng nhập nội dung công việc.",
       "content": "Mô tả",
@@ -1102,8 +1878,16 @@
       "dateOrder": "Hạn hoàn thành không được trước ngày bắt đầu.",
       "priority": "Mức độ ưu tiên",
       "note": "Ghi chú",
+      "itemsTitle": "Đầu mục",
+      "itemsDescription": "Thêm các đầu mục cụ thể thuộc công việc này.",
+      "itemTitle": "Đầu mục {index}",
+      "itemContent": "Nội dung",
+      "addItem": "Thêm đầu mục",
+      "removeItem": "Xóa",
+      "moveUp": "Lên",
+      "moveDown": "Xuống",
       "cancel": "Hủy",
-      "save": "Lưu đầu việc",
+      "save": "Lưu công việc",
       "saving": "Đang lưu...",
       "priorities": {
         "LOW": "Thấp",
@@ -1111,6 +1895,15 @@
         "HIGH": "Cao",
         "URGENT": "Khẩn cấp"
       }
+    },
+    "sourceRecovery": {
+      "missingTitle": "File nguồn không còn khả dụng",
+      "missingHelp": "Dữ liệu kế hoạch đã lưu vẫn được giữ nguyên. Hãy tải lại file .{extension} để tiếp tục các thao tác cần đọc file gốc.",
+      "unavailableTitle": "Tạm thời chưa thể kiểm tra file nguồn",
+      "unavailableHelp": "Kho lưu trữ đang không phản hồi. Vui lòng thử lại sau; dữ liệu kế hoạch đã lưu không bị ảnh hưởng.",
+      "fileLabel": "Chọn lại file .{extension}",
+      "replace": "Tải lại file nguồn",
+      "uploading": "Đang tải lên..."
     },
     "mapping": {
       "title": "Ánh xạ cột dữ liệu",
@@ -1131,10 +1924,10 @@
       }
     },
     "confirm": {
-      "deleteEntry": "Loại bỏ đầu việc này khỏi bản nháp?",
+      "deleteEntry": "Loại bỏ công việc này khỏi bản nháp?",
       "submit": "Gửi kế hoạch này cho OWNER xét duyệt?",
       "approve": "Phê duyệt cuối toàn bộ kế hoạch? Bước này chưa tạo Task.",
-      "publish": "Phát hành kế hoạch và tạo Task chính thức cho tất cả đầu việc?"
+      "publish": "Phát hành kế hoạch và tạo Task chính thức cho tất cả công việc?"
     },
     "actions": {
       "retry": "Thử lại",
@@ -1218,13 +2011,13 @@
     "metaTitle": "Hồ sơ cá nhân | KIM PHỤC SẮC",
     "metaDescription": "Quản lý hồ sơ cá nhân trong KPS Internal System",
     "title": "Hồ sơ cá nhân",
-    "subtitle": "Cập nhật thông tin hiển thị của bạn",
+    "subtitle": "Quản lý tên hiển thị và xem thông tin công việc của bạn",
     "personal": {
       "title": "Thông tin cá nhân",
-      "description": "Bạn có thể thay đổi tên hiển thị; email do quản trị viên hoặc HR quản lý",
+      "description": "Tên hiển thị được sử dụng trong hệ thống. Email và mật khẩu được quản lý tại Cài đặt tài khoản.",
       "name": "Họ và tên",
-      "email": "Email",
-      "emailNotice": "Liên hệ quản trị viên hoặc HR nếu cần thay đổi email.",
+      "reset": "Hoàn tác",
+      "conflict": "Hồ sơ đã được cập nhật ở nơi khác. Hãy tải lại trang trước khi lưu.",
       "save": "Lưu thay đổi",
       "saving": "Đang lưu...",
       "success": "Họ và tên đã được cập nhật.",
@@ -1236,7 +2029,7 @@
       "title": "Thông tin công việc",
       "description": "Thông tin tổ chức chỉ được cập nhật bởi quản trị viên hoặc HR",
       "organization": "Tổ chức",
-      "role": "Chức vụ",
+      "role": "Vai trò trong hệ thống",
       "department": "Phòng ban",
       "location": "Địa điểm",
       "notAssigned": "Chưa phân công"
@@ -1247,11 +2040,31 @@
     "metaDescription": "Quản lý thông tin đăng nhập và bảo mật tài khoản KPS",
     "title": "Cài đặt tài khoản",
     "subtitle": "Quản lý thông tin đăng nhập và bảo mật tài khoản",
+    "navigation": {
+      "label": "Hồ sơ và tài khoản",
+      "profile": "Tên hiển thị và thông tin công việc",
+      "account": "Email đăng nhập và bảo mật"
+    },
     "summary": {
       "title": "Thông tin tài khoản",
       "description": "Thông tin đăng nhập hiện tại của bạn",
-      "name": "Họ tên",
       "email": "Email đăng nhập"
+    },
+    "emailChange": {
+      "title": "Thay đổi email đăng nhập",
+      "description": "Nhập email mới và mật khẩu hiện tại để cập nhật. Phiên đăng nhập hiện tại được giữ nguyên.",
+      "newEmail": "Email mới",
+      "emailHint": "Nhập chính xác địa chỉ bạn sở hữu. Hệ thống chưa gửi email xác minh.",
+      "currentPassword": "Xác nhận mật khẩu hiện tại",
+      "passwordRequired": "Vui lòng nhập mật khẩu hiện tại.",
+      "passwordIncorrect": "Mật khẩu hiện tại không chính xác.",
+      "emailInvalid": "Vui lòng nhập địa chỉ email hợp lệ, tối đa 255 ký tự.",
+      "save": "Cập nhật email",
+      "saving": "Đang cập nhật...",
+      "success": "Email đăng nhập đã được cập nhật. Lần đăng nhập tiếp theo hãy dùng email mới.",
+      "conflict": "Email đã được cập nhật ở nơi khác. Hãy tải lại trang trước khi lưu.",
+      "rateLimited": "Bạn đã gửi quá nhiều yêu cầu. Vui lòng chờ trước khi thử lại.",
+      "error": "Không thể cập nhật email. Kiểm tra kết nối và thử lại."
     },
     "password": {
       "title": "Đổi mật khẩu",

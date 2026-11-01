@@ -5,23 +5,40 @@ import Select from "@/components/form/Select";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
 import WeeklyPlanEntryForm from "@/components/weekly-plans/WeeklyPlanEntryForm";
+import WeeklyPlanAiExtractionPreview from "@/components/weekly-plans/WeeklyPlanAiExtractionPreview";
 import { ChevronDownIcon } from "@/icons";
 import type {
   WeeklyPlan,
+  WeeklyPlanAiSuggestion,
   WeeklyPlanEmployee,
   WeeklyPlanEntryInput,
+  WeeklyPlanGoogleDocsEmployeeMappings,
   WeeklyPlanSourceEntryInput,
   WeeklyPlanSourcePassage,
 } from "@/types/weeklyPlanning";
+import {
+  googleDocsSelectionActionState,
+  googleDocsTabId,
+  remainingGoogleDocsPassages,
+  selectedGoogleDocsTabs,
+  sourcePassageIdsForAi,
+  sourceBlockSelectionState,
+  spansMultipleGoogleDocsTabs,
+  verifiedSingleGoogleDocsTab,
+} from "@/utils/weeklyPlanSourceSelection";
+import { normalizeWeeklyPlanAiSuggestions } from "@/utils/weeklyPlanAiSuggestions";
 import { memo, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 type Props = {
   plan: WeeklyPlan;
   employees: WeeklyPlanEmployee[];
+  googleDocsMappings: WeeklyPlanGoogleDocsEmployeeMappings | null;
   busy: boolean;
   onExtract: () => void;
-  onReplace: (file: File) => void;
+  onAiExtract: (
+    sourcePassageIds?: number[],
+  ) => Promise<WeeklyPlanAiSuggestion[]>;
   onApply: (
     requestId: string,
     entries: WeeklyPlanSourceEntryInput[],
@@ -137,9 +154,10 @@ const buildPassageBlocks = (
 function WeeklyPlanSourceDocument({
   plan,
   employees,
+  googleDocsMappings,
   busy,
   onExtract,
-  onReplace,
+  onAiExtract,
   onApply,
   onAssignGroup,
 }: Props) {
@@ -150,7 +168,6 @@ function WeeklyPlanSourceDocument({
   const [expandedBlockKeys, setExpandedBlockKeys] = useState<Set<string>>(
     new Set(),
   );
-  const [replacement, setReplacement] = useState<File | null>(null);
   const [groupDraft, setGroupDraft] = useState<{
     passageIds: number[];
     title: string;
@@ -162,21 +179,70 @@ function WeeklyPlanSourceDocument({
     passageIds: number[];
     initialInput: Partial<WeeklyPlanEntryInput>;
     assigneeId: number | null;
+    lockAssignee: boolean;
+    lockedAssignee?: Pick<WeeklyPlanEmployee, "id" | "name" | "email">;
+    assigneeSourceTitle?: string;
+    aiSuggestionIndex?: number;
   } | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiPreviewOpen, setAiPreviewOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<WeeklyPlanAiSuggestion[]>(
+    [],
+  );
+  const [aiPreviewVersion, setAiPreviewVersion] = useState(0);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [lastAiSourcePassageIds, setLastAiSourcePassageIds] = useState<
+    number[] | undefined
+  >(undefined);
   const [localError, setLocalError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string[]>>({});
   const [formErrorVersion, setFormErrorVersion] = useState(0);
-  const orderedPassages = useMemo(
-    () =>
-      [...plan.source_document.passages].sort(
-        (first, second) => first.sequence - second.sequence,
-      ),
-    [plan.source_document.passages],
-  );
+  const orderedPassages = useMemo(() => {
+    const passages =
+      plan.source_type === "GOOGLE_DOCS"
+        ? remainingGoogleDocsPassages(
+            plan.source_document.passages,
+            plan.source_document.google_docs?.remaining_tab_ids ?? [],
+          )
+        : plan.source_document.passages;
+
+    return [...passages].sort(
+      (first, second) => first.sequence - second.sequence,
+    );
+  }, [
+    plan.source_document.google_docs?.remaining_tab_ids,
+    plan.source_document.passages,
+    plan.source_type,
+  ]);
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedPassages = useMemo(
     () => orderedPassages.filter((passage) => selectedIdSet.has(passage.id)),
     [orderedPassages, selectedIdSet],
+  );
+  const selectedGoogleTabs = useMemo(
+    () => selectedGoogleDocsTabs(selectedPassages, googleDocsMappings),
+    [googleDocsMappings, selectedPassages],
+  );
+  const googleDocsSelectionActions = googleDocsSelectionActionState({
+    selectedPassageCount: selectedPassages.length,
+    selectedTabs: selectedGoogleTabs,
+    maxPassagesPerEntry: plan.source_document.limits.max_passages_per_entry,
+    canAiExtractSelectedSource: plan.actions.can_ai_extract_selected_source,
+  });
+  const hasSingleVerifiedGoogleDocsTab =
+    verifiedSingleGoogleDocsTab(selectedGoogleTabs) !== null;
+  const unresolvedSelectedGoogleTabs = selectedGoogleTabs.filter(
+    (tab) => tab.status !== "VERIFIED" || tab.employee === null,
+  );
+  const mappingsByTabId = useMemo(
+    () =>
+      new Map(
+        (googleDocsMappings?.tabs ?? []).map((mapping) => [
+          mapping.tab_id,
+          mapping,
+        ]),
+      ),
+    [googleDocsMappings],
   );
   const blocks = useMemo(
     () =>
@@ -188,7 +254,10 @@ function WeeklyPlanSourceDocument({
     [orderedPassages, t],
   );
   const canSelect =
-    plan.actions.can_apply_source || plan.actions.can_group_source;
+    plan.actions.can_apply_source ||
+    plan.actions.can_group_source ||
+    (plan.source_type === "GOOGLE_DOCS" &&
+      plan.actions.can_ai_extract_selected_source);
 
   const toggleBlock = (key: string) => {
     setExpandedBlockKeys((current) => {
@@ -277,6 +346,19 @@ function WeeklyPlanSourceDocument({
       return;
     }
 
+    const verifiedGoogleDocsTab =
+      plan.source_type === "GOOGLE_DOCS"
+        ? verifiedSingleGoogleDocsTab(selectedGoogleTabs)
+        : null;
+    if (
+      plan.source_type === "GOOGLE_DOCS" &&
+      (spansMultipleGoogleDocsTabs(selectedPassages) ||
+        verifiedGoogleDocsTab === null)
+    ) {
+      setLocalError(t("googleDocsMappingRequired"));
+      return;
+    }
+
     const selectedGroupKeys = selectedPassages.map(
       (passage) => passage.source_group?.key ?? null,
     );
@@ -321,7 +403,94 @@ function WeeklyPlanSourceDocument({
         due_date: plan.week_end,
         priority: "MEDIUM",
       },
-      assigneeId: null,
+      assigneeId: verifiedGoogleDocsTab?.employee.id ?? null,
+      lockAssignee: verifiedGoogleDocsTab !== null,
+      lockedAssignee: verifiedGoogleDocsTab?.employee,
+      assigneeSourceTitle: verifiedGoogleDocsTab?.title,
+    });
+  };
+
+  const runAiExtraction = async (sourcePassageIds?: number[]) => {
+    if (busy || aiLoading) return;
+    const requestPassageIds = sourcePassageIds
+      ? [...sourcePassageIds]
+      : undefined;
+    setLastAiSourcePassageIds(requestPassageIds);
+    setAiLoading(true);
+    setAiError(null);
+    setAiSuggestions([]);
+    setAiPreviewOpen(false);
+    setAiPreviewVersion((current) => current + 1);
+    try {
+      const suggestions =
+        requestPassageIds === undefined
+          ? await onAiExtract()
+          : await onAiExtract(requestPassageIds);
+      const normalized = normalizeWeeklyPlanAiSuggestions(
+        suggestions,
+        plan.source_type,
+      );
+      if (!normalized.ok) {
+        setAiError(
+          normalized.reason === "UNTRUSTED_GOOGLE_ASSIGNMENT"
+            ? t("aiUntrustedAssignment")
+            : t("aiInvalidResponse"),
+        );
+        return;
+      }
+      setAiSuggestions(normalized.suggestions);
+      setAiPreviewOpen(true);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : t("aiFailed"));
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const reviewAiSuggestion = (
+    suggestion: WeeklyPlanAiSuggestion,
+    passageIds: number[],
+    index: number,
+  ) => {
+    setFormErrors({});
+    setLocalError(null);
+    const hasTrustedGoogleDocsAssignment =
+      plan.source_type === "GOOGLE_DOCS" &&
+      suggestion.assignment_source === "VERIFIED_GOOGLE_DOCS_TAB_MAPPING" &&
+      suggestion.assignee !== null &&
+      suggestion.assignee !== undefined &&
+      suggestion.source_tab !== null &&
+      suggestion.source_tab !== undefined;
+    if (plan.source_type === "GOOGLE_DOCS" && !hasTrustedGoogleDocsAssignment) {
+      setAiPreviewOpen(false);
+      setLocalError(t("googleDocsMappingRequired"));
+      return;
+    }
+
+    const lockedAssignee = hasTrustedGoogleDocsAssignment
+      ? (suggestion.assignee ?? undefined)
+      : undefined;
+    const assigneeSourceTitle = hasTrustedGoogleDocsAssignment
+      ? suggestion.source_tab?.title
+      : undefined;
+    setAiPreviewOpen(false);
+    setDraft({
+      requestId: createRequestId(),
+      passageIds,
+      initialInput: {
+        title: suggestion.title,
+        content: suggestion.content,
+        expected_result: suggestion.expected_result,
+        start_date: suggestion.start_date ?? plan.week_start,
+        due_date: suggestion.due_date ?? plan.week_end,
+        priority: suggestion.priority ?? "MEDIUM",
+        note: suggestion.note,
+      },
+      assigneeId: lockedAssignee?.id ?? null,
+      lockAssignee: plan.source_type === "GOOGLE_DOCS",
+      lockedAssignee,
+      assigneeSourceTitle,
+      aiSuggestionIndex: index,
     });
   };
 
@@ -338,6 +507,11 @@ function WeeklyPlanSourceDocument({
                 {t("aiNotConnected")}
               </p>
             )}
+            {aiError && (
+              <p className="mt-1 text-theme-xs text-error-600 dark:text-error-400">
+                {aiError}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             {plan.actions.can_extract_source && (
@@ -350,46 +524,22 @@ function WeeklyPlanSourceDocument({
                 {busy ? t("extracting") : t("extract")}
               </Button>
             )}
-            {plan.actions.can_apply_source && (
+            {plan.actions.can_ai_extract_source && (
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy || !plan.actions.can_ai_extract_source}
+                disabled={busy || aiLoading}
+                onClick={() => void runAiExtraction()}
               >
-                {t("extractWithAi")}
+                {aiLoading
+                  ? t("aiExtracting")
+                  : plan.source_type === "GOOGLE_DOCS"
+                    ? t("analyzeRemainingGoogleDocsWithAi")
+                    : t("extractWithAi")}
               </Button>
             )}
           </div>
         </div>
-
-        {plan.actions.can_replace_source && (
-          <div className="rounded-xl border border-warning-200 bg-warning-50 p-4 dark:border-warning-800 dark:bg-warning-500/10">
-            <p className="text-theme-sm text-warning-700 dark:text-warning-400">
-              {t("missingHelp")}
-            </p>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                type="file"
-                accept=".docx"
-                onChange={(event) => {
-                  setReplacement(event.target.files?.[0] ?? null);
-                  setLocalError(null);
-                }}
-                className="block min-w-0 flex-1 rounded-lg border border-gray-300 bg-white p-2.5 text-theme-sm text-gray-700 file:me-3 file:rounded-lg file:border-0 file:bg-kps-primary/10 file:px-3 file:py-2 file:font-semibold file:text-kps-primary dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
-              />
-              <Button
-                type="button"
-                disabled={busy || !replacement}
-                className="bg-kps-primary hover:bg-kps-primary-hover"
-                onClick={() => {
-                  if (replacement) onReplace(replacement);
-                }}
-              >
-                {busy ? t("uploading") : t("replace")}
-              </Button>
-            </div>
-          </div>
-        )}
 
         {localError && (
           <p
@@ -427,9 +577,19 @@ function WeeklyPlanSourceDocument({
 
             {blocks.map((block, blockIndex) => {
               const isExpanded = expandedBlockKeys.has(block.key);
-              const allSelected = block.passages.every((passage) =>
+              const selectedInBlock = block.passages.filter((passage) =>
                 selectedIdSet.has(passage.id),
+              ).length;
+              const selectionState = sourceBlockSelectionState(
+                block.passages.map((passage) => passage.id),
+                selectedIdSet,
               );
+              const allSelected = selectionState === "ALL";
+              const partiallySelected = selectionState === "PARTIAL";
+              const blockTabId = googleDocsTabId(block.passages[0]);
+              const persistedMapping = blockTabId
+                ? mappingsByTabId.get(blockTabId)
+                : undefined;
               const headerId = `weekly-source-block-${blockIndex}-header`;
               const regionId = `weekly-source-block-${blockIndex}-content`;
               const evidence = evidenceSummary(block.evidence);
@@ -437,7 +597,15 @@ function WeeklyPlanSourceDocument({
               return (
                 <section
                   key={block.key}
-                  className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+                  data-selection-state={selectionState}
+                  className={`overflow-hidden rounded-xl border transition ${
+                    {
+                      ALL: "border-kps-primary/50 bg-kps-primary/[0.04] shadow-theme-xs ring-1 ring-kps-primary/15 dark:border-kps-primary dark:bg-kps-primary/10 dark:ring-kps-primary/25",
+                      PARTIAL:
+                        "border-warning-400 bg-warning-50/70 ring-1 ring-warning-400/20 dark:border-warning-500 dark:bg-warning-500/10 dark:ring-warning-400/20",
+                      NONE: "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900",
+                    }[selectionState]
+                  }`}
                 >
                   <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
                     <button
@@ -457,12 +625,45 @@ function WeeklyPlanSourceDocument({
                           <span className="font-semibold text-gray-900 dark:text-white">
                             {block.title}
                           </span>
+                          {allSelected && (
+                            <span className="rounded-full bg-kps-primary px-2 py-0.5 text-theme-xs font-semibold text-white">
+                              {t("selectedIndicator")}
+                            </span>
+                          )}
+                          {partiallySelected && (
+                            <span className="rounded-full bg-warning-100 px-2 py-0.5 text-theme-xs font-semibold text-warning-800 dark:bg-warning-500/20 dark:text-warning-300">
+                              {t("partialIndicator")}
+                            </span>
+                          )}
                           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-theme-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                             {t("origin." + block.origin)}
                           </span>
-                          {block.isSourceGroup && (
-                            <span className="rounded-full bg-warning-50 px-2 py-0.5 text-theme-xs font-semibold text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
-                              {t("identityUnverified")}
+                          {block.isSourceGroup &&
+                            block.origin !== "GOOGLE_DOCS_TAB" && (
+                              <span className="rounded-full bg-warning-50 px-2 py-0.5 text-theme-xs font-semibold text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                                {t("identityUnverified")}
+                              </span>
+                            )}
+                          {block.origin === "GOOGLE_DOCS_TAB" && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-theme-xs font-semibold ${
+                                persistedMapping?.status === "VERIFIED" &&
+                                persistedMapping.employee
+                                  ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
+                                  : persistedMapping?.status ===
+                                      "NOT_APPLICABLE"
+                                    ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                                    : "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400"
+                              }`}
+                            >
+                              {persistedMapping?.status === "VERIFIED" &&
+                              persistedMapping.employee
+                                ? t("googleDocsMapping.verified", {
+                                    name: persistedMapping.employee.name,
+                                  })
+                                : persistedMapping?.status === "NOT_APPLICABLE"
+                                  ? t("googleDocsMapping.notApplicable")
+                                  : t("googleDocsMapping.unverified")}
                             </span>
                           )}
                         </span>
@@ -470,14 +671,22 @@ function WeeklyPlanSourceDocument({
                           {t("passageCount", {
                             count: block.passages.length,
                           })}
+                          {canSelect
+                            ? ` · ${t("blockSelectedCount", {
+                                selected: selectedInBlock,
+                                total: block.passages.length,
+                              })}`
+                            : ""}
                           {evidence
                             ? ` · ${t("groupEvidence", { evidence })}`
                             : ""}
                         </span>
                         <span className="mt-1 block text-theme-xs text-gray-500 dark:text-gray-400">
-                          {block.isSourceGroup
-                            ? t("groupIdentityHelp")
-                            : t("contextIdentityHelp")}
+                          {block.origin === "GOOGLE_DOCS_TAB"
+                            ? t("googleDocsMapping.help")
+                            : block.isSourceGroup
+                              ? t("groupIdentityHelp")
+                              : t("contextIdentityHelp")}
                         </span>
                       </span>
                     </button>
@@ -486,10 +695,22 @@ function WeeklyPlanSourceDocument({
                         type="button"
                         size="sm"
                         variant="outline"
+                        aria-pressed={allSelected}
                         disabled={busy || grouping}
+                        className={
+                          allSelected
+                            ? "border-kps-primary/50 bg-kps-primary/[0.08] text-kps-primary hover:bg-kps-primary/15 focus-visible:ring-2 focus-visible:ring-kps-primary/30 dark:border-kps-primary dark:bg-kps-primary/15 dark:text-white"
+                            : partiallySelected
+                              ? "border-warning-400 bg-warning-50 text-warning-800 hover:bg-warning-100 dark:border-warning-500 dark:bg-warning-500/10 dark:text-warning-300"
+                              : undefined
+                        }
                         onClick={() => toggleBlockSelection(block)}
                       >
-                        {allSelected ? t("deselectGroup") : t("selectGroup")}
+                        {allSelected
+                          ? t("selectedGroup")
+                          : partiallySelected
+                            ? t("selectRemainingGroup")
+                            : t("selectGroup")}
                       </Button>
                     )}
                   </div>
@@ -562,29 +783,134 @@ function WeeklyPlanSourceDocument({
             })}
 
             {canSelect && (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                  {t("selectedCount", { count: selectedIds.length })}
-                </p>
-                <div className="flex flex-wrap gap-2">
+              <div className="grid gap-4 rounded-xl border border-gray-200 bg-gray-50 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end dark:border-gray-700 dark:bg-gray-800/50">
+                <div className="min-w-0">
+                  <p className="text-theme-sm font-semibold text-gray-900 dark:text-white">
+                    {plan.source_type === "GOOGLE_DOCS"
+                      ? t("googleDocsSelectionSummary", {
+                          passages: selectedIds.length,
+                          groups: selectedGoogleTabs.length,
+                        })
+                      : t("selectedCount", { count: selectedIds.length })}
+                  </p>
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    selectedGoogleTabs.length > 0 && (
+                      <ul className="mt-2 flex min-w-0 flex-wrap gap-2">
+                        {selectedGoogleTabs.map((tab) => {
+                          const fullLabel = tab.employee
+                            ? `${tab.title} → ${tab.employee.name}`
+                            : tab.title;
+
+                          return (
+                            <li
+                              key={tab.tab_id}
+                              title={fullLabel}
+                              aria-label={fullLabel}
+                              className="inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border border-kps-primary/15 bg-kps-primary/[0.06] px-2.5 py-1 text-theme-xs font-medium text-kps-primary dark:border-kps-primary/40 dark:bg-kps-primary/15 dark:text-white"
+                            >
+                              <span className="min-w-0 break-words">
+                                {tab.title}
+                              </span>
+                              {tab.employee && (
+                                <>
+                                  <span aria-hidden="true" className="shrink-0">
+                                    →
+                                  </span>
+                                  <span className="min-w-0 truncate">
+                                    {tab.employee.name}
+                                  </span>
+                                </>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    unresolvedSelectedGoogleTabs.length > 0 && (
+                      <p className="mt-2 text-theme-xs font-medium text-warning-700 dark:text-warning-400">
+                        {t("unresolvedSelectedTabs", {
+                          tabs: unresolvedSelectedGoogleTabs
+                            .map((tab) => tab.title)
+                            .join(", "),
+                        })}
+                      </p>
+                    )}
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    googleDocsSelectionActions.manualLimitExceeded && (
+                      <p className="mt-3 rounded-lg bg-warning-50 px-3 py-2 text-theme-xs text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
+                        {t("manualPassageLimit", {
+                          selected: selectedPassages.length,
+                          limit:
+                            plan.source_document.limits.max_passages_per_entry,
+                        })}
+                      </p>
+                    )}
+                </div>
+                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 lg:shrink-0">
+                  {plan.source_type === "GOOGLE_DOCS" &&
+                    plan.actions.can_ai_extract_selected_source &&
+                    selectedGoogleTabs.length > 0 && (
+                      <Button
+                        type="button"
+                        disabled={
+                          busy ||
+                          grouping ||
+                          aiLoading ||
+                          !googleDocsSelectionActions.canAnalyzeWithAi
+                        }
+                        className="w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
+                        onClick={() =>
+                          void runAiExtraction(
+                            sourcePassageIdsForAi(selectedPassages),
+                          )
+                        }
+                      >
+                        {aiLoading
+                          ? t("aiExtracting")
+                          : t("extractSelectedGroupsWithAi", {
+                              count: selectedGoogleTabs.length,
+                            })}
+                      </Button>
+                    )}
+                  {plan.actions.can_apply_source &&
+                    (plan.source_type !== "GOOGLE_DOCS" ||
+                      hasSingleVerifiedGoogleDocsTab) && (
+                      <Button
+                        type="button"
+                        variant={
+                          plan.source_type === "GOOGLE_DOCS"
+                            ? "outline"
+                            : undefined
+                        }
+                        disabled={
+                          busy ||
+                          grouping ||
+                          selectedIds.length === 0 ||
+                          (plan.source_type === "GOOGLE_DOCS" &&
+                            !googleDocsSelectionActions.canCreateManually)
+                        }
+                        className={
+                          plan.source_type === "GOOGLE_DOCS"
+                            ? "w-full whitespace-nowrap sm:w-auto"
+                            : "w-full bg-kps-primary whitespace-nowrap hover:bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/30 focus-visible:outline-none sm:w-auto"
+                        }
+                        onClick={openDraft}
+                      >
+                        {plan.source_type === "GOOGLE_DOCS"
+                          ? t("createManualEntry")
+                          : t("createFromSelection")}
+                      </Button>
+                    )}
                   {plan.actions.can_group_source && (
                     <Button
                       type="button"
                       variant="outline"
                       disabled={busy || grouping || selectedIds.length === 0}
+                      className="w-full whitespace-nowrap sm:w-auto"
                       onClick={openGroupDraft}
                     >
                       {t("assignGroup")}
-                    </Button>
-                  )}
-                  {plan.actions.can_apply_source && (
-                    <Button
-                      type="button"
-                      disabled={busy || grouping || selectedIds.length === 0}
-                      className="bg-kps-primary hover:bg-kps-primary-hover"
-                      onClick={openDraft}
-                    >
-                      {t("createFromSelection")}
                     </Button>
                   )}
                 </div>
@@ -597,6 +923,26 @@ function WeeklyPlanSourceDocument({
           </p>
         )}
       </ComponentCard>
+
+      <WeeklyPlanAiExtractionPreview
+        isOpen={aiPreviewOpen}
+        suggestions={aiSuggestions}
+        passages={orderedPassages}
+        sourceType={plan.source_type}
+        weekStart={plan.week_start}
+        weekEnd={plan.week_end}
+        reviewVersion={aiPreviewVersion}
+        busy={busy}
+        onClose={() => setAiPreviewOpen(false)}
+        onRetry={() => void runAiExtraction(lastAiSourcePassageIds)}
+        onReview={reviewAiSuggestion}
+        onApplyAll={onApply}
+        onApplied={() => {
+          setAiSuggestions([]);
+          setAiPreviewOpen(false);
+          setSelectedIds([]);
+        }}
+      />
 
       <Modal
         isOpen={groupDraft !== null}
@@ -671,7 +1017,11 @@ function WeeklyPlanSourceDocument({
       <Modal
         isOpen={draft !== null}
         onClose={() => {
-          if (!busy) setDraft(null);
+          if (!busy) {
+            const returnToAiPreview = draft?.aiSuggestionIndex !== undefined;
+            setDraft(null);
+            if (returnToAiPreview) setAiPreviewOpen(true);
+          }
         }}
         className="max-h-[90vh] max-w-3xl overflow-y-auto p-6"
         ariaLabelledBy="weekly-source-entry-title"
@@ -685,7 +1035,7 @@ function WeeklyPlanSourceDocument({
         <p className="mb-5 text-theme-sm text-gray-500 dark:text-gray-400">
           {t("draftDescription", { count: draft?.passageIds.length ?? 0 })}
         </p>
-        {draft && draft.assigneeId === null && (
+        {draft && !draft.lockAssignee && draft.assigneeId === null && (
           <div className="space-y-5">
             <div>
               <Label htmlFor="weekly-source-assignee">
@@ -715,7 +1065,12 @@ function WeeklyPlanSourceDocument({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setDraft(null)}
+                onClick={() => {
+                  const returnToAiPreview =
+                    draft.aiSuggestionIndex !== undefined;
+                  setDraft(null);
+                  if (returnToAiPreview) setAiPreviewOpen(true);
+                }}
               >
                 {t("cancel")}
               </Button>
@@ -736,15 +1091,29 @@ function WeeklyPlanSourceDocument({
             serverErrors={formErrors}
             serverErrorVersion={formErrorVersion}
             submitLabel={t("applyToDraft")}
-            onCancel={() => setDraft(null)}
+            lockAssignee={draft.lockAssignee}
+            lockedAssignee={draft.lockedAssignee}
+            assigneeSourceTitle={draft.assigneeSourceTitle}
+            onCancel={() => {
+              const returnToAiPreview = draft.aiSuggestionIndex !== undefined;
+              setDraft(null);
+              if (returnToAiPreview) setAiPreviewOpen(true);
+            }}
             onSave={(input) => {
               void onApply(draft.requestId, [
                 { ...input, source_passage_ids: draft.passageIds },
               ]).then((result) => {
                 if (result.succeeded) {
+                  const aiSuggestionIndex = draft.aiSuggestionIndex;
                   setDraft(null);
                   setSelectedIds([]);
                   setFormErrors({});
+                  if (aiSuggestionIndex !== undefined) {
+                    setAiSuggestions((current) =>
+                      current.filter((_, index) => index !== aiSuggestionIndex),
+                    );
+                    setAiPreviewOpen(true);
+                  }
                 } else if (result.validationErrors) {
                   setFormErrors(result.validationErrors);
                   setFormErrorVersion((current) => current + 1);

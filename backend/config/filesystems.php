@@ -33,9 +33,24 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            'serve' => false,
+            'visibility' => 'private',
+            'directory_visibility' => 'private',
             'throw' => false,
             'report' => false,
+        ],
+
+        // Dedicated local-only storage for explicitly guarded browser/TiDB
+        // test processes. EnvironmentSafety rejects this local disk in
+        // production and in staging unless the existing staging opt-in is set.
+        'weekly_plan_e2e' => [
+            'driver' => 'local',
+            'root' => storage_path('framework/testing/weekly-plan-v3-e2e/files'),
+            'serve' => false,
+            'visibility' => 'private',
+            'directory_visibility' => 'private',
+            'throw' => true,
+            'report' => true,
         ],
 
         'public' => [
@@ -51,11 +66,15 @@ return [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'token' => env('AWS_SESSION_TOKEN'),
             'region' => env('AWS_DEFAULT_REGION'),
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'root' => trim((string) env('AWS_ROOT_PREFIX', ''), '/'),
+            'visibility' => 'private',
+            'directory_visibility' => 'private',
             'throw' => false,
             'report' => false,
         ],

@@ -15,23 +15,8 @@ class WeeklyPlanSuggestionService implements WeeklyPlanSuggestionGenerator
         $duplicateCounts = $entries
             ->groupBy(fn (WeeklyPlanEntry $entry): string => $entry->assignee_id.'|'.mb_strtolower(trim($entry->title)))
             ->map->count();
-        $deadlineCounts = $entries
-            ->filter(fn (WeeklyPlanEntry $entry): bool => $entry->due_date !== null)
-            ->groupBy(fn (WeeklyPlanEntry $entry): string => $entry->assignee_id.'|'.$entry->due_date->toDateString())
-            ->map->count();
 
         foreach ($entries as $entry) {
-            if (blank($entry->expected_result)) {
-                $this->create(
-                    $plan,
-                    $entry,
-                    'MISSING_EXPECTED_RESULT',
-                    $entry->expected_result,
-                    'Bổ sung kết quả cần đạt có thể kiểm chứng.',
-                    'Đầu việc chưa có kết quả cần đạt. HR cần tự xác nhận nội dung trước khi áp dụng.',
-                );
-            }
-
             $duplicateKey = $entry->assignee_id.'|'.mb_strtolower(trim($entry->title));
             if (($duplicateCounts[$duplicateKey] ?? 0) > 1) {
                 $this->create(
@@ -42,20 +27,6 @@ class WeeklyPlanSuggestionService implements WeeklyPlanSuggestionGenerator
                     'Kiểm tra và hợp nhất hoặc phân biệt rõ đầu việc.',
                     'Có nhiều đầu việc cùng tiêu đề cho một nhân viên; đây chỉ là cảnh báo theo quy tắc.',
                 );
-            }
-
-            if ($entry->due_date !== null) {
-                $deadlineKey = $entry->assignee_id.'|'.$entry->due_date->toDateString();
-                if (($deadlineCounts[$deadlineKey] ?? 0) >= 3) {
-                    $this->create(
-                        $plan,
-                        $entry,
-                        'DEADLINE_CONCENTRATION',
-                        $entry->due_date->toDateString(),
-                        'Rà soát tải công việc trong ngày này.',
-                        'Nhân viên có từ ba đầu việc cùng hạn hoàn thành. Hệ thống không tự đổi deadline.',
-                    );
-                }
             }
 
             if (mb_strlen($entry->title) > 180) {

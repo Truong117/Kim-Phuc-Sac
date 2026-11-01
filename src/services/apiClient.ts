@@ -1,6 +1,7 @@
 export type ValidationErrors = Record<string, string[]>;
 
 type ErrorPayload = {
+  code?: unknown;
   message?: unknown;
   errors?: ValidationErrors;
 };
@@ -10,6 +11,7 @@ type SessionExpirationListener = () => void;
 const sessionExpirationListeners = new Set<SessionExpirationListener>();
 
 export class ApiServiceError extends Error {
+  readonly code?: string;
   readonly status: number;
   readonly validationErrors?: ValidationErrors;
 
@@ -17,9 +19,11 @@ export class ApiServiceError extends Error {
     status: number,
     message?: string,
     validationErrors?: ValidationErrors,
+    code?: string,
   ) {
     super(message ?? `API request failed with status ${status}.`);
     this.name = "ApiServiceError";
+    this.code = code;
     this.status = status;
     this.validationErrors = validationErrors;
   }
@@ -47,6 +51,10 @@ const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 const getApiBaseUrl = () => {
   if (!configuredApiBaseUrl) {
     throw new ApiServiceError(0);
+  }
+
+  if (configuredApiBaseUrl === "/") {
+    return "";
   }
 
   return configuredApiBaseUrl.replace(/\/+$/, "");
@@ -119,6 +127,7 @@ export const apiRequest = async <T>(
       response.status,
       typeof payload.message === "string" ? payload.message : undefined,
       payload.errors,
+      typeof payload.code === "string" ? payload.code : undefined,
     );
   }
 
@@ -155,6 +164,7 @@ export const apiDownload = async (
       response.status,
       typeof payload.message === "string" ? payload.message : undefined,
       payload.errors,
+      typeof payload.code === "string" ? payload.code : undefined,
     );
   }
 

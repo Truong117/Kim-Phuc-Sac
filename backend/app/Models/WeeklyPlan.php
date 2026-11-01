@@ -3,19 +3,28 @@
 namespace App\Models;
 
 use App\Enums\WeeklyPlanParseStatus;
+use App\Enums\WeeklyPlanSourceType;
 use App\Enums\WeeklyPlanStatus;
+use App\Enums\WeeklyPlanWorkflowVersion;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class WeeklyPlan extends Model
 {
+    protected $attributes = [
+        'workflow_version' => WeeklyPlanWorkflowVersion::V2->value,
+    ];
+
     protected $fillable = [
         'organization_id',
         'created_by',
         'week_start',
         'week_end',
         'status',
+        'workflow_version',
+        'source_type',
         'source_disk',
         'source_path',
         'original_filename',
@@ -40,6 +49,8 @@ class WeeklyPlan extends Model
             'week_start' => 'immutable_date:Y-m-d',
             'week_end' => 'immutable_date:Y-m-d',
             'status' => WeeklyPlanStatus::class,
+            'workflow_version' => WeeklyPlanWorkflowVersion::class,
+            'source_type' => WeeklyPlanSourceType::class,
             'parse_status' => WeeklyPlanParseStatus::class,
             'parse_metadata' => 'array',
             'uploaded_at' => 'immutable_datetime',
@@ -69,6 +80,32 @@ class WeeklyPlan extends Model
         return $this->hasMany(WeeklyPlanEmployeeReview::class);
     }
 
+    public function reviewRounds(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanReviewRound::class)
+            ->orderBy('stage')
+            ->orderBy('round_number');
+    }
+
+    public function employeeWorkflows(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanEmployeeWorkflow::class);
+    }
+
+    public function v3ReviewBatches(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanV3ReviewBatch::class)
+            ->orderBy('confirmed_at')
+            ->orderBy('id');
+    }
+
+    public function v3CorrectionBatches(): HasMany
+    {
+        return $this->hasMany(WeeklyPlanV3CorrectionBatch::class)
+            ->orderBy('confirmed_at')
+            ->orderBy('id');
+    }
+
     public function comments(): HasMany
     {
         return $this->hasMany(WeeklyPlanComment::class)
@@ -92,6 +129,11 @@ class WeeklyPlan extends Model
     {
         return $this->hasMany(WeeklyPlanSourcePassage::class)
             ->orderBy('sequence');
+    }
+
+    public function googleDocsSource(): HasOne
+    {
+        return $this->hasOne(WeeklyPlanGoogleDocsSource::class);
     }
 
     public function entryApplications(): HasMany

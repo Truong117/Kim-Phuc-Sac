@@ -1,0 +1,12 @@
+{
+  "applicationCommit": "34bea57a1a77ae34481de298ddbaa3ae9ae370b5",
+  "browser": "156.0.8078.4",
+  "test": "Assistant committed batch: real browser Back Stay preserves immutable pending request",
+  "syntheticPlanId": 9101,
+  "prompts": 0,
+  "url": "http://127.0.0.1:5174/weekly-plans",
+  "mutations": 1,
+  "expectedUrl": "http://127.0.0.1:5174/weekly-plans/9101/review",
+  "result": "FAIL",
+  "localTrace": "test-results/evidence/before-fix/trace.zip"
+}

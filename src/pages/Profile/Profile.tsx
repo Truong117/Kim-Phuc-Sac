@@ -1,5 +1,6 @@
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
+import AccountNavigation from "@/components/account/AccountNavigation";
 import ProfilePersonalInfo from "@/components/profile/ProfilePersonalInfo";
 import ProfileWorkInfo from "@/components/profile/ProfileWorkInfo";
 import { useAuth } from "@/hooks/useAuth";
@@ -20,6 +21,7 @@ export default function Profile() {
       </p>
 
       <div className="mx-auto max-w-5xl space-y-4">
+        <AccountNavigation />
         <ProfilePersonalInfo user={currentUser} />
         <ProfileWorkInfo user={currentUser} />
       </div>

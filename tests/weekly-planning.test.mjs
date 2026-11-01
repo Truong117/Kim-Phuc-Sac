@@ -2,6 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import i18next from "i18next";
+import {
+  initialExpandedEmployeeKey,
+  reconcileExpandedEmployeeKey,
+  toggleExpandedEmployeeKey,
+} from "../src/utils/weeklyPlanEmployeeAccordion.ts";
+import {
+  activeWeeklyPlanReviewPath,
+  actorRelativeWeeklyPlanStatusKey,
+  canActivelyReviewWeeklyPlan,
+} from "../src/utils/weeklyPlanReviewer.ts";
 
 const readSource = (relativePath) =>
   readFile(new URL(`../${relativePath}`, import.meta.url), "utf8");
@@ -19,7 +29,7 @@ test("weekly planning stays route-guarded but is exposed as an authorized work t
 
   assert.match(
     app,
-    /AuthorizationRoute navigationKey="weekly-plans"[\s\S]*?path="\/weekly-plans"[\s\S]*?path="\/weekly-plans\/new"[\s\S]*?path="\/weekly-plans\/:id"[\s\S]*?path="\/weekly-plans\/:id\/review"/,
+    /AuthorizationRoute navigationKey="weekly-plans"[\s\S]*?path="\/weekly-plans"[\s\S]*?path="\/weekly-plans\/new"[\s\S]*?path="\/weekly-plans\/:id\/review"[\s\S]*?path="\/weekly-plans\/:id"/,
   );
   assert.doesNotMatch(sidebar, /navigationKey:\s*"weekly-plans"/);
   assert.match(
@@ -52,31 +62,309 @@ test("weekly planning API client exposes explicit analysis and atomic final publ
   assert.match(service, /\/source\/apply/);
   assert.match(service, /\/source\/group/);
   assert.match(service, /\/source\/ai-extract/);
+  assert.match(service, /workflow_version/);
+  assert.match(service, /\/v3-roster/);
 });
 
-test("DOCX source extraction is HR-confirmed, traceable, and driven by opaque actions", async () => {
-  const [sourceDocument, detail, entries] = await Promise.all([
-    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
-    readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
-  ]);
+test("V3 creation and roster controls are explicit and remain feature-gated", async () => {
+  const [importPage, submitPage, types, translationsSource] = await Promise.all(
+    [
+      readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+      readSource("src/types/weeklyPlanning.ts"),
+      readSource("src/locales/vi/common.json"),
+    ],
+  );
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
 
-  assert.match(sourceDocument, /plan\.actions\.can_extract_source/);
-  assert.match(sourceDocument, /plan\.actions\.can_replace_source/);
-  assert.match(sourceDocument, /plan\.actions\.can_apply_source/);
-  assert.match(sourceDocument, /plan\.actions\.can_ai_extract_source/);
+  assert.match(importPage, /actions\.can_create_v3/);
+  assert.match(importPage, /workflowVersionV2/);
+  assert.match(importPage, /workflowVersionV3/);
+  assert.match(
+    importPage,
+    /importWeeklyPlan\(\s*file,\s*\{\},\s*workflowVersion,\s*\)/s,
+  );
+  const versionSelector = importPage.indexOf(
+    'id="weekly-plan-workflow-version"',
+  );
+  assert.ok(versionSelector >= 0);
+  assert.ok(versionSelector < importPage.indexOf("<GoogleDocsPreviewPanel"));
+  assert.ok(versionSelector < importPage.indexOf("importWeeklyPlan("));
+  assert.match(submitPage, /updateWeeklyPlanV3Roster/);
+  assert.match(submitPage, /plan\.workflow_version === 3/);
+  assert.match(submitPage, /submit\.roster\.zeroWork/);
+  assert.match(submitPage, /hasUnsavedRosterChanges/);
+  assert.match(
+    submitPage,
+    /plan\.actions\.can_submit\s*&&\s*\(!isV3Draft \|\| !hasUnsavedRosterChanges\)/,
+  );
+  assert.match(types, /can_create_v3:\s*boolean/);
+  assert.equal(copy.import.workflowVersionV3.includes("V3"), true);
+  assert.equal(copy.wizard.submit.roster.save, "Lưu danh sách");
+});
+
+test("stage reviewers receive direct list navigation while active labels stay action-specific", async () => {
+  const ownerPlan = {
+    id: 31,
+    status: "OWNER_REVIEW",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: true,
+      can_open_review_workspace: true,
+    },
+  };
+  const hrPlan = {
+    ...ownerPlan,
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: false,
+    },
+  };
+  const assistantPlan = {
+    ...ownerPlan,
+    status: "ASSISTANT_REVIEW",
+    actions: {
+      can_assistant_review: true,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const ownerWaitingForHr = {
+    ...ownerPlan,
+    status: "OWNER_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const assistantWaitingForHr = {
+    ...assistantPlan,
+    status: "ASSISTANT_CHANGES_REQUESTED",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+  const v3AssistantPlan = {
+    ...assistantPlan,
+    status: "IN_REVIEW",
+    actions: {
+      can_assistant_review: false,
+      can_owner_review: false,
+      can_open_review_workspace: true,
+    },
+  };
+
+  assert.equal(
+    activeWeeklyPlanReviewPath(ownerPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(canActivelyReviewWeeklyPlan(ownerPlan.actions), true);
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(ownerPlan.status, ownerPlan.actions),
+    "weeklyPlanning.status.reviewRequired",
+  );
+  assert.equal(activeWeeklyPlanReviewPath(hrPlan), null);
+  assert.equal(canActivelyReviewWeeklyPlan(hrPlan.actions), false);
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(hrPlan.status, hrPlan.actions),
+    null,
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath(assistantPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(
+      assistantPlan.status,
+      assistantPlan.actions,
+    ),
+    "weeklyPlanning.status.reviewRequired",
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath(ownerWaitingForHr),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(canActivelyReviewWeeklyPlan(ownerWaitingForHr.actions), false);
+  assert.equal(
+    activeWeeklyPlanReviewPath(assistantWaitingForHr),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(
+    canActivelyReviewWeeklyPlan(assistantWaitingForHr.actions),
+    false,
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath(v3AssistantPlan),
+    "/weekly-plans/31/review",
+  );
+  assert.equal(canActivelyReviewWeeklyPlan(v3AssistantPlan.actions), false);
+  assert.equal(
+    actorRelativeWeeklyPlanStatusKey(
+      v3AssistantPlan.status,
+      v3AssistantPlan.actions,
+    ),
+    null,
+  );
+  assert.equal(
+    activeWeeklyPlanReviewPath({
+      ...v3AssistantPlan,
+      actions: {
+        ...v3AssistantPlan.actions,
+        can_open_review_workspace: false,
+      },
+    }),
+    null,
+  );
+
+  const [list, types, translationsSource] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
+    readSource("src/types/weeklyPlanning.ts"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.match(list, /const reviewPath = activeWeeklyPlanReviewPath\(plan\)/);
+  assert.match(
+    list,
+    /const reviewCtaKey = canActivelyReviewWeeklyPlan\(plan\.actions\)[\s\S]*?\? "list\.review"[\s\S]*?: reviewPath[\s\S]*?\? "list\.viewReview"[\s\S]*?: "list\.open"/,
+  );
+  assert.match(list, /to=\{reviewPath \?\? "\/weekly-plans\/" \+ plan\.id\}/);
+  assert.match(list, /actions=\{plan\.actions\}/);
+  assert.match(list, /t\(reviewCtaKey\)/);
+  assert.match(
+    types,
+    /"can_delete"[\s\S]*?"can_assistant_review"[\s\S]*?"can_owner_review"[\s\S]*?"can_open_review_workspace"/,
+  );
+  assert.equal(copy.status.reviewRequired, "Cần xét duyệt");
+  assert.equal(copy.status.OWNER_REVIEW, "Giám đốc đang xét duyệt");
+  assert.equal(copy.list.review, "Xét duyệt");
+  assert.equal(copy.list.viewReview, "Xem xét duyệt");
+  assert.equal(copy.list.open, "Mở kế hoạch");
+});
+
+test("weekly draft deletion is backend-authorized, confirmed, single-flight, and safely refreshed", async () => {
+  const [list, service, types, translationsSource] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
+    readSource("src/services/weeklyPlanningService.ts"),
+    readSource("src/types/weeklyPlanning.ts"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.match(types, /can_delete:\s*boolean/);
+  assert.match(types, /actions:\s*Pick<[\s\S]*?"can_delete"/);
+  assert.match(list, /\{plan\.actions\.can_delete && \(/);
+  assert.doesNotMatch(list, /plan\.status\s*===\s*["']DRAFT["']/);
+  assert.match(
+    list,
+    /setSelectedPlan\(plan\)[\s\S]*?deleteModal\.openModal\(\)/,
+  );
+  assert.match(list, /onClick=\{closeDeleteModal\}/);
+  assert.match(
+    list,
+    /if \(!selectedPlan \|\| deleteInFlightRef\.current\) return/,
+  );
+  assert.match(list, /deleteInFlightRef\.current = true/);
+  assert.match(list, /deleteInFlightRef\.current = false/);
+  assert.match(list, /disabled=\{deleting\}/);
+  assert.match(list, /await deleteWeeklyPlan\(selectedPlan\.id\)/);
+  assert.match(list, /result\?\.data\.length === 1 && page > 1/);
+  assert.match(list, /setPage\(\(current\) => current - 1\)/);
+  assert.match(list, /setVersion\(\(current\) => current \+ 1\)/);
+  assert.match(list, /catch \(nextError: unknown\)[\s\S]*?setDeleteError/);
+  assert.doesNotMatch(
+    list.match(/catch \(nextError: unknown\)[\s\S]*?finally/)?.[0] ?? "",
+    /setResult/,
+  );
+  assert.match(
+    service,
+    /deleteWeeklyPlan[\s\S]*?apiRequest<void>[\s\S]*?method: "DELETE"/,
+  );
+  assert.equal(copy.list.delete.cancel, "Hủy");
+  assert.equal(copy.list.delete.confirm, "Xóa kế hoạch");
+});
+
+test("weekly employee-count summaries use Nhân viên without changing unique-count wiring", async () => {
+  const [structure, work, submit, translationsSource] = await Promise.all([
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardStructure.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardWork.tsx"),
+    readSource("src/pages/WeeklyPlans/WeeklyPlanWizardSubmit.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const copy = JSON.parse(translationsSource).weeklyPlanning;
+
+  assert.equal(copy.wizard.counts.employees, "Nhân viên");
+  assert.notEqual(copy.wizard.counts.employees, "Tài khoản KPS");
+  assert.match(structure, /t\("counts\.employees"\)/);
+  assert.match(structure, /plan\.summary\.matched_employee_count/);
+  assert.match(work, /\[t\("counts\.employees"\), counts\.employeeCount\]/);
+  assert.match(submit, /\[t\("counts\.employees"\), counts\.employeeCount\]/);
+});
+
+test("weekly AI preview treats an empty suggestion list as a successful empty state", async () => {
+  const [sourceDocument, aiPreview, translationsSource] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanAiExtractionPreview.tsx"),
+    readSource("src/locales/vi/common.json"),
+  ]);
+  const translations = JSON.parse(translationsSource);
+
   assert.match(
     sourceDocument,
-    /disabled=\{busy \|\| !plan\.actions\.can_ai_extract_source\}/,
+    /const suggestions =[\s\S]*?await onAiExtract\(\)/,
   );
+  assert.match(sourceDocument, /setAiSuggestions\(normalized\.suggestions\)/);
+  assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
+  assert.match(aiPreview, /suggestions\.length === 0/);
+  assert.match(aiPreview, /\{t\("empty"\)\}/);
+  assert.equal(
+    translations.weeklyPlanning.sourceDocument.aiPreview.empty,
+    "AI không tìm thấy công việc có đủ căn cứ trong tài liệu này.",
+  );
+});
+
+test("DOCX source extraction and missing-file recovery are driven by opaque actions", async () => {
+  const [sourceDocument, sourceRecovery, detail, entries, types] =
+    await Promise.all([
+      readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanSourceRecovery.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
+      readSource("src/types/weeklyPlanning.ts"),
+    ]);
+
+  assert.match(sourceDocument, /plan\.actions\.can_extract_source/);
+  assert.match(sourceDocument, /plan\.actions\.can_apply_source/);
+  assert.match(sourceDocument, /\{plan\.actions\.can_ai_extract_source && \(/);
+  assert.match(sourceDocument, /disabled=\{busy \|\| aiLoading\}/);
+  assert.match(sourceDocument, /const runAiExtraction = async/);
+  assert.match(
+    sourceDocument,
+    /const suggestions =[\s\S]*?await onAiExtract\(\)/,
+  );
+  assert.match(sourceDocument, /setAiPreviewOpen\(true\)/);
+  assert.match(sourceDocument, /<WeeklyPlanAiExtractionPreview/);
   assert.match(sourceDocument, /crypto\.randomUUID\(\)/);
   assert.match(sourceDocument, /source_passage_ids: draft\.passageIds/);
   assert.match(sourceDocument, /<WeeklyPlanEntryForm/);
+  assert.match(sourceRecovery, /plan\.source_file\.availability/);
+  assert.match(sourceRecovery, /plan\.actions\.can_replace_source/);
+  assert.match(sourceRecovery, /accept=\{`\.\$\{extension\}`\}/);
+  assert.match(sourceRecovery, /onReplace\(replacement\)/);
+  assert.match(
+    types,
+    /availability:[\s\S]*"AVAILABLE"[\s\S]*"MISSING"[\s\S]*"UNAVAILABLE"[\s\S]*"NOT_APPLICABLE"[\s\S]*null/,
+  );
   assert.doesNotMatch(
-    sourceDocument + detail,
+    sourceDocument + sourceRecovery + detail,
     /role\s*===|HR_MANAGER|OWNER|ADMIN/,
   );
   assert.match(detail, /<WeeklyPlanSourceDocument/);
+  assert.match(detail, /<WeeklyPlanSourceRecovery/);
   assert.match(detail, /applyWeeklyPlanSourceEntries/);
   assert.match(entries, /entry\.source_passages\.map/);
 });
@@ -120,6 +408,10 @@ test("source passages use ordered accordions and explicit manual grouping withou
   assert.match(service, /passage_ids: passageIds/);
   assert.match(service, /group_title: groupTitle/);
   assert.match(types, /origin: "MANUAL" \| "GOOGLE_DOCS_TAB"/);
+  assert.match(types, /origin: "DOCX_SECTION" \| "GOOGLE_DOCS_TAB"/);
+  assert.match(types, /tab_id: string \| null/);
+  assert.match(types, /parent_tab_id: string \| null/);
+  assert.match(types, /nesting_level: number \| null/);
   assert.match(types, /identity_verified: false/);
   assert.match(types, /can_group_source: boolean/);
 });
@@ -135,17 +427,71 @@ test("weekly entries are grouped by stable user identity with an unresolved fall
   assert.match(entries, /entry\.validation_status === "VALID"/);
   assert.match(entries, /!entry\.expected_result\?\.trim\(\)/);
   assert.match(entries, /!entry\.start_date \|\| !entry\.due_date/);
-  assert.match(entries, /aria-expanded=\{!isCollapsed\}/);
-  assert.match(entries, /setCollapsedKeys\(new Set\(\)\)/);
+  assert.match(entries, /aria-expanded=\{isExpanded\}/);
+  assert.match(entries, /activeExpandedGroupKey === group\.key/);
+  assert.doesNotMatch(entries, /collapsedKeys|setCollapsedKeys/);
   assert.match(entries, /visibleGroups\.map/);
   assert.match(entries, /noFilteredEntries/);
 });
 
+test("employee accordion keeps one group open and reconciles filtered keys", () => {
+  assert.equal(initialExpandedEmployeeKey(["employee:a"]), "employee:a");
+  assert.equal(initialExpandedEmployeeKey(["employee:a", "employee:b"]), null);
+
+  assert.equal(toggleExpandedEmployeeKey(null, "employee:a"), "employee:a");
+  assert.equal(
+    toggleExpandedEmployeeKey("employee:a", "employee:b"),
+    "employee:b",
+  );
+  assert.equal(toggleExpandedEmployeeKey("employee:b", "employee:b"), null);
+
+  assert.equal(
+    reconcileExpandedEmployeeKey("employee:a", ["employee:b"]),
+    null,
+  );
+  assert.equal(
+    reconcileExpandedEmployeeKey("employee:a", ["employee:a", "employee:b"]),
+    "employee:a",
+  );
+  assert.equal(
+    reconcileExpandedEmployeeKey(null, ["employee:a"], true),
+    "employee:a",
+  );
+  assert.equal(reconcileExpandedEmployeeKey(null, ["employee:a"]), null);
+});
+
+test("employee hierarchy uses KPS structure while preserving work actions and semantic states", async () => {
+  const entries = await readSource(
+    "src/components/weekly-plans/WeeklyPlanEntries.tsx",
+  );
+
+  assert.match(entries, /rounded-2xl border bg-white/);
+  assert.match(entries, /border-kps-primary\/15/);
+  assert.match(entries, /border-s-4 border-s-kps-primary/);
+  assert.match(entries, /bg-kps-primary\/\[0\.04\]/);
+  assert.doesNotMatch(entries, /brand-pink|bg-pink|border-pink|text-pink/);
+  assert.match(entries, /bg-gray-50\/60 px-3 py-4/);
+  assert.match(
+    entries,
+    /rounded-xl border border-gray-200 bg-white p-4 shadow-theme-xs/,
+  );
+  assert.doesNotMatch(entries, /t\("expandAll"\)|t\("collapseAll"\)/);
+  assert.ok((entries.match(/<details/g) ?? []).length >= 2);
+  assert.match(entries, /onClick=\{\(\) => onEdit\(entry\)\}/);
+  assert.match(entries, /onClick=\{\(\) => onDelete\(entry\)\}/);
+  assert.match(entries, /<WeeklyPlanStatusBadge status=\{review\.status\}/);
+  assert.match(
+    entries,
+    /entry\.validation_status === "VALID"[\s\S]*?bg-success-50[\s\S]*?bg-warning-50/,
+  );
+});
+
 test("weekly entry filters preserve the external edit modal and actions stay opaque", async () => {
-  const [entries, detail, sourceDocument] = await Promise.all([
+  const [entries, detail, sourceDocument, aiPreview] = await Promise.all([
     readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
     readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
     readSource("src/components/weekly-plans/WeeklyPlanSourceDocument.tsx"),
+    readSource("src/components/weekly-plans/WeeklyPlanAiExtractionPreview.tsx"),
   ]);
 
   assert.match(entries, /setQuery/);
@@ -154,7 +500,8 @@ test("weekly entry filters preserve the external edit modal and actions stay opa
   assert.match(entries, /setCompletenessFilter/);
   assert.match(detail, /isOpen=\{editing !== null\}/);
   assert.match(detail, /canEdit=\{plan\.actions\.can_edit\}/);
-  assert.match(detail, /canReview=\{reviewMode && plan\.actions\.can_review\}/);
+  assert.match(detail, /canReview=\{false\}/);
+  assert.doesNotMatch(detail, /reviewMode|reviewWeeklyPlanEmployee/);
   assert.doesNotMatch(entries + detail, /role\s*===|HR_MANAGER|OWNER|ADMIN/);
   assert.match(sourceDocument, /createFromSelection/);
   assert.match(sourceDocument, /applyToDraft/);
@@ -162,12 +509,30 @@ test("weekly entry filters preserve the external edit modal and actions stay opa
   assert.match(sourceDocument, /assignee_id: draft\.assigneeId/);
   assert.match(sourceDocument, /source_passage_ids: draft\.passageIds/);
   assert.match(sourceDocument, /key=\{draft\.requestId\}/);
+  assert.match(sourceDocument, /assigneeId: lockedAssignee\?\.id \?\? null/);
+  assert.match(
+    sourceDocument,
+    /assigneeId: verifiedGoogleDocsTab\?\.employee\.id \?\? null/,
+  );
+  assert.match(sourceDocument, /aiSuggestionIndex: index/);
+  assert.match(aiPreview, /suggestion\.source_keys/);
+  assert.match(aiPreview, /suggestion\.evidence/);
+  assert.match(aiPreview, /suggestion\.verification_fields/);
+  assert.match(aiPreview, /passage\?\.text \?\? t\("sourceUnavailable"\)/);
+  assert.doesNotMatch(
+    sourceDocument + aiPreview,
+    /role\s*===|HR_MANAGER|OWNER|ADMIN/,
+  );
 });
 
 test("weekly entry form uses date-only picker and interaction-gated validation", async () => {
-  const form = await readSource(
-    "src/components/weekly-plans/WeeklyPlanEntryForm.tsx",
-  );
+  const [form, textArea, googleJobRow] = await Promise.all([
+    readSource("src/components/weekly-plans/WeeklyPlanEntryForm.tsx"),
+    readSource("src/components/form/input/TextArea.tsx"),
+    readSource(
+      "src/components/weekly-plans/WeeklyPlanGoogleDocsAiReviewJobRow.tsx",
+    ),
+  ]);
 
   assert.match(form, /KpsDatePicker/);
   assert.doesNotMatch(form, /type=["']date["']/);
@@ -183,26 +548,40 @@ test("weekly entry form uses date-only picker and interaction-gated validation",
   assert.match(form, /serverErrors\[`entries\.0\.\$\{field\}`\]/);
   assert.match(form, /clearServerError\("assignee_id"\)/);
   assert.match(form, /clearServerError\("due_date"\)/);
+  assert.match(textArea, /containerClassName/);
+  assert.match(form, /grid items-stretch gap-4 md:grid-cols-2/);
+  assert.match(form, /containerClassName="flex flex-1"/);
+  assert.match(form, /className="h-full min-h-32"/);
+  assert.match(googleJobRow, /grid items-stretch gap-4 md:grid-cols-2/);
+  assert.match(googleJobRow, /containerClassName="flex flex-1"/);
 });
 
 test("weekly UI groups entries by employee and consumes opaque action flags", async () => {
-  const [entries, detail, list, upload] = await Promise.all([
-    readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
-    readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
-  ]);
+  const [entries, detail, reviewWorkspace, reviewModel, list, upload] =
+    await Promise.all([
+      readSource("src/components/weekly-plans/WeeklyPlanEntries.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanDetail.tsx"),
+      readSource("src/components/weekly-plans/WeeklyPlanReviewWorkspace.tsx"),
+      readSource("src/utils/weeklyPlanReviewWorkspace.ts"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanList.tsx"),
+      readSource("src/pages/WeeklyPlans/WeeklyPlanImport.tsx"),
+    ]);
 
   assert.match(entries, /entries\.reduce/);
   assert.match(entries, /entry\.assignee\?\.id/);
   assert.match(detail, /plan\.actions\.can_edit/);
-  assert.match(detail, /plan\.actions\.can_review/);
   assert.match(detail, /plan\.actions\.can_analyze/);
-  assert.match(detail, /plan\.actions\.can_approve_and_publish/);
   assert.match(detail, /plan\.actions\.can_comment/);
   assert.match(detail, /analyzeWeeklyPlan/);
-  assert.match(detail, /approveAndPublishWeeklyPlan/);
-  assert.match(detail, /showAssignmentConfirm/);
+  assert.doesNotMatch(
+    detail,
+    /approveAndPublishWeeklyPlan|showAssignmentConfirm/,
+  );
+  assert.match(reviewModel, /plan\.actions\.can_assistant_review/);
+  assert.match(reviewModel, /plan\.actions\.can_owner_review/);
+  assert.match(reviewWorkspace, /plan\.actions\.can_approve/);
+  assert.match(reviewWorkspace, /plan\.actions\.can_publish/);
+  assert.doesNotMatch(reviewWorkspace, /can_approve_and_publish/);
   assert.match(detail, /plan\.events\.map/);
   assert.match(detail, /commentTarget/);
   assert.match(list, /loading && !result/);
@@ -226,7 +605,9 @@ test("weekly create and review flows return to the authorized weekly list", asyn
   assert.match(upload, /navigate\("\/weekly-plans"\)/);
   assert.match(detail, /to="\/weekly-plans"/);
   assert.match(detail, /to=\{"\/weekly-plans\/" \+ plan\.id \+ "\/review"\}/);
-  assert.match(review, /<WeeklyPlanDetail reviewMode \/>/);
+  assert.match(review, /<WeeklyPlanReviewWorkspace/);
+  assert.match(review, /getWeeklyPlan\(id, controller\.signal\)/);
+  assert.doesNotMatch(review, /WeeklyPlanDetail|reviewMode/);
 });
 
 test("Vietnamese weekly translations interpolate actual values with single braces", async () => {
@@ -247,8 +628,8 @@ test("Vietnamese weekly translations interpolate actual values with single brace
     "Tuần 26/10/2026 – 31/10/2026",
   );
   assert.equal(
-    instance.t("weeklyPlanning.detail.commentEmployee", { name: "Nguyễn An" }),
-    "Nhân viên: Nguyễn An",
+    instance.t("weeklyPlanning.discussion.allEmployeeWorks"),
+    "Toàn bộ công việc",
   );
   assert.equal(
     instance.t("weeklyPlanning.review.confirmDescription", {
@@ -262,8 +643,32 @@ test("Vietnamese weekly translations interpolate actual values with single brace
     "Đã chọn 2 đoạn nguồn",
   );
   assert.equal(
+    instance.t("weeklyPlanning.sourceRecovery.missingHelp", {
+      extension: "xlsx",
+    }),
+    "Dữ liệu kế hoạch đã lưu vẫn được giữ nguyên. Hãy tải lại file .xlsx để tiếp tục các thao tác cần đọc file gốc.",
+  );
+  assert.equal(
     instance.t("weeklyPlanning.sourceDocument.aiNotConnected"),
     "Chưa kết nối AI",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceDocument.aiPreview.employeeHint", {
+      identifier: "Nhân viên A",
+    }),
+    "Định danh trong tài liệu: Nhân viên A",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceDocument.aiPreview.sources", {
+      sources: "docx-paragraph:1",
+    }),
+    "Đoạn nguồn: docx-paragraph:1",
+  );
+  assert.equal(
+    instance.t("weeklyPlanning.sourceDocument.aiPreview.provenance", {
+      values: "Tiêu đề: Nguyên văn",
+    }),
+    "Nguồn gốc trường: Tiêu đề: Nguyên văn",
   );
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.groupModalDescription", {
@@ -279,14 +684,14 @@ test("Vietnamese weekly translations interpolate actual values with single brace
   );
   assert.equal(
     instance.t("weeklyPlanning.sourceDocument.entryGroupSelectionRequired"),
-    "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo đầu việc.",
+    "Khi dùng đoạn đã gán nhóm, vui lòng chỉ chọn các đoạn thuộc cùng một nhóm để tạo công việc.",
   );
   assert.equal(
     instance.t("weeklyPlanning.detail.filters.resultCount", {
       groups: 2,
       entries: 5,
     }),
-    "Hiển thị 5 đầu việc trong 2 nhóm",
+    "Hiển thị 5 công việc trong 2 nhóm",
   );
   assert.equal(
     instance.t("weeklyPlanning.detail.groupCounts.missing", { count: 3 }),

@@ -49,6 +49,16 @@ class User extends Authenticatable
         ];
     }
 
+    // Verification belongs to the previous address and must not carry over.
+    public function setEmailAttribute(string $email): void
+    {
+        if (($this->attributes['email'] ?? null) !== $email) {
+            $this->attributes['email_verified_at'] = null;
+        }
+
+        $this->attributes['email'] = $email;
+    }
+
     public function organizationMemberships(): HasMany
     {
         return $this->hasMany(OrganizationMembership::class);
