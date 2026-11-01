@@ -361,4 +361,15 @@ class WorkReportAnalysisTest extends TestCase
         // A separate human grounding review is required; this validator only proves structural provenance.
         $this->assertFileExists(base_path('../docs/WORK_REPORT_AI_GROUNDING_REVIEW.md'));
     }
+
+    public function test_missing_provider_configuration_is_distinguished_from_exhausted_budget(): void
+    {
+        $owner = $this->member('OWNER');
+        $this->report($this->member('OFFICE_STAFF'));
+        config(['work_report_ai.driver' => 'openai', 'work_report_ai.max_run_budget_usd' => 2]);
+        $id = $this->createRun($owner);
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->assertJsonPath('data.errors.0.code', 'AI_NOT_CONFIGURED');
+        $this->assertDatabaseCount('ai_usage_records', 0);
+        Http::assertNothingSent();
+    }
 }

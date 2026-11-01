@@ -103,6 +103,12 @@ class WorkReportAnalysisWorker
             return;
         }
         $settings = $config['gateway'];
+        if ($config['max_run_budget_usd'] <= 0) {
+            throw new AiGatewayException('AI_RUN_BUDGET_EXCEEDED', 'Run budget is disabled.');
+        }
+        if (! (new OpenAiGateway([...$settings, 'api_key' => config('work_report_ai.gateway.api_key')]))->isConfigured()) {
+            throw new AiGatewayException('AI_NOT_CONFIGURED', 'Feature Gateway configuration is incomplete.');
+        }
         $reserve = (int) ceil(($settings['max_input_tokens'] * $settings['input_usd_per_million_tokens']
             + $settings['max_output_tokens'] * $settings['output_usd_per_million_tokens']) * $settings['max_attempts']);
         DB::transaction(function () use ($run, $config, $reserve): void {

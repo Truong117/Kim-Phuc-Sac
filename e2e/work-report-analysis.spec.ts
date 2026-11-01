@@ -143,9 +143,17 @@ test("work-report analysis: create, employees, source item, shared history, relo
     expect(response.body.data.id).toBe(id);
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("main").locator("..")).toHaveCSS(
+    "margin-inline-start",
+    "0px",
+  );
+  await expect
+    .poll(async () => (await page.locator("main").boundingBox())?.width ?? 0)
+    .toBeGreaterThanOrEqual(350);
   await page.screenshot({
     path: "test-results/work-report-analysis-mobile.png",
     fullPage: true,
+    animations: "disabled",
   });
   expect(
     await page.evaluate(
