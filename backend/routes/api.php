@@ -27,9 +27,7 @@ Route::get('/health', function () {
     return response()->json([
         'status' => 'ok',
         'service' => 'kps-backend',
-        'revision' => config('release.revision'),
-        'environment' => config('release.environment'),
-    ])->header('Cache-Control', 'no-store');
+    ]);
 });
 
 Route::prefix('auth')->group(function () {

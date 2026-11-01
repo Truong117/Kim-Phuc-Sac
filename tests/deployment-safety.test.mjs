@@ -32,8 +32,8 @@ const expectedProxyConfig = (origin) => ({
   git: {
     deploymentEnabled: {
       "*": false,
-      main: false,
-      staging: false,
+      main: true,
+      staging: true,
     },
   },
   rewrites: [

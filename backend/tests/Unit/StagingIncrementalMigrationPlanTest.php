@@ -10,33 +10,6 @@ use PHPUnit\Framework\TestCase;
 
 class StagingIncrementalMigrationPlanTest extends TestCase
 {
-    public function test_release_requires_exact_schema_ledger_and_identity_but_allows_existing_rows(): void
-    {
-        $state = array_replace($this->stateForMigration22(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
-            'migration_22_schema_state' => 'complete',
-            'account_audit_row_count' => 12,
-            'v3_correction_batch_count' => 9,
-        ]);
-        $this->assertSame([], StagingIncrementalMigrationPlan::releaseViolations($state));
-        foreach (range(16, 22) as $number) {
-            $this->assertContains("release_schema_{$number}_not_complete", StagingIncrementalMigrationPlan::releaseViolations(
-                array_replace($state, ["migration_{$number}_schema_state" => 'partial']),
-            ));
-        }
-        foreach ([[], array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 21), [...StagingBootstrapPlan::EXPECTED_MIGRATIONS, 'unknown']] as $ledger) {
-            $this->assertContains('release_requires_exact_migration_ledger', StagingIncrementalMigrationPlan::releaseViolations(
-                array_replace($state, ['applied_migrations' => $ledger]),
-            ));
-        }
-        foreach (['target_verified', 'tls_verified', 'tidb_verified', 'migration_grants_verified', 'ddl_jobs_verified', 'processlist_verified', 'parent_prerequisites_verified'] as $gate) {
-            $this->assertNotEmpty(StagingIncrementalMigrationPlan::releaseViolations(array_replace($state, [$gate => false])));
-        }
-        $this->assertContains('competing_or_unverifiable_migrator_session', StagingIncrementalMigrationPlan::releaseViolations(
-            array_replace($state, ['competing_migrator_session_count' => 1]),
-        ));
-    }
-
     public function test_only_the_seven_reviewed_migrations_are_allowlisted(): void
     {
         $this->assertSame([

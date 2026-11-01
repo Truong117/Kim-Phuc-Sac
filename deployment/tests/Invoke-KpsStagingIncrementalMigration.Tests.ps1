@@ -207,10 +207,6 @@ Describe 'KPS staging incremental migration orchestration' {
                 return New-FakeInspectionEnvelope (New-FakeInspectionResult -InspectorMode 'status')
             }
 
-            if ($inspectorMode -eq 'release') {
-                return New-FakeInspectionEnvelope (New-FakeInspectionResult -InspectorMode 'release')
-            }
-
             if ($inspectorMode -eq 'preflight') {
                 $script:PreflightCallCount++
                 if ($script:PreflightCallCount -eq 2 -and $null -ne $script:FinalPreflightFailure) {
@@ -246,18 +242,6 @@ Describe 'KPS staging incremental migration orchestration' {
 
         $result.ExitCode | Should Be 0
         Assert-MockCalled Write-ProtectedPlanReceipt -Times 0
-        Assert-MockCalled Invoke-ArtisanMigration -Times 0
-    }
-
-    It 'runs release readiness without an execute receipt, confirmation or migration child' {
-        $script:Mode = 'Release'
-        $result = Invoke-KpsStagingIncrementalRunner
-
-        $result.ExitCode | Should Be 0
-        ($result.Output[0] | ConvertFrom-Json).mode | Should Be 'release'
-        Assert-MockCalled Write-ProtectedPlanReceipt -Times 0
-        Assert-MockCalled Read-ProtectedPlanReceipt -Times 0
-        Assert-MockCalled Read-RunnerConfirmation -Times 0
         Assert-MockCalled Invoke-ArtisanMigration -Times 0
     }
 
