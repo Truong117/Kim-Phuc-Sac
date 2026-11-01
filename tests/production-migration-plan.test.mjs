@@ -44,6 +44,7 @@ test("new migration is blocked unless independently approved as expand-only, and
   const candidate = planProductionMigrations([...migrations, approved], applied, evidence);
   assert.equal(candidate.status, "APPROVED_SOURCE_PLAN_ONLY");
   assert.equal(candidate.writes_executed, false);
-  assert.throws(() => planProductionMigrations([...migrations, { ...approved,
-    production_approval: { ...approved.production_approval, reviewed_sha256: "b".repeat(64) } }], applied, evidence));
+  const mismatch = planProductionMigrations([...migrations, { ...approved,
+    production_approval: { ...approved.production_approval, reviewed_sha256: "b".repeat(64) } }], applied, evidence);
+  assert.equal(mismatch.status, "MANUAL_REVIEW_REQUIRED");
 });
