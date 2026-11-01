@@ -1,6 +1,8 @@
-name: Production release (manual, ordered)
+name: Production release (merge-gated, ordered)
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       expected_sha:
@@ -28,7 +30,7 @@ jobs:
   production:
     name: Protected Production promotion
     needs: checks
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.PRODUCTION_CD_ENABLED == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 55
     environment: production
@@ -67,8 +69,9 @@ jobs:
           VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          KPS_RELEASE_EXPECTED_SHA: ${{ inputs.expected_sha }}
-          KPS_RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+          PRODUCTION_CD_ENABLED: ${{ vars.PRODUCTION_CD_ENABLED }}
+          KPS_RELEASE_EXPECTED_SHA: ${{ github.event_name == 'push' && github.sha || inputs.expected_sha }}
+          KPS_RELEASE_CONFIRMATION: ${{ github.event_name == 'push' && 'DEPLOY_KPS_PRODUCTION' || inputs.confirmation }}
 
       - name: Preserve redacted release evidence on failure or success
         if: always()
