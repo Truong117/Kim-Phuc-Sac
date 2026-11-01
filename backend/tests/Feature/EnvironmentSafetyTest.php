@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Support\EnvironmentSafety;
+use Illuminate\Filesystem\Filesystem;
 use LogicException;
 use Tests\TestCase;
 
@@ -18,6 +19,7 @@ class EnvironmentSafetyTest extends TestCase
         $this->assertSame('array', config('cache.default'));
         $this->assertSame('sync', config('queue.default'));
         $this->assertSame('array', config('session.driver'));
+        $this->assertFalse(config('environment_safety.production_ephemeral_weekly_files'));
     }
 
     public function test_testing_rejects_any_persistent_or_remote_database_configuration(): void
@@ -162,7 +164,7 @@ class EnvironmentSafetyTest extends TestCase
         );
     }
 
-    public function test_production_requires_debug_off_mysql_and_durable_private_storage(): void
+    public function test_production_requires_debug_off_mysql_and_storage_opt_in(): void
     {
         $violations = EnvironmentSafety::violations(...array_replace(
             $this->safeContext(),
@@ -180,7 +182,7 @@ class EnvironmentSafetyTest extends TestCase
             $violations,
         );
         $this->assertContains(
-            'Production Weekly Planning files require durable object storage.',
+            'Production local Weekly Planning storage requires KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true.',
             $violations,
         );
     }
@@ -231,7 +233,132 @@ class EnvironmentSafetyTest extends TestCase
         ]);
         $productionViolations = EnvironmentSafety::violations(...$production);
         $this->assertContains('KPS_STAGING_EPHEMERAL_FILES may only be enabled in staging.', $productionViolations);
-        $this->assertContains('Production Weekly Planning files require durable object storage.', $productionViolations);
+        $this->assertContains('Production local Weekly Planning storage requires KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true.', $productionViolations);
+    }
+
+    public function test_production_accepts_private_local_weekly_files_only_with_its_own_opt_in(): void
+    {
+        $context = $this->productionLocalContext();
+        $this->assertSame([], EnvironmentSafety::violations(...$context));
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true');
+        EnvironmentSafety::assertSafe(...array_replace($context, ['productionEphemeralWeeklyFiles' => false]));
+    }
+
+    public function test_production_opt_in_cannot_be_used_in_other_environments(): void
+    {
+        foreach (['testing', 'local', 'staging'] as $environment) {
+            $context = array_replace($this->safeContext(), [
+                'appEnvironment' => $environment,
+                'databaseEnvironment' => $environment === 'local' ? 'development' : $environment,
+                'productionEphemeralWeeklyFiles' => true,
+            ]);
+            $this->assertContains(
+                'KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES may only be enabled in production.',
+                EnvironmentSafety::violations(...$context),
+            );
+        }
+    }
+
+    public function test_production_opt_in_preserves_environment_and_storage_guards(): void
+    {
+        $context = $this->productionLocalContext();
+        foreach ([
+            ['appDebug' => true],
+            ['databaseEnvironment' => 'staging'],
+            ['defaultConnection' => 'sqlite'],
+            ['stagingEphemeralFiles' => true],
+            ['weeklyPlanStorageDisk' => 'public'],
+            ['weeklyPlanStorageDisk' => 'undefined'],
+            ['publicWebPath' => null],
+        ] as $unsafe) {
+            $this->assertNotEmpty(EnvironmentSafety::violations(...array_replace($context, $unsafe)));
+        }
+
+        foreach ([
+            ['visibility' => 'public'],
+            ['directory_visibility' => 'public'],
+            ['serve' => true],
+            ['driver' => 'ftp'],
+        ] as $unsafeDisk) {
+            $unsafe = $context;
+            $unsafe['filesystemDisks']['local'] = array_replace($context['filesystemDisks']['local'], $unsafeDisk);
+            $this->assertNotEmpty(EnvironmentSafety::violations(...$unsafe));
+        }
+
+        $context['filesystemDisks']['weekly_plan_e2e'] = $context['filesystemDisks']['local'];
+        $context['weeklyPlanStorageDisk'] = 'weekly_plan_e2e';
+        $this->assertNotEmpty(EnvironmentSafety::violations(...$context));
+    }
+
+    public function test_production_rejects_public_overlapping_and_unsafe_local_roots(): void
+    {
+        $context = $this->productionLocalContext();
+        foreach ([
+            null, '', '/', 'C:/', 'relative/private', '//server/share',
+            'php://memory', "private\0file", ' /app/private',
+            '/app/storage/app/private/../../../public/uploads',
+            '/app/storage/app/public', '/app/storage/app/public/uploads',
+            '/app/public/uploads', '/app/public', '/app',
+        ] as $root) {
+            $context['filesystemDisks']['local']['root'] = $root;
+            $this->assertNotEmpty(EnvironmentSafety::violations(...$context), 'Unsafe root was accepted.');
+        }
+    }
+
+    public function test_production_resolves_existing_public_root_ancestors(): void
+    {
+        $context = $this->productionLocalContext();
+        $context['publicWebPath'] = public_path();
+        $context['publicStoragePath'] = storage_path('app/public');
+        $context['filesystemDisks']['local']['root'] = storage_path('app/private/new-weekly-files');
+        $this->assertSame([], EnvironmentSafety::violations(...$context));
+
+        $context['filesystemDisks']['local']['root'] = public_path('not-yet-created-weekly-files');
+        $this->assertNotEmpty(EnvironmentSafety::violations(...$context));
+    }
+
+    public function test_production_rejects_a_private_alias_into_the_public_directory(): void
+    {
+        $fixture = sys_get_temp_dir().DIRECTORY_SEPARATOR.'kps-weekly-root-'.bin2hex(random_bytes(8));
+        $public = $fixture.DIRECTORY_SEPARATOR.'public';
+        mkdir($fixture);
+        mkdir($public);
+        $alias = $fixture.DIRECTORY_SEPARATOR.'private-alias';
+
+        try {
+            // Laravel uses a directory junction on Windows and a symlink on Unix.
+            (new Filesystem)->link($public, $alias);
+            $this->assertDirectoryExists($alias);
+            $context = $this->productionLocalContext();
+            $context['publicWebPath'] = $public;
+            $context['publicStoragePath'] = $fixture.'/storage/app/public';
+            $context['filesystemDisks']['local']['root'] = $alias.'/not-yet-created';
+            $this->assertNotEmpty(EnvironmentSafety::violations(...$context));
+        } finally {
+            clearstatcache();
+            if (DIRECTORY_SEPARATOR === '\\') {
+                rmdir($alias);
+            } elseif (is_link($alias)) {
+                unlink($alias);
+            }
+            rmdir($public);
+            rmdir($fixture);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function productionLocalContext(): array
+    {
+        return array_replace($this->safeContext(), [
+            'appEnvironment' => 'production',
+            'databaseEnvironment' => 'production',
+            'defaultConnection' => 'mysql',
+            'databaseName' => 'configuration_fixture_only',
+            'databaseHost' => 'database.example.invalid',
+            'productionEphemeralWeeklyFiles' => true,
+        ]);
     }
 
     public function test_production_accepts_private_s3_compatible_storage_without_static_credentials(): void
@@ -271,7 +398,9 @@ class EnvironmentSafetyTest extends TestCase
      *     weeklyPlanStorageDisk: mixed,
      *     stagingEphemeralFiles: bool,
      *     filesystemDisks: array<string, array<string, mixed>>,
-     *     publicStoragePath: string
+     *     publicStoragePath: string,
+     *     productionEphemeralWeeklyFiles: bool,
+     *     publicWebPath: string
      * }
      */
     private function safeContext(): array
@@ -296,6 +425,8 @@ class EnvironmentSafetyTest extends TestCase
                 ],
             ],
             'publicStoragePath' => '/app/storage/app/public',
+            'productionEphemeralWeeklyFiles' => false,
+            'publicWebPath' => '/app/public',
         ];
     }
 }

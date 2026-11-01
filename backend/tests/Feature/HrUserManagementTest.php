@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\DailyReport;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\AuthorizationFixtures;
@@ -253,6 +254,7 @@ class HrUserManagementTest extends TestCase
 
     public function test_hr_manager_self_safeguards_dashboard_and_report_scope_remain_personal(): void
     {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 10:00:00', 'Asia/Ho_Chi_Minh'));
         $hr = $this->createManagedUser('HR_MANAGER');
         $other = $this->createManagedUser('OFFICE_STAFF');
         DailyReport::query()->create([
