@@ -1,0 +1,80 @@
+name: Production release (manual, ordered)
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Exact 40-character SHA currently at main"
+        required: true
+        type: string
+      confirmation:
+        description: "Type DEPLOY_KPS_PRODUCTION to confirm a reviewed release"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# The same lane and durable git ref as the Staging coordinator.
+# Do not cancel deployments or let a second release overtake one.
+concurrency:
+  group: kps-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  production:
+    name: Protected Production promotion
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - name: Check out approved main revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned Vercel CLI
+        shell: bash
+        env:
+          VERCEL_CLI_VERSION: ${{ vars.VERCEL_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          [[ "$VERCEL_CLI_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Pin VERCEL_CLI_VERSION to an exact reviewed semver."; exit 1; }
+          npm install -g "vercel@$VERCEL_CLI_VERSION"
+
+      - name: Require independently reviewed Production baseline and recovery gate
+        run: node deployment/check-production-baseline.mjs
+
+      - name: Deploy approved SHA to Render, validate, then stage and promote Vercel
+        run: node deployment/production-release.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          KPS_RELEASE_EXPECTED_SHA: ${{ inputs.expected_sha }}
+          KPS_RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+
+      - name: Preserve redacted release evidence on failure or success
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ github.sha }}-${{ github.run_attempt }}
+          path: production-release-evidence.json
+          if-no-files-found: warn
+          retention-days: 30
