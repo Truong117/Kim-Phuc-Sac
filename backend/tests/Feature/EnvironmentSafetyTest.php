@@ -295,15 +295,20 @@ class EnvironmentSafetyTest extends TestCase
     public function test_production_rejects_public_overlapping_and_unsafe_local_roots(): void
     {
         $context = $this->productionLocalContext();
-        foreach ([
+        $unsafeRoots = [
             null, '', '/', 'C:/', 'relative/private', '//server/share',
             'php://memory', "private\0file", ' /app/private',
             '/app/storage/app/private/../../../public/uploads',
             '/app/storage/app/public', '/app/storage/app/public/uploads',
             '/app/public/uploads', '/app/public', '/app',
-        ] as $root) {
+        ];
+        if (DIRECTORY_SEPARATOR === '/') {
+            array_push($unsafeRoots, 'C:/private/weekly-files', 'D:\\private\\weekly-files');
+        }
+
+        foreach ($unsafeRoots as $root) {
             $context['filesystemDisks']['local']['root'] = $root;
-            $this->assertNotEmpty(EnvironmentSafety::violations(...$context), 'Unsafe root was accepted.');
+            $this->assertNotEmpty(EnvironmentSafety::violations(...$context), 'Unsafe root was accepted: '.var_export($root, true));
         }
     }
 

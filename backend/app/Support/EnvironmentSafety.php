@@ -288,7 +288,11 @@ final class EnvironmentSafety
             return null;
         }
         $path = str_replace('\\', '/', $path);
-        if (! preg_match('~\A(?:[a-z]:/|/(?!/))~iD', $path)
+        // Drive-letter paths are relative on Unix; do not resolve them via cwd.
+        $absolutePattern = DIRECTORY_SEPARATOR === '\\'
+            ? '~\A(?:[a-z]:/|/(?!/))~iD'
+            : '~\A/(?!/)~D';
+        if (! preg_match($absolutePattern, $path)
             || array_intersect(explode('/', $path), ['.', '..']) !== []) {
             return null;
         }
