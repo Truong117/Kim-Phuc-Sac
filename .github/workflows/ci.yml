@@ -7,12 +7,16 @@ on:
       - main
   push:
     branches:
+      - staging
       - main
-  workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   branch-policy:
