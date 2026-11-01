@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateReleaseInput, assertDeploymentTargets } from "../deployment/production-release.mjs";
+import { validateReleaseInput, assertDeploymentTargets, assertApprovedMainMerge } from "../deployment/production-release.mjs";
 
 const sha = "a".repeat(40);
 const env = {
@@ -63,4 +63,17 @@ test("fail closed on Render entrypoint/auto-deploy or Vercel Git auto-deploy", (
   assert.throws(() => assertDeploymentTargets(render, {
     ...project, accountId: "wrong-team",
   }));
+});
+
+
+test("automatic Production is armed only for exact staging-to-main merge PR", () => {
+  assert.throws(() => validateReleaseInput({ ...env, GITHUB_EVENT_NAME: "push" }), /not armed/);
+  assert.equal(validateReleaseInput({ ...env, GITHUB_EVENT_NAME: "push", PRODUCTION_CD_ENABLED: "true" }), sha);
+  const merge = { merged_at: "2026-11-01T19:00:00Z", base: { ref: "main" },
+    head: { ref: "staging" }, merge_commit_sha: sha };
+  assert.doesNotThrow(() => assertApprovedMainMerge([merge], sha));
+  assert.throws(() => assertApprovedMainMerge([], sha));
+  assert.throws(() => assertApprovedMainMerge([{ ...merge, head: { ref: "hotfix/x" } }], sha));
+  assert.throws(() => assertApprovedMainMerge([{ ...merge, merge_commit_sha: "b".repeat(40) }], sha));
+  assert.throws(() => assertApprovedMainMerge([{ ...merge, merged_at: null }], sha));
 });
