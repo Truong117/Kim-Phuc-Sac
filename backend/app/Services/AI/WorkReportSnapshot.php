@@ -182,6 +182,14 @@ class WorkReportSnapshot
         });
     }
 
+    public function redactFeedback(User $viewer, string $text, array $snapshot): string
+    {
+        $this->membership($viewer);
+        $identities = User::query()->whereIn('id', [...array_column($snapshot['employees'], 'employee_id'), $viewer->id])->get(['id', 'name', 'email']);
+
+        return $this->redact($text, $identities);
+    }
+
     private function redact(string $text, $identities): string
     {
         foreach ($identities as $person) {

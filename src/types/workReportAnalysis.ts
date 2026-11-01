@@ -45,6 +45,13 @@ export interface WorkReportAnalysis {
     timezone: string;
   };
   department_id: number | null;
+  scope: {
+    organization_id: number;
+    restrictions: [
+      "organization" | "department" | "location" | "user",
+      number | null,
+    ][];
+  };
   source_changed: boolean | null;
   config_changed: boolean;
   requires_new_run: boolean;
@@ -60,6 +67,10 @@ export interface WorkReportAnalysis {
   source_reports: AnalysisSource[];
   errors: { unit_key: string; code: string }[];
   can_retry: boolean;
+  can_regenerate: boolean;
+  created_at: string;
+  requested_by_name: string | null;
+  revision: { number: number; root_id: number; parent_id: number | null };
   usage: {
     input_tokens: number | null;
     output_tokens: number | null;
@@ -83,4 +94,13 @@ export interface AnalysisPreview {
   >[];
   source_reports: AnalysisSource[];
   run: WorkReportAnalysis | null;
+  latest_attempt: { id: number; status: WorkReportAnalysis["status"] } | null;
+}
+export interface AnalysisRegeneration {
+  data: WorkReportAnalysis;
+  operation: {
+    key: string;
+    source_analysis_id: number;
+    reused_existing: boolean;
+  };
 }

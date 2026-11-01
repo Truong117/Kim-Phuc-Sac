@@ -11,13 +11,17 @@ import Button from "@/components/ui/button/Button";
 import WorkAnalysisResult from "@/components/ai/WorkAnalysisResult";
 import WorkAnalysisEmployees from "@/components/ai/WorkAnalysisEmployees";
 import WorkAnalysisHistory from "@/components/ai/WorkAnalysisHistory";
+import WorkAnalysisRegenerate from "@/components/ai/WorkAnalysisRegenerate";
 import useWorkReportAnalysis from "@/hooks/useWorkReportAnalysis";
 import {
   addDaysToDateOnly,
   dateOnlyInTimeZone,
   formatDateOnly,
 } from "@/utils/dateOnly";
-import type { AnalysisFilters } from "@/types/workReportAnalysis";
+import type {
+  AnalysisFilters,
+  WorkReportAnalysis,
+} from "@/types/workReportAnalysis";
 
 type Tab = "overview" | "employees" | "history" | "sources";
 const tabs: Tab[] = ["overview", "employees", "history", "sources"];
@@ -45,6 +49,18 @@ export default function WorkReportInsights() {
     : null;
   const state = useWorkReportAnalysis(filters, historyId);
   const { preview, run, loading, busy, running } = state;
+  const selectRun = (selected: WorkReportAnalysis) => {
+    state.clear();
+    setParams({
+      analysis: String(selected.id),
+      end: selected.period.end_date,
+      days: String(selected.period.days),
+      ...(selected.department_id
+        ? { department: String(selected.department_id) }
+        : {}),
+    });
+    setTab("overview");
+  };
   const updateFilters = (patch: Partial<AnalysisFilters>) => {
     state.clear();
     const next = { ...filters, ...patch };
@@ -178,6 +194,21 @@ export default function WorkReportInsights() {
               {t("timezone")}
             </span>
           </div>
+          <WorkAnalysisRegenerate run={run} onSelect={selectRun} />
+          {preview?.latest_attempt && !isHistory && (
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              {t("defaultVersion")}{" "}
+              <Link
+                to={`?${new URLSearchParams({ ...Object.fromEntries(params), analysis: String(preview.latest_attempt.id) })}`}
+                className="text-brand-600 underline dark:text-brand-300"
+              >
+                {t("latestAttempt", {
+                  id: preview.latest_attempt.id,
+                  status: t(`status.${preview.latest_attempt.status}`),
+                })}
+              </Link>
+            </p>
+          )}
           {!preview?.enabled && !isHistory && !loading && (
             <p className="mt-3 text-sm text-warning-700 dark:text-warning-300">
               {t("disabled")}
@@ -231,6 +262,21 @@ export default function WorkReportInsights() {
                       total: run.progress.total,
                     })}
                   </p>
+                  <p>
+                    {t("revisionInfo", {
+                      number: run.revision.number,
+                      name: run.requested_by_name ?? t("unknown"),
+                      time: time(run.created_at),
+                    })}
+                  </p>
+                  {run.revision.parent_id && (
+                    <Link
+                      to={`?${new URLSearchParams({ ...Object.fromEntries(params), analysis: String(run.revision.parent_id) })}`}
+                      className="text-brand-600 underline dark:text-brand-300"
+                    >
+                      {t("parentVersion", { id: run.revision.parent_id })}
+                    </Link>
+                  )}
                   <p>
                     {t(run.is_mock ? "mock" : "live")} · {run.model} ·{" "}
                     {t("cost", {
@@ -374,22 +420,7 @@ export default function WorkReportInsights() {
             {tab === "employees" && (
               <WorkAnalysisEmployees employees={employees} sources={sources} />
             )}
-            {tab === "history" && (
-              <WorkAnalysisHistory
-                onSelect={(selected) => {
-                  state.clear();
-                  setParams({
-                    analysis: String(selected.id),
-                    end: selected.period.end_date,
-                    days: String(selected.period.days),
-                    ...(selected.department_id
-                      ? { department: String(selected.department_id) }
-                      : {}),
-                  });
-                  setTab("overview");
-                }}
-              />
-            )}
+            {tab === "history" && <WorkAnalysisHistory onSelect={selectRun} />}
             {tab === "sources" && (
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">

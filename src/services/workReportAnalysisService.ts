@@ -3,6 +3,7 @@ import type {
   AnalysisFilters,
   AnalysisPreview,
   WorkReportAnalysis,
+  AnalysisRegeneration,
 } from "@/types/workReportAnalysis";
 
 const root = "/api/ai/work-report-analyses";
@@ -35,3 +36,16 @@ export const createWorkAnalysis = (
   });
 export const retryWorkAnalysis = (id: number, signal?: AbortSignal) =>
   data<WorkReportAnalysis>(`/${id}/retry`, { method: "POST", signal });
+export const regenerateWorkAnalysis = (
+  id: number,
+  key: string,
+  feedback: string,
+  signal?: AbortSignal,
+) =>
+  apiRequest<AnalysisRegeneration>(`${root}/${id}/regenerate`, {
+    method: "POST",
+    body: JSON.stringify({ idempotency_key: key, review_feedback: feedback }),
+    signal,
+  });
+export const getAnalysisRegeneration = (key: string, signal?: AbortSignal) =>
+  apiRequest<AnalysisRegeneration>(`${root}/regenerations/${key}`, { signal });

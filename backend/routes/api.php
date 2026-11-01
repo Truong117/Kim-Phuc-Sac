@@ -231,10 +231,12 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         ->group(function (): void {
             Route::get('/preview', [WorkReportAnalysisController::class, 'preview']);
             Route::get('/history', [WorkReportAnalysisController::class, 'history']);
+            Route::get('/regenerations/{key}', [WorkReportAnalysisController::class, 'regeneration'])->whereUuid('key');
             Route::post('/', [WorkReportAnalysisController::class, 'store'])->middleware('throttle:4,1');
             Route::get('/{id}', [WorkReportAnalysisController::class, 'show'])->whereNumber('id');
             Route::get('/{id}/sources', [WorkReportAnalysisController::class, 'sources'])->whereNumber('id');
             Route::post('/{id}/retry', [WorkReportAnalysisController::class, 'retry'])->whereNumber('id')->middleware('throttle:4,1');
+            Route::post('/{id}/regenerate', [WorkReportAnalysisController::class, 'regenerate'])->whereNumber('id')->middleware('throttle:4,1');
         });
 
     // AI Daily Report V1: same Sanctum membership + backend permission boundaries.

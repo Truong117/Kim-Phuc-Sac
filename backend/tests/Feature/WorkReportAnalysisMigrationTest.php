@@ -26,7 +26,7 @@ class WorkReportAnalysisMigrationTest extends TestCase
         foreach ($before as $table => $rows) {
             $this->assertSame($rows, DB::table($table)->get()->toJson(), $table);
         }
-        $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, DB::table('migrations')->orderBy('id')->pluck('migration')->all());
+        $this->assertSame(array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 23), DB::table('migrations')->orderBy('id')->pluck('migration')->all());
         $unique = collect(Schema::getIndexes('work_report_analyses'))->firstWhere('name', 'work_analysis_cache_unique');
         $this->assertTrue($unique['unique']);
         $this->assertSame(['cache_key'], $unique['columns']);

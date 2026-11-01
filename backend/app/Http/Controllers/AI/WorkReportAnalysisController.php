@@ -4,6 +4,7 @@ namespace App\Http\Controllers\AI;
 
 use App\Http\Controllers\Controller;
 use App\Services\AI\WorkReportAnalysisService;
+use App\Services\AI\WorkReportRegenerationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -49,5 +50,17 @@ class WorkReportAnalysisController extends Controller
     public function retry(int $id, Request $request, WorkReportAnalysisService $service): JsonResponse
     {
         return response()->json(['data' => $service->payload($request->user(), $service->retry($request->user(), $id))], 202);
+    }
+
+    public function regenerate(int $id, Request $request, WorkReportRegenerationService $service): JsonResponse
+    {
+        $input = $request->validate(['idempotency_key' => ['required', 'uuid'], 'review_feedback' => ['nullable', 'string', 'max:1000']]);
+
+        return response()->json($service->create($request->user(), $id, $input['idempotency_key'], $input['review_feedback'] ?? null), 202);
+    }
+
+    public function regeneration(string $key, Request $request, WorkReportRegenerationService $service): JsonResponse
+    {
+        return response()->json($service->lookup($request->user(), $key));
     }
 }

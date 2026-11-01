@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class WorkReportAnalysis extends Model
 {
@@ -22,5 +24,15 @@ class WorkReportAnalysis extends Model
     public function units(): HasMany
     {
         return $this->hasMany(WorkReportAnalysisUnit::class)->orderBy('id');
+    }
+
+    public function revisionRecord(): HasOne
+    {
+        return $this->hasOne(WorkReportAnalysisRevision::class, 'analysis_id');
+    }
+
+    public function requester(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'requested_by_user_id');
     }
 }

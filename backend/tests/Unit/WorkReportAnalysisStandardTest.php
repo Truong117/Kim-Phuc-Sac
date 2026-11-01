@@ -54,7 +54,7 @@ class WorkReportAnalysisStandardTest extends TestCase
         foreach (['không bắt tạo đủ sáu nhận xét', 'từng nhân viên và tổng hợp công ty', 'không phải điểm trừ nhân viên', 'độ dài hoặc cách viết', 'không tạo vấn đề, câu hỏi', 'Không nêu vướng mắc không có nghĩa', 'result là tùy chọn', 'quy trách nhiệm khi thiếu căn cứ'] as $rule) {
             $this->assertStringContainsString($rule, $instructions);
         }
-        $this->assertSame('work-report-v2.2', WorkReportAnalysisOutput::VERSION);
+        $this->assertSame('work-report-v2.3', WorkReportAnalysisOutput::VERSION);
         $this->assertSame('work-report-v2.1', WorkReportAnalysisOutput::SCHEMA_VERSION);
         WorkReportAnalysisOutput::validate(array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), []);
     }

@@ -32,9 +32,11 @@ class WorkReportAnalysisService
         $capture = $this->sources->capture($viewer, $end, $days, $department);
         $snapshot = $capture['snapshot'];
         $scopeHash = WorkReportSnapshot::hash($snapshot['scope']);
-        $run = WorkReportAnalysis::query()->where('organization_id', $snapshot['scope']['organization_id'])
+        $query = WorkReportAnalysis::query()->where('organization_id', $snapshot['scope']['organization_id'])
             ->where('scope_hash', $scopeHash)->where('end_date', $end)->where('days', $days)
-            ->where('department_id', $department)->latest('id')->first();
+            ->where('department_id', $department);
+        $latest = (clone $query)->latest('id')->first();
+        $run = (clone $query)->whereIn('status', ['completed', 'partial'])->latest('id')->first() ?? $latest;
 
         return [
             'enabled' => (bool) config('work_report_ai.enabled'),
@@ -44,6 +46,8 @@ class WorkReportAnalysisService
             'work_counts' => $snapshot['work_counts'], 'employees' => $snapshot['employees'],
             'source_reports' => $this->sourcePayloads($snapshot),
             'run' => $run === null ? null : $this->payload($viewer, $this->show($viewer, (int) $run->id), $capture['source_hash']),
+            'latest_attempt' => $latest !== null && $latest->id !== $run?->id
+                ? ['id' => $this->show($viewer, (int) $latest->id)->id, 'status' => $latest->status] : null,
         ];
     }
 
@@ -57,7 +61,7 @@ class WorkReportAnalysisService
             throw ValidationException::withMessages(['end_date' => 'Không có báo cáo đã khóa trong kỳ và phạm vi đã chọn. Bản nháp không được đưa vào AI.']);
         }
         $settings = $this->settings();
-        $inputs = $this->split($snapshot, $settings);
+        $inputs = $this->inputsFor($snapshot, $settings);
         $key = WorkReportSnapshot::hash([$snapshot['scope'], $snapshot['period'], $department, $capture['source_hash'], $settings]);
         $run = DB::transaction(function () use ($viewer, $snapshot, $capture, $settings, $inputs, $key, $department, $end, $days): WorkReportAnalysis {
             $run = WorkReportAnalysis::query()->createOrFirst(['cache_key' => $key], [
@@ -68,11 +72,7 @@ class WorkReportAnalysisService
                 'captured_at' => $capture['captured_at'], 'status' => 'pending',
             ]);
             if ($run->wasRecentlyCreated) {
-                foreach ($inputs as $index => $input) {
-                    $run->units()->create(['unit_key' => 'employee:'.$input['employee_id'].':'.$index, 'input' => $input]);
-                }
-                $run->units()->create(['unit_key' => 'summary', 'status' => 'waiting', 'input' => []]);
-                DB::afterCommit(fn () => $this->dispatchPending($run));
+                $this->initializeUnits($run, $inputs);
             }
 
             return $run;
@@ -81,11 +81,25 @@ class WorkReportAnalysisService
         return $run->refresh();
     }
 
-    private function split(array $snapshot, array $settings): array
+    public function initializeUnits(WorkReportAnalysis $run, array $inputs): void
     {
+        foreach ($inputs as $index => $input) {
+            $run->units()->create(['unit_key' => 'employee:'.$input['employee_id'].':'.$index, 'input' => $input]);
+        }
+        $run->units()->create(['unit_key' => 'summary', 'status' => 'waiting', 'input' => []]);
+        DB::afterCommit(fn () => $this->dispatchPending($run));
+    }
+
+    public function inputsFor(array $snapshot, array $settings, ?string $feedback = null): array
+    {
+        if (count($snapshot['reports']) > (int) $settings['max_reports']
+            || strlen(json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > (int) $settings['max_snapshot_bytes']) {
+            $this->limitError();
+        }
         $groups = [];
         // Leave room for period/employee metadata and JSON framing inside the unit limit.
-        $limit = min(24000, max(2000, (int) $settings['unit_input_bytes'])) - 512;
+        $limit = min(24000, max(2000, (int) $settings['unit_input_bytes'])) - 512
+            - strlen(json_encode($feedback, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         foreach ($snapshot['reports'] as $report) {
             foreach ($report['items'] as $item) {
                 $id = $report['employee_id'];
@@ -104,7 +118,7 @@ class WorkReportAnalysisService
         $inputs = [];
         foreach ($groups as $id => $chunks) {
             foreach ($chunks as $reports) {
-                $inputs[] = ['employee_id' => (int) $id, 'period' => $snapshot['period'], 'reports' => $reports];
+                $inputs[] = ['employee_id' => (int) $id, 'period' => $snapshot['period'], 'reports' => $reports, 'review_feedback' => $feedback];
             }
         }
         if ($inputs === [] || count($inputs) + 1 > min(200, max(2, (int) $settings['max_units']))) {
@@ -181,6 +195,8 @@ class WorkReportAnalysisService
             ];
         }
 
+        $revision = $run->revisionRecord;
+
         return [
             'id' => $run->id, 'status' => $run->status, 'period' => $snapshot['period'],
             'department_id' => $run->department_id, 'scope' => $snapshot['scope'], 'source_hash' => $run->source_hash,
@@ -189,6 +205,11 @@ class WorkReportAnalysisService
             'requires_new_run' => ! WorkReportAnalysisOutput::canExecute($run->analysis_config),
             'captured_at' => $run->captured_at->toIso8601String(), 'completed_at' => $run->completed_at?->toIso8601String(),
             'requested_by_user_id' => $run->requested_by_user_id,
+            'requested_by_name' => $run->requester?->name,
+            'created_at' => $run->created_at->toIso8601String(),
+            'revision' => ['number' => $revision?->revision_number ?? 1, 'root_id' => $revision?->root_analysis_id ?? $run->id,
+                'parent_id' => $revision?->parent_analysis_id],
+            'can_regenerate' => (bool) config('work_report_ai.enabled') && in_array($run->status, ['completed', 'partial'], true),
             'provider' => $run->analysis_config['driver'], 'is_mock' => $run->analysis_config['driver'] === 'fake',
             'model' => $run->analysis_config['driver'] === 'fake' ? 'deterministic-v2' : $run->analysis_config['gateway']['model'],
             'prompt_version' => $run->analysis_config['prompt_version'], 'schema_version' => $run->analysis_config['schema_version'],

@@ -74,6 +74,18 @@ export default function WorkAnalysisHistory({
                 {formatDateOnly(run.period.end_date)}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t("revisionInfo", {
+                  number: run.revision.number,
+                  name: run.requested_by_name ?? t("unknown"),
+                  time: new Date(run.created_at).toLocaleString("vi-VN", {
+                    timeZone: "Asia/Ho_Chi_Minh",
+                  }),
+                })}
+                {run.revision.parent_id
+                  ? ` · ${t("parentVersion", { id: run.revision.parent_id })}`
+                  : ""}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {t(`status.${run.status}`)} · {t(run.is_mock ? "mock" : "live")}{" "}
                 ·{" "}
                 {run.department_id

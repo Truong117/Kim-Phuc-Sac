@@ -28,13 +28,13 @@ class AccountAuditMigrationTest extends TestCase
         $this->assertFalse(Schema::hasTable('account_audit_events'));
     }
 
-    public function test_all_22_files_follow_the_exact_reviewed_order_without_missing_or_duplicate_steps(): void
+    public function test_current_manifest_keeps_the_reviewed_account_audit_prefix_without_missing_or_duplicate_steps(): void
     {
         $files = glob(database_path('migrations/*.php'));
         sort($files, SORT_STRING);
         $names = array_map(static fn (string $path): string => basename($path, '.php'), $files);
-        $this->assertCount(23, $names);
-        $this->assertCount(23, array_unique($names));
+        $this->assertCount(24, $names);
+        $this->assertCount(24, array_unique($names));
         $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, $names);
         $this->applyAuditMigration();
         $this->assertSame(array_slice($names, 0, 22), $this->ledger());

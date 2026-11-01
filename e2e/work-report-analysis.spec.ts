@@ -185,3 +185,141 @@ test("staff cannot open analysis APIs by ID or source endpoint", async ({
     ).toBe(403);
   }
 });
+
+test("regenerate frozen analysis with feedback, double click, lost response recovery and old version", async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(240_000);
+  await login(page, "owner");
+  await page.goto("/ai/insights");
+  const history = await browserRequest(
+    page,
+    "/api/ai/work-report-analyses/history",
+  );
+  let source = history.body.data.find(
+    (run: { period: { days: number }; status: string }) =>
+      run.period.days === 1 && run.status === "completed",
+  );
+  if (!source) {
+    const response = page.waitForResponse(
+      (res) =>
+        res.request().method() === "POST" &&
+        /\/api\/ai\/work-report-analyses\/?$/.test(res.url()),
+    );
+    await page
+      .getByRole("button", { name: "Tạo / mở phân tích", exact: true })
+      .click();
+    source = (await (await response).json()).data;
+    await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
+  }
+  expect(source).toBeTruthy();
+  const sourceUrl = `/ai/insights?analysis=${source.id}&days=1&end=${source.period.end_date}`;
+  await page.goto(sourceUrl);
+  await page
+    .getByRole("button", { name: "Tạo bản phân tích mới", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText(/Bản cũ vẫn được giữ/)).toBeVisible();
+  await expect(dialog.getByText(/phát sinh lượt gọi mới/)).toBeVisible();
+  const feedback = dialog.getByLabel("Góp ý tùy chọn (tối đa 1.000 ký tự)");
+  await feedback.fill("ắ".repeat(1001));
+  const confirm = dialog.getByRole("button", {
+    name: "Xác nhận tạo bản mới",
+    exact: true,
+  });
+  await expect(confirm).toBeDisabled();
+  await feedback.fill(
+    "Làm rõ vướng mắc và nhu cầu hỗ trợ theo từng nhân viên.",
+  );
+  let posts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/regenerate"))
+      posts++;
+  });
+  const response = page.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" && res.url().endsWith("/regenerate"),
+  );
+  await confirm.evaluate((button: HTMLButtonElement) => {
+    button.click();
+    button.click();
+  });
+  const created = (await (await response).json()).data;
+  expect(created.id).not.toBe(source.id);
+  expect(created.revision.parent_id).toBe(source.id);
+  await expect(page).toHaveURL(new RegExp(`analysis=${created.id}(?:&|$)`));
+  await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
+  expect(posts).toBe(1);
+  await page
+    .getByRole("link", { name: `Mở bản nguồn #${source.id}`, exact: true })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`analysis=${source.id}(?:&|$)`));
+  await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
+  // Persist server-side operation, then lose only its HTTP response. Reload must use GET lookup.
+  let lostId: number | null = null;
+  await page.route(
+    "**/api/ai/work-report-analyses/*/regenerate",
+    async (route) => {
+      const result = await route.fetch();
+      expect(result.status()).toBe(202);
+      lostId = (await result.json()).data.id;
+      await route.abort("failed");
+    },
+  );
+  await page
+    .getByRole("button", { name: "Tạo bản phân tích mới", exact: true })
+    .click();
+  await dialog
+    .getByLabel("Góp ý tùy chọn (tối đa 1.000 ký tự)")
+    .fill("Tổng hợp chi tiết hơn.");
+  await dialog
+    .getByRole("button", { name: "Xác nhận tạo bản mới", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText("Chưa xác định");
+  const pointers = await page.evaluate(() =>
+    Object.keys(sessionStorage)
+      .filter((k) => k.startsWith("kps-analysis-regeneration:"))
+      .map((k) => JSON.parse(sessionStorage.getItem(k)!)),
+  );
+  expect(pointers).toHaveLength(1);
+  expect(Object.keys(pointers[0]).sort()).toEqual(["key", "sourceId"]);
+  await page.reload();
+  await expect(page).toHaveURL(new RegExp(`analysis=${lostId}(?:&|$)`));
+  await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
+  expect(posts).toBe(2);
+  await page
+    .getByRole("link", { name: `Mở bản nguồn #${source.id}`, exact: true })
+    .click();
+  await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
+  await page
+    .getByRole("tab", { name: "Lịch sử phân tích", exact: true })
+    .click();
+  await expect(
+    page.locator("article").filter({ hasText: `Lần phân tích #${created.id}` }),
+  ).toContainText(`Mở bản nguồn #${source.id}`);
+  await page.screenshot({
+    path: "test-results/work-report-regeneration-history.png",
+    fullPage: true,
+    animations: "disabled",
+  });
+  const assistant = await browser.newPage();
+  await login(assistant, "assistant");
+  const key = await assistant.evaluate(() => crypto.randomUUID());
+  const simultaneous = await Promise.all(
+    [1, 2].map(() =>
+      browserRequest(
+        assistant,
+        `/api/ai/work-report-analyses/${source.id}/regenerate`,
+        "POST",
+        {
+          idempotency_key: key,
+          review_feedback: "Đối chiếu căn cứ rõ hơn.",
+        },
+      ),
+    ),
+  );
+  expect(simultaneous.map((result) => result.status)).toEqual([202, 202]);
+  expect(simultaneous[0].body.data.id).toBe(simultaneous[1].body.data.id);
+  await assistant.close();
+});

@@ -51,6 +51,7 @@ class WorkReportAnalysisWorker
                     throw new AiGatewayException('AI_NO_VALID_PARTS', 'No valid employee parts.');
                 }
                 $input = ['period' => $run->snapshot['period'], 'parts' => $parts->pluck('result')->all(),
+                    'review_feedback' => $run->revisionRecord?->review_feedback,
                     'missing_units' => $run->units()->where('unit_key', '!=', 'summary')->where('status', 'failed')->count()];
                 // Summary uses only successful parts and their verbatim evidence, not failed source data.
                 $allowed = [];
