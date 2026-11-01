@@ -14,6 +14,8 @@ abstract class TestCase extends BaseTestCase
         $app = parent::createApplication();
         $app['config']->set('weekly_plans.document_ai_driver', 'none');
         $app['config']->set('kps_ai.driver', 'fake');
+        $app['config']->set('work_report_ai.driver', 'fake');
+        $app['config']->set('work_report_ai.gateway.api_key', null);
         $app['config']->set('kps_ai.api_key', null);
         $app['config']->set('kps_ai.monthly_budget_usd', 0);
         $app['config']->set('kps_ai.input_usd_per_million_tokens', 0);

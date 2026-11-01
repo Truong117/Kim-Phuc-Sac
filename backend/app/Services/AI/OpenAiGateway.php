@@ -15,6 +15,13 @@ use Throwable;
 
 class OpenAiGateway
 {
+    public function __construct(private readonly ?array $settings = null) {}
+
+    private function setting(string $key, mixed $default = null): mixed
+    {
+        return $this->settings === null ? config('kps_ai.'.$key, $default) : ($this->settings[$key] ?? $default);
+    }
+
     private const PROVIDER = 'openai';
 
     private const HARD_MAX_ATTEMPTS = 3;
@@ -43,8 +50,8 @@ class OpenAiGateway
 
     public function isConfigured(): bool
     {
-        return trim((string) config('kps_ai.api_key')) !== ''
-            && trim((string) config('kps_ai.model')) !== ''
+        return trim((string) $this->setting('api_key')) !== ''
+            && trim((string) $this->setting('model')) !== ''
             && $this->baseUrlIsAllowed()
             && $this->monthlyBudgetMicrousd() > 0
             && $this->inputPricePerMillion() > 0
@@ -70,11 +77,11 @@ class OpenAiGateway
             throw new AiGatewayException('AI_INVALID_REQUEST', 'AI request metadata is invalid.');
         }
 
-        $model = trim((string) config('kps_ai.model'));
+        $model = trim((string) $this->setting('model'));
         $reasoningEffort = $this->reasoningEffort($request, $model);
         $maxOutputTokens = min(
             $request->maxOutputTokens,
-            (int) config('kps_ai.max_output_tokens', 3000),
+            (int) $this->setting('max_output_tokens', 3000),
             self::HARD_MAX_OUTPUT_TOKENS,
         );
         if ($maxOutputTokens < 1 || $request->maxOutputTokens > $maxOutputTokens) {
@@ -95,7 +102,7 @@ class OpenAiGateway
         $inputBytes = strlen($request->instructions) + strlen($inputJson) + strlen($schemaJson);
         $maxInputBytes = min(
             self::HARD_MAX_INPUT_BYTES,
-            max(1, (int) config('kps_ai.max_input_bytes', 65000)),
+            max(1, (int) $this->setting('max_input_bytes', 65000)),
         );
         $maxInputTokens = $this->maxInputTokens();
         // A UTF-8 byte is a conservative upper bound for one input token.
@@ -314,8 +321,8 @@ class OpenAiGateway
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
             try {
-                $response = Http::baseUrl(rtrim((string) config('kps_ai.base_url'), '/'))
-                    ->withToken((string) config('kps_ai.api_key'))
+                $response = Http::baseUrl(rtrim((string) $this->setting('base_url'), '/'))
+                    ->withToken((string) $this->setting('api_key'))
                     ->withHeaders([
                         'X-Client-Request-Id' => hash(
                             'sha256',
@@ -325,7 +332,7 @@ class OpenAiGateway
                     ->acceptJson()
                     ->connectTimeout(min(
                         self::HARD_MAX_CONNECT_TIMEOUT_SECONDS,
-                        max(1, (int) config('kps_ai.connect_timeout_seconds', 10)),
+                        max(1, (int) $this->setting('connect_timeout_seconds', 10)),
                     ))
                     ->timeout($this->timeoutSeconds())
                     ->post('/responses', $payload);
@@ -588,7 +595,7 @@ class OpenAiGateway
             + 30;
         $staleAfterSeconds = max(
             $minimumStaleSeconds,
-            (int) config('kps_ai.stale_after_seconds', 180),
+            (int) $this->setting('stale_after_seconds', 180),
         );
         $cutoff = now('UTC')->subSeconds($staleAfterSeconds);
         $stale = AiUsageRecord::query()
@@ -802,7 +809,7 @@ class OpenAiGateway
 
         return min(
             $max,
-            min($max, max(0, (int) config('kps_ai.retry_delay_ms', 250)))
+            min($max, max(0, (int) $this->setting('retry_delay_ms', 250)))
                 * (2 ** max(0, $attempt - 1)),
         );
     }
@@ -811,7 +818,7 @@ class OpenAiGateway
     {
         return min(
             self::HARD_MAX_RETRY_DELAY_MS,
-            max(0, (int) config('kps_ai.max_retry_delay_ms', 2000)),
+            max(0, (int) $this->setting('max_retry_delay_ms', 2000)),
         );
     }
 
@@ -819,7 +826,7 @@ class OpenAiGateway
     {
         return min(
             self::HARD_MAX_ATTEMPTS,
-            max(1, (int) config('kps_ai.max_attempts', 2)),
+            max(1, (int) $this->setting('max_attempts', 2)),
         );
     }
 
@@ -827,7 +834,7 @@ class OpenAiGateway
     {
         return min(
             self::HARD_MAX_TIMEOUT_SECONDS,
-            max(1, (int) config('kps_ai.timeout_seconds', 60)),
+            max(1, (int) $this->setting('timeout_seconds', 60)),
         );
     }
 
@@ -850,13 +857,13 @@ class OpenAiGateway
     {
         return min(
             self::HARD_MAX_INPUT_TOKENS,
-            max(1, (int) config('kps_ai.max_input_tokens', 65000)),
+            max(1, (int) $this->setting('max_input_tokens', 65000)),
         );
     }
 
     private function baseUrlIsAllowed(): bool
     {
-        $url = rtrim(trim((string) config('kps_ai.base_url')), '/');
+        $url = rtrim(trim((string) $this->setting('base_url')), '/');
         $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
         $host = strtolower((string) parse_url($url, PHP_URL_HOST));
         if ($scheme !== 'https' || $host === '') {
@@ -895,17 +902,17 @@ class OpenAiGateway
 
     private function monthlyBudgetMicrousd(): int
     {
-        return (int) round((float) config('kps_ai.monthly_budget_usd', 0) * 1_000_000);
+        return (int) round((float) $this->setting('monthly_budget_usd', 0) * 1_000_000);
     }
 
     private function inputPricePerMillion(): float
     {
-        return (float) config('kps_ai.input_usd_per_million_tokens', 0);
+        return (float) $this->setting('input_usd_per_million_tokens', 0);
     }
 
     private function outputPricePerMillion(): float
     {
-        return (float) config('kps_ai.output_usd_per_million_tokens', 0);
+        return (float) $this->setting('output_usd_per_million_tokens', 0);
     }
 
     private function logOutcome(AiUsageRecord $record): void

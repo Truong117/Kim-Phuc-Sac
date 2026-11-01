@@ -31,6 +31,15 @@ return [
 
     'connections' => [
 
+        'work_report_ai' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => 'jobs',
+            'queue' => 'ai-work-reports',
+            'retry_after' => 240,
+            'after_commit' => true,
+        ],
+
         'sync' => [
             'driver' => 'sync',
         ],
