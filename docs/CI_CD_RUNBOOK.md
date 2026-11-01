@@ -242,9 +242,12 @@ riêng; CI phải chạy lại trước merge. Quy trình PR hoạt động đ�
    chạy Production release**. Không tự kích hoạt trên push main. Cần review Environment,
    diễn tập lỗi và baseline thực tế trước khi dùng; xem runbook kích hoạt mới.
 
-Production release được tách thành `.github/workflows/production-release.yml`: chỉ
-`workflow_dispatch` trên `main` và có Environment review. `check-production-baseline.mjs`
-đang fail-closed; không có Production deploy tự động trên push. Xem
+Production release được tách thành `.github/workflows/production-release.yml`:
+CI tự kích hoạt trên `push main`. Job phát hành Production **chỉ** chạy khi repository
+variable `PRODUCTION_CD_ENABLED=true`, SHA đến từ PR đã merge `staging → main`,
+đủ cổng baseline/recovery và được Environment reviewer phê duyệt. Workflow cũng
+hỗ trợ `workflow_dispatch` có confirmation. `check-production-baseline.mjs`
+đang fail-closed; chưa kích hoạt deploy tự động. Xem
 [KPS_PRODUCTION_CD_ACTIVATION.md](KPS_PRODUCTION_CD_ACTIVATION.md).
 Không thêm `continue-on-error`, không sửa biến để bỏ baseline hoặc triển khai
 Production khi chưa có bằng chứng khôi phục và cấu hình theo runbook.
