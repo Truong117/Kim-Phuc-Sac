@@ -1,0 +1,10 @@
+{
+  "verified": false,
+  "backend_sha": null,
+  "frontend_sha": null,
+  "migration_ledger_digest": null,
+  "restore_evidence": null,
+  "business_smoke_evidence": null,
+  "verified_at": null,
+  "reason": "Production cutover, DB/schema, durable files and recovery have not been verified. A separate reviewed activation PR is required."
+}

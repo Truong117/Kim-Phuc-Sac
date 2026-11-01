@@ -4,8 +4,8 @@ const STAGING_BRANCH = "staging";
 
 const GIT_DEPLOYMENT_POLICY = Object.freeze({
   "*": false,
-  [PRODUCTION_BRANCH]: true,
-  [STAGING_BRANCH]: true,
+  [PRODUCTION_BRANCH]: false,
+  [STAGING_BRANCH]: false,
 });
 
 export const normalizeBackendOrigin = (

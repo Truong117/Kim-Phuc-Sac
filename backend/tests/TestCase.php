@@ -38,6 +38,8 @@ abstract class TestCase extends BaseTestCase
             stagingEphemeralFiles: (bool) $app['config']->get('environment_safety.staging_ephemeral_files'),
             filesystemDisks: is_array($filesystemDisks) ? $filesystemDisks : [],
             publicStoragePath: storage_path('app/public'),
+            productionEphemeralWeeklyFiles: $app['config']->get('environment_safety.production_ephemeral_weekly_files') === true,
+            publicWebPath: public_path(),
         );
 
         return $app;
