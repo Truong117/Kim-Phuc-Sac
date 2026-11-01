@@ -42,6 +42,8 @@ class WorkReportAnalysisWorker
                 throw new AiGatewayException('AI_FEATURE_DISABLED', 'Feature disabled.');
             }
             $this->analyses->show(User::query()->findOrFail($run->requested_by_user_id), (int) $run->id);
+            // Before input synthesis, budget reservation or any provider invocation.
+            WorkReportAnalysisOutput::assertExecutable($run->analysis_config);
             $input = $unit->input;
             if ($unit->unit_key === 'summary') {
                 $parts = $run->units()->where('unit_key', '!=', 'summary')->where('status', 'completed')->get();

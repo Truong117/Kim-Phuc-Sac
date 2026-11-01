@@ -2299,6 +2299,9 @@
     "unknown": "Chưa xác định",
     "changed": "Dữ liệu nguồn đã thay đổi. Kết quả này dùng bản nguồn đã chốt; có thể tạo phiên bản mới.",
     "configChanged": "Cấu hình phân tích đã thay đổi. Có thể tạo phiên bản mới với cấu hình hiện tại.",
+    "standardChanged": "Quy chuẩn của lần phân tích này không còn được worker hiện tại hỗ trợ. Kết quả đã lưu vẫn đọc được; hãy tạo lượt mới để dùng quy chuẩn hiện tại.",
+    "reportBasis": "Nhận xét dựa trên nội dung báo cáo; chưa đối chiếu với kế hoạch tuần hoặc kết quả nghiệm thu.",
+    "commentKindsHint": "Định dạng nhận xét mới phân biệt: Ghi nhận từ nguồn · Nhận xét có căn cứ · Chưa đủ thông tin · Đề xuất. Đề xuất của AI chưa phải nhiệm vụ hoặc thời hạn đã giao.",
     "partialHint": "Hoàn tất một phần. Xem phần lỗi bên dưới và nhận xét đã có ở tab Theo nhân viên.",
     "summaryMissing": "Chưa có tổng hợp toàn công ty. Các phần thành công vẫn xem được trong tab Theo nhân viên.",
     "unitError": "Phần {unit}",
@@ -2338,7 +2341,8 @@
       "AI_NO_VALID_PARTS": "Chưa có phần nhân viên hợp lệ để tổng hợp.",
       "AI_NOT_CONFIGURED": "Provider AI chưa được cấu hình đầy đủ.",
       "AI_FEATURE_DISABLED": "Tính năng đã tắt trước khi phần này được xử lý.",
-      "AI_ATTEMPTS_EXHAUSTED": "Đã hết số lần thử cho phần này."
+      "AI_ATTEMPTS_EXHAUSTED": "Đã hết số lần thử cho phần này.",
+      "AI_ANALYSIS_VERSION_UNAVAILABLE": "Không thể tái hiện đúng quy chuẩn đã lưu. Phần này chưa được chạy lại; hãy tạo lượt mới. Kết quả cũ vẫn đọc được."
     }
   }
 }

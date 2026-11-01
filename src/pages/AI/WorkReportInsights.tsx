@@ -82,6 +82,9 @@ export default function WorkReportInsights() {
       <PageBreadCrumb pageTitle={t("title")} />
       <div className="space-y-5">
         <ComponentCard title={t("title")} desc={t("description")}>
+          <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
+            {t("reportBasis")}
+          </p>
           <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <Label htmlFor="analysis-period">{t("period")}</Label>
@@ -143,7 +146,7 @@ export default function WorkReportInsights() {
                 disabled={
                   loading ||
                   busy ||
-                  running ||
+                  (running && !run?.requires_new_run) ||
                   !preview?.enabled ||
                   !counts?.reports
                 }
@@ -246,7 +249,12 @@ export default function WorkReportInsights() {
                       {t("changed")}
                     </p>
                   )}
-                  {run.config_changed && (
+                  {run.requires_new_run && (
+                    <p className="text-warning-700 dark:text-warning-300">
+                      {t("standardChanged")}
+                    </p>
+                  )}
+                  {run.config_changed && !run.requires_new_run && (
                     <p className="text-warning-700 dark:text-warning-300">
                       {t("configChanged")}
                     </p>

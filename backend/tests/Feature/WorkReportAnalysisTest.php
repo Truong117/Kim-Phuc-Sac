@@ -356,7 +356,7 @@ class WorkReportAnalysisTest extends TestCase
         $this->report($this->member('OFFICE_STAFF'));
         $snapshot = app(WorkReportSnapshot::class)->capture($owner, '2026-11-01', 1, null)['snapshot'];
         $output = WorkReportAnalysisOutput::fake(['reports' => $snapshot['reports']]);
-        $output['attention'][0]['text'] = 'Claim deliberately unsupported by the otherwise valid quoted source.';
+        $output['attention'][0]['text'] = 'Nhận xét có căn cứ: Claim deliberately unsupported by the otherwise valid quoted source.';
         WorkReportAnalysisOutput::validate($output, $snapshot['reports']);
         // A separate human grounding review is required; this validator only proves structural provenance.
         $this->assertFileExists(base_path('../docs/WORK_REPORT_AI_GROUNDING_REVIEW.md'));

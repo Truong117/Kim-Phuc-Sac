@@ -47,6 +47,7 @@ export interface WorkReportAnalysis {
   department_id: number | null;
   source_changed: boolean | null;
   config_changed: boolean;
+  requires_new_run: boolean;
   captured_at: string;
   completed_at: string | null;
   provider: string;

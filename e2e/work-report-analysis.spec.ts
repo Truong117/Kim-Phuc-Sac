@@ -17,6 +17,12 @@ test("work-report analysis: create, employees, source item, shared history, relo
   });
   await page.goto("/ai/insights");
   await expect(
+    page.getByText(
+      "Nhận xét dựa trên nội dung báo cáo; chưa đối chiếu với kế hoạch tuần hoặc kết quả nghiệm thu.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
     page.getByRole("button", { name: "Tạo / mở phân tích", exact: true }),
   ).toBeEnabled();
   await expect(
@@ -60,7 +66,12 @@ test("work-report analysis: create, employees, source item, shared history, relo
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: "Employee A" }) });
   await person.locator("summary").click();
-  await expect(person.getByText(/Theo báo cáo: E2E/).first()).toBeVisible();
+  await expect(
+    person.getByText(/Ghi nhận từ nguồn: E2E/).first(),
+  ).toBeVisible();
+  await expect(
+    person.getByText(/Định dạng nhận xét mới phân biệt/),
+  ).toBeVisible();
   await person
     .getByRole("link", { name: new RegExp(`Đầu việc #${item}$`) })
     .first()

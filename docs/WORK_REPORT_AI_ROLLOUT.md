@@ -10,6 +10,16 @@ Nguồn là `locked_at <= now(UTC)`, với ngày báo cáo theo Asia/Ho_Chi_Minh
 
 Roster dùng active/default KPS memberships và `ReportParticipationService` (Owner miễn báo cáo); tác giả có nguồn lịch sử vẫn xuất hiện nếu không còn trong roster hiện tại. Không có nguồn được ghi “Chưa có dữ liệu để phân tích”, không suy diễn chưa nộp.
 
+## Quy chuẩn nhận xét và phiên bản thực thi
+
+Prompt **work-report-v2.2** dùng sáu tiêu chí trong `WORK_REPORT_AI_GROUNDING_REVIEW.md`: công việc, kết quả/tiến độ, vướng mắc, nhất quán, bước tiếp theo và diễn biến trong kỳ. Đây là hướng dẫn, không phải bảng chấm điểm; không ép đủ sáu nhận xét, không tạo vấn đề/câu hỏi giả. Kế hoạch tuần chưa được áp dụng trong vận hành KPS: thiếu kế hoạch là giới hạn dữ liệu, không phải điểm trừ. Không kết luận đạt/không đạt kế hoạch, KPI, năng suất, hiệu quả hay bỏ sót nhiệm vụ nếu không có dữ liệu đối chiếu; không lấy số đầu việc, độ dài/cách viết làm thước đo. Giữ các giới hạn về result tùy chọn, COMPLETED chưa xác minh nghiệm thu, thiếu deadline, quan hệ giữa công việc và quy trách nhiệm.
+
+Giữ schema hình dạng **work-report-v2.1**: các section và `{text, evidence}` không đổi, danh sách có thể trống. Text mới có một trong bốn nhãn `Ghi nhận từ nguồn: `, `Nhận xét có căn cứ: `, `Chưa đủ thông tin: `, `Đề xuất: `, được validator kiểm tra về định dạng; đây không phải kiểm chứng ngữ nghĩa. Đề xuất không trở thành nhiệm vụ/cam kết/deadline đã giao. UI ghi rõ: “Nhận xét dựa trên nội dung báo cáo; chưa đối chiếu với kế hoạch tuần hoặc kết quả nghiệm thu.” Không thêm API hoặc truy vấn đối chiếu kế hoạch tuần.
+
+**Chính sách lượt cũ:** cấu trúc hiện có chỉ lưu version/hash, không lưu nguyên instructions/schema. Deployment này chỉ thực thi đúng hợp đồng hiện tại; không suy đoán cách tái tạo hợp đồng cũ. So sánh đồng thời `prompt_version`, `schema_version`, `instructions_hash`, `schema_hash` ở retry API, worker trước tổng hợp/giữ ngân sách và provider trước mọi lời gọi (cả fake). Sai hoặc thiếu bất kỳ trường nào thì chặn với `AI_ANALYSIS_VERSION_UNAVAILABLE`; retry trả 422, `can_retry=false`, `requires_new_run=true`. Worker đánh dấu phần chưa xử lý bị lỗi, giữ phần thành công và trả partial khi có phần cũ, không ghép thêm nhận định theo quy chuẩn mới. GET/history vẫn đọc được kết quả cũ và không sửa metadata. Người dùng chủ động tạo lượt mới bằng quy chuẩn hiện tại; cache key đổi theo version/hash. Không backfill, không tự phân tích lại hàng loạt, không thêm migration.
+
+Khi rollout thay quy chuẩn, **dừng dedicated worker cũ, triển khai web/worker cùng SHA, restart toàn bộ worker trước khi nhận/xử lý lượt mới**. Worker trước bản có guard không thể tự kiểm tra version; không chạy lẫn binary cũ đó với web mới. Lượt đang ra provider theo binary cũ cần drain/đối soát theo quy trình timeout/lease trước khi restart. Với các bản đã có guard, ngay cả quên bump version nhưng instructions/schema đổi thì hash khác vẫn chặn. Khi sửa validator/prompt/schema về sau phải cập nhật phiên bản tương ứng và kiểm tra lại cache/retry.
+
 ## Chẩn đoán “không có báo cáo phù hợp”
 
 V1 chỉ xét ngày trong 30 ngày tính từ hôm nay, chặn hôm nay trước cutoff và yêu cầu `locked_at` đã qua. `ReportScopeService` giới hạn theo quyền, KPS membership và department/location/self; quyền vào trang AI không nâng quyền báo cáo. Context V1 chỉ hỗ trợ 100 báo cáo/300 đầu việc/60 KB. Đây là các điều kiện đã đối chiếu trong code và fixture, không phải bằng chứng database staging/production hiện có hay không có báo cáo.
@@ -71,6 +81,7 @@ Postflight giữ flag tắt, so sánh đủ P0 fingerprints/files theo quy trìn
 - [ ] Chỉ báo cáo khóa; roster không có nguồn có thông báo trung lập; số liệu đúng; reload/history không tăng call.
 - [ ] Gửi đồng thời nhiều request cùng kỳ/scope và xác nhận một cache row; queue deliver trùng không tạo thêm call. Kiểm tra thực tế trên TiDB trước bật thật (local chỉ SQLite/DDL compile).
 - [ ] Kiểm tra update nguồn tạo version mới, snapshot cũ nhất quán; timeout/kill worker/thiếu budget/partial/retry và limit không cắt đầu vào.
+- [ ] Kiểm tra deploy đổi instructions/schema sau capture hoặc sau lỗi provider: worker/retry chặn hợp đồng cũ, giữ phần cũ đọc được, không thêm usage/call; tạo lượt mới có cache key khác, không trộn quy chuẩn.
 - [ ] Người nghiệm thu đánh giá từng case trong `WORK_REPORT_AI_GROUNDING_REVIEW.md`, dữ liệu giả sạch; không gọi mock là bằng chứng chất lượng model.
 - [ ] Khi có phê duyệt chi phí và dữ liệu thử nghiệm riêng: bật openai staging với key staging, model/đơn giá/ngân sách được duyệt; đối chiếu token/metadata/bill, grounding, injection, thiếu deadline/result và khối lượng 30 ngày.
 - [ ] Daily Work Report và AI Weekly Planning hồi quy PASS. Thu thập ảnh E2E và số call.

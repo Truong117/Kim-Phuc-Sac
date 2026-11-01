@@ -1,0 +1,59 @@
+[
+  {
+    "id": "no_weekly_plan",
+    "content": "Đã soạn xong bản kịch bản sản phẩm.",
+    "result": "",
+    "status": "COMPLETED",
+    "supported": [{"section": "highlights", "text": "Ghi nhận từ nguồn: Nhân viên báo đã soạn xong bản kịch bản sản phẩm.", "quote": "Đã soạn xong bản kịch bản sản phẩm."}],
+    "unsupported": "Không đạt kế hoạch tuần.",
+    "reason": "Không có kế hoạch tuần để đối chiếu; đó là giới hạn dữ liệu, không phải điểm trừ. Chưa xác minh nghiệm thu."
+  },
+  {
+    "id": "activity_is_not_sales_effectiveness",
+    "content": "Đã liên hệ 10 đại lý",
+    "result": "",
+    "status": "IN_PROGRESS",
+    "supported": [{"section": "ongoing", "text": "Ghi nhận từ nguồn: Nhân viên ghi đã liên hệ 10 đại lý.", "quote": "Đã liên hệ 10 đại lý"}],
+    "unsupported": "Hiệu quả bán hàng cao, đạt KPI vì đã liên hệ 10 đại lý.",
+    "reason": "Số liên hệ là hoạt động được báo cáo, không chứng minh hiệu quả bán hàng hay KPI."
+  },
+  {
+    "id": "result_and_next_step_in_content",
+    "content": "Đã liên hệ 10 đại lý, 3 đồng ý nhận mẫu, gửi mẫu ngày mai",
+    "result": "",
+    "status": "IN_PROGRESS",
+    "supported": [
+      {"section": "highlights", "text": "Ghi nhận từ nguồn: Nhân viên ghi 3 đại lý đồng ý nhận mẫu.", "quote": "3 đồng ý nhận mẫu"},
+      {"section": "ongoing", "text": "Ghi nhận từ nguồn: Nhân viên tự ghi bước tiếp theo là gửi mẫu ngày mai; chưa có căn cứ xác nhận đây là hạn được quản lý giao.", "quote": "gửi mẫu ngày mai"}
+    ],
+    "unsupported": "Không ghi kết quả vì result trống; quản lý đã giao hạn ngày mai.",
+    "reason": "Nội dung đã có kết quả và bước tiếp theo dù result trống. Bước tự ghi không tự trở thành deadline được giao."
+  },
+  {
+    "id": "clear_report_needs_no_invented_problem",
+    "content": "Đã gửi bản tổng hợp tồn kho cho bộ phận kinh doanh.",
+    "result": "",
+    "status": "COMPLETED",
+    "supported": [{"section": "highlights", "text": "Ghi nhận từ nguồn: Nhân viên báo đã gửi bản tổng hợp tồn kho cho bộ phận kinh doanh.", "quote": "Đã gửi bản tổng hợp tồn kho"}],
+    "unsupported": "Báo cáo thiếu thông tin, cần bổ sung vướng mắc và bước tiếp theo.",
+    "reason": "Báo cáo đã đủ hiểu công việc; không bắt mọi việc có vướng mắc hoặc bước tiếp theo. Không đồng nghĩa đã nghiệm thu."
+  },
+  {
+    "id": "no_reported_blocker_is_not_no_real_blocker",
+    "content": "Đã cập nhật danh sách đại lý.",
+    "result": "",
+    "status": "IN_PROGRESS",
+    "supported": [{"section": "ongoing", "text": "Ghi nhận từ nguồn: Nhân viên ghi đã cập nhật danh sách đại lý.", "quote": "Đã cập nhật danh sách đại lý."}],
+    "unsupported": "Thực tế không có trở ngại hay nhu cầu hỗ trợ.",
+    "reason": "Không nêu vướng mắc không đủ chứng minh thực tế không có; cũng không cần tạo câu hỏi giả."
+  },
+  {
+    "id": "ai_proposal_is_not_assigned_work",
+    "content": "Chờ duyệt nội dung chiến dịch.",
+    "result": "",
+    "status": "BLOCKED",
+    "supported": [{"section": "recommendations", "text": "Đề xuất: Cân nhắc hỏi người báo cáo về hỗ trợ cần thiết cho việc duyệt nội dung.", "quote": "Chờ duyệt nội dung chiến dịch."}],
+    "unsupported": "Quản lý A được giao phải duyệt nội dung trước 17 giờ ngày mai.",
+    "reason": "Không có người A hoặc deadline trong nguồn. Đề xuất AI chưa phải nhiệm vụ, cam kết hoặc thời hạn đã giao."
+  }
+]

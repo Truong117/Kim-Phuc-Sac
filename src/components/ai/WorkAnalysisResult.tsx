@@ -20,6 +20,9 @@ export default function WorkAnalysisResult({
   const identities = new Map(sources.map((source) => [source.id, source]));
   return (
     <div className="space-y-6">
+      <p className="text-xs leading-6 text-gray-500 dark:text-gray-400">
+        {t("commentKindsHint")}
+      </p>
       {analysisSections.map((section) => (
         <section key={section} className="space-y-3">
           <h3 className="font-semibold text-gray-900 dark:text-white">

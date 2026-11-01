@@ -20,7 +20,7 @@ class WorkReportAnalysisService
         unset($settings['gateway']['api_key'], $settings['enabled'], $settings['queue_connection']);
         $settings['unit_attempts'] = min(3, max(1, (int) $settings['unit_attempts']));
         $settings['prompt_version'] = WorkReportAnalysisOutput::VERSION;
-        $settings['schema_version'] = WorkReportAnalysisOutput::VERSION;
+        $settings['schema_version'] = WorkReportAnalysisOutput::SCHEMA_VERSION;
         $settings['instructions_hash'] = hash('sha256', WorkReportAnalysisOutput::instructions());
         $settings['schema_hash'] = WorkReportSnapshot::hash(WorkReportAnalysisOutput::schema());
 
@@ -186,6 +186,7 @@ class WorkReportAnalysisService
             'department_id' => $run->department_id, 'scope' => $snapshot['scope'], 'source_hash' => $run->source_hash,
             'source_changed' => $currentHash === null ? null : $run->source_hash !== $currentHash,
             'config_changed' => WorkReportSnapshot::hash($run->analysis_config) !== WorkReportSnapshot::hash($this->settings()),
+            'requires_new_run' => ! WorkReportAnalysisOutput::canExecute($run->analysis_config),
             'captured_at' => $run->captured_at->toIso8601String(), 'completed_at' => $run->completed_at?->toIso8601String(),
             'requested_by_user_id' => $run->requested_by_user_id,
             'provider' => $run->analysis_config['driver'], 'is_mock' => $run->analysis_config['driver'] === 'fake',
@@ -195,7 +196,8 @@ class WorkReportAnalysisService
             'result' => $includeContent ? $run->result : null, 'employees' => $includeContent ? $employees : [],
             'source_reports' => $includeContent ? $this->sourcePayloads($snapshot) : [],
             'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code])->values()->all(),
-            'can_retry' => (bool) config('work_report_ai.enabled') && $units->contains(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']),
+            'can_retry' => (bool) config('work_report_ai.enabled') && WorkReportAnalysisOutput::canExecute($run->analysis_config)
+                && $units->contains(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']),
             'usage' => [
                 'input_tokens' => $units->contains(fn ($u) => $u->status !== 'completed' || $u->input_tokens === null) ? null : $units->sum('input_tokens'),
                 'output_tokens' => $units->contains(fn ($u) => $u->status !== 'completed' || $u->output_tokens === null) ? null : $units->sum('output_tokens'),
@@ -221,6 +223,9 @@ class WorkReportAnalysisService
         $this->ensureEnabled();
         DB::transaction(function () use ($run): void {
             $run = WorkReportAnalysis::query()->lockForUpdate()->findOrFail($run->id);
+            if (! WorkReportAnalysisOutput::canExecute($run->analysis_config)) {
+                throw ValidationException::withMessages(['analysis' => 'Không thể tiếp tục hoặc thử lại theo đúng quy chuẩn đã lưu. Kết quả cũ vẫn đọc được; hãy tạo một lượt phân tích mới.']);
+            }
             if (in_array($run->status, ['pending', 'running'], true)
                 || ! $run->units()->where('status', 'failed')->where('attempts', '<', $run->analysis_config['unit_attempts'])->exists()) {
                 return;

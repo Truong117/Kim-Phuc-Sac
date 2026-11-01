@@ -10,6 +10,7 @@ class WorkReportAnalysisProvider
     public function analyze(WorkReportAnalysis $run, WorkReportAnalysisUnit $unit, array $input): array
     {
         $settings = $run->analysis_config;
+        WorkReportAnalysisOutput::assertExecutable($settings);
         if ($settings['driver'] === 'fake') {
             return ['result' => WorkReportAnalysisOutput::fake($input), 'usage_record_id' => null,
                 'input_tokens' => null, 'output_tokens' => null, 'cost_microusd' => null];
