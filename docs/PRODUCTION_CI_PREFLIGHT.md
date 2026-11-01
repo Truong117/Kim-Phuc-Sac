@@ -8,7 +8,7 @@ chạy migration, sửa grants/firewall/Render/Vercel, merge, deploy hoặc bậ
 `PRODUCTION_CD_ENABLED`. Không thay đổi các tệp chưa commit của tác vụ cutover.
 
 Repo đã kiểm tra ngày 02/11/2026: PR #74 đã merge, main `c0aa57e`, staging
-`74073c8`; PR #75 chưa merge, source `e4ac06d`. Các SHA này là mã nguồn Git,
+`7ed0a12` sau khi PR #76 thêm M23/M24; PR #75 chưa merge, source `e4ac06d`. Các SHA này là mã nguồn Git,
 không chứng minh backend/frontend đang live. Nhánh này mang code CI/CD chưa merge
 của #75 và đồng bộ nội dung hotfix đã có trên staging; không merge nhánh dùng chung.
 
@@ -29,7 +29,7 @@ Các kiểm thử dùng certificate công khai giả và SQL/network/provider fi
 | `backend/scripts/production-ci.php` | CLI riêng, không Laravel/.env/config cache/Artisan/runner Staging |
 | `backend/app/Support/ProductionCi/` | Identity, grants, schema, manifest, recovery, khóa, P0 và executor |
 | `deployment/production-db-policy.json` | Identity/console binding và schema hash cho từng ledger prefix; hiện chưa có bằng chứng nên giữ null/false |
-| `deployment/production-sql-manifest.json` | Đủ 22 source hashes theo thứ tự; tất cả vẫn chặn automatic DDL |
+| `deployment/production-sql-manifest.json` | Đủ 24 source hashes theo thứ tự; tất cả vẫn chặn automatic DDL |
 
 Production job chỉ vào sau CI PASS và approval Environment. `PRODUCTION_CD_ENABLED`
 phải là `true` cho cả push và retry thủ công. Retry không bỏ cổng merged PR. Job
@@ -58,13 +58,17 @@ health → build/stage frontend Production với `--skip-domain` → smoke stage
    ALL/global privileges, scope ngoài app và cú pháp không biết đều chặn.
 6. Ledger phải là prefix chính xác của manifest: không gap, trùng, đảo thứ tự hay
    tên lạ. Manifest kiểm inventory và SHA-256 nội dung source đã chuẩn hóa LF.
-7. Schema fingerprint gồm toàn bộ table/type/engine/collation; column order/type,
+7. Schema fingerprint gồm toàn bộ table/type/engine/collation/create options; column order/type,
    nullability/default/extra/charset/collation/generated expression; index columns,
-   uniqueness/prefix/type/collation và FK parent/update/delete rules. Giá trị phải
+   uniqueness/prefix/type/collation/visibility/expression và FK parent/update/delete rules. Giá trị phải
    đúng contract cho prefix ledger hiện tại, không tự học/duyệt từ DB đang chạy.
+   Views, engine ngoài InnoDB, CHECK constraints và partition ngoài phạm vi đều chặn.
 8. DDL_JOBS trong database phải không có trạng thái đang chạy hoặc không biết.
    Lỗi quyền/capability hoặc vượt bound metadata sẽ dừng; không thay bằng kết luận
    “không có job”. Khả năng quan sát DDL của hai account chưa được thử live.
+
+Staging inspector hiện chưa chứng nhận schema M23/M24: cổng Staging cố ý dừng nếu
+thiếu trạng thái schema này, kể cả ledger đủ 24. Không dùng runner Staging cho Production.
 
 **Giới hạn identity:** TiDB Starter dùng endpoint shared; SQL không cung cấp độc
 lập tên console/instance ID/nhãn branch để so sánh. Mapping console main → endpoint
@@ -154,8 +158,9 @@ Runner dùng manifest riêng, SQL riêng và hai PDO connection rõ vai trò. Kh
 chạy PHP `up()` từ thư mục migrations; không seed/bootstrap/Artisan/Staging runner.
 Mỗi source migration map đúng một ledger name theo thứ tự và exact hash. SQL được
 review/hash riêng, phải khai báo bảng mới, không backfill và backward compatible.
-Toàn bộ suffix pending được vet trước bất kỳ DDL nào. Cả 22 mục hiện tại vẫn là
-`automatic:false`; M19 và mọi thay đổi phá tương thích không được tự áp dụng.
+Toàn bộ suffix pending được vet trước bất kỳ DDL nào. Cả 24 mục hiện tại vẫn là
+`automatic:false`; M23/M24 chưa được duyệt migration Production. M19 và mọi thay đổi
+phá tương thích không được tự áp dụng.
 
 Executor đầu tiên chỉ hỗ trợ CREATE TABLE cho bảng mới độc lập. Semicolon, comment,
 ALTER/DROP/TRUNCATE/RENAME, DML/SELECT/LIKE/AS, FK REFERENCES, routine, external
@@ -180,7 +185,7 @@ Khi có migration được duyệt, runner:
    tiếp theo. Không UPDATE/xóa/sắp xếp lại/sửa chữa ledger.
 
 P0 gồm users, tổ chức/phòng ban/locations/memberships, RBAC, reports/items/comments,
-tasks, notifications, AI report runs và account audit. Chỉ migration mode mới đọc
+tasks, notifications, AI report runs và account audit.
 Các bảng AI work-report mới từ M23/M24 cũng thuộc checkpoint P0; migration chưa
 được duyệt không được thực thi để tạo các bảng này. Chỉ migration mode mới đọc
 business rows để đối chiếu HMAC; preflight chỉ đọc metadata/ledger. Checkpoint không
