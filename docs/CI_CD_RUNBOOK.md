@@ -16,7 +16,7 @@ Không được hiểu bước `migration_gate` là đã thực thi migration.
 | --- | --- | --- |
 | 1 | CI dùng lại; DB/schema gate; backend → frontend → smoke; khóa; evidence; PR | Cấu hình secrets và auto-deploy controls, merge PR tính năng, một lượt Staging thực tế PASS |
 | 2 | Chỉ tự chạy migration additive đã review riêng | Executor độc lập được review, hash allowlist, tương thích bản cũ, backup/restore, pre/postflight và khóa chung; chưa có executor này |
-| 3 | Merge `main` tự phát hành Production | Đồng bộ/xác minh baseline Production và PR kích hoạt riêng; không chỉ đổi một repository variable |
+| 3 | Production phát hành thủ công có phê duyệt và kiểm tra lại CI | Có baseline/restore được review, secrets trong Environment bảo vệ, Vercel Git auto-deploy Off và Staging rehearsal PASS; xem [hướng dẫn kích hoạt](KPS_PRODUCTION_CD_ACTIVATION.md) |
 
 Đối chiếu ngày 01/11/2026 (Asia/Saigon):
 
@@ -43,8 +43,8 @@ writers theo PR #74, backup/files, migration và kiểm chứng nghiệp vụ ri
 
 ## Điều phối phát hành
 
-`.github/workflows/ci.yml` tiếp tục kiểm tra PR vào staging/main và có
-`workflow_call`. `.github/workflows/release.yml` gọi lại toàn bộ frontend
+`.github/workflows/ci.yml` tiếp tục kiểm tra PR vào staging/main, push main và có
+`workflow_call`. `.github/workflows/release.yml` chỉ điều phối push staging và gọi lại toàn bộ frontend
 test/lint/build, Composer validate/Pint/PHPUnit và build/container smoke trước job
 Staging. CI không nhận secrets triển khai.
 
@@ -236,14 +236,18 @@ riêng; CI phải chạy lại trước merge. Quy trình PR hoạt động đ�
    accounts/RBAC/reports/tasks. Giữ Render Free; không dùng giả định về paid jobs/disks.
 4. Đợt cutover/rehearsal được phép riêng, backend trước frontend, kiểm tra dữ liệu và
    smoke nghiệp vụ. Cập nhật `production-baseline.json` bằng bằng chứng cụ thể có review.
-5. PR kích hoạt riêng triển khai Production DB inspector/executor, dùng lại khóa bền
-   vững và thứ tự release. Mẫu [production-release.yml.example](../deployment/production-release.yml.example)
-   hiện cố ý chặn; không có Production executor được bật. Tách credentials/environment,
-   required review nếu có, rehearsal failure recovery; chỉ sau đó thêm job auto trên push main.
+5. Workflow Production thủ công đã có mã điều phối: khóa bền vững, backend SHA chính xác,
+   frontend staged `--skip-domain`, smoke rồi `promote`. Tuy nhiên baseline recovery
+   vẫn `verified=false`, và credentials/dashboard gates chưa cấu hình; do đó **không thể
+   chạy Production release**. Không tự kích hoạt trên push main. Cần review Environment,
+   diễn tập lỗi và baseline thực tế trước khi dùng; xem runbook kích hoạt mới.
 
-`production-baseline` trong workflow hiện tại chạy CI rồi fail rõ khi baseline thiếu.
-Không thêm `continue-on-error`, không sửa biến để bỏ baseline, không merge #74 như một
-cách “thử” pipeline. Đợt triển khai CI/CD này không tự merge bất kỳ PR nào.
+Production release được tách thành `.github/workflows/production-release.yml`: chỉ
+`workflow_dispatch` trên `main` và có Environment review. `check-production-baseline.mjs`
+đang fail-closed; không có Production deploy tự động trên push. Xem
+[KPS_PRODUCTION_CD_ACTIVATION.md](KPS_PRODUCTION_CD_ACTIVATION.md).
+Không thêm `continue-on-error`, không sửa biến để bỏ baseline hoặc triển khai
+Production khi chưa có bằng chứng khôi phục và cấu hình theo runbook.
 
 ## Tài liệu nền tảng
 
