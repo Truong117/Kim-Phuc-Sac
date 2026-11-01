@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    branches: [staging, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One lane for both environments; never cancel a migration/deploy in progress.
+# A durable Git ref in release.mjs also survives cancellation and runner loss.
+concurrency:
+  group: kps-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  staging:
+    needs: checks
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    environment: staging
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pdo_mysql, mbstring
+          coverage: none
+      - name: Verify DB, migration gate, backend, frontend and smoke
+        run: node deployment/release.mjs staging
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          STAGING_DB_INSPECTOR_ENV: ${{ secrets.STAGING_DB_INSPECTOR_ENV }}
+          STAGING_DB_CA_PEM: ${{ secrets.STAGING_DB_CA_PEM }}
+          STAGING_SMOKE_EMAIL: ${{ secrets.STAGING_SMOKE_EMAIL }}
+          STAGING_SMOKE_PASSWORD: ${{ secrets.STAGING_SMOKE_PASSWORD }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
+          RENDER_PRODUCTION_SERVICE_ID: ${{ vars.RENDER_PRODUCTION_SERVICE_ID }}
+          BACKEND_ORIGIN: ${{ vars.BACKEND_ORIGIN }}
+          PRODUCTION_BACKEND_ORIGIN: ${{ vars.PRODUCTION_BACKEND_ORIGIN }}
+          FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+          VERCEL_TEAM_ID: ${{ vars.VERCEL_TEAM_ID }}
+          AUTO_DEPLOY_DISABLED_ACK: ${{ vars.AUTO_DEPLOY_DISABLED_ACK }}
+      - name: Preserve redacted release evidence (including failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-release-${{ github.sha }}-${{ github.run_attempt }}
+          path: release-evidence.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Deliberately no Production deploy job in this phase. This job cannot expose
+  # Production secrets or mutate Production even if someone sets a repository var.
+  production-baseline:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: node deployment/check-production-baseline.mjs
