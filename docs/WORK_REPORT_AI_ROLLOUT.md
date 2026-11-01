@@ -1,5 +1,7 @@
 # Phân tích báo cáo công việc V2 — bàn giao và phát hành
 
+**Dữ liệu nghiệm thu staging:** xem [gói M23/M24 + fixture](WORK_REPORT_AI_STAGING_ACCEPTANCE.md). Gói bổ sung 6 nhân viên giả/2 phòng ban + reviewer, 18 báo cáo/22 items trong 30 ngày, đáp án tham chiếu, dry-run chỉ đọc, manifest ký và cleanup có phạm vi. Chỉ trình phê duyệt chung với deploy staging/M23/M24; chưa nạp staging hoặc gọi AI trả phí. Không seed/reset database, không tạo kế hoạch tuần giả.
+
 ## Phạm vi và kiến trúc
 
 Màn chính `/ai/insights` có kỳ 1/7/30 ngày, ngày kết thúc, phòng ban và bốn tab: Tổng quan, Theo nhân viên, Lịch sử phân tích, Báo cáo nguồn. Dashboard `/ai/dashboard` là thống kê điều hành riêng; màn Trợ lý AI không bị thay thế. V1 không bị sửa dữ liệu hoặc chuyển thành dùng chung. Lịch sử V1 chỉ đọc bằng API cũ dưới đúng requester và quyền nguồn hiện tại.
