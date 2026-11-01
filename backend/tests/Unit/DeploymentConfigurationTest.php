@@ -177,7 +177,7 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringNotContainsString('__kps_concurrency_smoke', $routes);
     }
 
-    public function test_ephemeral_weekly_plan_storage_is_explicitly_limited_to_staging(): void
+    public function test_ephemeral_weekly_plan_storage_requires_separate_environment_opt_ins(): void
     {
         $staging = $this->readBackendFile('.env.staging.example');
         $production = $this->readBackendFile('.env.production.example');
@@ -189,6 +189,8 @@ class DeploymentConfigurationTest extends TestCase
         $this->assertStringContainsString('FILESYSTEM_DISK=s3', $production);
         $this->assertStringContainsString('WEEKLY_PLAN_STORAGE_DISK=s3', $production);
         $this->assertStringContainsString('KPS_STAGING_EPHEMERAL_FILES=false', $production);
+        $this->assertStringContainsString('KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=false', $production);
+        $this->assertStringContainsString('! $productionEphemeralWeeklyFiles', $guard);
         $this->assertStringContainsString("\$appEnvironment === 'production'", $guard);
         $this->assertStringContainsString("\$appEnvironment === 'staging' && ! \$stagingEphemeralFiles", $guard);
     }

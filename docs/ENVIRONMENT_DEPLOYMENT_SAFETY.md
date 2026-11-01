@@ -11,7 +11,7 @@ Không ghi credential thật vào repository, ticket, log hoặc ảnh chụp m�
 | Development local | `local` | `development` | SQLite file local mặc định | `local` private | Có thể bật | Phát triển hằng ngày, không dùng dữ liệu thật |
 | Automated test/CI | `testing` | `testing` | SQLite `:memory:` | `local`/fake trong test | Tắt | PHPUnit và kiểm thử tự động, không cần secret |
 | Staging | `staging` | `staging` | TiDB/MySQL riêng, không dùng chung production | `local` private ephemeral có cờ xác nhận; S3 private khi sẵn sàng | Tắt | Rehearsal migration và acceptance test |
-| Production | `production` | `production` | TiDB production | Bucket private production | Tắt | Dữ liệu vận hành thật |
+| Production | `production` | `production` | TiDB production | Bucket private; ngoại lệ Weekly local có opt-in Production riêng | Tắt | Dữ liệu vận hành thật |
 
 Các quy tắc bắt buộc:
 
@@ -19,7 +19,7 @@ Các quy tắc bắt buộc:
 - `APP_ENV` và `KPS_DATABASE_ENVIRONMENT` phải cùng chỉ một môi trường. Không dùng `APP_ENV=local` với database production.
 - Local/development chỉ chấp nhận SQLite hoặc MySQL với `DB_HOST` loopback (`127.0.0.1`, `localhost`, `::1`) và luôn từ chối `DB_URL` không rỗng. Không có cờ opt-in cho remote database. Guard là lớp phòng vệ bổ sung; không dùng production credential hoặc tunnel production qua loopback trên máy lập trình.
 - Automated tests luôn dùng `APP_ENV=testing`, `DB_CONNECTION=sqlite`, `DB_DATABASE=:memory:` và `DB_URL` rỗng. Không truyền secret TiDB vào job CI.
-- Staging phải có database và tài khoản database riêng. Trong giai đoạn chưa có object storage, chỉ staging được dùng local private ephemeral với `KPS_STAGING_EPHEMERAL_FILES=true`; không dùng staging để thử nghiệm trên tài nguyên production.
+- Staging phải có database và tài khoản database riêng. Staging dùng local private ephemeral với `KPS_STAGING_EPHEMERAL_FILES=true`; cờ này không được dùng ở production. Ngoại lệ Production chỉ dành cho file Weekly Planning, dùng cờ riêng bên dưới; không dùng staging để thử nghiệm trên tài nguyên production.
 - Marker `KPS_DATABASE_ENVIRONMENT` không thể tự chứng thực database phía sau một hostname/`DB_URL`. Quản trị viên phải đối chiếu Render environment, TiDB project/cluster/database/user và fingerprint target trước migration; guard không thay thế việc kiểm tra này.
 
 ## Thiết lập development local an toàn
@@ -347,16 +347,17 @@ WEEKLY_PLAN_STORAGE_DISK=local
 KPS_STAGING_EPHEMERAL_FILES=true
 ```
 
-Ngoại lệ này chỉ hợp lệ ở staging. `EnvironmentSafety` từ chối local storage staging khi thiếu cờ, từ chối cờ ở mọi môi trường khác và luôn từ chối local storage ở production. File không nằm dưới `public/`, disk không được `serve`, API không trả disk/path hoặc URL trực tiếp.
+Ngoại lệ này chỉ hợp lệ ở staging. `EnvironmentSafety` từ chối local storage staging khi thiếu cờ và từ chối cờ staging ở mọi môi trường khác. Production có opt-in độc lập, không dùng cờ staging. File không nằm dưới `public/`, disk không được `serve`, API không trả disk/path hoặc URL trực tiếp.
 
 Trên Render, file local có thể biến mất khi restart, redeploy hoặc thay instance. Import luôn parse file ngay: entries Excel, passages DOCX và audit liên quan được lưu trong database. Phân tích rule-based, xem/chỉnh sửa entry, áp dụng passages đã lưu và workflow HR → OWNER tiếp tục dùng dữ liệu database. Reparse Excel/DOCX hoặc đọc lại một tài liệu cũ chưa từng trích xuất vẫn cần file gốc; khi file mất API trả xung đột an toàn và UI yêu cầu HR tải lại đúng định dạng, không xóa plan/entries/passages đã lưu.
 
-Production phải dùng object storage bền vững, private:
+Production mặc định dùng object storage bền vững, private:
 
 ```dotenv
 FILESYSTEM_DISK=s3
 WEEKLY_PLAN_STORAGE_DISK=s3
 KPS_STAGING_EPHEMERAL_FILES=false
+KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=false
 AWS_ACCESS_KEY_ID=<secret-store>
 AWS_SECRET_ACCESS_KEY=<secret-store>
 AWS_SESSION_TOKEN=
@@ -370,7 +371,30 @@ AWS_URL=
 
 Khi nâng staging lên S3-compatible, dùng bucket hoặc `AWS_ROOT_PREFIX` khác production và đổi cờ ephemeral về `false`. Bucket phải chặn public access, không dùng public-read ACL và giới hạn IAM theo bucket/prefix cần thiết. Giữ `AWS_URL` rỗng nếu không có CDN private được thiết kế riêng.
 
-Trước production phải smoke-test upload/read/delete trên chính provider S3-compatible của staging. Flysystem gửi visibility private khi ghi; một số bucket bật chế độ vô hiệu hóa ACL có thể từ chối request nếu provider không tương thích. Không bỏ privacy để chữa lỗi này: xác nhận policy/ACL mode của provider, quyền IAM tối thiểu, mã hóa/retention và namespace staging riêng trước khi bật.
+Trước khi sử dụng S3 trên production phải smoke-test upload/read/delete trên chính provider S3-compatible của staging. Flysystem gửi visibility private khi ghi; một số bucket bật chế độ vô hiệu hóa ACL có thể từ chối request nếu provider không tương thích. Không bỏ privacy để chữa lỗi này: xác nhận policy/ACL mode của provider, quyền IAM tối thiểu, mã hóa/retention và namespace staging riêng trước khi bật.
+
+### Ngoại lệ Production Render Free: file Weekly Planning ephemeral
+
+Owner đã chấp nhận rủi ro mất file tài liệu Weekly Planning khi restart/redeploy. Chỉ sau khi bản hotfix được review và phê duyệt triển khai, cấu hình riêng trên Render Production:
+
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+KPS_DATABASE_ENVIRONMENT=production
+WEEKLY_PLAN_STORAGE_DISK=local
+KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true
+KPS_STAGING_EPHEMERAL_FILES=false
+```
+
+Không đổi `FILESYSTEM_DISK`, `APP_KEY`, database/TLS, session, CSRF hoặc frontend origins để bật ngoại lệ này. `WEEKLY_PLAN_STORAGE_DISK` điều khiển riêng upload mới của Weekly Planning. Template `.env.production.example` vẫn mặc định S3 và opt-in `false`; cờ thiếu, sai hoặc `false` khiến Production local bị từ chối. Cờ Production bị từ chối ngoài Production; bật cờ staging ở Production vẫn bị từ chối.
+
+Chỉ disk tên `local`, driver local, file/directory visibility private, `serve=false`, root mặc định `storage/app/private` được dùng. Guard từ chối public disk, root tương đối/traversal, root public và đường dẫn cha bao trùm public; kiểm tra cả ancestor đã tồn tại để phát hiện symlink/junction trỏ vào public. Không chạy `storage:link` cho private root. Giữ session trong database hoặc storage bền vững hiện có; không đổi session/cache/queue sang file ephemeral để chữa cấu hình.
+
+**RISK_ACCEPTED — file Weekly có thể mất vĩnh viễn.** Restart/redeploy không đảm bảo giữ bản Word/Excel gốc và không có khả năng khôi phục file nếu không giữ bản riêng. Quyết định này không cho phép mất dữ liệu P0 hoặc xóa record database. Khi file mất, GET plan trả `source_file.availability=MISSING`; entries/passages đã lưu còn nguyên. Reparse cần file sẽ trả 409; HR có quyền có thể POST `/api/weekly-plans/{id}/source/replace` đúng định dạng khi plan ở `DRAFT` hoặc `CHANGES_REQUESTED`. Plan ở trạng thái khác vẫn chịu guard hiện có, không được mở lại để thay file. Source storage không truy cập được trả `UNAVAILABLE`; replace trả 503, không lộ đường dẫn. Không tự xóa plan, tasks hay dữ liệu báo cáo.
+
+Checklist smoke test sau deployment được phê duyệt: login/reload session; upload Weekly Word/Excel bằng HR có quyền; kiểm tra không lộ disk/path/URL; tải mẫu Excel qua GET `/api/weekly-plans/template`; kiểm tra nhân viên không có quyền bị từ chối upload/replace. Chỉ mô phỏng mất file trên fixture cô lập, không xóa file Production để kiểm thử. Hiện chưa có endpoint download file nguồn; template được tạo mới, không phụ thuộc file upload còn tồn tại.
+
+Ngoại lệ không chạy migration, không di chuyển/repoint file cũ và không bật AI/Google Docs/SMTP. Khi có S3 được nghiệm thu, chuyển `WEEKLY_PLAN_STORAGE_DISK=s3`, tắt cờ Production; xử lý file cũ theo kế hoạch riêng bên dưới, vì đổi disk không di chuyển file đã lưu.
 
 Frontend không nhận storage credentials hoặc filesystem path. API không trả permanent public URL cho Word/Excel nội bộ. Nếu bổ sung download sau này, backend phải kiểm tra authentication, active membership, permission và organization scope trước khi stream file hoặc tạo URL tạm thời có thời hạn ngắn.
 
@@ -428,7 +452,7 @@ GitHub branch protection là cấu hình quản trị bắt buộc nhưng nằm 
 - [ ] `APP_ENV`, `KPS_DATABASE_ENVIRONMENT`, `APP_DEBUG` đúng môi trường.
 - [ ] Local/development không có `DB_URL`, chỉ dùng SQLite hoặc MySQL loopback; không dùng production credential hay tunnel production qua loopback.
 - [ ] `DB_*`/`DB_URL` và TLS CA trỏ đúng target, được lưu trong secret store.
-- [ ] Production: `FILESYSTEM_DISK=s3`, `WEEKLY_PLAN_STORAGE_DISK=s3`, `KPS_STAGING_EPHEMERAL_FILES=false`; bucket private và prefix production.
+- [ ] Production: mặc định S3 private, cờ Production `false`; hoặc Owner đã chấp nhận mất file Weekly và đặt `WEEKLY_PLAN_STORAGE_DISK=local`, `KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true` theo ngoại lệ trên. Giữ nguyên `FILESYSTEM_DISK`; `KPS_STAGING_EPHEMERAL_FILES=false` trong cả hai trường hợp.
 - [ ] Staging: hoặc S3 private riêng, hoặc `local` private với `KPS_STAGING_EPHEMERAL_FILES=true` và đã smoke-test mất file/tải lại file. Không dùng cờ này ở production.
 - [ ] Session/cache/queue driver và worker được cấu hình; không dùng local ephemeral cho dữ liệu cần bền vững.
 - [ ] Start command không chạy migration/seeder.
@@ -451,7 +475,7 @@ GitHub branch protection là cấu hình quản trị bắt buộc nhưng nằm 
 Các bước dưới đây do quản trị viên nền tảng thực hiện thủ công; repository và CI không tạo tài nguyên cloud:
 
 1. Tạo TiDB/MySQL staging độc lập, user riêng và backup/PITR theo khả năng nhà cung cấp. Không clone credential production.
-2. Chọn storage staging: dùng local private ephemeral theo cấu hình tạm thời đã nêu, hoặc tạo object storage staging với bucket/prefix riêng, least-privilege credentials và lifecycle/retention phù hợp. Production vẫn bắt buộc object storage.
+2. Chọn storage staging: dùng local private ephemeral theo cấu hình tạm thời đã nêu, hoặc tạo object storage staging với bucket/prefix riêng, least-privilege credentials và lifecycle/retention phù hợp. Production mặc định object storage; ngoại lệ Weekly ephemeral cần opt-in Production riêng.
 3. Tạo branch `staging` từ đúng baseline `origin/main` sau khi review, rồi push branch này một lần để dashboard cloud có thể chọn đúng target.
 4. Bật branch protection/required checks cho `staging` và `main` trước khi nhận PR tính năng đầu tiên.
 5. Tạo Render Staging service từ repository, root `backend/`, branch `staging`; nhập biến từ `backend/.env.staging.example` qua secret store và đối chiếu marker staging.
@@ -479,7 +503,7 @@ Chi phí có thể phát sinh từ Render Staging service/worker, TiDB staging c
 1. CI xanh và regression tests chạy hoàn toàn bằng SQLite in-memory.
 2. Environment guard bắt buộc đã pass trên staging; không tồn tại cờ runtime để bỏ qua.
 3. Migration đã rehearsal trên staging tương thích TiDB; backup/PITR và runbook sự cố đã được xác nhận.
-4. Object storage private production đã được cấu hình, kiểm thử quyền và retention; cờ staging ephemeral không tồn tại/bật trong production; kế hoạch file cũ được phê duyệt riêng nếu cần.
+4. Object storage private production đã được cấu hình, kiểm thử quyền và retention; hoặc ngoại lệ Weekly ephemeral được Owner chấp thuận và kiểm thử guard/mất file trên fixture. Cờ staging ephemeral không bật trong production; kế hoạch file cũ được phê duyệt riêng nếu cần.
 5. Domain, Vercel API target, Sanctum, CORS và cookie đã qua smoke test staging.
 6. Không còn startup migration hoặc CI deployment ngầm.
 7. Release có người phê duyệt, người vận hành và người xác nhận sau triển khai.

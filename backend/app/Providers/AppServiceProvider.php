@@ -128,6 +128,8 @@ class AppServiceProvider extends ServiceProvider
             stagingEphemeralFiles: (bool) config('environment_safety.staging_ephemeral_files'),
             filesystemDisks: is_array($filesystemDisks) ? $filesystemDisks : [],
             publicStoragePath: storage_path('app/public'),
+            productionEphemeralWeeklyFiles: config('environment_safety.production_ephemeral_weekly_files') === true,
+            publicWebPath: public_path(),
         );
 
         // Throw only after sensitive connection values have left the call stack.
@@ -144,6 +146,7 @@ class AppServiceProvider extends ServiceProvider
             'database.connections.sqlite.database' => ':memory:',
             'environment_safety.database_environment' => 'testing',
             'environment_safety.staging_ephemeral_files' => false,
+            'environment_safety.production_ephemeral_weekly_files' => false,
             'cache.default' => 'array',
             'session.driver' => 'array',
             'queue.default' => 'sync',

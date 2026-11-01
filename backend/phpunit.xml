@@ -30,6 +30,7 @@
         <env name="DB_URL" value="" force="true"/>
         <env name="FILESYSTEM_DISK" value="local" force="true"/>
         <env name="KPS_DATABASE_ENVIRONMENT" value="testing" force="true"/>
+        <env name="KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES" value="false" force="true"/>
         <env name="MAIL_MAILER" value="array" force="true"/>
         <env name="QUEUE_CONNECTION" value="sync" force="true"/>
         <env name="SESSION_DRIVER" value="array" force="true"/>
