@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "migrations": [
+    {
+      "file": "0001_01_01_000000_create_users_table.php",
+      "migration": "0001_01_01_000000_create_users_table",
+      "sha256": "10d79883bc08ce46510f9ad8b1830b4d06d586dc56ae2c8bac3b3e491f69a90f",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "0001_01_01_000001_create_cache_table.php",
+      "migration": "0001_01_01_000001_create_cache_table",
+      "sha256": "2ca8398390ecef8eaf72aeac7fefce67f7de631b6f2ec7b7081c8db8953215dc",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "0001_01_01_000002_create_jobs_table.php",
+      "migration": "0001_01_01_000002_create_jobs_table",
+      "sha256": "7c9c712adf4091c87bf2612f4d0dccdfa1df4501553e4ac068b83d7bd5462fa5",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_08_000000_create_authorization_tables.php",
+      "migration": "2026_10_08_000000_create_authorization_tables",
+      "sha256": "fc3b6e48321cbb4de00a27e155aa079ef76df6595f44351995d9893d4180d547",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_09_000000_create_daily_reports_table.php",
+      "migration": "2026_10_09_000000_create_daily_reports_table",
+      "sha256": "9ac5e1ff7a3cf8ca633e3a8ffee182de8de8ef14043c72568a7b156ab84ec2ec",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_09_000001_create_daily_report_items_table.php",
+      "migration": "2026_10_09_000001_create_daily_report_items_table",
+      "sha256": "3ff7edb4a93683ec812168d96504e5a153c8f80390fe10b0748b4c02dd1941a7",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_09_000002_create_report_comments_table.php",
+      "migration": "2026_10_09_000002_create_report_comments_table",
+      "sha256": "e7adec7a1b1df721acbd2bdfe6b981e2ca7a788b3acbdcf5725c58909a48c91f",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_09_000003_create_user_notifications_table.php",
+      "migration": "2026_10_09_000003_create_user_notifications_table",
+      "sha256": "307cc185f889ca1b7d6becc2acbfd21c12819f8f610212bd7a7583133a586996",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_21_000000_create_ai_daily_report_runs_table.php",
+      "migration": "2026_10_21_000000_create_ai_daily_report_runs_table",
+      "sha256": "fb06adcc87682e93ddba66683cff1df59cf1570af1847532d149e3d7284b1c10",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_22_000000_create_tasks_table.php",
+      "migration": "2026_10_22_000000_create_tasks_table",
+      "sha256": "3dbdae962c61053eacb2278dd097829936fb3e95150e64a22c384501a3ae3c85",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_22_010000_create_weekly_planning_tables.php",
+      "migration": "2026_10_22_010000_create_weekly_planning_tables",
+      "sha256": "74a699db5b2100e5cc61a1d6755f3e8dbbc7e97f8174dbfa14b95a2a5707f992",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_22_010001_add_weekly_plan_source_to_tasks_table.php",
+      "migration": "2026_10_22_010001_add_weekly_plan_source_to_tasks_table",
+      "sha256": "42bbe54a837607d176fb2e676dda680755f18f8feb4a72d3a73545c538705428",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_22_020000_create_weekly_plan_document_extraction_tables.php",
+      "migration": "2026_10_22_020000_create_weekly_plan_document_extraction_tables",
+      "sha256": "79d66b4cc00ebec131c25fc4d13f170eaa6a4368555fbc29b2ccb7a67314e8f3",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_24_000000_create_ai_gateway_usage_tables.php",
+      "migration": "2026_10_24_000000_create_ai_gateway_usage_tables",
+      "sha256": "3ed4bccddd197758e77355bf013b65fffae0e641d101e6703614edd4090346e6",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_26_000000_create_organization_google_docs_folder_tables.php",
+      "migration": "2026_10_26_000000_create_organization_google_docs_folder_tables",
+      "sha256": "5314616fb5a40ea2594d7e4eeca8e08917a789890c30dc648c08de4ecbe678f6",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_27_000000_add_google_docs_source_to_weekly_plans.php",
+      "migration": "2026_10_27_000000_add_google_docs_source_to_weekly_plans",
+      "sha256": "7a449334230ee85bcfd711152ff1c561a0e43530b3a83957deb90a2597537efa",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables.php",
+      "migration": "2026_10_27_010000_create_weekly_plan_google_docs_employee_mapping_tables",
+      "sha256": "ba95a91b7948ef16f76e3abf0327c03502f79eed37c22fcd3b9b5294b48c8b03",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_28_000000_create_weekly_plan_entry_items_tables.php",
+      "migration": "2026_10_28_000000_create_weekly_plan_entry_items_tables",
+      "sha256": "488e60ce9e2e9d5f4a4dc53694345d6de393d5c8320fa966f5d5ac100f6eca29",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_29_000000_create_weekly_plan_staged_review_tables.php",
+      "migration": "2026_10_29_000000_create_weekly_plan_staged_review_tables",
+      "sha256": "d043ce47d170080760bcec7db4e4a2c31a02be8e2ee46ca439f470d6db721642",
+      "automatic": false,
+      "risk": "incompatible-data-transition",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_30_000000_create_weekly_plan_v3_schema_foundation.php",
+      "migration": "2026_10_30_000000_create_weekly_plan_v3_schema_foundation",
+      "sha256": "40fb35320a72c694f63afe6f7f9aee158902f94db60745fe7f8a5d81b02c8472",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_30_010000_create_weekly_plan_v3_correction_batches.php",
+      "migration": "2026_10_30_010000_create_weekly_plan_v3_correction_batches",
+      "sha256": "9010861b0541f5785247bda036663d1d8e3e83c5ed58e5e6a243f9680ad0d0a6",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_10_31_000001_create_account_audit_events_table.php",
+      "migration": "2026_10_31_000001_create_account_audit_events_table",
+      "sha256": "4f554635eb1819b31b975e6bd915bd6c8437cccdc7d2734edb02157c14efa201",
+      "automatic": false,
+      "risk": "manual-review-required",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_11_02_000000_create_work_report_analyses.php",
+      "migration": "2026_11_02_000000_create_work_report_analyses",
+      "sha256": "1e585d0d2cca1a2310c42dcf37b66afe1856d9898cb4ca72ba6bfe312048714a",
+      "automatic": false,
+      "risk": "unreviewed-new-migration",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    },
+    {
+      "file": "2026_11_02_010000_create_work_report_regeneration_tables.php",
+      "migration": "2026_11_02_010000_create_work_report_regeneration_tables",
+      "sha256": "956793fa554e0df9d12a78cc0b5495baa3506cb7d86b693912d4121d13a66ad4",
+      "automatic": false,
+      "risk": "unreviewed-new-migration",
+      "sql": [],
+      "created_tables": [],
+      "approval": null
+    }
+  ]
+}

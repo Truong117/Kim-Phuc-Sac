@@ -17,6 +17,11 @@ dist-ssr
 test-results/
 playwright-report/
 *.local
+.worktrees/
+release-evidence.json
+production-release-evidence.json
+production-preflight-evidence.json
+.node-modules-test-cache/
 
 # Editor directories and files
 .commandcode

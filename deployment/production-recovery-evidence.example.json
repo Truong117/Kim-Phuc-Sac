@@ -1,0 +1,18 @@
+{
+  "candidate_sha": null,
+  "instance_id": null,
+  "branch": "main",
+  "database": "kps_internal",
+  "ledger_sha256": null,
+  "schema_sha256": null,
+  "backup_id": null,
+  "backup_completed_at": null,
+  "restore_evidence": null,
+  "restore_verified": false,
+  "rpo_accepted": false,
+  "p0_checkpoint_evidence": null,
+  "staging_rehearsal_evidence": null,
+  "writers_frozen": false,
+  "issued_at": null,
+  "expires_at": null
+}

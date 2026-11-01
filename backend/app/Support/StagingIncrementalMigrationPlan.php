@@ -59,6 +59,35 @@ final class StagingIncrementalMigrationPlan
         ],
     ];
 
+    /**
+     * Release readiness is read-only. Unlike migration pre/postflight, existing
+     * business rows are expected; no empty-table or historical row count gate.
+     *
+     * @param  array<string, mixed>  $state
+     * @return list<string>
+     */
+    public static function releaseViolations(array $state): array
+    {
+        $violations = self::commonViolations($state);
+
+        if ($state['applied_migrations'] !== StagingBootstrapPlan::EXPECTED_MIGRATIONS
+            || $state['unexpected_migrations'] !== []) {
+            $violations[] = 'release_requires_exact_migration_ledger';
+        }
+
+        foreach (range(16, count(StagingBootstrapPlan::EXPECTED_MIGRATIONS)) as $number) {
+            if (($state["migration_{$number}_schema_state"] ?? 'partial') !== 'complete') {
+                $violations[] = "release_schema_{$number}_not_complete";
+            }
+        }
+
+        if (! ($state['parent_prerequisites_verified'] ?? false)) {
+            $violations[] = 'release_parent_prerequisites_not_verified';
+        }
+
+        return array_values(array_unique($violations));
+    }
+
     /** @return list<string> */
     public static function allowedFiles(): array
     {
