@@ -35,11 +35,11 @@ export function validateReleaseInput(env) {
 export function assertDeploymentTargets(render, project) {
   const d = render.serviceDetails;
   if (render.id !== SERVICE || render.ownerId !== "tea-db31pf8m7kps73cnjl30" ||
-      render.branch !== "main" || render.repo?.replace(/\\.git$/, "") !== "https://github.com/" + REPO ||
+      render.branch !== "main" || (render.repo?.endsWith(".git") ? render.repo.slice(0, -4) : render.repo) !== "https://github.com/" + REPO ||
       render.autoDeploy !== "no" || render.autoDeployTrigger !== "off" ||
       render.suspended !== "not_suspended" || d?.plan !== "free" ||
       d?.numInstances !== 1 || d?.url !== API_ORIGIN ||
-      render.rootDir?.replace(/\\/$/, "") !== "backend" ||
+      !["backend", "backend/"].includes(render.rootDir) ||
       d.env !== "docker" || d.envSpecificDetails?.dockerCommand ||
       d.healthCheckPath !== "/api/health") {
     throw new Error("Render Production identity, entrypoint, or manual-deploy guard failed.");
