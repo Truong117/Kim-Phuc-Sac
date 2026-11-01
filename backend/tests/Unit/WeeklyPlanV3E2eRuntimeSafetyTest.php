@@ -33,6 +33,7 @@ class WeeklyPlanV3E2eRuntimeSafetyTest extends TestCase
     private function safeConfig(string $root): array
     {
         return [
+            'work_report_ai' => ['driver' => 'fake', 'gateway' => ['api_key' => null]],
             'app' => ['env' => 'local', 'url' => 'http://127.0.0.1:8001'],
             'database' => [
                 'default' => 'sqlite',

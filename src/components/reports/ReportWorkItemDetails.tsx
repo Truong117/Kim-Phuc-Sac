@@ -1,6 +1,8 @@
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import type { ReportWorkItem } from "@/types/reports";
 import { useTranslation } from "react-i18next";
+import { useEffect } from "react";
+import { useLocation } from "react-router";
 
 interface ReportWorkItemDetailsProps {
   items: ReportWorkItem[];
@@ -9,6 +11,11 @@ interface ReportWorkItemDetailsProps {
 export default function ReportWorkItemDetails({
   items,
 }: ReportWorkItemDetailsProps) {
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (!/^#work-item-\d+$/.test(hash)) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: "center" });
+  }, [hash, items]);
   const { t } = useTranslation("common", {
     keyPrefix: "reportDetail.items",
   });
@@ -18,7 +25,8 @@ export default function ReportWorkItemDetails({
       {items.map((item, index) => (
         <article
           key={item.id}
-          className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5 dark:border-gray-800 dark:bg-gray-900/50"
+          id={`work-item-${item.id}`}
+          className="scroll-mt-24 rounded-xl border border-gray-200 bg-gray-50/60 p-4 target:ring-2 target:ring-brand-500 sm:p-5 dark:border-gray-800 dark:bg-gray-900/50 dark:target:ring-brand-400"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="font-semibold text-gray-900 dark:text-white">

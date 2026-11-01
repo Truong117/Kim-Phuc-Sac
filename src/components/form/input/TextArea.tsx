@@ -56,10 +56,13 @@ const TextArea: React.FC<TextareaProps> = ({
         onChange={handleChange}
         onBlur={onBlur}
         disabled={disabled}
+        aria-invalid={error || undefined}
+        aria-describedby={hint && id ? `${id}-hint` : undefined}
         className={textareaClasses}
       />
       {hint && (
         <p
+          id={id ? `${id}-hint` : undefined}
           className={`mt-2 text-sm ${
             error ? "text-error-500" : "text-gray-500 dark:text-gray-400"
           }`}

@@ -28,16 +28,16 @@ class AccountAuditMigrationTest extends TestCase
         $this->assertFalse(Schema::hasTable('account_audit_events'));
     }
 
-    public function test_all_22_files_follow_the_exact_reviewed_order_without_missing_or_duplicate_steps(): void
+    public function test_current_manifest_keeps_the_reviewed_account_audit_prefix_without_missing_or_duplicate_steps(): void
     {
         $files = glob(database_path('migrations/*.php'));
         sort($files, SORT_STRING);
         $names = array_map(static fn (string $path): string => basename($path, '.php'), $files);
-        $this->assertCount(22, $names);
-        $this->assertCount(22, array_unique($names));
+        $this->assertCount(24, $names);
+        $this->assertCount(24, array_unique($names));
         $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, $names);
         $this->applyAuditMigration();
-        $this->assertSame($names, $this->ledger());
+        $this->assertSame(array_slice($names, 0, 22), $this->ledger());
     }
 
     public function test_incremental_migration_preserves_existing_accounts_rbac_and_business_rows(): void
@@ -61,7 +61,7 @@ class AccountAuditMigrationTest extends TestCase
         $before = $this->fingerprints($tables);
         $this->applyAuditMigration();
         $this->assertSame($before, $this->fingerprints($tables));
-        $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, $this->ledger());
+        $this->assertSame(array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 22), $this->ledger());
         $this->assertDatabaseCount('account_audit_events', 0);
         $this->assertSame(['id', 'event_type', 'actor_user_id', 'subject_user_id', 'previous_email', 'email', 'created_at'], Schema::getColumnListing('account_audit_events'));
         $this->assertSame([], Schema::getForeignKeys('account_audit_events'));
@@ -117,7 +117,7 @@ class AccountAuditMigrationTest extends TestCase
             $this->assertStringContainsString('Cannot roll back committed account audit events', $error->getMessage());
         }
         $this->assertDatabaseCount('account_audit_events', 1);
-        $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, $this->ledger());
+        $this->assertSame(array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 22), $this->ledger());
     }
 
     public function test_existing_partial_table_is_not_overwritten_or_added_to_the_ledger(): void
