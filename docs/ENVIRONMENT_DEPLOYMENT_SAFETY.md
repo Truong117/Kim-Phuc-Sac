@@ -1,5 +1,7 @@
 # An toàn môi trường và triển khai KPS
 
+> CI/CD update 01/11/2026: [CI_CD_RUNBOOK.md](CI_CD_RUNBOOK.md) supersedes Git auto-deploy guidance below. Keep Render/Vercel Git auto-deploy off; use the serialized coordinator. Production remains disabled until verified cutover.
+
 Tài liệu này là runbook cấu hình cho frontend React/Vite, backend Laravel, TiDB Cloud, Render, Vercel và kho object S3-compatible. Mục tiêu là giữ development, staging và production tách biệt; không để test hoặc quá trình khởi động ứng dụng tự ghi vào production.
 
 Không ghi credential thật vào repository, ticket, log hoặc ảnh chụp màn hình. Các file `.env` chỉ tồn tại tại máy hoặc secret store của nền tảng; repository chỉ giữ file `*.example` với giá trị giả. `.gitignore` và Docker build context đều loại trừ các biến thể `.env.*` thật, nhưng vẫn phải review diff trước mọi commit.

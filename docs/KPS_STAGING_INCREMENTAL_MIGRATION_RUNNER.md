@@ -18,6 +18,14 @@ Directories, arbitrary paths, raw Artisan arguments, multiple migrations, traver
 
 ## Read-only modes
 
+For deployment readiness after all migrations have already been applied, use
+`-ReleaseReadiness` with migration 22. It verifies the full 22-entry ledger,
+M16–M22 physical schema and the existing identity/TLS/grants/concurrency gates.
+It permits existing business rows, creates no Plan receipt and cannot execute DDL.
+`-Status` remains a pre-migration check and correctly fails if its target migration
+has already been applied. See [CI/CD runbook](CI_CD_RUNBOOK.md) for release ordering
+and the durable release lock.
+
 Omitting all mode switches defaults to `-Status`:
 
 ```powershell

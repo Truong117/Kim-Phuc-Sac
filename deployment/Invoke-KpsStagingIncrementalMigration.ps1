@@ -12,6 +12,7 @@ param(
     )]
     [string]$Migration,
     [switch]$Status,
+    [switch]$ReleaseReadiness,
     [switch]$Plan,
     [switch]$Execute,
     [string]$PlanReceiptPath = '',
@@ -26,14 +27,16 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$selectedModeCount = @($Status, $Plan, $Execute).Where({ $_.IsPresent }).Count
+$selectedModeCount = @($Status, $ReleaseReadiness, $Plan, $Execute).Where({ $_.IsPresent }).Count
 
 if ($selectedModeCount -gt 1) {
-    throw 'Choose only one mode: -Status, -Plan, or -Execute.'
+    throw 'Choose only one mode: -Status, -ReleaseReadiness, -Plan, or -Execute.'
 }
 
 $Mode = if ($Execute.IsPresent) {
     'Execute'
+} elseif ($ReleaseReadiness.IsPresent) {
+    'Release'
 } elseif ($Plan.IsPresent) {
     'Plan'
 } else {
@@ -759,7 +762,7 @@ function Invoke-KpsStagingIncrementalRunner {
 
     try {
         if ($Mode -ne 'Execute') {
-            $inspectorMode = if ($Mode -eq 'Plan') { 'plan' } else { 'status' }
+            $inspectorMode = if ($Mode -eq 'Plan') { 'plan' } elseif ($Mode -eq 'Release') { 'release' } else { 'status' }
             $environment = Get-InspectorEnvironment $config $secrets $migrationPassword $auditPassword $inspectorMode
             $inspection = Invoke-Inspector $environment
             $outputLines.Add($inspection.Json)
