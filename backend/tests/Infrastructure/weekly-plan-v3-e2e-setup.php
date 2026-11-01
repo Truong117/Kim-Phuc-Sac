@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Symfony\Component\Process\Process;
 use Tests\Fixtures\WeeklyPlanningV3BrowserScenarios;
 use Tests\Fixtures\WeeklyPlanningV3E2eFixture;
+use Tests\Fixtures\WorkReportAnalysisBrowserFixture;
 use Tests\Support\WeeklyPlanV3E2eRuntimeSafety;
 use Tests\Support\WeeklyPlanV3IsolatedTestEnvironment;
 
@@ -96,6 +97,7 @@ foreach ([...WeeklyPlanningV3E2eFixture::ACCOUNTS, ...WeeklyPlanningV3E2eFixture
 }
 
 WeeklyPlanningV3BrowserScenarios::create($organization->id);
+WorkReportAnalysisBrowserFixture::create();
 
 DB::statement('CREATE TABLE e2e_fixture_identity (name VARCHAR(64) PRIMARY KEY, value VARCHAR(128) NOT NULL)');
 DB::table('e2e_fixture_identity')->insert([

@@ -34,6 +34,8 @@ final class StagingBootstrapPlan
         '2026_10_30_000000_create_weekly_plan_v3_schema_foundation',
         '2026_10_30_010000_create_weekly_plan_v3_correction_batches',
         '2026_10_31_000001_create_account_audit_events_table',
+        '2026_11_02_000000_create_work_report_analyses',
+        '2026_11_02_010000_create_work_report_regeneration_tables',
     ];
 
     /** @var list<string> */

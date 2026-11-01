@@ -3,7 +3,7 @@ import AuthorizationRoute from "./components/auth/AuthorizationRoute";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
-import AiDailyInsights from "./pages/AI/AiDailyInsights";
+import AiDailyInsights from "./pages/AI/WorkReportInsights";
 import AiExecutiveDashboard from "./pages/AI/AiExecutiveDashboard";
 import Account from "./pages/Account/Account";
 import Login from "./pages/Auth/Login";

@@ -94,7 +94,7 @@ class StagingIncrementalMigrationPlanTest extends TestCase
     public function test_migration_22_postflight_checks_exact_schema_empty_audit_and_preserved_baseline(): void
     {
         $state = array_replace($this->stateForMigration22(), [
-            'applied_migrations' => StagingBootstrapPlan::EXPECTED_MIGRATIONS,
+            'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 22),
             'migration_22_schema_state' => 'complete', 'account_audit_row_count' => 0,
             'weekly_plan_count' => 4, 'weekly_plan_id_fingerprint' => str_repeat('d', 64), 'weekly_plan_entry_count' => 9,
             'source_row_count' => 0, 'mapping_row_count' => 0, 'event_row_count' => 0,

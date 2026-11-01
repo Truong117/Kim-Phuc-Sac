@@ -23,6 +23,11 @@ final class WeeklyPlanV3E2eRuntimeSafety
     {
         $errors = [];
 
+        if (self::get($config, 'work_report_ai.driver') !== 'fake'
+            || ! in_array(self::get($config, 'work_report_ai.gateway.api_key'), [null, ''], true)) {
+            $errors[] = 'Browser E2E work-report analysis requires a fake provider and no API key.';
+        }
+
         if ($configurationCached) {
             $errors[] = 'Cached Laravel configuration is forbidden for browser E2E.';
         }

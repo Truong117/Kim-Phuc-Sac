@@ -1,4 +1,4 @@
-param([switch]$V3Disabled, [Parameter(ValueFromRemainingArguments=$true)][string[]]$PlaywrightArgs)
+param([switch]$V3Disabled, [switch]$WorkReportWorker, [Parameter(ValueFromRemainingArguments=$true)][string[]]$PlaywrightArgs)
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $backend = Join-Path $repo 'backend'
@@ -30,7 +30,15 @@ finally { Pop-Location }
 New-Item -ItemType Directory -Path $resultRoot -Force | Out-Null
 $backendProcess = $null
 $frontendProcess = $null
+$workReportProcess = $null
 try {
+    if ($WorkReportWorker) {
+        $env:WORK_REPORT_AI_QUEUE_CONNECTION = 'work_report_ai'
+        $workReportProcess = Start-Process -FilePath 'php' -ArgumentList @(
+            'artisan', 'queue:work', 'work_report_ai', '--env=weekly-planning-v3-e2e',
+            '--queue=ai-work-reports', '--timeout=150', '--tries=1', '--sleep=1'
+        ) -WorkingDirectory $backend -RedirectStandardOutput (Join-Path $resultRoot 'work-report-worker.stdout.log') -RedirectStandardError (Join-Path $resultRoot 'work-report-worker.stderr.log') -PassThru -WindowStyle Hidden
+    }
     $backendProcess = Start-Process -FilePath 'php' -ArgumentList @(
         '-d', 'display_errors=0',
         '-d', "upload_tmp_dir=$tmp",
@@ -49,10 +57,12 @@ try {
     $testExit = $LASTEXITCODE
 }
 finally {
+    if ($workReportProcess) { Stop-Process -Id $workReportProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($frontendProcess) { Stop-Process -Id $frontendProcess.Id -Force -ErrorAction SilentlyContinue }
     if ($backendProcess) { Stop-Process -Id $backendProcess.Id -Force -ErrorAction SilentlyContinue }
     Remove-Item Env:VITE_API_BASE_URL -ErrorAction SilentlyContinue
     Remove-Item Env:KPS_V3_E2E_SCENARIO -ErrorAction SilentlyContinue
+    Remove-Item Env:WORK_REPORT_AI_QUEUE_CONNECTION -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 300
     Push-Location $backend
     try {
