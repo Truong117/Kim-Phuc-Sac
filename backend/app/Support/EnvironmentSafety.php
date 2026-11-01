@@ -32,6 +32,8 @@ final class EnvironmentSafety
         bool $stagingEphemeralFiles,
         array $filesystemDisks,
         string $publicStoragePath,
+        bool $productionEphemeralWeeklyFiles = false,
+        ?string $publicWebPath = null,
     ): array {
         $violations = [];
         $appEnvironment = strtolower(trim($appEnvironment));
@@ -104,6 +106,8 @@ final class EnvironmentSafety
                 $stagingEphemeralFiles,
                 $filesystemDisks,
                 $publicStoragePath,
+                $productionEphemeralWeeklyFiles,
+                $publicWebPath,
             ),
         );
 
@@ -125,6 +129,8 @@ final class EnvironmentSafety
         bool $stagingEphemeralFiles,
         array $filesystemDisks,
         string $publicStoragePath,
+        bool $productionEphemeralWeeklyFiles = false,
+        ?string $publicWebPath = null,
     ): void {
         $violations = self::violations(
             $appEnvironment,
@@ -138,6 +144,8 @@ final class EnvironmentSafety
             $stagingEphemeralFiles,
             $filesystemDisks,
             $publicStoragePath,
+            $productionEphemeralWeeklyFiles,
+            $publicWebPath,
         );
 
         self::assertNoViolations($violations);
@@ -184,10 +192,15 @@ final class EnvironmentSafety
         bool $stagingEphemeralFiles,
         array $filesystemDisks,
         string $publicStoragePath,
+        bool $productionEphemeralWeeklyFiles,
+        ?string $publicWebPath,
     ): array {
         $violations = [];
         if ($stagingEphemeralFiles && $appEnvironment !== 'staging') {
             $violations[] = 'KPS_STAGING_EPHEMERAL_FILES may only be enabled in staging.';
+        }
+        if ($productionEphemeralWeeklyFiles && $appEnvironment !== 'production') {
+            $violations[] = 'KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES may only be enabled in production.';
         }
 
         if (! is_string($weeklyPlanStorageDisk) || trim($weeklyPlanStorageDisk) === '') {
@@ -232,8 +245,11 @@ final class EnvironmentSafety
                 $violations[] = 'The private local storage root must not be inside public storage.';
             }
 
-            if ($appEnvironment === 'production') {
-                $violations[] = 'Production Weekly Planning files require durable object storage.';
+            if ($appEnvironment === 'production' && ! $productionEphemeralWeeklyFiles) {
+                $violations[] = 'Production local Weekly Planning storage requires KPS_PRODUCTION_EPHEMERAL_WEEKLY_FILES=true.';
+            } elseif ($appEnvironment === 'production'
+                && ($diskName !== 'local' || ! self::safeProductionLocalRoot($disk['root'] ?? null, $publicStoragePath, $publicWebPath))) {
+                $violations[] = 'Production ephemeral Weekly Planning files require the private local disk with a safe non-public root.';
             } elseif ($appEnvironment === 'staging' && ! $stagingEphemeralFiles) {
                 $violations[] = 'Staging local Weekly Planning storage requires KPS_STAGING_EPHEMERAL_FILES=true.';
             }
@@ -245,6 +261,55 @@ final class EnvironmentSafety
         }
 
         return $violations;
+    }
+
+    private static function safeProductionLocalRoot(mixed $root, string $publicStoragePath, ?string $publicWebPath): bool
+    {
+        $root = self::canonicalPrivatePath($root);
+        $publicStorage = self::canonicalPrivatePath($publicStoragePath);
+        $publicWeb = self::canonicalPrivatePath($publicWebPath);
+        if ($root === null || $publicStorage === null || $publicWeb === null
+            || $root === '/' || preg_match('/\A[a-z]:\z/iD', $root)) {
+            return false;
+        }
+
+        foreach ([$publicStorage, $publicWeb] as $publicPath) {
+            if (self::pathIsWithin($root, $publicPath) || self::pathIsWithin($publicPath, $root)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static function canonicalPrivatePath(mixed $path): ?string
+    {
+        if (! is_string($path) || $path === '' || trim($path) !== $path || str_contains($path, "\0")) {
+            return null;
+        }
+        $path = str_replace('\\', '/', $path);
+        // Drive-letter paths are relative on Unix; do not resolve them via cwd.
+        $absolutePattern = DIRECTORY_SEPARATOR === '\\'
+            ? '~\A(?:[a-z]:/|/(?!/))~iD'
+            : '~\A/(?!/)~D';
+        if (! preg_match($absolutePattern, $path)
+            || array_intersect(explode('/', $path), ['.', '..']) !== []) {
+            return null;
+        }
+
+        // Resolve existing ancestors too: a not-yet-created upload directory
+        // beneath a symlink/junction must not bypass the public-root check.
+        $suffix = [];
+        $ancestor = $path;
+        while (($resolved = realpath($ancestor)) === false) {
+            if (is_link($ancestor) || dirname($ancestor) === $ancestor) {
+                return null;
+            }
+            array_unshift($suffix, basename($ancestor));
+            $ancestor = dirname($ancestor);
+        }
+
+        return strtolower(rtrim(str_replace('\\', '/', $resolved).'/'.implode('/', $suffix), '/')) ?: '/';
     }
 
     private static function pathIsWithin(mixed $path, string $parent): bool
