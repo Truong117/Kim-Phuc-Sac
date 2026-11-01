@@ -89,11 +89,22 @@ the reviewed baseline and recovery gate is complete.
 6. Only after final backend verification does it release the Git ref lock and
    publish the redacted evidence artifact (30-day retention).
 
-**Pending migrations are still a hard stop.** Automated Production DDL is
-**not yet implemented**; it needs a separate approved migrator profile, TiDB
-identity/ledger/schema inspector, backup/restore evidence, additive allowlist,
-and isolated rehearsal. Neither source sync nor a successful Staging migration
-proves Production can apply the same change safely.
+**Pending migrations are still a hard stop.** A strict source/ledger planner
+now exists in `deployment/production-migration-plan.mjs`. It requires exact
+migration file SHA-256, contiguous ledger prefix, independent identity/TLS/grant/
+schema checks, no competing migrator, recoverable backup, protected P0 baseline,
+and a Staging rehearsal. A proposed `expand-only` migration also needs exact
+reviewed hash and an explicit no-backfill approval; the planner returns only
+`APPROVED_SOURCE_PLAN_ONLY` and **never writes SQL**.
+
+**Automated Production DDL is not yet implemented**. The repository still lacks
+a Production SQL inspector and hardened migration executor equivalent to the
+Windows cutover tools; the required dedicated Production RO/migrator credentials
+are not available to GitHub Actions. Until those are built, tested against a
+TiDB rehearsal branch, and activated by a separate reviewed change, migration
+pending means NO-GO: neither CI nor the planner invokes `artisan migrate`.
+Never set `PRODUCTION_CD_ENABLED=true` based only on offline planning.
+M23/M24 in the separate draft feature work are **not** implicitly approved.
 
 The workflow does not run `artisan migrate`, seeder, user updates, SQL,
 backup restore, Docker Command override, or rollback. It does not guarantee
