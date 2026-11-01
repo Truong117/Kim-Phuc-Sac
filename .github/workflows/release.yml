@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [staging, main]
+    branches: [staging]
   workflow_dispatch:
 
 permissions:
@@ -65,15 +65,3 @@ jobs:
           path: release-evidence.json
           if-no-files-found: warn
           retention-days: 30
-
-  # Deliberately no Production deploy job in this phase. This job cannot expose
-  # Production secrets or mutate Production even if someone sets a repository var.
-  production-baseline:
-    needs: checks
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - run: node deployment/check-production-baseline.mjs
