@@ -542,6 +542,14 @@ final class StagingIncrementalMigrationPlan
     private static function commonViolations(array $state): array
     {
         $violations = [];
+        foreach ([23, 24] as $number) {
+            $schema = $state["migration_{$number}_schema_state"] ?? 'absent';
+            if (count($state['applied_migrations']) >= $number && $schema !== 'complete') {
+                $violations[] = "migration_{$number}_ledger_schema_mismatch";
+            } elseif (count($state['applied_migrations']) < $number && $schema !== 'absent') {
+                $violations[] = "migration_{$number}_schema_ahead_of_ledger";
+            }
+        }
 
         if (! $state['target_verified'] || ! $state['tls_verified']) {
             $violations[] = 'staging_identity_or_tls_not_verified';

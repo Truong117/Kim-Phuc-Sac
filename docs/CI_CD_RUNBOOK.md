@@ -1,6 +1,6 @@
 # CI/CD Kim-Phuc-Sac theo giai đoạn
 
-> Production update 02/11/2026: [PRODUCTION_CI_PREFLIGHT.md](PRODUCTION_CI_PREFLIGHT.md) supersedes the Production preparation/activation status below. PR #74 is merged; #75 remains unmerged. New SQL preflight/executor code is review-only and has not run against Production.
+> Update 02/11/2026: [PRODUCTION_CI_PREFLIGHT.md](PRODUCTION_CI_PREFLIGHT.md) supersedes the historical Production preparation/activation status below. PR #75 merged and its CI/CD code was subsequently reverted by PR #79. PR #80 is a Draft replacement based on current staging `7ed0a12`; the source main is `d1c801f`. M23/M24 inspector contracts are implemented but have no new live DB evidence. No release/preflight/network workflow or Production flag was activated in this task.
 
 ## Phạm vi và tình trạng
 
@@ -20,7 +20,7 @@ Không được hiểu bước `migration_gate` là đã thực thi migration.
 | 2 | Chỉ tự chạy migration additive đã review riêng | Executor độc lập được review, hash allowlist, tương thích bản cũ, backup/restore, pre/postflight và khóa chung; chưa có executor này |
 | 3 | Production phát hành thủ công có phê duyệt và kiểm tra lại CI | Có baseline/restore được review, secrets trong Environment bảo vệ, Vercel Git auto-deploy Off và Staging rehearsal PASS; xem [hướng dẫn kích hoạt](KPS_PRODUCTION_CD_ACTIVATION.md) |
 
-Đối chiếu ngày 01/11/2026 (Asia/Saigon):
+Đối chiếu lịch sử ngày 01/11/2026 (Asia/Saigon); **không phải baseline hiện tại**:
 
 | Nguồn | SHA / trạng thái đã đọc từ nền tảng |
 | --- | --- |
@@ -38,8 +38,9 @@ Production trong đợt này. Mã trên feature branch CI/CD chưa nằm trong b
 live nào ở bảng trên. `production-baseline.json` giữ `verified: false`.
 Tệp `.env.*.backup` là cấu hình, không chứng minh có bản sao database khôi phục được.
 
-**Production hiện đang chạy Dockerfile cũ có `php artisan migrate --force` ở startup.**
-Dockerfile ở staging đã bỏ lệnh đó, nhưng sửa trong Git chưa thay đổi image live.
+**Ở lần đối chiếu 01/11, Production chạy Dockerfile cũ có `php artisan migrate --force` ở startup.**
+Trạng thái live sau cutover chưa được đọc lại trong task #80; không suy ra rằng
+image cũ hoặc mới hiện đang chạy. Dockerfile ở staging đã bỏ lệnh đó, nhưng sửa trong Git chưa thay đổi image live.
 Không resume/redeploy image cũ như một cách đồng bộ baseline. Xử lý cutover và dừng
 writers theo PR #74, backup/files, migration và kiểm chứng nghiệp vụ riêng trước.
 
@@ -58,7 +59,7 @@ Staging. CI không nhận secrets triển khai.
    GitHub concurrency group `kps-release`, `cancel-in-progress: false`.
 4. Kiểm kê/hash migration (chuẩn hóa LF), rồi inspector chỉ đọc trong environment
    sạch, TLS xác minh certificate, đối chiếu TiDB instance/username prefixes,
-   database/grants, ledger, schema M16–M22, DDL jobs và competing migrators.
+   database/grants, ledger, schema M16–M24, DDL jobs và competing migrators.
 5. `migration_gate`: chỉ qua nếu đủ ledger/schema. Mọi migration hiện tại có
    `automatic: false` trong `deployment/migration-policy.json`; file mới, file sửa
    hash, migration thiếu hoặc unknown đều chặn. Không dùng `artisan migrate` chung.

@@ -7,15 +7,21 @@ Không chạy workflow có secrets Production, không kết nối DB Production,
 chạy migration, sửa grants/firewall/Render/Vercel, merge, deploy hoặc bật
 `PRODUCTION_CD_ENABLED`. Không thay đổi các tệp chưa commit của tác vụ cutover.
 
-Repo đã kiểm tra ngày 02/11/2026: PR #74 đã merge, main `c0aa57e`, staging
-`7ed0a12` sau khi PR #76 thêm M23/M24; PR #75 chưa merge, source `e4ac06d`. Các SHA này là mã nguồn Git,
-không chứng minh backend/frontend đang live. Nhánh này mang code CI/CD chưa merge
-của #75 và đồng bộ nội dung hotfix đã có trên staging; không merge nhánh dùng chung.
+Repo đã kiểm tra ngày 02/11/2026: main `d1c801f8aef3b1d9cafc39d1716323a8c34add6f`,
+staging `7ed0a12b0d8d9f63cbfbaa420be50bcdf109be97` sau PR #76 (M23/M24).
+PR #75 **đã merge** tại `42996f8`, sau đó code CI/CD bị revert tại `b6e31a2`
+qua PR #79 (`f37b5f6`). Vì vậy không coi CI/CD của #75 là đang có trên staging.
+PR #80 đã chứa HEAD staging này; không cần tạo merge commit đồng bộ rỗng.
+Các tệp CI/CD được đưa lại trong #80 là nội dung cần review sau revert, không
+phải một bản thứ hai đang chạy. PR #80 giữ Draft. Các SHA Git không chứng minh
+backend/frontend đang live; đợt này không đọc lại nền tảng hay chứng nhận baseline.
 
 Theo thông tin bạn cung cấp, Environment `production` có reviewer Truong117,
 chỉ main và 7 SQL secrets. Đợt này không đọc secrets hoặc xác nhận cấu hình quản trị
 GitHub. CA, effective grants, schema/ledger và mạng từ Actions chưa được thử live.
-Các kiểm thử dùng certificate công khai giả và SQL/network/provider fixtures.
+Các unit test dùng certificate fixture và SQL/network/provider giả lập. Test
+integration mới bắt tay TLS thật với server MySQL giả lập trên **localhost**,
+CA/key dùng một lần; không kết nối TiDB hay chứng minh mạng từ Actions đến DB.
 
 ## Các tệp và đường đi
 
@@ -23,6 +29,8 @@ Các kiểm thử dùng certificate công khai giả và SQL/network/provider fi
 | --- | --- |
 | `.github/workflows/production-release.yml` | Cổng provenance → CI → Environment → coordinator |
 | `.github/workflows/production-preflight.yml` | Chỉ dispatch main, cổng CI/reviewer, chỉ đọc; mặc định chưa bật |
+| `.github/workflows/production-network.yml` | Dispatch main + CI/reviewer; chỉ DNS/TCP/TLS, không SQL, không cần bật cờ Production |
+| `deployment/production-network-diagnostics.mjs` | Evidence network riêng; luôn ghi SQL/identity/ledger/schema/release chưa được xác minh hoặc cấp quyền |
 | `deployment/production-candidate.mjs` | Current main SHA phải thuộc merged PR staging → main cùng repository |
 | `deployment/production-network.mjs` | DNS/TCP và nâng cấp MySQL sang TLS, kiểm CA + hostname/SNI trước authentication |
 | `deployment/production-database.mjs` | Process PHP có environment riêng, không truyền deploy/API keys; evidence đã lược dữ liệu nhạy cảm |
@@ -67,8 +75,41 @@ health → build/stage frontend Production với `--skip-domain` → smoke stage
    Lỗi quyền/capability hoặc vượt bound metadata sẽ dừng; không thay bằng kết luận
    “không có job”. Khả năng quan sát DDL của hai account chưa được thử live.
 
-Staging inspector hiện chưa chứng nhận schema M23/M24: cổng Staging cố ý dừng nếu
-thiếu trạng thái schema này, kể cả ledger đủ 24. Không dùng runner Staging cho Production.
+Staging inspector đã có contract M23/M24 tại `StagingWorkReportSchema.php`, pin
+hai source hash riêng và đọc INFORMATION_SCHEMA cho đủ bốn bảng, parent keys,
+thứ tự/type/default/nullability của cột, index/visibility và FK/update/delete rules.
+Charset/collation được pin theo mặc định source `utf8mb4/utf8mb4_unicode_ci`;
+generated expression, comment, CHECK, partition hoặc create options ngoài contract
+đều bị chặn. Nếu DB thật dùng collation khác thì dừng để review bằng chứng và
+contract, không tự đổi DB hoặc chấp nhận metadata chỉ để check xanh.
+Chỉ chấp nhận FK-support index tùy chọn đúng tên/tuple đã biết khi compound index
+đã bao phủ. Ledger thiếu nhưng schema có, ledger đã ghi nhưng schema thiếu/partial,
+query lỗi hoặc capability không rõ đều dừng. Release yêu cầu đủ 24 ledger entries
+và schema M16–M24 complete. Writer allowlist Staging vẫn chỉ M16–M22; không thêm
+quyền chạy M23/M24. Test metadata tổng hợp/SQLite không chứng nhận schema TiDB thật.
+**M23/M24 trên DB Staging chưa được xác minh live trong đợt này.** Không dùng runner
+Staging cho Production.
+
+## Kiểm chứng cho PR #80
+
+PR vẫn Draft. CI trên pull request chỉ chạy kiểm tra code, không gọi workflow
+release/preflight/network có Environment Secrets. Đối chiếu kết quả CI với **HEAD
+hiện tại** trong [PR #80](https://github.com/Truong117/Kim-Phuc-Sac/pull/80);
+run xanh của commit cũ không chứng nhận commit mới.
+
+| Kiểm tra | Phạm vi chứng minh |
+| --- | --- |
+| `npm test`, lint/build trong CI Frontend | Toàn bộ frontend và Node release/security regression; provider/SQL fixtures không gọi cloud |
+| Composer/Pint và toàn bộ PHPUnit backend | Regression ứng dụng + Production guards; SQLite/metadata fixtures, không DB Staging/Production |
+| CI `Deployment security regression` | Ba handshake TLS thật trên localhost: CA/hostname đúng qua, CA sai và SAN sai bị từ chối, không gửi SQL authentication |
+| CI `Backend container build` | Docker build và container smoke cục bộ; không Render deploy |
+| `Invoke-Pester deployment/tests/Invoke-KpsStagingIncrementalMigration.Tests.ps1` | Orchestration/allowlist/receipt/isolated child regression bằng doubles, không chạy migration shared DB |
+| Staging DB M23/M24, Production DB/network/grants, live SHAs, recovery | **Chưa kiểm chứng thực tế trong đợt này**; cần thao tác riêng đã được cho phép |
+
+Kiểm thử mới còn chặn sai ref/repo, CA hash sai, DNS treo, probe thiếu kết quả,
+schema/ledger lệch, cột/index/FK/collation bị sửa, CHECK/partition lạ, metadata query
+lỗi, và mọi candidate direct/hotfix/feature/fork/unmerged/stale cho cả push/manual.
+Các kết quả fixture không được chép sang `production-baseline.json` hoặc schema policy.
 
 **Giới hạn identity:** TiDB Starter dùng endpoint shared; SQL không cung cấp độc
 lập tên console/instance ID/nhãn branch để so sánh. Mapping console main → endpoint
@@ -113,8 +154,27 @@ phiên bản/quyền này, giữ blocked, lấy lỗi capability đã redacted v
 
 ## CA và đường mạng GitHub Actions
 
+Đường chẩn đoán tách riêng khỏi SQL preflight để không bị schema/identity policy
+chưa hoàn thiện chặn việc tìm lỗi network. Sau khi code được review, có trên main
+và được cho phép chạy kiểm tra riêng, chọn workflow **Production network TLS
+diagnosis (no SQL)**, chọn `main`, đợi toàn bộ CI rồi reviewer duyệt Environment.
+Không dispatch từ nhánh feature. Đợt code này không dispatch workflow đó.
+
+Job chỉ nhận ba Secrets `PRODUCTION_DB_HOST`, `PRODUCTION_DB_PORT`,
+`PRODUCTION_DB_CA_PEM` và Variable `PRODUCTION_DB_CA_SHA256` trong Environment
+production; runner labels lấy từ repository variable. Không nhận username/password
+SQL, deploy token, recovery evidence hay schema policy; không bật
+`PRODUCTION_PREFLIGHT_ENABLED`, `PRODUCTION_CD_ENABLED` hoặc
+`PRODUCTION_MIGRATIONS_ENABLED` để chạy đường này. DNS và TCP/TLS có timeout hữu hạn.
+Probe chỉ đọc MySQL greeting, gửi SSLRequest rồi xác minh CA/hostname; đóng socket
+trước authentication. Artifact `production-network-evidence.json` ghi candidate SHA,
+thời điểm, CA hash và kết quả network hoặc loại lỗi đã redacted. Các trường
+`sql_authenticated`, `identity_verified`, `ledger_verified`, `schema_verified`,
+`writes_executed`, `release_authorized` luôn false. PASS chỉ chứng minh kết nối TLS
+tới endpoint đã cấu hình, không chứng minh đúng branch/database hay cho phép migration.
+
 Sau khi code/config được review và **có cho phép riêng**, admin có thể bật riêng
-workflow read-only, dispatch đúng SHA main và duyệt Environment. Job tạo artifact
+workflow SQL read-only `production-preflight.yml`, dispatch đúng SHA main và duyệt Environment. Job tạo artifact
 `production-preflight-evidence.json` với DNS/TCP/TLS và kết quả SQL đã lược nhạy cảm.
 Job này không cài/chạy Vercel CLI, không có token Render/Vercel, không gọi DDL.
 
@@ -225,6 +285,8 @@ gọi AI. Session/login có thể tạo session/audit theo hành vi ứng dụng
 - [TiDB Starter shared endpoint và nhánh main](https://docs.pingcap.com/tidbcloud/connect-via-standard-connection-serverless/)
 - [TiDB locking functions, khóa trên các TiDB server và timeout tối thiểu 1 giây](https://github.com/pingcap/docs/blob/master/functions-and-operators/locking-functions.md)
 - [CLUSTER_INFO không khả dụng trên Starter](https://docs.pingcap.com/tidb/stable/information-schema-cluster-info/)
+- [TiDB TLS VERIFY_IDENTITY: kiểm cả CA và hostname](https://docs.pingcap.com/tidb/stable/enable-tls-between-clients-and-servers/)
+- [GitHub Environment reviewers và giới hạn branch](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)
 
 Chỉ các tài liệu và test offline đã được dùng ở đợt này. Chưa có lần Production
 preflight/migration/deploy từ Actions được thực hiện hay chứng nhận thành công.

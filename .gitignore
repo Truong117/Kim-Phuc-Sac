@@ -21,6 +21,7 @@ playwright-report/
 release-evidence.json
 production-release-evidence.json
 production-preflight-evidence.json
+production-network-evidence.json
 .node-modules-test-cache/
 
 # Editor directories and files

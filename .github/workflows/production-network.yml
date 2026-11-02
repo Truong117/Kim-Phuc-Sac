@@ -1,0 +1,43 @@
+name: Production network TLS diagnosis (no SQL)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kps-release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+  network:
+    needs: checks
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ${{ fromJSON(vars.PRODUCTION_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: DNS, TCP and authenticated TLS peer only; no SQL authentication or deployment
+        run: node deployment/production-network-diagnostics.mjs
+        env:
+          PRODUCTION_DB_HOST: ${{ secrets.PRODUCTION_DB_HOST }}
+          PRODUCTION_DB_PORT: ${{ secrets.PRODUCTION_DB_PORT }}
+          PRODUCTION_DB_CA_PEM: ${{ secrets.PRODUCTION_DB_CA_PEM }}
+          PRODUCTION_DB_CA_SHA256: ${{ vars.PRODUCTION_DB_CA_SHA256 }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-network-${{ github.sha }}-${{ github.run_attempt }}
+          path: production-network-evidence.json
+          if-no-files-found: warn
+          retention-days: 14

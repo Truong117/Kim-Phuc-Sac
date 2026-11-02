@@ -4,6 +4,7 @@ import net from "node:net";
 import tls from "node:tls";
 
 export function validateTrust(env, policy, pem, now = Date.now()) {
+  const caHash = validateNetworkTrust(env, pem, now);
   const id = policy.identity;
   if (!id || id.instance_name !== "KPS-Internal" || id.branch !== "main" || id.mapping_reviewed !== true ||
       !/^\d{6,30}$/.test(id.instance_id ?? "") || !/^[A-Za-z0-9]{1,64}$/.test(id.username_prefix ?? "") ||
@@ -21,6 +22,15 @@ export function validateTrust(env, policy, pem, now = Date.now()) {
   if (id.endpoint_sha256 !== fingerprint || !/^[a-f0-9]{64}$/.test(id.server_hostname_sha256 ?? "")) {
     throw new Error("Production endpoint/SQL identity fingerprints are not reviewed.");
   }
+  return caHash;
+}
+
+// Authentication-free diagnosis must not require SQL users or schema baselines.
+export function validateNetworkTrust(env, pem, now = Date.now()) {
+  if (!/^[a-z0-9][a-z0-9.-]+\.tidbcloud\.com$/.test(env.PRODUCTION_DB_HOST ?? "") ||
+      !/^\d{1,5}$/.test(env.PRODUCTION_DB_PORT ?? "") || Number(env.PRODUCTION_DB_PORT) < 1 || Number(env.PRODUCTION_DB_PORT) > 65535) {
+    throw new Error("Production network endpoint configuration is invalid.");
+  }
   const caHash = createHash("sha256").update(pem).digest("hex");
   if (caHash !== env.PRODUCTION_DB_CA_SHA256) throw new Error("Production CA SHA-256 mismatch.");
   let certificate;
@@ -32,6 +42,9 @@ export function validateTrust(env, policy, pem, now = Date.now()) {
 }
 
 export function sslRequest(packet) {
+  if (packet.length < 4 || packet.readUIntLE(0, 3) + 4 !== packet.length) {
+    throw new Error("MySQL greeting is incomplete or malformed.");
+  }
   const length = packet.readUIntLE(0, 3);
   const payload = packet.subarray(4, length + 4);
   const terminator = payload.indexOf(0, 1);
@@ -51,13 +64,19 @@ export function sslRequest(packet) {
 
 // Authentication-free MySQL TLS upgrade, before either SQL credential is used.
 // No firewall mutations, IP-range expansion or certificate-verification fallback.
-export async function probeProductionNetwork(env, pem, { resolveDns = lookup, connect = net.connect, secureConnect = tls.connect } = {}) {
-  try { await resolveDns(env.PRODUCTION_DB_HOST); } catch { throw new Error("Production network DNS check failed; details redacted."); }
+export async function probeProductionNetwork(env, pem, { resolveDns = lookup, connect = net.connect, secureConnect = tls.connect, timeoutMs = 10_000 } = {}) {
+  let dnsTimer;
+  try {
+    await Promise.race([resolveDns(env.PRODUCTION_DB_HOST), new Promise((_, reject) => {
+      dnsTimer = setTimeout(() => reject(new Error("dns_timeout")), timeoutMs);
+    })]);
+  } catch { throw new Error("Production network DNS check failed or timed out; details redacted."); }
+  finally { clearTimeout(dnsTimer); }
   await new Promise((resolve, reject) => {
     let socket;
     let secure;
     let settled = false;
-    const timer = setTimeout(() => finish(new Error("Production TCP/TLS probe timed out; check approved runner egress.")), 10_000);
+    const timer = setTimeout(() => finish(new Error("Production TCP/TLS probe timed out; check approved runner egress.")), timeoutMs);
     const finish = (error) => {
       if (settled) return;
       settled = true;

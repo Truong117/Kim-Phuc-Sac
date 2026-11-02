@@ -5,12 +5,14 @@ declare(strict_types=1);
 use App\Support\StagingBootstrapPlan;
 use App\Support\StagingIncrementalMigrationPlan;
 use App\Support\StagingIncrementalSchema;
+use App\Support\StagingWorkReportSchema;
 use App\Support\TidbStarterIdentity;
 
 require_once dirname(__DIR__).'/app/Support/TidbStarterIdentity.php';
 require_once dirname(__DIR__).'/app/Support/StagingBootstrapPlan.php';
 require_once dirname(__DIR__).'/app/Support/StagingIncrementalMigrationPlan.php';
 require_once dirname(__DIR__).'/app/Support/StagingIncrementalSchema.php';
+require_once dirname(__DIR__).'/app/Support/StagingWorkReportSchema.php';
 
 /** @param array<string, mixed> $result */
 function incrementalFinish(array $result, int $exitCode): never
@@ -987,6 +989,33 @@ function incrementalMigration22SchemaState(PDO $pdo): string
     );
 }
 
+/** One metadata-only read shared by both contracts; never selects business rows. */
+function incrementalWorkReportMetadata(PDO $pdo): array
+{
+    StagingWorkReportSchema::verifySources();
+    $metadata = [];
+    $contracts = StagingWorkReportSchema::contracts();
+    foreach (array_keys($contracts) as $table) {
+        $metadata[$table] = [
+            'table' => incrementalQueryRows($pdo, 'SELECT TABLE_TYPE, ENGINE, TABLE_COLLATION, CREATE_OPTIONS, TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?', ['kps_internal', $table]),
+            'columns' => incrementalQueryRows($pdo, 'SELECT COLUMN_NAME, ORDINAL_POSITION, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, COLUMN_KEY, EXTRA, CHARACTER_SET_NAME, COLLATION_NAME, GENERATION_EXPRESSION, COLUMN_COMMENT FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION', ['kps_internal', $table]),
+            'indexes' => incrementalIndexes($pdo, $table),
+            'foreign_keys' => incrementalForeignKeys($pdo, $table),
+            'check_constraints' => incrementalQueryRows($pdo, "SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_TYPE = 'CHECK'", ['kps_internal', $table]),
+            'partitions' => incrementalQueryRows($pdo, 'SELECT PARTITION_NAME FROM INFORMATION_SCHEMA.PARTITIONS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND PARTITION_NAME IS NOT NULL', ['kps_internal', $table]),
+        ];
+    }
+    foreach (['organizations', 'users', 'departments', 'ai_usage_records'] as $table) {
+        $metadata['_parents'][$table] = [
+            'table' => incrementalQueryRows($pdo, 'SELECT TABLE_TYPE, ENGINE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?', ['kps_internal', $table]),
+            'columns' => incrementalColumns($pdo, $table),
+            'indexes' => incrementalIndexes($pdo, $table),
+        ];
+    }
+
+    return $metadata;
+}
+
 /**
  * @param  list<array<string, mixed>>  $entryColumns
  * @param  array<string, mixed>  $entryIndexes
@@ -1342,6 +1371,13 @@ $migration18State = incrementalMigration18SchemaState($pdo);
 $migration19State = incrementalMigration19SchemaState($pdo);
 $migration21State = incrementalMigration21SchemaState($pdo);
 $migration22State = incrementalMigration22SchemaState($pdo);
+try {
+    $workReportMetadata = incrementalWorkReportMetadata($pdo);
+    $migration23State = StagingWorkReportSchema::state(23, $workReportMetadata);
+    $migration24State = StagingWorkReportSchema::state(24, $workReportMetadata);
+} catch (Throwable) {
+    incrementalFinish(['status' => 'FAIL', 'reason' => 'work_report_schema_metadata_not_verified', 'writes_executed' => false], 1);
+}
 $migration18ParentEvidence = incrementalMigration18ParentPrerequisiteEvidence($pdo);
 $weeklyPlanCount = count($weeklyPlanIds);
 $weeklyPlanIdFingerprint = hash('sha256', implode(',', $weeklyPlanIds));
@@ -1415,6 +1451,8 @@ $state = [
     'migration_20_schema_state' => $migration20State,
     'migration_21_schema_state' => $migration21State,
     'migration_22_schema_state' => $migration22State,
+    'migration_23_schema_state' => $migration23State,
+    'migration_24_schema_state' => $migration24State,
     'parent_prerequisites_verified' => incrementalParentPrerequisitesVerified(
         $pdo,
         $migrationFile,
@@ -1532,6 +1570,8 @@ incrementalFinish([
         'migration_20_state' => $migration20State,
         'migration_21_state' => $migration21State,
         'migration_22_state' => $migration22State,
+        'migration_23_state' => $migration23State,
+        'migration_24_state' => $migration24State,
         'parent_prerequisites_verified' => $state['parent_prerequisites_verified'],
         'migration_18_parent_prerequisites' => $migration18ParentEvidence,
         'source_row_count' => $state['source_row_count'],

@@ -69,6 +69,23 @@ class StagingIncrementalMigrationPlanTest extends TestCase
         }
     }
 
+    public function test_work_report_schema_and_ledger_must_agree_without_repair_or_write_allowlist_extension(): void
+    {
+        foreach ([23, 24] as $number) {
+            $state = array_replace($this->stateForMigration22(), [
+                'applied_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, $number - 1),
+                "migration_{$number}_schema_state" => 'complete',
+            ]);
+            $this->assertContains("migration_{$number}_schema_ahead_of_ledger", StagingIncrementalMigrationPlan::releaseViolations($state));
+            $state['applied_migrations'] = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, $number);
+            foreach (['absent', 'partial', 'unknown'] as $schema) {
+                $state["migration_{$number}_schema_state"] = $schema;
+                $this->assertContains("migration_{$number}_ledger_schema_mismatch", StagingIncrementalMigrationPlan::releaseViolations($state));
+            }
+            $this->assertNotContains(StagingBootstrapPlan::EXPECTED_MIGRATIONS[$number - 1].'.php', StagingIncrementalMigrationPlan::allowedFiles());
+        }
+    }
+
     public function test_migration_16_reviewed_preflight_passes(): void
     {
         $this->assertSame([], StagingIncrementalMigrationPlan::preflightViolations(

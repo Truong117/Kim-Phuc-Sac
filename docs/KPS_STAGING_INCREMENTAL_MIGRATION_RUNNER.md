@@ -19,12 +19,29 @@ Directories, arbitrary paths, raw Artisan arguments, multiple migrations, traver
 ## Read-only modes
 
 For deployment readiness after all migrations have already been applied, use
-`-ReleaseReadiness` with migration 22. It verifies the full 22-entry ledger,
-M16–M22 physical schema and the existing identity/TLS/grants/concurrency gates.
+`-ReleaseReadiness` with migration 22. It verifies the current full 24-entry ledger,
+M16–M24 physical schema and the existing identity/TLS/grants/concurrency gates.
 It permits existing business rows, creates no Plan receipt and cannot execute DDL.
 `-Status` remains a pre-migration check and correctly fails if its target migration
 has already been applied. See [CI/CD runbook](CI_CD_RUNBOOK.md) for release ordering
 and the durable release lock.
+
+M23/M24 read-only contracts cover `work_report_analyses`,
+`work_report_analysis_units`, `work_report_analysis_revisions` and
+`work_report_regeneration_requests`, with separately pinned migration source hashes,
+exact columns/indexes/FKs and parent-key prerequisites. Ledger/schema disagreement,
+partial tables, unreadable metadata, unknown visibility or drift blocks readiness.
+This adds inspection only: neither filename is in the interactive writer allowlist.
+Any missing M23/M24 migration needs separate review and an authorized execution
+procedure; this PR does not silently extend the old runner or repair the ledger.
+
+The new metadata/SQLite unit tests are offline fixtures, not Staging database proof.
+The 01/11 readiness artifact with 22/22 migrations is historical and cannot pass the
+24-entry manifest. No real Staging DB check was run during this PR update. After
+separate authorization, an operator can use this read-only `-ReleaseReadiness`
+mode with the existing verified Staging profile and save the redacted JSON showing
+`migration_23_state`, `migration_24_state`, ledger and identity/concurrency results.
+Do not invoke `-Plan`/`-Apply` or derive a PASS from fixture output.
 
 Omitting all mode switches defaults to `-Status`:
 

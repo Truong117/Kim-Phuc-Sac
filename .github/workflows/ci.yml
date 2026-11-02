@@ -15,6 +15,25 @@ permissions:
   contents: read
 
 jobs:
+  deployment-security:
+    name: Deployment security regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: openssl
+          coverage: none
+      - name: Real TLS regression against ephemeral localhost server (no cloud access)
+        run: node --test deployment/tests/production-network.integration.mjs
+
   branch-policy:
     name: Branch policy
     if: github.event_name == 'pull_request'
