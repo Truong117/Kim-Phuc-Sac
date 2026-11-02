@@ -10,6 +10,7 @@ use App\Models\WorkReportAnalysisUnit;
 use App\Services\AI\AiGatewayException;
 use App\Services\AI\WorkReportAnalysisOutput;
 use App\Services\AI\WorkReportAnalysisProvider;
+use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\AI\WorkReportSnapshot;
 use Carbon\CarbonImmutable;
@@ -383,6 +384,39 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertSame($before, $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson());
         $this->assertNotNull($run->refresh()->result);
         $this->assertSame(0, $run->units()->where('unit_key', 'summary')->firstOrFail()->attempts);
+    }
+
+    public function test_employee_retry_replans_summary_without_dispatching_obsolete_failed_batches(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        for ($index = 0; $index < 4; $index++) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Nguồn công việc '.$index);
+        }
+        $id = $this->createRun($owner);
+        $run = WorkReportAnalysis::findOrFail($id);
+        $leaves = $run->units()->where('unit_key', 'like', 'employee:%')->get();
+        $leaves[3]->update(['status' => 'failed', 'error_code' => 'AI_OUTCOME_UNKNOWN', 'attempts' => 1]);
+        $worker = app(WorkReportAnalysisWorker::class);
+        foreach ($leaves->take(3) as $leaf) {
+            $worker->process($leaf->id);
+        }
+        $old = $run->units()->where('unit_key', 'like', 'summary:batch:%')->get();
+        $worker->process($old[0]->id);
+        $old[1]->update(['status' => 'failed', 'error_code' => 'AI_TIMEOUT', 'attempts' => 1]);
+        $worker->settle($id);
+        $this->assertSame('partial', $run->refresh()->status);
+        $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted();
+        $this->assertSame('failed', $old[1]->refresh()->status);
+        $worker->process($leaves[3]->id);
+        $active = app(WorkReportAnalysisService::class)->activeUnits($run, $run->units()->get());
+        $this->assertFalse($active->contains('id', $old[1]->id));
+        foreach ($active->where('status', 'pending') as $unit) {
+            $worker->process($unit->id);
+        }
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.status', 'completed')->assertJsonCount(0, 'data.errors');
+        $this->assertSame(1, $old[1]->refresh()->attempts);
     }
 
     public function test_valid_ids_and_quotes_are_not_a_semantic_truth_guarantee(): void

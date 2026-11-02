@@ -19,10 +19,10 @@ Summary-only regeneration creates a revision with the same frozen source, proven
 
 ## Render rollout
 
-1. Merge and deploy the reviewed image when the active analysis has finished.
-2. In the web service, clear the temporary **Docker Command** override so the image's versioned `CMD` runs. Alternatively set it to `sh /app/scripts/start-service.sh`.
-3. Set the Render service's `maxShutdownDelaySeconds` to **300** before enabling the embedded worker. The default 30-second grace period is too short for an in-flight AI call. This is a service setting, not an environment variable.
-4. Keep `WORK_REPORT_AI_QUEUE_CONNECTION=work_report_ai`. `WORK_REPORT_AI_WORKER_MODE=embedded` is the default. Save configuration and deploy once. No additional shell command, database change, or package is required.
+1. Let the active analysis finish, then merge the reviewed change. Keep automatic deployment disabled until the following configuration is ready.
+2. Before deploying, set the Render service's `maxShutdownDelaySeconds` to **300**. The default 30-second grace period is too short for an in-flight AI call. This is a service setting, not an environment variable.
+3. Clear the temporary **Docker Command** override so the image's versioned `CMD` runs. Alternatively set it to `sh /app/scripts/start-service.sh`. Keep `WORK_REPORT_AI_QUEUE_CONNECTION=work_report_ai`; `WORK_REPORT_AI_WORKER_MODE=embedded` is the default.
+4. Deploy the reviewed commit once with this configuration. No additional shell command, database change, or package is required.
 5. Verify `/up` and `/api/health`, then create one scoped analysis. Progress should advance through employee and summary batches. A large run has more than the former seven units.
 
 The supervisor runs the web server, an auto-restarting queue worker, and recovery every 60 seconds. The initial worker/recovery delay is 60 seconds to let an old unsupervised container drain during the first rollout. It forwards SIGTERM and waits for the worker's current job. Worker timeout is 270 seconds, the new unit lease is 420 seconds, and queue retry-after is 480 seconds. Recovery marks expired running units `AI_OUTCOME_UNKNOWN`, exposes explicit retry, and never automatically repeats an ambiguous provider call. Diagnostic logs include only analysis ID, unit ID and error code.

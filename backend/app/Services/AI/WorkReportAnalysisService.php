@@ -293,11 +293,18 @@ class WorkReportAnalysisService
             if (in_array($run->status, ['pending', 'running'], true) || $retryable->isEmpty()) {
                 return;
             }
+            $employees = $retryable->filter(fn ($u) => str_starts_with($u->unit_key, 'employee:'));
+            if ($employees->isNotEmpty()) {
+                // Employee results will change the summary plan. Never pay to retry an obsolete batch.
+                $retryable = $employees;
+            }
             $run->units()->whereIn('id', $retryable->pluck('id'))->where('status', 'failed')
                 ->update(['status' => 'pending', 'error_code' => null, 'lease_token' => null, 'leased_until' => null]);
             // An earlier summary must be regenerated when missing employee parts are retried.
             if ($run->units()->where('status', 'pending')->where('unit_key', '!=', 'summary')->exists()) {
-                $run->units()->where('unit_key', 'summary')->update(['status' => 'waiting', 'result' => null]);
+                $summary = $run->units()->where('unit_key', 'summary')->firstOrFail();
+                $summary->update(['status' => 'waiting', 'result' => null,
+                    'input' => $employees->isNotEmpty() ? [] : $summary->input]);
             }
             $run->update(['status' => 'pending', 'result' => null, 'completed_at' => null]);
             DB::afterCommit(fn () => $this->dispatchPending($run));
