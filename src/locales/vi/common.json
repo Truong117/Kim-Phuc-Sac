@@ -2275,6 +2275,8 @@
     "parentVersion": "Mở bản nguồn #{id}",
     "regenerate": {
       "button": "Tạo bản phân tích mới",
+      "summaryButton": "Tạo lại riêng tổng hợp",
+      "summaryPreserved": "Dùng lại các phần nhân viên đã thành công, chỉ gọi AI để tạo tổng hợp mới. Góp ý mới áp dụng cho tổng hợp. Bản nguồn và dẫn chứng được giữ nguyên.",
       "snapshot": "Kỳ {start} – {end} · {scope} · Chốt nguồn: {time} (giờ Việt Nam)",
       "department": "Phòng ban #{id} trong phạm vi đã chốt",
       "scope": "Phạm vi truy cập đã chốt của bản nguồn",

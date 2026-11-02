@@ -43,6 +43,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
     storedOperation(storageKey),
   );
   const [target, setTarget] = useState<WorkReportAnalysis | null>(null);
+  const [summaryOnly, setSummaryOnly] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +77,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
             const source = await getWorkAnalysis(operation.sourceId, signal);
             if (signal?.aborted) return;
             setTarget(source);
+            setSummaryOnly(operation.summaryOnly ?? false);
             setNotice(t("reenter"));
             openModal();
           } catch {
@@ -110,6 +112,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
       const operation = pending ?? {
         key: crypto.randomUUID(),
         sourceId: target.id,
+        summaryOnly,
       };
       // Fail before POST if recovery cannot be persisted. No feedback is stored here.
       try {
@@ -124,6 +127,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
         operation.key,
         feedback,
         controller.signal,
+        operation.summaryOnly ?? false,
       );
       if (controller.signal.aborted) return;
       forget();
@@ -155,6 +159,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
             disabled={busy || pending !== null}
             onClick={() => {
               setTarget(run);
+              setSummaryOnly(false);
               setFeedback("");
               setError(null);
               setNotice(null);
@@ -162,6 +167,22 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
             }}
           >
             {t("button")}
+          </Button>
+        )}
+        {run?.can_regenerate_summary && (
+          <Button
+            variant="outline"
+            disabled={busy || pending !== null}
+            onClick={() => {
+              setTarget(run);
+              setSummaryOnly(true);
+              setFeedback("");
+              setError(null);
+              setNotice(null);
+              openModal();
+            }}
+          >
+            {t("summaryButton")}
           </Button>
         )}
         {pending && (
@@ -198,7 +219,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
             id="regenerate-title"
             className="text-lg font-semibold text-gray-900 dark:text-white"
           >
-            {t("button")}
+            {t(summaryOnly ? "summaryButton" : "button")}
           </h2>
           {target && (
             <p>
@@ -226,7 +247,7 @@ export default function WorkAnalysisRegenerate({ run, onSelect }: Props) {
                 .join(" · ")}
             </p>
           )}
-          <p>{t("preserved")}</p>
+          <p>{t(summaryOnly ? "summaryPreserved" : "preserved")}</p>
           {target?.source_changed && (
             <p className="text-warning-700 dark:text-warning-300">
               {t("changed")}

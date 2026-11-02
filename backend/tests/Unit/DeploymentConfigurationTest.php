@@ -137,8 +137,8 @@ class DeploymentConfigurationTest extends TestCase
             $this->assertStringContainsString($extension, $dockerfile);
         }
         $this->assertStringContainsString('composer install', $dockerfile);
-        $this->assertStringContainsString('php artisan config:cache', $dockerfile);
-        $this->assertStringContainsString('exec frankenphp run', $dockerfile);
+        $this->assertStringContainsString('php artisan config:cache', $this->readBackendFile('scripts/start-service.sh'));
+        $this->assertStringContainsString('CMD ["sh", "/app/scripts/start-service.sh"]', $dockerfile);
         $this->assertStringContainsString('USER www-data', $dockerfile);
         $this->assertStringContainsString('EXPOSE 10000', $dockerfile);
 

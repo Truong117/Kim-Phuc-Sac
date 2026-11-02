@@ -68,6 +68,9 @@ export interface WorkReportAnalysis {
   errors: { unit_key: string; code: string }[];
   can_retry: boolean;
   can_regenerate: boolean;
+  can_regenerate_summary?: boolean;
+  summary_parts?: number;
+  reused_employee_units?: number;
   created_at: string;
   requested_by_name: string | null;
   revision: { number: number; root_id: number; parent_id: number | null };

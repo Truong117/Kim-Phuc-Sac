@@ -343,11 +343,46 @@ class WorkReportAnalysisTest extends TestCase
         config(['work_report_ai.max_units' => 2]);
         $this->actingAs($owner, 'web')->postJson('/api/ai/work-report-analyses', ['end_date' => '2026-11-01', 'days' => 1])->assertUnprocessable();
         $this->assertDatabaseCount('work_report_analyses', 0);
-        config(['work_report_ai.max_units' => 200, 'work_report_ai.unit_input_bytes' => 2000]);
+        config(['work_report_ai.max_units' => 200, 'work_report_ai.unit_input_bytes' => 2000,
+            'work_report_ai.summary_strategy' => 'legacy', 'work_report_ai.summary_input_bytes' => 2000]);
         $id = $this->createRun($owner);
         $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->assertJsonPath('data.status', 'partial')
             ->assertJsonPath('data.errors.0.code', 'AI_REDUCE_SCOPE')->assertJsonPath('data.work_counts.reports', 2);
         $this->assertSame(2, WorkReportAnalysisUnit::query()->where('status', 'completed')->count());
+    }
+
+    public function test_large_summary_is_batched_and_only_failed_batch_is_retried(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        for ($index = 0; $index < 3; $index++) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Cần hỗ trợ duyệt kịch bản '.$index);
+        }
+        $id = $this->createRun($owner);
+        $worker = app(WorkReportAnalysisWorker::class);
+        $run = WorkReportAnalysis::findOrFail($id);
+        foreach ($run->units()->where('unit_key', 'like', 'employee:%')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        $batches = $run->units()->where('unit_key', 'like', 'summary:batch:%')->get();
+        $this->assertCount(2, $batches);
+        $worker->process($batches[0]->id);
+        $batches[1]->update(['status' => 'running', 'attempts' => 1,
+            'lease_token' => 'interrupted', 'leased_until' => now()->subSecond()]);
+        $worker->recover();
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.status', 'partial')->assertJsonPath('data.summary_parts', 2)
+            ->assertJsonPath('data.errors.0.code', 'AI_OUTCOME_UNKNOWN')->assertJsonPath('data.can_retry', true);
+        $before = $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson();
+        $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted();
+        $worker->process($batches[1]->id);
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.status', 'completed')->assertJsonCount(0, 'data.errors');
+        $this->assertSame(1, $batches[0]->refresh()->attempts);
+        $this->assertSame(2, $batches[1]->refresh()->attempts);
+        $this->assertSame($before, $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson());
+        $this->assertNotNull($run->refresh()->result);
+        $this->assertSame(0, $run->units()->where('unit_key', 'summary')->firstOrFail()->attempts);
     }
 
     public function test_valid_ids_and_quotes_are_not_a_semantic_truth_guarantee(): void
