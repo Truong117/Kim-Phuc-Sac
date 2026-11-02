@@ -111,6 +111,35 @@ schema/ledger lệch, cột/index/FK/collation bị sửa, CHECK/partition lạ,
 lỗi, và mọi candidate direct/hotfix/feature/fork/unmerged/stale cho cả push/manual.
 Các kết quả fixture không được chép sang `production-baseline.json` hoặc schema policy.
 
+CI backend tạo `.env` rỗng ngay trong runner dùng một lần, không sao chép `.env`
+local/Production. Các biến testing và SQLite in-memory đã được force trong
+`phpunit.xml`. Điều này xử lý cảnh báo phpdotenv đọc file không tồn tại (640 cảnh
+báo trong run trước), không tắt warning hay bỏ bớt test.
+
+### Dependency audit ngày 02/11/2026: chưa đạt toàn bộ
+
+Ngoài các test guard/TLS, đã chạy `npm audit --audit-level=high`,
+`npm audit --omit=dev` và `composer audit --no-interaction` bằng registry thật.
+Kết quả audit độc lập với trạng thái xanh của các job regression:
+
+| Phạm vi | Kết quả |
+| --- | --- |
+| npm toàn bộ lockfile | Exit 1: 15 package affected (12 moderate, 3 high, 0 critical); có hiệu ứng lan truyền dependency, không phải 15 lỗi độc lập |
+| npm bỏ dev dependencies | Exit 0: 0 advisory; không suy rộng kết quả này sang backend hoặc công cụ build/dev |
+| Composer | Exit 1: 1 advisory medium của `symfony/mime` v7.4.19, [CVE-2026-45070](https://symfony.com/cve-2026-45070) |
+
+Ba package mức high do npm báo là Vite 8.2.2
+([advisory Windows launch-editor](https://github.com/advisories/GHSA-587h-7wmj-h5pm)),
+source-map-js 1.2.1 ([GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q))
+và zod 4.5.4 ([GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)).
+Minimatch 10.2.6 có advisory moderate
+([GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)), lan tới lint toolchain.
+Các phiên bản/lockfile giống staging và không được thay đổi trong PR này.
+Không chạy `audit fix` hoặc nâng gói ngầm. Cần thay đổi dependency được review,
+regression và audit lại trước khi cho phép kích hoạt Production; không coi CI xanh
+là chứng nhận audit sạch. Đây là kết quả advisory scan, chưa đánh giá khả năng
+khai thác thực tế của từng đường đi trong ứng dụng.
+
 **Giới hạn identity:** TiDB Starter dùng endpoint shared; SQL không cung cấp độc
 lập tên console/instance ID/nhãn branch để so sánh. Mapping console main → endpoint
 + account prefix phải có bằng chứng và review riêng, sau đó được ràng buộc với SQL

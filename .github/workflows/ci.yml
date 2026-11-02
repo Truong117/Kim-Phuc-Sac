@@ -151,6 +151,9 @@ jobs:
       - name: Check backend formatting
         run: vendor/bin/pint --test
 
+      - name: Prepare empty local test environment (SQLite only, no credentials)
+        run: touch .env
+
       - name: Run backend tests
         run: php artisan test
 

@@ -6,6 +6,19 @@ import yaml from "js-yaml"; // Already pinned by the repository's ESLint depende
 
 const workflow = async (name) => readFile(new URL(`../.github/workflows/${name}.yml`, import.meta.url), "utf8");
 
+test("CI backend uses forced SQLite and an empty local env, without deployment secrets", async () => {
+  const content = await workflow("ci");
+  const backend = yaml.load(content).jobs.backend;
+  assert.equal(backend.env.APP_ENV, "testing");
+  assert.equal(backend.env.DB_CONNECTION, "sqlite");
+  assert.equal(backend.env.DB_DATABASE, ":memory:");
+  assert.equal(backend.env.DB_URL, "");
+  assert.equal(backend.environment, undefined);
+  const prepare = backend.steps.findIndex((step) => step.run === "touch .env");
+  assert.ok(prepare >= 0 && prepare < backend.steps.findIndex((step) => step.run === "php artisan test"));
+  assert.doesNotMatch(content, /secrets\.PRODUCTION_/);
+});
+
 test("release workflows isolate Staging/main, require reusable CI, serialize and never cancel", async () => {
   const staging = await workflow("release");
   const production = await workflow("production-release");
