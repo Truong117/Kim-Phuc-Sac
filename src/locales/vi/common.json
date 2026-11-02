@@ -2275,6 +2275,8 @@
     "parentVersion": "Mở bản nguồn #{id}",
     "regenerate": {
       "button": "Tạo bản phân tích mới",
+      "summaryButton": "Tạo lại riêng tổng hợp",
+      "summaryPreserved": "Dùng lại các phần nhân viên đã thành công, chỉ gọi AI để tạo tổng hợp mới. Góp ý mới áp dụng cho tổng hợp. Bản nguồn và dẫn chứng được giữ nguyên.",
       "snapshot": "Kỳ {start} – {end} · {scope} · Chốt nguồn: {time} (giờ Việt Nam)",
       "department": "Phòng ban #{id} trong phạm vi đã chốt",
       "scope": "Phạm vi truy cập đã chốt của bản nguồn",
@@ -2379,7 +2381,7 @@
     "source": "Nguồn",
     "report": "Báo cáo #{id}",
     "disclaimer": "AI chỉ hỗ trợ đọc báo cáo, không chấm điểm hoặc xếp hạng nhân viên. Tham chiếu và trích đoạn hợp lệ chưa bảo đảm kết luận đúng; người quản lý cần đối chiếu nguồn trước khi quyết định. Kết quả không thay thế xác nhận nghiệm thu.",
-    "employeeHint": "Ưu tiên người có vấn đề cần hỗ trợ hoặc phần xử lý lỗi. Mọi nhân viên trong phạm vi vẫn có thể xem; không có nguồn không đồng nghĩa chưa nộp.",
+    "employeeHint": "Xem danh sách công việc và kết quả từng nhân viên trước, sau đó đối chiếu nhận xét và đề xuất AI. Không có nguồn không đồng nghĩa chưa nộp báo cáo.",
     "searchEmployees": "Tìm nhân viên hoặc phòng ban",
     "employeePartial": "Có {count} phần chưa phân tích được.",
     "noEmployees": "Không có nhân viên phù hợp.",
@@ -2403,6 +2405,24 @@
       "AI_FEATURE_DISABLED": "Tính năng đã tắt trước khi phần này được xử lý.",
       "AI_ATTEMPTS_EXHAUSTED": "Đã hết số lần thử cho phần này.",
       "AI_ANALYSIS_VERSION_UNAVAILABLE": "Không thể tái hiện đúng quy chuẩn đã lưu. Phần này chưa được chạy lại; hãy tạo lượt mới. Kết quả cũ vẫn đọc được."
+    },
+    "weeklyWork": {
+      "title": "1. Công việc đã báo cáo trong kỳ",
+      "basis": "Tổng hợp từ đầy đủ đầu việc trong báo cáo đã khóa. Nội dung giống nhau được xếp cùng nhóm; từng lần báo cáo vẫn giữ riêng ngày, kết quả và trạng thái. Không mặc định các lần lặp là một nhiệm vụ liên tục.",
+      "totals": "Tổng số lượng từ báo cáo",
+      "partialTotals": "Số tổng hiện chỉ dùng các phần AI đã đọc thành công; chưa đại diện đầy đủ cho kỳ này.",
+      "unconfirmed": "Cần xác nhận cách cộng",
+      "cumulative": "Có số lũy kế, kế hoạch hoặc số liệu có thể trùng. Chưa cộng thành tổng để tránh sai lệch.",
+      "quantitySources": "Xem số liệu và căn cứ",
+      "source": "Báo cáo #{report} · Đầu việc #{item}",
+      "result": "Kết quả đã báo cáo",
+      "note": "Ghi chú",
+      "review": "2. Nhận xét và đề xuất dựa trên công việc đã tổng hợp",
+      "status": {
+        "COMPLETED": "Nhân viên báo đã hoàn thành",
+        "IN_PROGRESS": "Đang thực hiện",
+        "BLOCKED": "Đang vướng mắc"
+      }
     }
   }
 }

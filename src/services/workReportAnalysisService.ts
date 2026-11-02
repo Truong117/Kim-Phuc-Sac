@@ -41,10 +41,11 @@ export const regenerateWorkAnalysis = (
   key: string,
   feedback: string,
   signal?: AbortSignal,
+  summaryOnly = false,
 ) =>
   apiRequest<AnalysisRegeneration>(`${root}/${id}/regenerate`, {
     method: "POST",
-    body: JSON.stringify({ idempotency_key: key, review_feedback: feedback }),
+    body: JSON.stringify({ idempotency_key: key, review_feedback: feedback, summary_only: summaryOnly }),
     signal,
   });
 export const getAnalysisRegeneration = (key: string, signal?: AbortSignal) =>

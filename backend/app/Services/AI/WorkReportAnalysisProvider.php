@@ -19,14 +19,16 @@ class WorkReportAnalysisProvider
             throw new AiGatewayException('AI_NOT_CONFIGURED', 'Unsupported provider.');
         }
         // Secret stays in process configuration, never in snapshots or serialized jobs.
-        $gateway = new OpenAiGateway([...$settings['gateway'], 'api_key' => config('work_report_ai.gateway.api_key')]);
+        $tokens = WorkReportExecutionPolicy::outputTokens($settings, str_starts_with($unit->unit_key, 'summary'));
+        $gateway = new OpenAiGateway([...$settings['gateway'], 'max_output_tokens' => $tokens,
+            'api_key' => config('work_report_ai.gateway.api_key')]);
         $response = $gateway->respond(new AiGatewayRequest(
             organizationId: (int) $run->organization_id,
             requestedByUserId: (int) $run->requested_by_user_id,
             feature: 'work_report_analysis', idempotencyKey: 'work-analysis:'.$run->id.':'.$unit->unit_key,
             instructions: WorkReportAnalysisOutput::instructions(), input: $input,
             schemaName: 'kps_work_report_analysis_v2', schema: WorkReportAnalysisOutput::schema(),
-            maxOutputTokens: (int) $settings['gateway']['max_output_tokens'],
+            maxOutputTokens: $tokens,
         ));
 
         return ['result' => $response->result, 'usage_record_id' => $response->usageRecordId,

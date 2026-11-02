@@ -24,7 +24,7 @@ import type {
 } from "@/types/workReportAnalysis";
 
 type Tab = "overview" | "employees" | "history" | "sources";
-const tabs: Tab[] = ["overview", "employees", "history", "sources"];
+const tabs: Tab[] = ["employees", "overview", "history", "sources"];
 const time = (value: string) =>
   new Intl.DateTimeFormat("vi-VN", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -35,7 +35,7 @@ const time = (value: string) =>
 export default function WorkReportInsights() {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<Tab>("employees");
   const today = dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh");
   const filters: AnalysisFilters = {
     end_date: params.get("end") ?? addDaysToDateOnly(today, -1),
@@ -59,7 +59,7 @@ export default function WorkReportInsights() {
         ? { department: String(selected.department_id) }
         : {}),
     });
-    setTab("overview");
+    setTab("employees");
   };
   const updateFilters = (patch: Partial<AnalysisFilters>) => {
     state.clear();

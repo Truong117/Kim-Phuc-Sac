@@ -252,4 +252,42 @@ class WorkReportRegenerationTest extends TestCase
         $this->expectExceptionMessage('Cannot drop persisted analysis revision history');
         $migration->down();
     }
+
+    public function test_summary_only_reuses_successful_frozen_parts_with_provenance_and_distinct_operation_mode(): void
+    {
+        $source = WorkReportAnalysis::findOrFail($this->source);
+        $source->update(['status' => 'partial', 'result' => null]);
+        $source->units()->where('unit_key', 'summary')->update(['status' => 'failed', 'error_code' => 'AI_INCOMPLETE']);
+        $before = $source->units()->get()->toJson();
+        $key = (string) Str::uuid();
+        $path = $this->root.'/'.$this->source.'/regenerate';
+        $id = $this->postJson($path, ['idempotency_key' => $key, 'summary_only' => true, 'review_feedback' => 'Chi tiết hơn'])
+            ->assertAccepted()->assertJsonPath('data.status', 'completed')->assertJsonPath('data.reused_employee_units', 1)->json('data.id');
+        $run = WorkReportAnalysis::findOrFail($id);
+        $leaf = $run->units()->where('unit_key', 'like', 'employee:%')->firstOrFail();
+        $original = $source->units()->where('unit_key', 'like', 'employee:%')->firstOrFail();
+        $this->assertSame($original->id, $leaf->input['_reused_from_unit_id']);
+        $this->assertSame($original->result, $leaf->result);
+        $this->assertSame(0, $leaf->attempts);
+        $this->assertSame($before, $source->units()->get()->toJson());
+        $this->postJson($path, ['idempotency_key' => $key, 'summary_only' => true, 'review_feedback' => 'Chi tiết hơn'])
+            ->assertAccepted()->assertJsonPath('data.id', $id);
+        $this->postJson($path, ['idempotency_key' => $key, 'review_feedback' => 'Chi tiết hơn'])->assertConflict();
+        $this->assertDatabaseCount('work_report_analyses', 2);
+        Http::assertNothingSent();
+    }
+
+    public function test_summary_only_cannot_relabel_mock_or_incomplete_employees_as_real_analysis(): void
+    {
+        config(['work_report_ai.driver' => 'openai']);
+        $path = $this->root.'/'.$this->source.'/regenerate';
+        $this->postJson($path, ['idempotency_key' => (string) Str::uuid(), 'summary_only' => true])->assertUnprocessable();
+        config(['work_report_ai.driver' => 'fake']);
+        $source = WorkReportAnalysis::findOrFail($this->source);
+        $source->update(['status' => 'partial']);
+        $source->units()->where('unit_key', 'like', 'employee:%')->update(['status' => 'failed']);
+        $this->postJson($path, ['idempotency_key' => (string) Str::uuid(), 'summary_only' => true])->assertUnprocessable();
+        $this->assertDatabaseCount('work_report_analyses', 1);
+        Http::assertNothingSent();
+    }
 }
