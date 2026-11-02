@@ -10,7 +10,7 @@ final class WorkReportSummaryBatches
         $results = [];
         $ids = [];
         $input = fn (array $values): array => ['period' => $period, 'parts' => $values,
-            'review_feedback' => $feedback, 'missing_units' => $missing];
+            'analysis_stage' => 'company_summary', 'review_feedback' => $feedback, 'missing_units' => $missing];
         $bytes = fn (array $values): int => strlen(json_encode($input($values), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         $flush = function () use (&$batches, &$results, &$ids, $input): void {
             if ($results !== []) {
@@ -20,7 +20,7 @@ final class WorkReportSummaryBatches
             }
         };
         $append = function (int $id, array $result) use (&$results, &$ids, $bytes, $flush, $perBatch, $limit): void {
-            if ($results !== [] && (count($results) >= $perBatch || $bytes([...$results, $result]) > $limit)) {
+            if ($results !== [] && (count(array_unique([...$ids, $id])) > $perBatch || $bytes([...$results, $result]) > $limit)) {
                 $flush();
             }
             if ($bytes([$result]) > $limit) {
@@ -35,10 +35,29 @@ final class WorkReportSummaryBatches
 
                 continue;
             }
-            // Partition at claim boundaries. Never truncate text or evidence.
+            $metadata = array_intersect_key($part['result'], array_flip(['employee_id', 'employee_name', 'employee_complete']));
+            if (($part['result']['work_totals'] ?? []) !== []) {
+                // Emit each subtotal once, even when this employee is split across batches.
+                $append($part['id'], [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata,
+                    'work_totals' => $part['result']['work_totals']]);
+            }
+            // Preserve source inventory before partitioning the employee's AI assessment.
+            foreach ($part['result']['work_inventory'] ?? [] as $group) {
+                $fragment = [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_inventory' => [$group]];
+                if ($bytes([$fragment]) <= $limit) {
+                    $append($part['id'], $fragment);
+
+                    continue;
+                }
+                foreach ($group['observations'] as $observation) {
+                    $fragment['work_inventory'] = [['content' => $group['content'], 'observations' => [$observation]]];
+                    $append($part['id'], $fragment);
+                }
+            }
+            // Partition at whole claim boundaries. Never truncate text or evidence.
             foreach (WorkReportAnalysisOutput::SECTIONS as $section) {
                 foreach ($part['result'][$section] as $claim) {
-                    $result = array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []);
+                    $result = [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata];
                     $result[$section][] = $claim;
                     $append($part['id'], $result);
                 }

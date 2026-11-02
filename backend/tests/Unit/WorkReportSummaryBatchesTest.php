@@ -44,6 +44,34 @@ class WorkReportSummaryBatchesTest extends TestCase
         (new WorkReportSummaryBatches)->plan([['id' => 1, 'result' => $this->fixtureResult(1)]], [], null, 0, 150, 2);
     }
 
+    public function test_oversize_employee_partition_retains_all_work_observations_and_emits_subtotals_once(): void
+    {
+        $result = $this->fixtureResult(1, 4);
+        $result['employee_id'] = 7;
+        $result['employee_name'] = 'Nhân viên';
+        $result['work_totals'] = [['metric' => 'Sản phẩm đã bán', 'unit' => 'sản phẩm', 'total' => 40, 'status' => 'confirmed']];
+        $result['work_inventory'] = [['content' => 'Bán hàng', 'observations' => array_map(fn ($id) => [
+            'report_id' => $id, 'item_id' => $id, 'date' => '2026-10-28', 'status' => 'COMPLETED',
+            'result' => 'Đã bán 10 sản phẩm', 'note' => str_repeat('a', 100),
+        ], range(1, 10))]];
+        $plans = (new WorkReportSummaryBatches)->plan([['id' => 1, 'result' => $result]], [], null, 0, 1200, 2);
+        $observations = [];
+        $totals = [];
+        foreach ($plans as $plan) {
+            $this->assertLessThanOrEqual(1200, strlen(json_encode($plan['input'], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)));
+            foreach ($plan['input']['parts'] as $fragment) {
+                array_push($totals, ...($fragment['work_totals'] ?? []));
+                foreach ($fragment['work_inventory'] ?? [] as $group) {
+                    array_push($observations, ...$group['observations']);
+                }
+            }
+        }
+        $this->assertCount(10, $observations);
+        $this->assertSame(range(1, 10), array_column($observations, 'item_id'));
+        $this->assertCount(1, $totals);
+        $this->assertSame(40, $totals[0]['total']);
+    }
+
     public function test_historical_limits_are_kept_and_worker_timeouts_leave_recovery_headroom(): void
     {
         $settings = ['gateway' => ['max_output_tokens' => 3000]];

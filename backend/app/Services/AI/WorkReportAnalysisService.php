@@ -41,13 +41,15 @@ class WorkReportAnalysisService
             ->where('department_id', $department);
         $latest = (clone $query)->latest('id')->first();
         $run = (clone $query)->whereIn('status', ['completed', 'partial'])->latest('id')->first() ?? $latest;
+        $inventories = $this->employeeInventories($snapshot);
 
         return [
             'enabled' => (bool) config('work_report_ai.enabled'),
             'mode' => config('work_report_ai.driver'), 'period' => $snapshot['period'],
             'departments' => $this->sources->departments($viewer),
             'max_days_back' => (int) config('work_report_ai.max_days_back'),
-            'work_counts' => $snapshot['work_counts'], 'employees' => $snapshot['employees'],
+            'work_counts' => $snapshot['work_counts'],
+            'employees' => array_map(fn ($e) => [...$e, 'work_inventory' => $inventories[$e['employee_id']] ?? []], $snapshot['employees']),
             'source_reports' => $this->sourcePayloads($snapshot),
             'run' => $run === null ? null : $this->payload($viewer, $this->show($viewer, (int) $run->id), $capture['source_hash']),
             'latest_attempt' => $latest !== null && $latest->id !== $run?->id
@@ -132,19 +134,22 @@ class WorkReportAnalysisService
             $this->limitError();
         }
         $groups = [];
-        // Leave room for period/employee metadata and JSON framing inside the unit limit.
-        $limit = min(24000, max(2000, (int) $settings['unit_input_bytes'])) - 512
-            - strlen(json_encode($feedback, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        // Size the exact inventory the reviewer will receive, including its metadata.
+        $limit = min(24000, max(2000, (int) $settings['unit_input_bytes']));
+        $bytes = fn (array $reports, int $id): int => strlen(json_encode([
+            'employee_id' => $id, 'period' => $snapshot['period'], 'work_inventory' => WorkReportWeeklyWork::build($reports),
+            'review_feedback' => $feedback, 'analysis_stage' => 'employee_review',
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         foreach ($snapshot['reports'] as $report) {
             foreach ($report['items'] as $item) {
                 $id = $report['employee_id'];
                 $entry = ['report_id' => $report['report_id'], 'date' => $report['date'], 'items' => [$item]];
                 $last = count($groups[$id] ?? []) - 1;
-                if ($last < 0 || strlen(json_encode([...$groups[$id][$last], $entry], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > $limit) {
+                if ($last < 0 || $bytes([...$groups[$id][$last], $entry], (int) $id) > $limit) {
                     $groups[$id][] = [];
                     $last++;
                 }
-                if (strlen(json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > $limit) {
+                if ($bytes([$entry], (int) $id) > $limit) {
                     $this->limitError();
                 }
                 $groups[$id][$last][] = $entry;
@@ -210,6 +215,7 @@ class WorkReportAnalysisService
             }
         }
         $allUnits = $run->units;
+        $inventories = $includeContent ? $this->employeeInventories($snapshot) : [];
         $units = $this->activeUnits($run, $allUnits);
         $terminal = $units->whereIn('status', ['completed', 'failed']);
         $employees = [];
@@ -218,12 +224,16 @@ class WorkReportAnalysisService
             $done = $parts->where('status', 'completed');
             $failed = $parts->where('status', 'failed');
             $result = array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []);
+            $quantities = [];
             foreach ($done as $part) {
+                array_push($quantities, ...($part->result['quantity_observations'] ?? []));
                 foreach (WorkReportAnalysisOutput::SECTIONS as $field) {
                     $result[$field] = array_merge($result[$field], $part->result[$field]);
                 }
             }
             $employees[] = [...$employee,
+                'work_inventory' => $inventories[$employee['employee_id']] ?? [],
+                'work_totals' => WorkReportWorkTotals::totals($quantities),
                 'status' => $parts->isEmpty() ? 'no_data' : ($done->count() === $parts->count() ? 'completed' : ($terminal->count() === $units->count() ? ($done->isNotEmpty() ? 'partial' : 'failed') : 'running')),
                 'completed_units' => $done->count(), 'total_units' => $parts->count(), 'failed_units' => $failed->count(),
                 'source_report_ids' => array_column(array_values(array_filter($snapshot['reports'], fn ($r) => $r['employee_id'] === $employee['employee_id'])), 'report_id'),
@@ -276,6 +286,16 @@ class WorkReportAnalysisService
             'department_name' => $r['department_name'], 'date' => $r['date'],
             'item_ids' => array_column($r['items'], 'item_id'),
         ], $snapshot['reports']);
+    }
+
+    private function employeeInventories(array $snapshot): array
+    {
+        $reports = [];
+        foreach ($snapshot['reports'] as $report) {
+            $reports[$report['employee_id']][] = $report;
+        }
+
+        return array_map(fn ($items) => WorkReportWeeklyWork::build($items), $reports);
     }
 
     public function retry(User $viewer, int $id): WorkReportAnalysis

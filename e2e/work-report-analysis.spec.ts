@@ -15,7 +15,7 @@ test("work-report analysis: create, employees, source item, shared history, relo
     )
       creates++;
   });
-  await page.goto("/ai/insights");
+  await page.goto("/ai/insights?days=1");
   await expect(
     page.getByText(
       "Nhận xét dựa trên nội dung báo cáo; chưa đối chiếu với kế hoạch tuần hoặc kết quả nghiệm thu.",
@@ -65,7 +65,9 @@ test("work-report analysis: create, employees, source item, shared history, relo
   const person = page
     .locator("details")
     .filter({ has: page.locator("summary", { hasText: "Employee A" }) });
-  await person.locator("summary").click();
+  await expect(
+    person.getByRole("heading", { name: "1. Công việc đã báo cáo trong kỳ" }),
+  ).toBeVisible();
   await expect(
     person.getByText(/Ghi nhận từ nguồn: E2E/).first(),
   ).toBeVisible();
@@ -80,7 +82,7 @@ test("work-report analysis: create, employees, source item, shared history, relo
     new RegExp(`/reports/${source.id}#work-item-${item}$`),
   );
   await expect(page.locator(`#work-item-${item}`)).toBeInViewport();
-  await page.goto("/ai/insights");
+  await page.goto("/ai/insights?days=1");
   await page
     .getByRole("tab", { name: "Lịch sử phân tích", exact: true })
     .click();
@@ -192,7 +194,7 @@ test("regenerate frozen analysis with feedback, double click, lost response reco
 }) => {
   test.setTimeout(240_000);
   await login(page, "owner");
-  await page.goto("/ai/insights");
+  await page.goto("/ai/insights?days=1");
   const history = await browserRequest(
     page,
     "/api/ai/work-report-analyses/history",

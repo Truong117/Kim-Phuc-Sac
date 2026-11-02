@@ -1,5 +1,15 @@
 # Work-report analysis: detailed output and supervised worker
 
+## Weekly report: work first, assessment second
+
+New analyses use prompt `work-report-v2.4`, schema `work-report-v2.2` and `source-inventory-v1`. Before calling AI, the server builds a complete work inventory from the authorized, redacted, locked source. Exact matching descriptions are grouped for reading while preserving each original date, result, note, status and item link. Grouping is not a claim that two days describe the same continuous task. The full inventory is available before AI completes and remains available if some AI parts fail. Historical inventories use the frozen snapshot, never today's changed reports.
+
+The employee review receives this inventory first. AI extracts quantitative observations with verbatim evidence and distinguishes incremental results, cumulative figures and unclear figures. The server validates quoted numbers and performs addition itself. For example, sales of 10 and 30 products produce 40 products; 2 images/1 video and 3 images/2 videos produce 5 images and 3 videos. Different metrics and units remain separate. Cumulative, repeated, planned, ambiguously associated quantities or duplicate claims that cannot safely be added show **Cần xác nhận cách cộng**, not an invented total. Numbers still require a human check of their business meaning; structural provenance and correct arithmetic do not certify the model's interpretation. A total from incomplete AI parts is explicitly marked partial.
+
+The company summary receives each successful employee's inventory, calculated subtotals and assessment. Large inputs preserve inventory observations when partitioned, and emit each subtotal only once. This work-first pipeline adds no separate paid synthesis call. The employee tab opens first and presents the work list/quantities before AI comments and proposals. No-source employees receive no invented activity or total. Source counts remain separate from productivity judgments.
+
+Old `v2.3` results remain readable but require a new full revision for the new workflow. They cannot be relabeled or reused as if generated under the new contract. Summary-only regeneration remains available for compatible completed `v2.4` employee parts. No database migration is needed.
+
 This change needs no migration and does not rewrite stored analyses. Keep automatic deployment disabled while an analysis is running. New runs capture the new settings; retrying an old run retains its original limits. To use new limits with successful old employee results, use **Tạo lại riêng tổng hợp**.
 
 ## Output and summaries

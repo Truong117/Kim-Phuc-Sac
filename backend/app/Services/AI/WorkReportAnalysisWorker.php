@@ -5,6 +5,7 @@ namespace App\Services\AI;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
 use App\Models\WorkReportAnalysisUnit;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -52,7 +53,8 @@ class WorkReportAnalysisWorker
                 if ($parts->isEmpty()) {
                     throw new AiGatewayException('AI_NO_VALID_PARTS', 'No valid employee parts.');
                 }
-                $input = ['period' => $run->snapshot['period'], 'parts' => $parts->pluck('result')->all(),
+                $input = ['period' => $run->snapshot['period'], 'parts' => array_column($this->summaryParts($run, $parts), 'result'),
+                    'analysis_stage' => 'company_summary',
                     'review_feedback' => $run->revisionRecord?->review_feedback,
                     'missing_units' => $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->count()];
                 // Summary uses only successful parts and their verbatim evidence, not failed source data.
@@ -73,6 +75,9 @@ class WorkReportAnalysisWorker
                 unset($input['_source_unit_ids']);
             } else {
                 $allowed = $input['reports'];
+                $input['work_inventory'] = WorkReportWeeklyWork::build($allowed);
+                $input['analysis_stage'] = 'employee_review';
+                unset($input['reports']);
                 unset($input['_reused_from_unit_id']);
             }
             $summaryUnit = str_starts_with($unit->unit_key, 'summary');
@@ -85,6 +90,9 @@ class WorkReportAnalysisWorker
             WorkReportAnalysis::query()->whereKey($run->id)->whereIn('status', ['pending', 'running'])->update(['status' => 'running']);
             $response = $this->provider->analyze($run, $unit, $input);
             WorkReportAnalysisOutput::validate($response['result'], $allowed);
+            $quantities = $summaryUnit ? [] : WorkReportWorkTotals::normalize($response['result']['quantity_observations'] ?? [], $allowed);
+            $response['result']['quantity_observations'] = $quantities;
+            $response['result']['work_totals'] = WorkReportWorkTotals::totals($quantities);
             // A fenced lease prevents a response from an interrupted worker overwriting its replacement.
             DB::transaction(function () use ($unit, $token, $response): void {
                 $locked = WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')
@@ -139,6 +147,33 @@ class WorkReportAnalysisWorker
         });
     }
 
+    private function summaryParts(WorkReportAnalysis $run, Collection $parts): array
+    {
+        $people = array_column($run->snapshot['employees'], 'name', 'employee_id');
+        $quantities = [];
+        foreach ($parts as $part) {
+            $id = $part->input['employee_id'];
+            $quantities[$id] = [...($quantities[$id] ?? []), ...($part->result['quantity_observations'] ?? [])];
+        }
+        $failed = $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->get()
+            ->map(fn ($u) => $u->input['employee_id'])->all();
+        $seen = [];
+
+        return $parts->map(function ($unit) use ($people, $quantities, $failed, &$seen): array {
+            $id = $unit->input['employee_id'];
+            $totals = isset($seen[$id]) ? [] : WorkReportWorkTotals::totals($quantities[$id]);
+            $seen[$id] = true;
+
+            return ['id' => (int) $unit->id, 'result' => [
+                ...array_intersect_key($unit->result, array_flip(WorkReportAnalysisOutput::SECTIONS)),
+                'employee_id' => $id, 'employee_name' => $people[$id] ?? null,
+                'employee_complete' => ! in_array($id, $failed, true),
+                'work_inventory' => WorkReportWeeklyWork::build($unit->input['reports']),
+                'work_totals' => array_map(fn ($t) => array_diff_key($t, ['entries' => true]), $totals),
+            ]];
+        })->values()->all();
+    }
+
     public function settle(int $runId): void
     {
         DB::transaction(function () use ($runId): void {
@@ -153,7 +188,7 @@ class WorkReportAnalysisWorker
                 if (($run->analysis_config['summary_strategy'] ?? null) === 'batched-v1') {
                     try {
                         $plans = (new WorkReportSummaryBatches)->plan(
-                            $leaves->where('status', 'completed')->map(fn ($u) => ['id' => (int) $u->id, 'result' => $u->result])->values()->all(),
+                            $this->summaryParts($run, $leaves->where('status', 'completed')),
                             $run->snapshot['period'], $run->revisionRecord?->review_feedback,
                             $leaves->where('status', 'failed')->count(),
                             WorkReportExecutionPolicy::summaryInputLimit($run->analysis_config),
