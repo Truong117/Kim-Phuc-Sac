@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Services\AI\WorkReportAnalysisWorker;
+use App\Services\AI\WorkReportExecutionPolicy;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 
@@ -12,7 +13,7 @@ class GenerateWorkReportAnalysis implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 150;
+    public int $timeout = WorkReportExecutionPolicy::JOB_TIMEOUT;
 
     public bool $failOnTimeout = true;
 

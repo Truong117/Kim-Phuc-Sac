@@ -56,3 +56,16 @@ test("recovery accepts only a valid operation pointer and discards any extra con
     null,
   );
 });
+
+test("recovery retains summary-only intent without restoring feedback", () => {
+  const key = "12345678-1234-4234-8234-123456789012";
+  const pointer = { key, sourceId: 3, summaryOnly: true };
+  assert.deepEqual(
+    readPendingRegeneration({ getItem: () => JSON.stringify({ ...pointer, feedback: "private" }) }, "operation"),
+    pointer,
+  );
+  assert.equal(
+    readPendingRegeneration({ getItem: () => JSON.stringify({ ...pointer, summaryOnly: "true" }) }, "operation"),
+    null,
+  );
+});

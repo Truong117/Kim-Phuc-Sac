@@ -5,7 +5,9 @@ namespace App\Services\AI;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
 use App\Models\WorkReportAnalysisUnit;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -29,7 +31,8 @@ class WorkReportAnalysisWorker
         }
         $token = (string) Str::uuid();
         $claimed = WorkReportAnalysisUnit::query()->whereKey($unitId)->where('status', 'pending')->update([
-            'status' => 'running', 'lease_token' => $token, 'leased_until' => now()->addSeconds(300),
+            'status' => 'running', 'lease_token' => $token,
+            'leased_until' => now()->addSeconds($run->analysis_config['lease_seconds'] ?? 300),
             'attempts' => DB::raw('attempts + 1'),
         ]);
         if ($claimed !== 1) {
@@ -46,13 +49,14 @@ class WorkReportAnalysisWorker
             WorkReportAnalysisOutput::assertExecutable($run->analysis_config);
             $input = $unit->input;
             if ($unit->unit_key === 'summary') {
-                $parts = $run->units()->where('unit_key', '!=', 'summary')->where('status', 'completed')->get();
+                $parts = $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'completed')->get();
                 if ($parts->isEmpty()) {
                     throw new AiGatewayException('AI_NO_VALID_PARTS', 'No valid employee parts.');
                 }
-                $input = ['period' => $run->snapshot['period'], 'parts' => $parts->pluck('result')->all(),
+                $input = ['period' => $run->snapshot['period'], 'parts' => array_column($this->summaryParts($run, $parts), 'result'),
+                    'analysis_stage' => 'company_summary',
                     'review_feedback' => $run->revisionRecord?->review_feedback,
-                    'missing_units' => $run->units()->where('unit_key', '!=', 'summary')->where('status', 'failed')->count()];
+                    'missing_units' => $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->count()];
                 // Summary uses only successful parts and their verbatim evidence, not failed source data.
                 $allowed = [];
                 foreach ($parts as $part) {
@@ -61,16 +65,34 @@ class WorkReportAnalysisWorker
                     }
                 }
                 $unit->update(['input' => $input]);
+            } elseif (str_starts_with($unit->unit_key, 'summary:batch:')) {
+                $allowed = [];
+                $parts = $run->units()->where('unit_key', 'like', 'employee:%')
+                    ->where('status', 'completed')->whereIn('id', $input['_source_unit_ids'])->get();
+                foreach ($parts as $part) {
+                    array_push($allowed, ...$part->input['reports']);
+                }
+                unset($input['_source_unit_ids']);
             } else {
                 $allowed = $input['reports'];
+                $input['work_inventory'] = WorkReportWeeklyWork::build($allowed);
+                $input['analysis_stage'] = 'employee_review';
+                unset($input['reports']);
+                unset($input['_reused_from_unit_id']);
             }
-            if (strlen(json_encode($input, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > (int) $run->analysis_config['unit_input_bytes']) {
+            $summaryUnit = str_starts_with($unit->unit_key, 'summary');
+            $limit = $summaryUnit ? WorkReportExecutionPolicy::summaryInputLimit($run->analysis_config)
+                : (int) $run->analysis_config['unit_input_bytes'];
+            if (strlen(json_encode($input, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > $limit) {
                 throw new AiGatewayException('AI_REDUCE_SCOPE', 'Summary exceeds operational limit; reduce scope.');
             }
-            $this->reserveBudget($run);
+            $this->reserveBudget($run, $summaryUnit);
             WorkReportAnalysis::query()->whereKey($run->id)->whereIn('status', ['pending', 'running'])->update(['status' => 'running']);
             $response = $this->provider->analyze($run, $unit, $input);
             WorkReportAnalysisOutput::validate($response['result'], $allowed);
+            $quantities = $summaryUnit ? [] : WorkReportWorkTotals::normalize($response['result']['quantity_observations'] ?? [], $allowed);
+            $response['result']['quantity_observations'] = $quantities;
+            $response['result']['work_totals'] = WorkReportWorkTotals::totals($quantities);
             // A fenced lease prevents a response from an interrupted worker overwriting its replacement.
             DB::transaction(function () use ($unit, $token, $response): void {
                 $locked = WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')
@@ -95,11 +117,12 @@ class WorkReportAnalysisWorker
             WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')->where('lease_token', $token)
                 ->update(['status' => 'failed', 'error_code' => $code, 'leased_until' => null]);
             // No report/provider payload or exception message enters application logs.
+            Log::warning('Work report AI unit failed', ['analysis_id' => $run->id, 'unit_id' => $unit->id, 'error_code' => $code]);
         }
         $this->settle((int) $run->id);
     }
 
-    private function reserveBudget(WorkReportAnalysis $run): void
+    private function reserveBudget(WorkReportAnalysis $run, bool $summary): void
     {
         $config = $run->analysis_config;
         if ($config['driver'] === 'fake') {
@@ -113,7 +136,7 @@ class WorkReportAnalysisWorker
             throw new AiGatewayException('AI_NOT_CONFIGURED', 'Feature Gateway configuration is incomplete.');
         }
         $reserve = (int) ceil(($settings['max_input_tokens'] * $settings['input_usd_per_million_tokens']
-            + $settings['max_output_tokens'] * $settings['output_usd_per_million_tokens']) * $settings['max_attempts']);
+            + WorkReportExecutionPolicy::outputTokens($config, $summary) * $settings['output_usd_per_million_tokens']) * $settings['max_attempts']);
         DB::transaction(function () use ($run, $config, $reserve): void {
             $locked = WorkReportAnalysis::query()->lockForUpdate()->findOrFail($run->id);
             if ($reserve < 1 || $locked->reserved_cost_microusd + $reserve > (int) round($config['max_run_budget_usd'] * 1_000_000)) {
@@ -124,25 +147,99 @@ class WorkReportAnalysisWorker
         });
     }
 
+    private function summaryParts(WorkReportAnalysis $run, Collection $parts): array
+    {
+        $people = array_column($run->snapshot['employees'], 'name', 'employee_id');
+        $quantities = [];
+        foreach ($parts as $part) {
+            $id = $part->input['employee_id'];
+            $quantities[$id] = [...($quantities[$id] ?? []), ...($part->result['quantity_observations'] ?? [])];
+        }
+        $failed = $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->get()
+            ->map(fn ($u) => $u->input['employee_id'])->all();
+        $seen = [];
+
+        return $parts->map(function ($unit) use ($people, $quantities, $failed, &$seen): array {
+            $id = $unit->input['employee_id'];
+            $totals = isset($seen[$id]) ? [] : WorkReportWorkTotals::totals($quantities[$id]);
+            $seen[$id] = true;
+
+            return ['id' => (int) $unit->id, 'result' => [
+                ...array_intersect_key($unit->result, array_flip(WorkReportAnalysisOutput::SECTIONS)),
+                'employee_id' => $id, 'employee_name' => $people[$id] ?? null,
+                'employee_complete' => ! in_array($id, $failed, true),
+                'work_inventory' => WorkReportWeeklyWork::build($unit->input['reports']),
+                'work_totals' => array_map(fn ($t) => array_diff_key($t, ['entries' => true]), $totals),
+            ]];
+        })->values()->all();
+    }
+
     public function settle(int $runId): void
     {
         DB::transaction(function () use ($runId): void {
             $run = WorkReportAnalysis::query()->lockForUpdate()->findOrFail($runId);
             $units = $run->units()->get();
-            $leaves = $units->where('unit_key', '!=', 'summary');
+            $leaves = $units->filter(fn ($u) => str_starts_with($u->unit_key, 'employee:'));
             if ($leaves->contains(fn ($u) => in_array($u->status, ['pending', 'running'], true))) {
                 return;
             }
             $summary = $units->firstWhere('unit_key', 'summary');
             if ($summary->status === 'waiting') {
-                $summary->update(['status' => 'pending']);
-                DB::afterCommit(fn () => $this->analyses->dispatchPending($run));
+                if (($run->analysis_config['summary_strategy'] ?? null) === 'batched-v1') {
+                    try {
+                        $plans = (new WorkReportSummaryBatches)->plan(
+                            $this->summaryParts($run, $leaves->where('status', 'completed')),
+                            $run->snapshot['period'], $run->revisionRecord?->review_feedback,
+                            $leaves->where('status', 'failed')->count(),
+                            WorkReportExecutionPolicy::summaryInputLimit($run->analysis_config),
+                            max(1, (int) $run->analysis_config['summary_parts_per_batch']),
+                        );
+                        if (count($plans) > (int) $run->analysis_config['max_units']) {
+                            throw new AiGatewayException('AI_REDUCE_SCOPE', 'Too many summary batches.');
+                        }
+                        if (count($plans) > 1) {
+                            $hash = substr(WorkReportSnapshot::hash($plans), 0, 16);
+                            $ids = [];
+                            foreach ($plans as $index => $plan) {
+                                $batch = $run->units()->createOrFirst(['unit_key' => 'summary:batch:'.$hash.':'.$index],
+                                    ['input' => [...$plan['input'], '_source_unit_ids' => $plan['source_unit_ids']]]);
+                                $ids[] = $batch->id;
+                            }
+                            $summary->update(['input' => ['_batch_ids' => $ids], 'result' => null]);
+                            DB::afterCommit(fn () => $this->analyses->dispatchPending($run));
 
-                return;
+                            // Reuse successful batches; only failed batches consume another provider call.
+                            $batches = $run->units()->whereIn('id', $ids)->get();
+                            if ($batches->contains(fn ($u) => in_array($u->status, ['pending', 'running'], true))) {
+                                return;
+                            }
+                            $done = $batches->where('status', 'completed');
+                            $summary->update(['status' => $done->isEmpty() ? 'failed' : 'completed',
+                                'result' => $done->isEmpty() ? null : (new WorkReportSummaryBatches)->merge($done->pluck('result')->all()),
+                                'error_code' => $done->isEmpty() ? 'AI_NO_VALID_PARTS' : null,
+                                'input_tokens' => 0, 'output_tokens' => 0, 'cost_microusd' => 0]);
+                            $units = $run->units()->get();
+                        } else {
+                            $summary->update(['status' => 'pending', 'input' => [], 'result' => null]);
+                            DB::afterCommit(fn () => $this->analyses->dispatchPending($run));
+
+                            return;
+                        }
+                    } catch (AiGatewayException $exception) {
+                        $summary->update(['status' => 'failed', 'error_code' => $exception->errorCode]);
+                        $units = $run->units()->get();
+                    }
+                } else {
+                    $summary->update(['status' => 'pending']);
+                    DB::afterCommit(fn () => $this->analyses->dispatchPending($run));
+
+                    return;
+                }
             }
             if (in_array($summary->status, ['pending', 'running'], true)) {
                 return;
             }
+            $units = $this->analyses->activeUnits($run, $units);
             $completed = $units->where('status', 'completed')->count();
             $run->update([
                 'status' => $completed === $units->count() ? 'completed' : ($completed > 0 ? 'partial' : 'failed'),

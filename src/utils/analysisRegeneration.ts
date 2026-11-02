@@ -1,6 +1,7 @@
 export interface PendingRegeneration {
   key: string;
   sourceId: number;
+  summaryOnly?: boolean;
 }
 
 // Only an operation pointer is retained. Feedback and report content never enter browser storage.
@@ -11,14 +12,15 @@ export function readPendingRegeneration(
   try {
     const value: unknown = JSON.parse(storage.getItem(name) ?? "null");
     if (typeof value !== "object" || value === null) return null;
-    const { key, sourceId } = value as Partial<PendingRegeneration>;
+    const { key, sourceId, summaryOnly } = value as Partial<PendingRegeneration>;
     return typeof key === "string" &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         key,
       ) &&
       Number.isSafeInteger(sourceId) &&
-      sourceId! > 0
-      ? { key, sourceId: sourceId! }
+      sourceId! > 0 &&
+      (summaryOnly === undefined || typeof summaryOnly === "boolean")
+      ? { key, sourceId: sourceId!, ...(summaryOnly === undefined ? {} : { summaryOnly }) }
       : null;
   } catch {
     return null;

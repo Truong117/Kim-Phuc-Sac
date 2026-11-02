@@ -162,7 +162,7 @@ final class WorkReportAcceptanceFixture
                 $run = $service->request($viewer, $end, $case['days'], $department);
                 $payload = $service->payload($viewer, $run);
                 if ($run->status !== 'completed' || $payload['work_counts']['reports'] !== $case['reports'] || $payload['work_counts']['items'] !== $case['items']
-                    || $run->units()->count() !== $case['units']) {
+                    || $run->units()->where('unit_key', 'like', 'employee:%')->count() !== $case['units'] - 1) {
                     throw new LogicException('FIXTURE_FAKE_MATRIX_MISMATCH');
                 }
                 foreach ($case['no_source_accounts'] as $key) {
@@ -171,7 +171,11 @@ final class WorkReportAcceptanceFixture
                         throw new LogicException('FIXTURE_NO_SOURCE_STATUS_MISMATCH');
                     }
                 }
-                $results[] = [...$case, 'analysis_id' => $run->id, 'status' => $run->status, 'is_mock' => $payload['is_mock']];
+                // The source matrix stays stable for existing signed ownership manifests.
+                // Actual provider calls/storage now include independently generated summary batches.
+                $results[] = [...$case, 'units' => (int) $run->units()->sum('attempts'),
+                    'stored_units' => $run->units()->count(), 'analysis_id' => $run->id,
+                    'status' => $run->status, 'is_mock' => $payload['is_mock']];
             }
         } finally {
             config($saved);

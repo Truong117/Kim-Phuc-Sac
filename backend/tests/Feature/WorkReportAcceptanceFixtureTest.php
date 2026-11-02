@@ -139,16 +139,24 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         $config = config('work_report_ai');
         $review = $this->fixture->fakeReview($this->batch, $this->end, $this->store, $preview['fingerprint']);
         $this->assertCount(9, $review['matrix']);
-        $this->assertSame(33, $review['provider_units']);
+        $expectedCalls = 0;
+        $expectedStored = 0;
+        foreach ($preview['plan']['matrix'] as $case) {
+            $employees = $case['units'] - 1;
+            $summaries = max(1, (int) ceil($employees / 2));
+            $expectedCalls += $employees + $summaries;
+            $expectedStored += $employees + $summaries + ($summaries > 1 ? 1 : 0);
+        }
+        $this->assertSame($expectedCalls, $review['provider_units']);
         $this->assertFalse($review['model_quality_certified']);
         $this->assertSame(0, $review['paid_http_calls']);
         $this->assertSame($config, config('work_report_ai'));
         $this->assertDatabaseCount('work_report_analyses', 9);
-        $this->assertDatabaseCount('work_report_analysis_units', 33);
+        $this->assertDatabaseCount('work_report_analysis_units', $expectedStored);
         foreach (WorkReportAnalysis::all() as $run) {
             $this->assertSame('fake', $run->analysis_config['driver']);
             foreach ($run->units as $unit) {
-                $this->assertSame(1, $unit->attempts);
+                $this->assertSame($unit->unit_key === 'summary' && isset($unit->input['_batch_ids']) ? 0 : 1, $unit->attempts);
             }
         }
         $this->fixture->fakeReview($this->batch, $this->end, $this->store, $preview['fingerprint']);

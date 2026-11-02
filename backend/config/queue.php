@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\AI\WorkReportExecutionPolicy;
+
 return [
 
     /*
@@ -36,7 +38,7 @@ return [
             'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => 'jobs',
             'queue' => 'ai-work-reports',
-            'retry_after' => 240,
+            'retry_after' => WorkReportExecutionPolicy::QUEUE_RETRY_AFTER,
             'after_commit' => true,
         ],
 

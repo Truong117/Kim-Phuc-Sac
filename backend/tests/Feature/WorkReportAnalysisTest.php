@@ -10,6 +10,7 @@ use App\Models\WorkReportAnalysisUnit;
 use App\Services\AI\AiGatewayException;
 use App\Services\AI\WorkReportAnalysisOutput;
 use App\Services\AI\WorkReportAnalysisProvider;
+use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\AI\WorkReportSnapshot;
 use Carbon\CarbonImmutable;
@@ -343,11 +344,155 @@ class WorkReportAnalysisTest extends TestCase
         config(['work_report_ai.max_units' => 2]);
         $this->actingAs($owner, 'web')->postJson('/api/ai/work-report-analyses', ['end_date' => '2026-11-01', 'days' => 1])->assertUnprocessable();
         $this->assertDatabaseCount('work_report_analyses', 0);
-        config(['work_report_ai.max_units' => 200, 'work_report_ai.unit_input_bytes' => 2000]);
+        config(['work_report_ai.max_units' => 200, 'work_report_ai.unit_input_bytes' => 2000,
+            'work_report_ai.summary_strategy' => 'legacy', 'work_report_ai.summary_input_bytes' => 2000]);
         $id = $this->createRun($owner);
         $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->assertJsonPath('data.status', 'partial')
             ->assertJsonPath('data.errors.0.code', 'AI_REDUCE_SCOPE')->assertJsonPath('data.work_counts.reports', 2);
         $this->assertSame(2, WorkReportAnalysisUnit::query()->where('status', 'completed')->count());
+    }
+
+    public function test_large_summary_is_batched_and_only_failed_batch_is_retried(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        for ($index = 0; $index < 3; $index++) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Cần hỗ trợ duyệt kịch bản '.$index);
+        }
+        $id = $this->createRun($owner);
+        $worker = app(WorkReportAnalysisWorker::class);
+        $run = WorkReportAnalysis::findOrFail($id);
+        foreach ($run->units()->where('unit_key', 'like', 'employee:%')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        $batches = $run->units()->where('unit_key', 'like', 'summary:batch:%')->get();
+        $this->assertCount(2, $batches);
+        $worker->process($batches[0]->id);
+        $batches[1]->update(['status' => 'running', 'attempts' => 1,
+            'lease_token' => 'interrupted', 'leased_until' => now()->subSecond()]);
+        $worker->recover();
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.status', 'partial')->assertJsonPath('data.summary_parts', 2)
+            ->assertJsonPath('data.errors.0.code', 'AI_OUTCOME_UNKNOWN')->assertJsonPath('data.can_retry', true);
+        $before = $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson();
+        $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted();
+        $worker->process($batches[1]->id);
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.status', 'completed')->assertJsonCount(0, 'data.errors');
+        $this->assertSame(1, $batches[0]->refresh()->attempts);
+        $this->assertSame(2, $batches[1]->refresh()->attempts);
+        $this->assertSame($before, $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson());
+        $this->assertNotNull($run->refresh()->result);
+        $this->assertSame(0, $run->units()->where('unit_key', 'summary')->firstOrFail()->attempts);
+    }
+
+    public function test_employee_retry_replans_summary_without_dispatching_obsolete_failed_batches(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        for ($index = 0; $index < 4; $index++) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Nguồn công việc '.$index);
+        }
+        $id = $this->createRun($owner);
+        $run = WorkReportAnalysis::findOrFail($id);
+        $leaves = $run->units()->where('unit_key', 'like', 'employee:%')->get();
+        $leaves[3]->update(['status' => 'failed', 'error_code' => 'AI_OUTCOME_UNKNOWN', 'attempts' => 1]);
+        $worker = app(WorkReportAnalysisWorker::class);
+        foreach ($leaves->take(3) as $leaf) {
+            $worker->process($leaf->id);
+        }
+        $old = $run->units()->where('unit_key', 'like', 'summary:batch:%')->get();
+        $worker->process($old[0]->id);
+        $old[1]->update(['status' => 'failed', 'error_code' => 'AI_TIMEOUT', 'attempts' => 1]);
+        $worker->settle($id);
+        $this->assertSame('partial', $run->refresh()->status);
+        $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted();
+        $this->assertSame('failed', $old[1]->refresh()->status);
+        $worker->process($leaves[3]->id);
+        $active = app(WorkReportAnalysisService::class)->activeUnits($run, $run->units()->get());
+        $this->assertFalse($active->contains('id', $old[1]->id));
+        foreach ($active->where('status', 'pending') as $unit) {
+            $worker->process($unit->id);
+        }
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.status', 'completed')->assertJsonCount(0, 'data.errors');
+        $this->assertSame(1, $old[1]->refresh()->attempts);
+    }
+
+    public function test_inventory_is_readable_before_ai_and_frozen_history_keeps_every_source_item(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        $person = $this->member('OFFICE_STAFF');
+        $one = $this->report($person, date: '2026-10-26', content: 'Bán hàng');
+        $two = $this->report($person, date: '2026-10-28', content: 'Bán hàng');
+        DB::table('daily_report_items')->where('daily_report_id', $one)->update(['result' => 'Bán 10 sản phẩm', 'status' => 'COMPLETED']);
+        DB::table('daily_report_items')->where('daily_report_id', $two)->update(['result' => 'Bán 30 sản phẩm', 'status' => 'IN_PROGRESS']);
+        $preview = $this->actingAs($owner, 'web')->getJson('/api/ai/work-report-analyses/preview?end_date=2026-11-01&days=7')->assertOk()->json('data.employees');
+        $this->assertSame('Bán 10 sản phẩm', collect($preview)->firstWhere('employee_id', $person->id)['work_inventory'][0]['observations'][0]['result']);
+        $id = $this->createRun($owner, 7);
+        DB::table('daily_report_items')->where('daily_report_id', $one)->update(['result' => 'Đã thay đổi sau chốt nguồn']);
+        config(['work_report_ai.enabled' => false]);
+        $payload = $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->json('data');
+        $employee = collect($payload['employees'])->firstWhere('employee_id', $person->id);
+        $this->assertCount(1, $employee['work_inventory']);
+        $this->assertSame(['Bán 10 sản phẩm', 'Bán 30 sản phẩm'], array_column($employee['work_inventory'][0]['observations'], 'result'));
+        $this->assertSame(['COMPLETED', 'IN_PROGRESS'], array_column($employee['work_inventory'][0]['observations'], 'status'));
+        Http::assertNothingSent();
+    }
+
+    public function test_ai_reviews_inventory_then_company_receives_employee_inventory_and_calculated_totals(): void
+    {
+        $owner = $this->member('OWNER');
+        $sales = $this->member('OFFICE_STAFF');
+        $editor = $this->member('OFFICE_STAFF');
+        foreach ([[$sales, '2026-10-26', '10 sản phẩm'], [$sales, '2026-10-28', '30 sản phẩm'],
+            [$editor, '2026-10-26', '2 ảnh, 1 video'], [$editor, '2026-10-29', '3 ảnh, 2 video']] as [$person, $date, $result]) {
+            $id = $this->report($person, date: $date, content: $person->id === $sales->id ? 'Bán hàng' : 'Edit ảnh và video');
+            DB::table('daily_report_items')->where('daily_report_id', $id)->update(['result' => $result, 'status' => 'COMPLETED']);
+        }
+        config(['work_report_ai.driver' => 'openai', 'work_report_ai.gateway.api_key' => 'test-only-fake-key',
+            'work_report_ai.gateway.monthly_budget_usd' => 5, 'work_report_ai.gateway.input_usd_per_million_tokens' => 0.2,
+            'work_report_ai.gateway.output_usd_per_million_tokens' => 0.8]);
+        Http::fake(['api.openai.com/v1/responses' => function ($request) {
+            $input = json_decode($request['input'][0]['content'][0]['text'], true, flags: JSON_THROW_ON_ERROR);
+            $result = WorkReportAnalysisOutput::fake($input);
+            if ($input['analysis_stage'] === 'employee_review') {
+                $this->assertArrayNotHasKey('reports', $input);
+                $this->assertNotEmpty($input['work_inventory']);
+                foreach ($input['work_inventory'] as $group) {
+                    foreach ($group['observations'] as $observation) {
+                        preg_match_all('/(\d+) (sản phẩm|ảnh|video)/u', $observation['result'], $matches, PREG_SET_ORDER);
+                        foreach ($matches as $match) {
+                            $result['quantity_observations'][] = [
+                                'metric' => match ($match[2]) {
+                                    'sản phẩm' => 'Sản phẩm đã bán', 'ảnh' => 'Ảnh đã chỉnh sửa', default => 'Video đã dựng'
+                                },
+                                'unit' => $match[2], 'quantity' => (int) $match[1], 'basis' => 'incremental',
+                                'report_id' => $observation['report_id'], 'item_id' => $observation['item_id'], 'quote' => $observation['result'],
+                            ];
+                        }
+                    }
+                }
+            } else {
+                $this->assertCount(2, $input['parts']);
+                foreach ($input['parts'] as $part) {
+                    $this->assertNotEmpty($part['work_inventory']);
+                    $this->assertNotEmpty($part['work_totals']);
+                }
+            }
+
+            return Http::response(['status' => 'completed', 'usage' => ['input_tokens' => 100, 'output_tokens' => 100],
+                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]]]]]);
+        }]);
+        $id = $this->createRun($owner, 7);
+        $payload = $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->assertJsonPath('data.status', 'completed')->json('data');
+        $employees = collect($payload['employees']);
+        $this->assertEquals(40, $employees->firstWhere('employee_id', $sales->id)['work_totals'][0]['total']);
+        $totals = array_column($employees->firstWhere('employee_id', $editor->id)['work_totals'], 'total', 'metric');
+        $this->assertEquals(5, $totals['Ảnh đã chỉnh sửa']);
+        $this->assertEquals(3, $totals['Video đã dựng']);
+        Http::assertSentCount(3); // No extra paid synthesis call: inventory is prepared before each employee review.
     }
 
     public function test_valid_ids_and_quotes_are_not_a_semantic_truth_guarantee(): void

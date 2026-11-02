@@ -15,7 +15,7 @@ class WorkReportRegenerationService
 {
     public function __construct(private readonly WorkReportAnalysisService $analyses, private readonly WorkReportSnapshot $sources) {}
 
-    public function create(User $viewer, int $sourceId, string $key, ?string $feedback): array
+    public function create(User $viewer, int $sourceId, string $key, ?string $feedback, bool $summaryOnly = false): array
     {
         // Validate even for non-HTTP callers. Hash raw feedback only for replay conflicts; never persist its text.
         if (! Str::isUuid($key) || mb_strlen($feedback ?? '') > 1000) {
@@ -23,9 +23,13 @@ class WorkReportRegenerationService
         }
         $key = strtolower($key);
         $source = $this->analyses->show($viewer, $sourceId);
-        $requestHash = WorkReportSnapshot::hash([$sourceId, $feedback ?? '']);
+        $identity = [$sourceId, $feedback ?? ''];
+        if ($summaryOnly) {
+            $identity[] = 'summary-only';
+        }
+        $requestHash = WorkReportSnapshot::hash($identity);
 
-        $operation = DB::transaction(function () use ($viewer, $source, $key, $feedback, $requestHash) {
+        $operation = DB::transaction(function () use ($viewer, $source, $key, $feedback, $requestHash, $summaryOnly) {
             // Serialize the short allocation transaction across all requesters in this organization.
             // Providers run after commit. The unique operation key also protects replay across processes.
             DB::table('organizations')->where('id', $source->organization_id)->lockForUpdate()->firstOrFail();
@@ -45,8 +49,29 @@ class WorkReportRegenerationService
             }
             $settings = $this->analyses->settings();
             $feedback = $feedback === null || trim($feedback) === '' ? null : $this->sources->redactFeedback($viewer, trim($feedback), $source->snapshot);
-            $inputs = $this->analyses->inputsFor($source->snapshot, $settings, $feedback);
-            $fingerprint = WorkReportSnapshot::hash([$source->scope_hash, $source->source_hash, $source->snapshot['period'], $source->department_id, $settings, $feedback]);
+            $reusedUnits = [];
+            if ($summaryOnly) {
+                if (! $this->analyses->canReuseEmployees($source)) {
+                    throw ValidationException::withMessages(['analysis' => 'Chỉ tạo lại tổng hợp khi mọi phần nhân viên đã thành công và cùng mô hình, quy chuẩn hiện tại.']);
+                }
+                $reusedUnits = $source->units->filter(fn ($u) => str_starts_with($u->unit_key, 'employee:'))->values()->all();
+                foreach ($reusedUnits as $unit) {
+                    WorkReportAnalysisOutput::validate($unit->result, $unit->input['reports']);
+                }
+                $inputs = array_map(function ($unit): array {
+                    $input = $unit->input;
+                    unset($input['_reused_from_unit_id']);
+
+                    return $input;
+                }, $reusedUnits);
+            } else {
+                $inputs = $this->analyses->inputsFor($source->snapshot, $settings, $feedback);
+            }
+            $identity = [$source->scope_hash, $source->source_hash, $source->snapshot['period'], $source->department_id, $settings, $feedback];
+            if ($summaryOnly) {
+                $identity[] = ['summary-only', $source->id];
+            }
+            $fingerprint = WorkReportSnapshot::hash($identity);
             $run = WorkReportAnalysis::query()->where('organization_id', $source->organization_id)
                 ->whereIn('status', ['pending', 'running'])
                 ->whereHas('revisionRecord', fn ($q) => $q->where('fingerprint', $fingerprint))->lockForUpdate()->first();
@@ -70,7 +95,7 @@ class WorkReportRegenerationService
                     'parent_analysis_id' => $source->id, 'root_analysis_id' => $root, 'revision_number' => $number,
                     'fingerprint' => $fingerprint, 'review_feedback' => $feedback,
                 ]);
-                $this->analyses->initializeUnits($run, $inputs);
+                $this->analyses->initializeUnits($run, $inputs, $reusedUnits);
             }
 
             return WorkReportRegenerationRequest::query()->create([

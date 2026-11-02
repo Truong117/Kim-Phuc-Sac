@@ -11,6 +11,30 @@ export const analysisSections = [
 ] as const;
 export type AnalysisSection = (typeof analysisSections)[number];
 export type AnalysisResult = Record<AnalysisSection, AnalysisClaim[]>;
+export interface WeeklyWorkGroup {
+  content: string;
+  observations: {
+    report_id: number;
+    item_id: number;
+    date: string;
+    status: "COMPLETED" | "IN_PROGRESS" | "BLOCKED";
+    result: string;
+    note: string | null;
+  }[];
+}
+export interface WorkTotal {
+  metric: string;
+  unit: string;
+  total: number | null;
+  status: "confirmed" | "needs_confirmation";
+  entries: {
+    report_id: number;
+    item_id: number;
+    quote: string;
+    quantity: number;
+    basis: "incremental" | "cumulative" | "unclear";
+  }[];
+}
 export interface AnalysisClaim {
   text: string;
   evidence: { report_id: number; item_id: number; quote: string }[];
@@ -34,6 +58,8 @@ export interface AnalysisEmployee {
   failed_units: number;
   source_report_ids: number[];
   result: AnalysisResult | null;
+  work_inventory?: WeeklyWorkGroup[];
+  work_totals?: WorkTotal[];
 }
 export interface WorkReportAnalysis {
   id: number;
@@ -68,6 +94,9 @@ export interface WorkReportAnalysis {
   errors: { unit_key: string; code: string }[];
   can_retry: boolean;
   can_regenerate: boolean;
+  can_regenerate_summary?: boolean;
+  summary_parts?: number;
+  reused_employee_units?: number;
   created_at: string;
   requested_by_name: string | null;
   revision: { number: number; root_id: number; parent_id: number | null };
@@ -88,10 +117,10 @@ export interface AnalysisPreview {
   departments: { id: number; name: string }[];
   max_days_back: number;
   work_counts: AiWorkCounts;
-  employees: Pick<
+  employees: (Pick<
     AnalysisEmployee,
     "employee_id" | "name" | "department_name"
-  >[];
+  > & { work_inventory?: WeeklyWorkGroup[] })[];
   source_reports: AnalysisSource[];
   run: WorkReportAnalysis | null;
   latest_attempt: { id: number; status: WorkReportAnalysis["status"] } | null;
