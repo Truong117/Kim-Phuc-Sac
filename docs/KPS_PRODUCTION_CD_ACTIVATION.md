@@ -9,7 +9,7 @@ by this implementation task, and activation is not authorized here.
 ## Current repository state checked on 02/11/2026
 
 - PR #74 is merged. Current `main`: `d1c801f8aef3b1d9cafc39d1716323a8c34add6f`.
-- `staging`: `7ed0a12b0d8d9f63cbfbaa420be50bcdf109be97` (PR #76 includes M23/M24).
+- `staging`: `9dafc5fda7f6200a189206574626a34150b15194` (PR #82; M23/M24 unchanged).
 - PR #75 merged at `42996f8`, then PR #79 reverted the CI/CD code (`b6e31a2`,
   merge `f37b5f6`). This PR deliberately brings the reviewed replacement back;
   these files are absent from current staging, rather than duplicate active jobs.
@@ -19,6 +19,13 @@ by this implementation task, and activation is not authorized here.
   configuration. Their values, grants and network reachability were not accessed.
 - No live backend/frontend SHA, Production ledger/schema, backup or restore result
   was newly certified here. A Git merge is not evidence of the deployed version.
+
+The requested READY FOR REVIEW status remains **BLOCKED** only until the three
+Production switches are verified unset/false at repository and production
+Environment scope. The user explicitly chose to retain that verification as a
+blocker when connector/UI access was unavailable. No switch or secret was changed.
+Dependency advisories were fixed and both audits now return zero; see the full
+runbook for the pinned minimatch major override, compatibility tests and CI status.
 
 ## Gates
 
@@ -38,13 +45,16 @@ An independent manual `production-network.yml` path needs only the endpoint,
 port, reviewed CA PEM/hash and main-only Environment approval after CI. It uses no
 SQL users or deployment tokens and does not require enabling any Production flag.
 It explicitly cannot certify identity/schema/ledger or authorize a release. The
-TLS integration regression uses an ephemeral localhost server; no cloud connection
+TLS integration regression uses an ephemeral localhost server; no Production probe
 was attempted. Follow the full runbook before separately authorizing a real probe.
 
 Staging M23/M24 metadata contracts and ledger/schema mismatch checks are now
 implemented. Their tests use synthetic metadata, including the actual inspector
-reader against SQLite metadata tables. A real Staging DB inspection is still
-required; historical 22/22 evidence does not certify the current 24-entry manifest.
+reader against SQLite metadata tables. A separate real read-only Staging inspection
+now passed: [24/24 ledger and M16–M24 schema](staging-db-readiness-2026-11-02.json),
+including M23/M24, TLS/grants and no concurrent DDL/migrator. It used only the
+independent KPS-Staging profile and executed no writes. This does not certify
+Production or all M1–M15 physical schema. Historical 22/22 evidence is superseded.
 The interactive Staging writer allowlist remains M16–M22.
 
 The release then verifies provider targets/auto-deploy-off/Render Free, acquires

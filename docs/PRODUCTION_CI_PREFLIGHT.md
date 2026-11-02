@@ -2,23 +2,36 @@
 
 ## Trạng thái và giới hạn của đợt này
 
-Đợt này chỉ sửa/kiểm thử code trên `feature/production-cicd-review` và tạo PR.
+Đợt này sửa/kiểm thử code trên `feature/production-cicd-review`, cập nhật Draft PR
+#80 và đọc DB Staging thật bằng profile KPS-Staging theo yêu cầu mới nhất.
 Không chạy workflow có secrets Production, không kết nối DB Production, không
-chạy migration, sửa grants/firewall/Render/Vercel, merge, deploy hoặc bật
+chạy migration, sửa grants/firewall/Render/Vercel, merge PR, deploy hoặc bật
 `PRODUCTION_CD_ENABLED`. Không thay đổi các tệp chưa commit của tác vụ cutover.
 
 Repo đã kiểm tra ngày 02/11/2026: main `d1c801f8aef3b1d9cafc39d1716323a8c34add6f`,
-staging `7ed0a12b0d8d9f63cbfbaa420be50bcdf109be97` sau PR #76 (M23/M24).
+staging `9dafc5fda7f6200a189206574626a34150b15194` sau PR #82, gồm M23/M24 từ #76.
 PR #75 **đã merge** tại `42996f8`, sau đó code CI/CD bị revert tại `b6e31a2`
 qua PR #79 (`f37b5f6`). Vì vậy không coi CI/CD của #75 là đang có trên staging.
-PR #80 đã chứa HEAD staging này; không cần tạo merge commit đồng bộ rỗng.
+PR #80 đã đồng bộ HEAD staging này bằng merge `bc43313`; không có conflict.
 Các tệp CI/CD được đưa lại trong #80 là nội dung cần review sau revert, không
 phải một bản thứ hai đang chạy. PR #80 giữ Draft. Các SHA Git không chứng minh
 backend/frontend đang live; đợt này không đọc lại nền tảng hay chứng nhận baseline.
 
 Theo thông tin bạn cung cấp, Environment `production` có reviewer Truong117,
 chỉ main và 7 SQL secrets. Đợt này không đọc secrets hoặc xác nhận cấu hình quản trị
-GitHub. CA, effective grants, schema/ledger và mạng từ Actions chưa được thử live.
+GitHub. CA, effective grants, schema/ledger Production và mạng Actions → Production
+chưa được thử live. Cả ba cờ Production ở repository/Environment chưa đọc được;
+người dùng đã chọn giữ việc xác minh OFF là **blocker**, không tự xác nhận PASS.
+
+**Kết luận đợt hoàn thiện: BLOCKED** cho yêu cầu READY FOR REVIEW cho đến khi có
+bằng chứng ba cờ `PRODUCTION_CD_ENABLED`, `PRODUCTION_MIGRATIONS_ENABLED`,
+`PRODUCTION_PREFLIGHT_ENABLED` đều unset/false ở cả repository và Environment
+production. Connector không hỗ trợ đọc Variables; automatic approval review từ
+chối lấy token từ Git credential helper, và Computer Use chưa được cấp quyền
+Chrome. Người dùng đã chọn để việc xác minh này là blocker. Không thử lấy token
+bằng cách khác, không đổi flag hoặc secrets. Người có quyền có thể kiểm tra chỉ
+đọc ở Settings → Secrets and variables → Actions → Variables và Settings →
+Environments → production → Environment variables, rồi cung cấp bằng chứng.
 Các unit test dùng certificate fixture và SQL/network/provider giả lập. Test
 integration mới bắt tay TLS thật với server MySQL giả lập trên **localhost**,
 CA/key dùng một lần; không kết nối TiDB hay chứng minh mạng từ Actions đến DB.
@@ -87,8 +100,11 @@ Chỉ chấp nhận FK-support index tùy chọn đúng tên/tuple đã biết k
 query lỗi hoặc capability không rõ đều dừng. Release yêu cầu đủ 24 ledger entries
 và schema M16–M24 complete. Writer allowlist Staging vẫn chỉ M16–M22; không thêm
 quyền chạy M23/M24. Test metadata tổng hợp/SQLite không chứng nhận schema TiDB thật.
-**M23/M24 trên DB Staging chưa được xác minh live trong đợt này.** Không dùng runner
-Staging cho Production.
+**Staging thật đã PASS read-only ngày 02/11**, xem
+[evidence 24/24](staging-db-readiness-2026-11-02.json): ledger đúng M1–M24, không
+pending/unknown; schema M16–M24 complete, parent keys/TLS/grants/concurrency PASS,
+không ghi DB. Đây không phải chứng nhận đầy đủ physical schema M1–M15 hoặc kết nối
+từ GitHub Actions; không dùng credentials/runner Staging cho Production.
 
 ## Kiểm chứng cho PR #80
 
@@ -104,7 +120,9 @@ run xanh của commit cũ không chứng nhận commit mới.
 | CI `Deployment security regression` | Ba handshake TLS thật trên localhost: CA/hostname đúng qua, CA sai và SAN sai bị từ chối, không gửi SQL authentication |
 | CI `Backend container build` | Docker build và container smoke cục bộ; không Render deploy |
 | `Invoke-Pester deployment/tests/Invoke-KpsStagingIncrementalMigration.Tests.ps1` | Orchestration/allowlist/receipt/isolated child regression bằng doubles, không chạy migration shared DB |
-| Staging DB M23/M24, Production DB/network/grants, live SHAs, recovery | **Chưa kiểm chứng thực tế trong đợt này**; cần thao tác riêng đã được cho phép |
+| Staging DB read-only bằng profile DPAPI riêng | **PASS thực tế**: ledger M1–M24, physical schema M16–M24 và parent keys; evidence riêng đã lọc dữ liệu nghiệp vụ |
+| Production DB/network/grants, live SHAs, recovery | **Chưa kiểm chứng thực tế trong đợt này**; cần thao tác riêng đã được cho phép |
+| Production flags tại repository và Environment | **NOT VERIFIED / BLOCKER** theo lựa chọn người dùng; không sửa flag hoặc secrets |
 
 Kiểm thử mới còn chặn sai ref/repo, CA hash sai, DNS treo, probe thiếu kết quả,
 schema/ledger lệch, cột/index/FK/collation bị sửa, CHECK/partition lạ, metadata query
@@ -116,29 +134,48 @@ local/Production. Các biến testing và SQLite in-memory đã được force t
 `phpunit.xml`. Điều này xử lý cảnh báo phpdotenv đọc file không tồn tại (640 cảnh
 báo trong run trước), không tắt warning hay bỏ bớt test.
 
-### Dependency audit ngày 02/11/2026: chưa đạt toàn bộ
+### Dependency security ngày 02/11/2026
 
-Ngoài các test guard/TLS, đã chạy `npm audit --audit-level=high`,
-`npm audit --omit=dev` và `composer audit --no-interaction` bằng registry thật.
-Kết quả audit độc lập với trạng thái xanh của các job regression:
+Đã vá dependency trên nhánh riêng và audit lại bằng registry thật. CI nay chạy
+`npm audit` (toàn bộ dev/build/runtime) và `composer audit --no-interaction`, lỗi
+audit chặn reusable CI và release. Không chạy `audit fix --force`, không bỏ qua
+advisory hoặc hạn chế audit chỉ runtime để tạo kết quả xanh.
 
 | Phạm vi | Kết quả |
 | --- | --- |
-| npm toàn bộ lockfile | Exit 1: 15 package affected (12 moderate, 3 high, 0 critical); có hiệu ứng lan truyền dependency, không phải 15 lỗi độc lập |
-| npm bỏ dev dependencies | Exit 0: 0 advisory; không suy rộng kết quả này sang backend hoặc công cụ build/dev |
-| Composer | Exit 1: 1 advisory medium của `symfony/mime` v7.4.19, [CVE-2026-45070](https://symfony.com/cve-2026-45070) |
+| npm toàn bộ lockfile | Sau vá: 0 advisory; trước vá: 15 package affected (12 moderate, 3 high), không phải 15 lỗi độc lập |
+| npm bỏ dev dependencies | 0 advisory; kết quả độc lập với backend và công cụ build/dev |
+| Composer | Sau vá: 0 advisory; trước vá: medium của `symfony/mime` v7.4.19, [CVE-2026-45070](https://symfony.com/cve-2026-45070) |
 
-Ba package mức high do npm báo là Vite 8.2.2
-([advisory Windows launch-editor](https://github.com/advisories/GHSA-587h-7wmj-h5pm)),
-source-map-js 1.2.1 ([GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q))
-và zod 4.5.4 ([GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5)).
-Minimatch 10.2.6 có advisory moderate
-([GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249)), lan tới lint toolchain.
-Các phiên bản/lockfile giống staging và không được thay đổi trong PR này.
-Không chạy `audit fix` hoặc nâng gói ngầm. Cần thay đổi dependency được review,
-regression và audit lại trước khi cho phép kích hoạt Production; không coi CI xanh
-là chứng nhận audit sạch. Đây là kết quả advisory scan, chưa đánh giá khả năng
-khai thác thực tế của từng đường đi trong ứng dụng.
+| Dependency | Bản cũ → mới | Phạm vi và xử lý |
+| --- | --- | --- |
+| Vite | 8.2.2 → **8.2.4**, pin patch | Sáu advisory trong dev server/editor/middleware/file serving, gồm HIGH [Windows launch-editor](https://github.com/advisories/GHSA-587h-7wmj-h5pm); không nâng lên minor/major mới |
+| source-map-js | 1.2.1 → **1.2.2** | HIGH [indexed source-map DoS](https://github.com/advisories/GHSA-68fv-2mgg-jv7q); transitive của PostCSS/Tailwind, dev/build |
+| zod | 4.5.4 → **4.6.7** | HIGH [collection validation memory DoS](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5); transitive của eslint-plugin-react-hooks, dev/lint |
+| minimatch | 10.2.6 → **11.0.1**, exact override | Moderate [globparts DoS](https://github.com/advisories/GHSA-g3hv-75wg-m249); chưa có backport 10.x, thay major có kiểm thử tương thích |
+| symfony/mime | 7.4.19 → **7.4.22** | Backend mail parameter-name/header injection; chỉ đổi một package Composer, không chạy Composer scripts |
+
+Mười hai package moderate gồm minimatch và dependency effects lên:
+`@eslint-community/eslint-utils`, `@eslint/config-array`, `@eslint/js`,
+`@typescript-eslint/eslint-plugin`, `@typescript-eslint/parser`,
+`@typescript-eslint/type-utils`, `@typescript-eslint/typescript-estree`,
+`@typescript-eslint/utils`, `eslint`, `eslint-plugin-react-refresh`,
+`typescript-eslint`. Chúng đều là lint/dev dependencies; sau override không còn
+minimatch cũ trong lockfile. Không hạ ESLint/TypeScript hoặc thay major các consumer.
+
+Minimatch 11 đổi implementation của `set` và bỏ `makeRe`/`AST` cùng một số API khác
+([changelog upstream](https://github.com/isaacs/minimatch/blob/v11.0.1/changelog.md)).
+Đã kiểm tra ba consumer đang lock chỉ dùng `Minimatch.match`, `pattern`,
+`minimatch` trong đường chạy liên quan. Test mới kiểm module CJS/ESM resolve,
+ESLint config/glob/directory traversal/dist ignore/lintText và TypeScript parser
+project-service `allowDefaultProject`. Pin override là quyết định có phạm vi,
+không khẳng định minimatch 11 tương thích mọi consumer/API. CI chạy toàn bộ lint,
+build và regression trên Linux. Cần review lại override khi nâng lint toolchain.
+
+Local Windows: full npm suite đã có lỗi timeout Vite SSR `ai-icon.svg?react`
+(235 pass/49 fail ở lần chạy trước test inventory cuối); không ghi local PASS.
+Lint/build, compatibility và TLS tests riêng đã PASS. Xem CI tại SHA cuối trên PR
+để biết kết quả đầy đủ Linux, không dùng CI của commit cũ thay kết quả mới.
 
 **Giới hạn identity:** TiDB Starter dùng endpoint shared; SQL không cung cấp độc
 lập tên console/instance ID/nhãn branch để so sánh. Mapping console main → endpoint

@@ -1,0 +1,46 @@
+{
+  "observed_at_utc": "2026-11-02T06:54:37.2477297Z",
+  "source_commit": "bc43313ab7d73a4ca34b493cb56395852b272c22",
+  "command_mode": "ReleaseReadiness",
+  "evidence_type": "live_staging_readonly",
+  "status": "PASS",
+  "target": "KPS-Staging",
+  "identity": {
+    "target": "KPS-Staging",
+    "database_verified": true,
+    "migration_operator_verified": true,
+    "tls_verified": true,
+    "tidb_verified": true,
+    "foreign_key_checks": 1,
+    "migration_grants_verified": true
+  },
+  "ledger": {
+    "expected_count": 24,
+    "applied_count": 24,
+    "pending_migrations": [],
+    "unexpected_migrations": []
+  },
+  "schema": {
+    "migration_18_state": "complete",
+    "migration_19_state": "complete",
+    "migration_23_state": "complete",
+    "migration_16_state": "complete",
+    "migration_24_state": "complete",
+    "parent_prerequisites_verified": true,
+    "migration_20_state": "complete",
+    "migration_21_state": "complete",
+    "migration_17_state": "complete",
+    "migration_22_state": "complete"
+  },
+  "concurrency": {
+    "ddl_jobs_verified": true,
+    "active_ddl_job_count": 0,
+    "processlist_verified": true,
+    "competing_migrator_session_count": 0
+  },
+  "writes_executed": false,
+  "manifest_comparison": "M1-M24 exact ordered ledger against StagingBootstrapPlan::EXPECTED_MIGRATIONS",
+  "physical_schema_scope": "M16-M24 and parent-key prerequisites; not a full M1-M15 physical-schema certification",
+  "production_credentials_used": false,
+  "business_row_counts_and_digests_omitted": true
+}

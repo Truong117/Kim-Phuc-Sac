@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { checkProductionCandidate } from "../deployment/production-candidate.mjs";
 import yaml from "js-yaml"; // Already pinned by the repository's ESLint dependency.
 
@@ -17,6 +17,30 @@ test("CI backend uses forced SQLite and an empty local env, without deployment s
   const prepare = backend.steps.findIndex((step) => step.run === "touch .env");
   assert.ok(prepare >= 0 && prepare < backend.steps.findIndex((step) => step.run === "php artisan test"));
   assert.doesNotMatch(content, /secrets\.PRODUCTION_/);
+  const config = yaml.load(content);
+  assert.ok(config.jobs.frontend.steps.some((step) => step.run === "npm audit"));
+  assert.ok(backend.steps.some((step) => step.run === "composer audit --no-interaction"));
+});
+
+test("exactly one workflow coordinates each environment; diagnostic/PR jobs cannot deploy", async () => {
+  const files = (await readdir(new URL("../.github/workflows/", import.meta.url))).filter((file) => /\.ya?ml$/.test(file));
+  assert.deepEqual(files.sort(), ["ci.yml", "production-network.yml", "production-preflight.yml", "production-release.yml", "release-prs.yml", "release.yml"]);
+  const production = [];
+  const staging = [];
+  for (const file of files) {
+    const config = yaml.load(await readFile(new URL(`../.github/workflows/${file}`, import.meta.url), "utf8"));
+    for (const job of Object.values(config.jobs)) {
+      for (const step of job.steps ?? []) {
+        if (/node deployment\/production-release\.mjs/.test(step.run ?? "")) production.push(file);
+        if (/node deployment\/release\.mjs staging/.test(step.run ?? "")) staging.push(file);
+        if (!["production-release.yml", "release.yml"].includes(file)) {
+          assert.doesNotMatch(step.run ?? "", /vercel (deploy|promote)|api\.render\.com.*deploys|production-ci\.php migrate/);
+        }
+      }
+    }
+  }
+  assert.deepEqual(production, ["production-release.yml"]);
+  assert.deepEqual(staging, ["release.yml"]);
 });
 
 test("release workflows isolate Staging/main, require reusable CI, serialize and never cancel", async () => {

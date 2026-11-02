@@ -1,6 +1,6 @@
 # CI/CD Kim-Phuc-Sac theo giai đoạn
 
-> Update 02/11/2026: [PRODUCTION_CI_PREFLIGHT.md](PRODUCTION_CI_PREFLIGHT.md) supersedes the historical Production preparation/activation status below. PR #75 merged and its CI/CD code was subsequently reverted by PR #79. PR #80 is a Draft replacement based on current staging `7ed0a12`; the source main is `d1c801f`. M23/M24 inspector contracts are implemented but have no new live DB evidence. No release/preflight/network workflow or Production flag was activated in this task.
+> Update 02/11/2026: [PRODUCTION_CI_PREFLIGHT.md](PRODUCTION_CI_PREFLIGHT.md) supersedes the historical status below. PR #75 merged and its CI/CD code was reverted by #79. Draft PR #80 is synchronized with staging `9dafc5f`; source main is `d1c801f`. [Staging read-only evidence](staging-db-readiness-2026-11-02.json) now verifies the exact 24-entry ledger and M16–M24 physical schema, including M23/M24. Dependency audits are clean after reviewed/tested upgrades. READY FOR REVIEW remains BLOCKED pending verification that all three Production switches are unset/false at repo and Environment scope, as the user requested. No Production workflow/flag, shared branch, migration or deploy was activated here.
 
 ## Phạm vi và tình trạng
 

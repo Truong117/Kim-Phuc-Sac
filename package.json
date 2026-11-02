@@ -41,10 +41,11 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.8",
     "typescript-eslint": "^8.69.0",
-    "vite": "^8.2.2",
+    "vite": "8.2.4",
     "vite-plugin-svgr": "^5.2.0"
   },
   "overrides": {
+    "minimatch": "11.0.1",
     "react-helmet-async": {
       "react": "^16.8.0 || ^17 || ^18 || ^19"
     }

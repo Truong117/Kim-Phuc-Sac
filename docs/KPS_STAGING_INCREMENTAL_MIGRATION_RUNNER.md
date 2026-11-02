@@ -37,9 +37,13 @@ procedure; this PR does not silently extend the old runner or repair the ledger.
 
 The new metadata/SQLite unit tests are offline fixtures, not Staging database proof.
 The 01/11 readiness artifact with 22/22 migrations is historical and cannot pass the
-24-entry manifest. No real Staging DB check was run during this PR update. After
-separate authorization, an operator can use this read-only `-ReleaseReadiness`
-mode with the existing verified Staging profile and save the redacted JSON showing
+24-entry manifest. The user subsequently authorized a real read-only check; it
+passed on 02/11 with 24/24 ledger, complete M16–M24 schema and no competing DDL or
+migrator. See [redacted live evidence](staging-db-readiness-2026-11-02.json).
+No migration was pending or executed. This certifies the exact M1–M24 ledger,
+not every physical table/column from M1–M15 or Actions runner connectivity.
+For a separately authorized recheck, an operator can use `-ReleaseReadiness`
+with the existing verified Staging profile and save redacted JSON showing
 `migration_23_state`, `migration_24_state`, ledger and identity/concurrency results.
 Do not invoke `-Plan`/`-Apply` or derive a PASS from fixture output.
 

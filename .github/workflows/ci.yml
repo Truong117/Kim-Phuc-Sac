@@ -94,6 +94,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Audit all frontend and build dependencies
+        run: npm audit
+
       - name: Run frontend tests
         run: npm test
 
@@ -147,6 +150,9 @@ jobs:
 
       - name: Install backend dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Audit backend dependencies
+        run: composer audit --no-interaction
 
       - name: Check backend formatting
         run: vendor/bin/pint --test
