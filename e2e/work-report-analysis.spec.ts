@@ -193,7 +193,8 @@ test("regenerate frozen analysis with feedback, double click, lost response reco
   browser,
 }) => {
   test.setTimeout(240_000);
-  await login(page, "owner");
+  // A separate reviewer keeps this scenario independent of the first case's per-user mutation limit.
+  await login(page, "multi-reviewer");
   await page.goto("/ai/insights?days=1");
   const history = await browserRequest(
     page,
@@ -285,7 +286,12 @@ test("regenerate frozen analysis with feedback, double click, lost response reco
       .map((k) => JSON.parse(sessionStorage.getItem(k)!)),
   );
   expect(pointers).toHaveLength(1);
-  expect(Object.keys(pointers[0]).sort()).toEqual(["key", "sourceId"]);
+  expect(Object.keys(pointers[0]).sort()).toEqual([
+    "key",
+    "sourceId",
+    "summaryOnly",
+  ]);
+  expect(pointers[0].summaryOnly).toBe(false);
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`analysis=${lostId}(?:&|$)`));
   await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
@@ -305,6 +311,29 @@ test("regenerate frozen analysis with feedback, double click, lost response reco
     fullPage: true,
     animations: "disabled",
   });
+  await page.unroute("**/api/ai/work-report-analyses/*/regenerate");
+  await page.goto(sourceUrl);
+  await page
+    .getByRole("button", { name: "Tạo lại riêng tổng hợp", exact: true })
+    .click();
+  await expect(
+    dialog.getByText(/Dùng lại các phần nhân viên đã thành công/),
+  ).toBeVisible();
+  const summaryResponse = page.waitForResponse(
+    (res) =>
+      res.request().method() === "POST" && res.url().endsWith("/regenerate"),
+  );
+  await dialog
+    .getByRole("button", { name: "Xác nhận tạo bản mới", exact: true })
+    .click();
+  const summaryResult = await summaryResponse;
+  expect(summaryResult.status()).toBe(202);
+  expect(summaryResult.request().postDataJSON().summary_only).toBe(true);
+  const summaryRun = (await summaryResult.json()).data;
+  expect(summaryRun.reused_employee_units).toBe(1);
+  expect(summaryRun.revision.parent_id).toBe(source.id);
+  await expect(page).toHaveURL(new RegExp(`analysis=${summaryRun.id}(?:&|$)`));
+  await expect(page.getByText(/Hoàn tất · Lần phân tích/)).toBeVisible();
   const assistant = await browser.newPage();
   await login(assistant, "assistant");
   const key = await assistant.evaluate(() => crypto.randomUUID());
