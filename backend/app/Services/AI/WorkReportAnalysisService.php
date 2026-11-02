@@ -6,6 +6,7 @@ use App\Jobs\GenerateWorkReportAnalysis;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -19,6 +20,9 @@ class WorkReportAnalysisService
         $settings = config('work_report_ai');
         unset($settings['gateway']['api_key'], $settings['enabled'], $settings['queue_connection']);
         $settings['unit_attempts'] = min(3, max(1, (int) $settings['unit_attempts']));
+        foreach (['employee_output_tokens', 'summary_output_tokens'] as $key) {
+            $settings[$key] = min(32000, max(1, (int) $settings[$key]));
+        }
         $settings['prompt_version'] = WorkReportAnalysisOutput::VERSION;
         $settings['schema_version'] = WorkReportAnalysisOutput::SCHEMA_VERSION;
         $settings['instructions_hash'] = hash('sha256', WorkReportAnalysisOutput::instructions());
@@ -37,13 +41,15 @@ class WorkReportAnalysisService
             ->where('department_id', $department);
         $latest = (clone $query)->latest('id')->first();
         $run = (clone $query)->whereIn('status', ['completed', 'partial'])->latest('id')->first() ?? $latest;
+        $inventories = $this->employeeInventories($snapshot);
 
         return [
             'enabled' => (bool) config('work_report_ai.enabled'),
             'mode' => config('work_report_ai.driver'), 'period' => $snapshot['period'],
             'departments' => $this->sources->departments($viewer),
             'max_days_back' => (int) config('work_report_ai.max_days_back'),
-            'work_counts' => $snapshot['work_counts'], 'employees' => $snapshot['employees'],
+            'work_counts' => $snapshot['work_counts'],
+            'employees' => array_map(fn ($e) => [...$e, 'work_inventory' => $inventories[$e['employee_id']] ?? []], $snapshot['employees']),
             'source_reports' => $this->sourcePayloads($snapshot),
             'run' => $run === null ? null : $this->payload($viewer, $this->show($viewer, (int) $run->id), $capture['source_hash']),
             'latest_attempt' => $latest !== null && $latest->id !== $run?->id
@@ -81,13 +87,44 @@ class WorkReportAnalysisService
         return $run->refresh();
     }
 
-    public function initializeUnits(WorkReportAnalysis $run, array $inputs): void
+    public function initializeUnits(WorkReportAnalysis $run, array $inputs, array $reused = []): void
     {
         foreach ($inputs as $index => $input) {
-            $run->units()->create(['unit_key' => 'employee:'.$input['employee_id'].':'.$index, 'input' => $input]);
+            $source = $reused[$index] ?? null;
+            $run->units()->create(['unit_key' => 'employee:'.$input['employee_id'].':'.$index,
+                'input' => $source === null ? $input : [...$input, '_reused_from_unit_id' => $source->id],
+                ...($source === null ? [] : ['status' => 'completed', 'result' => $source->result,
+                    'ai_usage_record_id' => $source->ai_usage_record_id,
+                    'input_tokens' => 0, 'output_tokens' => 0, 'cost_microusd' => 0])]);
         }
         $run->units()->create(['unit_key' => 'summary', 'status' => 'waiting', 'input' => []]);
-        DB::afterCommit(fn () => $this->dispatchPending($run));
+        DB::afterCommit(function () use ($run, $reused): void {
+            if ($reused !== []) {
+                app(WorkReportAnalysisWorker::class)->settle((int) $run->id);
+            } else {
+                $this->dispatchPending($run);
+            }
+        });
+    }
+
+    public function activeUnits(WorkReportAnalysis $run, ?Collection $units = null): Collection
+    {
+        $units ??= $run->units;
+        $ids = $units->firstWhere('unit_key', 'summary')?->input['_batch_ids'] ?? [];
+
+        return $units->filter(fn ($u) => ! str_starts_with($u->unit_key, 'summary:batch:') || in_array($u->id, $ids, true));
+    }
+
+    public function canReuseEmployees(WorkReportAnalysis $run): bool
+    {
+        $settings = $this->settings();
+        $units = $run->units->filter(fn ($u) => str_starts_with($u->unit_key, 'employee:'));
+
+        return in_array($run->status, ['completed', 'partial'], true)
+            && WorkReportAnalysisOutput::canExecute($run->analysis_config)
+            && $run->analysis_config['driver'] === $settings['driver']
+            && ($settings['driver'] === 'fake' || $run->analysis_config['gateway']['model'] === $settings['gateway']['model'])
+            && $units->isNotEmpty() && $units->every(fn ($u) => $u->status === 'completed');
     }
 
     public function inputsFor(array $snapshot, array $settings, ?string $feedback = null): array
@@ -97,19 +134,22 @@ class WorkReportAnalysisService
             $this->limitError();
         }
         $groups = [];
-        // Leave room for period/employee metadata and JSON framing inside the unit limit.
-        $limit = min(24000, max(2000, (int) $settings['unit_input_bytes'])) - 512
-            - strlen(json_encode($feedback, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        // Size the exact inventory the reviewer will receive, including its metadata.
+        $limit = min(24000, max(2000, (int) $settings['unit_input_bytes']));
+        $bytes = fn (array $reports, int $id): int => strlen(json_encode([
+            'employee_id' => $id, 'period' => $snapshot['period'], 'work_inventory' => WorkReportWeeklyWork::build($reports),
+            'review_feedback' => $feedback, 'analysis_stage' => 'employee_review',
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         foreach ($snapshot['reports'] as $report) {
             foreach ($report['items'] as $item) {
                 $id = $report['employee_id'];
                 $entry = ['report_id' => $report['report_id'], 'date' => $report['date'], 'items' => [$item]];
                 $last = count($groups[$id] ?? []) - 1;
-                if ($last < 0 || strlen(json_encode([...$groups[$id][$last], $entry], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > $limit) {
+                if ($last < 0 || $bytes([...$groups[$id][$last], $entry], (int) $id) > $limit) {
                     $groups[$id][] = [];
                     $last++;
                 }
-                if (strlen(json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > $limit) {
+                if ($bytes([$entry], (int) $id) > $limit) {
                     $this->limitError();
                 }
                 $groups[$id][$last][] = $entry;
@@ -174,7 +214,9 @@ class WorkReportAnalysisService
                 $currentHash = null;
             }
         }
-        $units = $run->units;
+        $allUnits = $run->units;
+        $inventories = $includeContent ? $this->employeeInventories($snapshot) : [];
+        $units = $this->activeUnits($run, $allUnits);
         $terminal = $units->whereIn('status', ['completed', 'failed']);
         $employees = [];
         foreach ($snapshot['employees'] as $employee) {
@@ -182,12 +224,16 @@ class WorkReportAnalysisService
             $done = $parts->where('status', 'completed');
             $failed = $parts->where('status', 'failed');
             $result = array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []);
+            $quantities = [];
             foreach ($done as $part) {
+                array_push($quantities, ...($part->result['quantity_observations'] ?? []));
                 foreach (WorkReportAnalysisOutput::SECTIONS as $field) {
                     $result[$field] = array_merge($result[$field], $part->result[$field]);
                 }
             }
             $employees[] = [...$employee,
+                'work_inventory' => $inventories[$employee['employee_id']] ?? [],
+                'work_totals' => WorkReportWorkTotals::totals($quantities),
                 'status' => $parts->isEmpty() ? 'no_data' : ($done->count() === $parts->count() ? 'completed' : ($terminal->count() === $units->count() ? ($done->isNotEmpty() ? 'partial' : 'failed') : 'running')),
                 'completed_units' => $done->count(), 'total_units' => $parts->count(), 'failed_units' => $failed->count(),
                 'source_report_ids' => array_column(array_values(array_filter($snapshot['reports'], fn ($r) => $r['employee_id'] === $employee['employee_id'])), 'report_id'),
@@ -210,6 +256,9 @@ class WorkReportAnalysisService
             'revision' => ['number' => $revision?->revision_number ?? 1, 'root_id' => $revision?->root_analysis_id ?? $run->id,
                 'parent_id' => $revision?->parent_analysis_id],
             'can_regenerate' => (bool) config('work_report_ai.enabled') && in_array($run->status, ['completed', 'partial'], true),
+            'can_regenerate_summary' => (bool) config('work_report_ai.enabled') && $this->canReuseEmployees($run),
+            'summary_parts' => count($units->firstWhere('unit_key', 'summary')?->input['_batch_ids'] ?? []),
+            'reused_employee_units' => $units->filter(fn ($u) => isset($u->input['_reused_from_unit_id']))->count(),
             'provider' => $run->analysis_config['driver'], 'is_mock' => $run->analysis_config['driver'] === 'fake',
             'model' => $run->analysis_config['driver'] === 'fake' ? 'deterministic-v2' : $run->analysis_config['gateway']['model'],
             'prompt_version' => $run->analysis_config['prompt_version'], 'schema_version' => $run->analysis_config['schema_version'],
@@ -218,11 +267,12 @@ class WorkReportAnalysisService
             'source_reports' => $includeContent ? $this->sourcePayloads($snapshot) : [],
             'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code])->values()->all(),
             'can_retry' => (bool) config('work_report_ai.enabled') && WorkReportAnalysisOutput::canExecute($run->analysis_config)
-                && $units->contains(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']),
+                && $units->contains(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']
+                    && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids']))),
             'usage' => [
-                'input_tokens' => $units->contains(fn ($u) => $u->status !== 'completed' || $u->input_tokens === null) ? null : $units->sum('input_tokens'),
-                'output_tokens' => $units->contains(fn ($u) => $u->status !== 'completed' || $u->output_tokens === null) ? null : $units->sum('output_tokens'),
-                'cost_microusd' => $units->contains(fn ($u) => $u->cost_microusd === null) ? null : $units->sum('cost_microusd'),
+                'input_tokens' => $allUnits->contains(fn ($u) => $u->status !== 'completed' || $u->input_tokens === null) ? null : $allUnits->sum('input_tokens'),
+                'output_tokens' => $allUnits->contains(fn ($u) => $u->status !== 'completed' || $u->output_tokens === null) ? null : $allUnits->sum('output_tokens'),
+                'cost_microusd' => $allUnits->contains(fn ($u) => $u->cost_microusd === null) ? null : $allUnits->sum('cost_microusd'),
             ],
         ];
     }
@@ -238,6 +288,16 @@ class WorkReportAnalysisService
         ], $snapshot['reports']);
     }
 
+    private function employeeInventories(array $snapshot): array
+    {
+        $reports = [];
+        foreach ($snapshot['reports'] as $report) {
+            $reports[$report['employee_id']][] = $report;
+        }
+
+        return array_map(fn ($items) => WorkReportWeeklyWork::build($items), $reports);
+    }
+
     public function retry(User $viewer, int $id): WorkReportAnalysis
     {
         $run = $this->show($viewer, $id);
@@ -247,15 +307,24 @@ class WorkReportAnalysisService
             if (! WorkReportAnalysisOutput::canExecute($run->analysis_config)) {
                 throw ValidationException::withMessages(['analysis' => 'Không thể tiếp tục hoặc thử lại theo đúng quy chuẩn đã lưu. Kết quả cũ vẫn đọc được; hãy tạo một lượt phân tích mới.']);
             }
-            if (in_array($run->status, ['pending', 'running'], true)
-                || ! $run->units()->where('status', 'failed')->where('attempts', '<', $run->analysis_config['unit_attempts'])->exists()) {
+            $active = $this->activeUnits($run, $run->units()->get());
+            $retryable = $active->filter(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']
+                && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids'])));
+            if (in_array($run->status, ['pending', 'running'], true) || $retryable->isEmpty()) {
                 return;
             }
-            $run->units()->where('status', 'failed')->where('attempts', '<', $run->analysis_config['unit_attempts'])
+            $employees = $retryable->filter(fn ($u) => str_starts_with($u->unit_key, 'employee:'));
+            if ($employees->isNotEmpty()) {
+                // Employee results will change the summary plan. Never pay to retry an obsolete batch.
+                $retryable = $employees;
+            }
+            $run->units()->whereIn('id', $retryable->pluck('id'))->where('status', 'failed')
                 ->update(['status' => 'pending', 'error_code' => null, 'lease_token' => null, 'leased_until' => null]);
             // An earlier summary must be regenerated when missing employee parts are retried.
             if ($run->units()->where('status', 'pending')->where('unit_key', '!=', 'summary')->exists()) {
-                $run->units()->where('unit_key', 'summary')->update(['status' => 'waiting']);
+                $summary = $run->units()->where('unit_key', 'summary')->firstOrFail();
+                $summary->update(['status' => 'waiting', 'result' => null,
+                    'input' => $employees->isNotEmpty() ? [] : $summary->input]);
             }
             $run->update(['status' => 'pending', 'result' => null, 'completed_at' => null]);
             DB::afterCommit(fn () => $this->dispatchPending($run));
@@ -266,7 +335,7 @@ class WorkReportAnalysisService
 
     public function dispatchPending(WorkReportAnalysis $run): void
     {
-        foreach ($run->units()->where('status', 'pending')->get(['id']) as $unit) {
+        foreach ($this->activeUnits($run, $run->units()->get())->where('status', 'pending') as $unit) {
             GenerateWorkReportAnalysis::dispatch((int) $unit->id)
                 ->onConnection(config('work_report_ai.queue_connection') ?? (config('queue.default') === 'sync' ? 'sync' : 'work_report_ai'))
                 ->onQueue('ai-work-reports');

@@ -54,9 +54,11 @@ class WorkReportAnalysisController extends Controller
 
     public function regenerate(int $id, Request $request, WorkReportRegenerationService $service): JsonResponse
     {
-        $input = $request->validate(['idempotency_key' => ['required', 'uuid'], 'review_feedback' => ['nullable', 'string', 'max:1000']]);
+        $input = $request->validate(['idempotency_key' => ['required', 'uuid'], 'review_feedback' => ['nullable', 'string', 'max:1000'],
+            'summary_only' => ['sometimes', 'boolean']]);
 
-        return response()->json($service->create($request->user(), $id, $input['idempotency_key'], $input['review_feedback'] ?? null), 202);
+        return response()->json($service->create($request->user(), $id, $input['idempotency_key'], $input['review_feedback'] ?? null,
+            (bool) ($input['summary_only'] ?? false)), 202);
     }
 
     public function regeneration(string $key, Request $request, WorkReportRegenerationService $service): JsonResponse

@@ -82,7 +82,7 @@ class OpenAiGateway
         $maxOutputTokens = min(
             $request->maxOutputTokens,
             (int) $this->setting('max_output_tokens', 3000),
-            self::HARD_MAX_OUTPUT_TOKENS,
+            $request->feature === 'work_report_analysis' ? 32000 : self::HARD_MAX_OUTPUT_TOKENS,
         );
         if ($maxOutputTokens < 1 || $request->maxOutputTokens > $maxOutputTokens) {
             throw new AiGatewayException('AI_OUTPUT_LIMIT_EXCEEDED', 'AI output limit exceeded.');

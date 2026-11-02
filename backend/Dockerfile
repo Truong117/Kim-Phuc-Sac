@@ -55,6 +55,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD php -r '$port = getenv("PORT") ?: "10000"; exit(@file_get_contents("http://127.0.0.1:".$port."/up") === false ? 1 : 0);'
 
 # Schema changes are an explicit, separately approved deployment operation.
-# Container startup must never mutate the database. exec keeps FrankenPHP as
-# PID 1 after configuration caching so Render signals are handled directly.
-CMD ["sh", "-c", "php artisan config:cache && exec frankenphp run --config /etc/frankenphp/Caddyfile --adapter caddyfile"]
+# The supervisor forwards signals and waits for in-flight queue work to finish.
+CMD ["sh", "/app/scripts/start-service.sh"]

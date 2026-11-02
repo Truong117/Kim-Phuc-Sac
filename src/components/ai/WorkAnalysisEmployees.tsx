@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import Input from "@/components/form/input/InputField";
 import WorkAnalysisResult from "./WorkAnalysisResult";
+import WorkAnalysisWeeklyWork from "./WorkAnalysisWeeklyWork";
 import type {
   AnalysisEmployee,
   AnalysisSource,
@@ -25,12 +26,7 @@ export default function WorkAnalysisEmployees({
         .toLocaleLowerCase("vi")
         .includes(query.toLocaleLowerCase("vi")),
     )
-    .sort(
-      (a, b) =>
-        Number(Boolean(b.result?.attention.length || b.failed_units)) -
-          Number(Boolean(a.result?.attention.length || a.failed_units)) ||
-        a.name.localeCompare(b.name, "vi"),
-    );
+    .sort((a, b) => a.name.localeCompare(b.name, "vi"));
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -45,6 +41,7 @@ export default function WorkAnalysisEmployees({
       {sorted.map((employee) => (
         <details
           key={employee.employee_id}
+          open
           className="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
         >
           <summary className="cursor-pointer text-sm font-medium text-gray-900 dark:text-white">
@@ -67,8 +64,24 @@ export default function WorkAnalysisEmployees({
                 {t("employeePartial", { count: employee.failed_units })}
               </p>
             )}
+            {Boolean(employee.work_inventory?.length) && (
+              <WorkAnalysisWeeklyWork
+                inventory={employee.work_inventory ?? []}
+                totals={employee.work_totals ?? []}
+                partial={employee.status !== "completed"}
+              />
+            )}
             {employee.result && (
-              <WorkAnalysisResult result={employee.result} sources={sources} />
+              <section className="space-y-4 border-t border-gray-200 pt-5 dark:border-gray-700">
+                <h3 className="font-semibold text-gray-900 dark:text-white">
+                  {t("weeklyWork.review")}
+                </h3>
+                <WorkAnalysisResult
+                  result={employee.result}
+                  sources={sources}
+                  employee
+                />
+              </section>
             )}
             <div className="flex flex-wrap gap-3">
               {employee.source_report_ids.map((id) => (

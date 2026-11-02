@@ -156,3 +156,6 @@ jobs:
       - name: Verify startup, routing and concurrent health response
         shell: pwsh
         run: ./backend/scripts/Test-ProductionContainer.ps1 -Image kps-backend-ci -SkipBuild
+
+      - name: Verify AI worker restart and graceful shutdown
+        run: python3 backend/tests/Deployment/test-ai-supervisor.py
