@@ -51,3 +51,7 @@ Receipts: `%LOCALAPPDATA%\KPS\MigrationTool\logs`. Contain environment, pinned S
 ## Verification
 
 `php tools/test-kps-migrate.php`: offline guard tests, no DB access. PHP syntax/offline tests checked in development. Windows PowerShell and real TiDB StatusOnly still need verification on the operator workstation; development has no live DB credentials.
+
+## Safe runner diagnostics
+
+Runner failures include the exception type, phase (`input_decode`, `plan`, or `execute`), source basename and line number. Unexpected exception messages, SQL and stack traces remain hidden. A failure in `input_decode` or `plan` happens before this invocation starts migrations. An `execute` failure requires schema/ledger inspection before any write retry. Run `-StatusOnly` for diagnosis; do not use a write rerun to uncover an error. The installed `%LOCALAPPDATA%\KPS\MigrationTool\kps-migrate.php` must be refreshed separately from the repository copy.

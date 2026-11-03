@@ -123,19 +123,27 @@ function kpsRunMigrationTool(array $p, string $backend): array
     return ['executed' => $executed, 'applied_count' => $after['applied_count']];
 }
 
+/** Add safe error location without exposing exception arguments, SQL, or a stack trace. */
+function kpsMigrationFailure(Throwable $e, string $phase, string $password = ''): string
+{
+    $message = $e instanceof PDOException
+        ? 'Database connection/SQL failed (code '.$e->getCode().'). Check account, grants, endpoint and schema.'
+        : ($e instanceof RuntimeException && !($e instanceof Illuminate\Database\QueryException)
+            ? $e->getMessage() : 'Runner failed. Inspect database schema/ledger before retrying.');
+    $phase = in_array($phase, ['input_decode', 'plan', 'execute'], true) ? $phase : 'unknown';
+    $message .= ' [type='.get_class($e).'; phase='.$phase.'; file='.basename($e->getFile()).'; line='.$e->getLine().']';
+    return $password === '' ? $message : str_replace($password, '[REDACTED]', $message);
+}
+
 if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
+    $phase = 'input_decode';
     try {
         $input = json_decode(base64_decode(trim(stream_get_contents(STDIN)), true), true, 512, JSON_THROW_ON_ERROR);
+        $phase = ($input['mode'] ?? '') === 'plan' ? 'plan' : 'execute';
         echo json_encode(kpsRunMigrationTool($input, $argv[1]), JSON_THROW_ON_ERROR).PHP_EOL;
     } catch (Throwable $e) {
         // Never print a connection string, credential input, stack, or SQL to logs.
-        $message = $e instanceof PDOException
-            ? 'Database connection/SQL failed (code '.$e->getCode().'). Check account, grants, endpoint and schema.'
-            : ($e instanceof RuntimeException && !($e instanceof Illuminate\Database\QueryException)
-                ? $e->getMessage() : 'Runner failed. Inspect database schema/ledger before retrying.');
-        if (isset($input['password']) && $input['password'] !== '') {
-            $message = str_replace($input['password'], '[REDACTED]', $message);
-        }
+        $message = kpsMigrationFailure($e, $phase, (string) ($input['password'] ?? ''));
         fwrite(STDERR, 'STOP: '.$message.PHP_EOL);
         exit(1);
     }
