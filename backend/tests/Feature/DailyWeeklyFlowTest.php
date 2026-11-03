@@ -245,4 +245,14 @@ class DailyWeeklyFlowTest extends TestCase
         $this->assertSame([$report->id], $preview['daily_coverage']['missing_report_ids']);
         Http::assertNothingSent();
     }
+
+    public function test_dispatch_command_fails_safely_when_the_configured_principal_is_unavailable(): void
+    {
+        config(['daily_report_ai.auto_dispatch' => true, 'daily_report_ai.dispatch_user_id' => 0]);
+        $this->artisan('daily-report-ai:dispatch')
+            ->expectsOutputToContain('AI_DAILY_DISPATCH_FAILED')
+            ->assertExitCode(1);
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    }
 }

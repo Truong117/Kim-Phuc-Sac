@@ -24,18 +24,28 @@ pause() {
 }
 
 case "${1:-service}" in
-    worker|recovery)
+    worker|recovery|daily-worker|daily-recovery|daily-scheduler)
         mode=$1
         trap stop_child TERM INT
         # On the first rollout, let the old unsupervised container leave the queue.
-        pause "${WORK_REPORT_AI_BOOT_DELAY_SECONDS:-60}"
+        case "$mode" in
+            daily-*) pause "${DAILY_REPORT_AI_BOOT_DELAY_SECONDS:-60}" ;;
+            *) pause "${WORK_REPORT_AI_BOOT_DELAY_SECONDS:-60}" ;;
+        esac
         while [ "$stopping" = 0 ]; do
-            if [ "$mode" = worker ]; then
-                php -d max_execution_time=0 artisan queue:work work_report_ai \
-                    --queue=ai-work-reports --timeout=270 --tries=1 --sleep=1 &
-            else
-                php -d max_execution_time=0 artisan work-report-ai:recover &
-            fi
+            case "$mode" in
+                worker)
+                    php -d max_execution_time=0 artisan queue:work work_report_ai \
+                        --queue=ai-work-reports --timeout=270 --tries=1 --sleep=1 &
+                    ;;
+                daily-worker)
+                    php -d max_execution_time=0 artisan queue:work daily_report_ai \
+                        --queue=ai-daily-reports --timeout=270 --tries=1 --sleep=1 &
+                    ;;
+                daily-recovery) php -d max_execution_time=0 artisan daily-report-ai:recover & ;;
+                daily-scheduler) php -d max_execution_time=0 artisan daily-report-ai:dispatch & ;;
+                recovery) php -d max_execution_time=0 artisan work-report-ai:recover & ;;
+            esac
             child=$!
             wait "$child" || :
             if [ "$stopping" = 1 ]; then
@@ -44,12 +54,14 @@ case "${1:-service}" in
                 exit 0
             fi
             child=
-            if [ "$mode" = worker ]; then
-                echo 'Work report AI worker exited; restarting.' >&2
-                pause 2
-            else
-                pause 60
-            fi
+            case "$mode" in
+                worker|daily-worker)
+                    echo "AI $mode exited; restarting." >&2
+                    pause 2
+                    ;;
+                daily-scheduler) pause 300 ;;
+                *) pause 60 ;;
+            esac
         done
         exit 0
         ;;
@@ -60,13 +72,23 @@ esac
 php artisan config:cache || exit 1
 worker=
 recovery=
+daily_worker=
+daily_recovery=
+daily_scheduler=
 web=
 monitor=
 shutdown() {
     trap '' TERM INT
     [ -z "$monitor" ] || kill -TERM "$monitor" 2>/dev/null || :
+    # Stop producers first, then let both queue consumers finish their in-flight jobs.
+    [ -z "$daily_scheduler" ] || kill -TERM "$daily_scheduler" 2>/dev/null || :
+    [ -z "$daily_recovery" ] || kill -TERM "$daily_recovery" 2>/dev/null || :
+    [ -z "$daily_worker" ] || kill -TERM "$daily_worker" 2>/dev/null || :
     [ -z "$worker" ] || kill -TERM "$worker" 2>/dev/null || :
     [ -z "$recovery" ] || kill -TERM "$recovery" 2>/dev/null || :
+    [ -z "$daily_scheduler" ] || wait "$daily_scheduler" 2>/dev/null || :
+    [ -z "$daily_recovery" ] || wait "$daily_recovery" 2>/dev/null || :
+    [ -z "$daily_worker" ] || wait "$daily_worker" 2>/dev/null || :
     [ -z "$worker" ] || wait "$worker" 2>/dev/null || :
     [ -z "$recovery" ] || wait "$recovery" 2>/dev/null || :
     [ -z "$web" ] || kill -TERM "$web" 2>/dev/null || :
@@ -92,11 +114,36 @@ case "${WORK_REPORT_AI_WORKER_MODE:-embedded}" in
     *) echo 'Invalid WORK_REPORT_AI_WORKER_MODE.' >&2; shutdown 1 ;;
 esac
 
+# The daily queue has its own connection and must not be consumed by the weekly worker.
+case "${DAILY_REPORT_AI_WORKER_MODE:-off}" in
+    embedded)
+        daily_queue_enabled=$(php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo config("daily_report_ai.enabled") && config("daily_report_ai.queue_connection") === "daily_report_ai" ? "yes" : "no";') || shutdown 1
+        if [ "$daily_queue_enabled" = yes ]; then
+            sh "$script" daily-worker &
+            daily_worker=$!
+            sh "$script" daily-recovery &
+            daily_recovery=$!
+            echo 'Daily AI embedded worker and recovery started.'
+            daily_auto_enabled=$(php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo config("daily_report_ai.auto_dispatch") && (int) config("daily_report_ai.dispatch_user_id") > 0 ? "yes" : "no";') || shutdown 1
+            if [ "$daily_auto_enabled" = yes ]; then
+                sh "$script" daily-scheduler &
+                daily_scheduler=$!
+                echo 'Daily AI embedded dispatcher started (300-second interval).'
+            fi
+        fi
+        ;;
+    external|off) ;;
+    *) echo 'Invalid DAILY_REPORT_AI_WORKER_MODE.' >&2; shutdown 1 ;;
+esac
+
 while kill -0 "$web" 2>/dev/null; do
     # A failed supervisor loop must fail the container, allowing Render to restart it.
     if { [ -n "$worker" ] && ! kill -0 "$worker" 2>/dev/null; } || \
-        { [ -n "$recovery" ] && ! kill -0 "$recovery" 2>/dev/null; }; then
-        echo 'Work report AI supervisor exited unexpectedly.' >&2
+        { [ -n "$recovery" ] && ! kill -0 "$recovery" 2>/dev/null; } || \
+        { [ -n "$daily_worker" ] && ! kill -0 "$daily_worker" 2>/dev/null; } || \
+        { [ -n "$daily_recovery" ] && ! kill -0 "$daily_recovery" 2>/dev/null; } || \
+        { [ -n "$daily_scheduler" ] && ! kill -0 "$daily_scheduler" 2>/dev/null; }; then
+        echo 'AI supervisor exited unexpectedly.' >&2
         shutdown 1
     fi
     sleep 1 &

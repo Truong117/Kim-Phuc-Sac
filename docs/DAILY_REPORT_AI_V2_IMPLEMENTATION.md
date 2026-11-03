@@ -92,3 +92,32 @@ Giá/model đã đối chiếu tài liệu chính thức 2026-11-03: https://dev
 - ESLint: 0 lỗi, 4 cảnh báo fast-refresh có sẵn. Build còn cảnh báo bundle lớn có sẵn.
 - Test HTTP mô phỏng kiểm tra Luna/strict schema/store=false/output 16000, cache không gọi lại, incomplete không hoàn tất, cap không nâng ngân sách chung, và chặn trước dispatch khi quá dự phòng document.
 - Test luồng kiểm tra 10+30=40, bản tuần bất biến sau nguồn đổi, chặn ngày stale/thiếu và fake-day trong paid-week, quét báo cáo khóa/nộp bù idempotent, phủ đủ nhóm và thứ tự nhóm trước nhận xét ở UI.
+
+## Worker/scheduler trong container hiện hữu (bổ sung sau PR #89)
+
+`start-service.sh` có thêm ba vai trò độc lập: `daily-worker`, `daily-recovery`, `daily-scheduler`. Mặc định `DAILY_REPORT_AI_WORKER_MODE=off`, không tự kích hoạt AI ngày khi deploy. Giữ nguyên các mode worker/recovery của tuần.
+
+Để nghiệm thu trên dịch vụ staging hiện hữu, cấu hình **sau khi mã mới đã deploy**:
+
+```dotenv
+DAILY_REPORT_AI_ENABLED=true
+DAILY_REPORT_AI_DRIVER=fake
+DAILY_REPORT_AI_QUEUE_CONNECTION=daily_report_ai
+DAILY_REPORT_AI_WORKER_MODE=embedded
+DAILY_REPORT_AI_AUTO_DISPATCH=false
+WORK_REPORT_AI_USE_DAILY_DOCUMENTS=false
+```
+
+Để nghiệm thu toàn luồng fake trên staging cô lập, đặt thêm `WORK_REPORT_AI_DRIVER=fake` và `WORK_REPORT_AI_USE_DAILY_DOCUMENTS=true`; không đưa bản ngày fake vào tuần openai. Khi nghiệm thu Luna thật, giữ driver tuần đã xác minh và chỉ bật adapter sau khi đủ bản ngày openai.
+
+Lúc này nút thủ công có thể tạo job, consumer riêng xử lý queue `ai-daily-reports`, vòng phục hồi kiểm tra mỗi 60 giây. Nếu báo cáo tuần đang dùng driver openai thì chỉ bật adapter sau khi đã có bản ngày openai hoàn tất; fake-day không được cấp vào paid-week.
+
+Khi đã xác minh principal đúng môi trường/phạm vi và muốn thử tự động, đặt `DAILY_REPORT_AI_AUTO_DISPATCH=true` cùng `DAILY_REPORT_AI_DISPATCH_USER_ID` đã xác minh. Dispatcher chạy mỗi 300 giây trong tiến trình riêng, không chiếm worker và không xử lý request web. Không chạy thêm Laravel scheduler hoặc cron cho cùng dispatcher khi dùng mode embedded; chọn một cơ chế để tránh quét trùng. Atomic source/config cache vẫn chống document/job trùng giữa các tiến trình.
+
+Boot delay mặc định 60 giây (`DAILY_REPORT_AI_BOOT_DELAY_SECONDS`) để chuyển giao container; trong thời gian này UI có thể đang chờ job. Consumer tự khởi động lại nếu thoát. Khi dừng, PID 1 chuyển SIGTERM tới các tiến trình con và đợi job trước khi dừng web. Nếu nền tảng SIGKILL trước khi job xong, cơ chế lease/recovery hiện hữu vẫn áp dụng; không hứa thời gian drain dài hơn cấu hình nền tảng.
+
+`DAILY_REPORT_AI_WORKER_MODE=external` để dịch vụ worker/scheduler riêng quản lý vòng đời. Khi off/external hoặc feature disabled, container web không chạy các tiến trình AI ngày. Không đổi plan, tạo dịch vụ có phí hoặc thêm secret qua mã này.
+
+**Giới hạn Render Free đã kiểm tra 2026-11-03:** web service ngủ sau thời gian không có inbound traffic; tiến trình nhúng không phải một dịch vụ luôn chạy. Nghiệm thu trong phiên đang dùng được; không cam kết tổng hợp đúng giờ ban đêm khi web đang ngủ. Catchup sẽ quét nguồn đủ điều kiện khi dịch vụ hoạt động lại. Muốn tự động liên tục cần compute luôn chạy hoặc hạ tầng scheduler/worker riêng được lựa chọn và duyệt chi phí. Tham khảo https://render.com/docs/free.
+
+Lệnh dispatch ghi mã lỗi an toàn khi principal/quyền/DB chưa sẵn sàng; không đưa raw exception/connection vào output của scheduler. Bộ kiểm thử shell dùng tiến trình con giả xác minh cả hai consumer tự restart và drain độc lập, chế độ manual không dispatch tự động, off/external/disabled không sinh tiến trình ngày. Không phải kiểm thử gọi provider thật trên Render.

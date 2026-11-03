@@ -27,11 +27,22 @@ Artisan::command('daily-report-ai:recover', function (DailyDocumentService $serv
     $this->info('Interrupted units marked for review: '.$service->recover());
 })->purpose('Recover expired daily-document leases without invoking a provider');
 
-Artisan::command('daily-report-ai:dispatch', function (DailyDocumentDispatcher $dispatcher): void {
-    $counts = $dispatcher->dispatch();
-    $this->info(json_encode($counts, JSON_THROW_ON_ERROR));
-    if ($counts['errors'] > 0) {
-        $this->fail('Some daily documents were not dispatched; inspect configuration and source sizes.');
+Artisan::command('daily-report-ai:dispatch', function (DailyDocumentDispatcher $dispatcher): int {
+    try {
+        $counts = $dispatcher->dispatch();
+        $this->info(json_encode($counts, JSON_THROW_ON_ERROR));
+        if ($counts['errors'] > 0) {
+            $this->error('AI_DAILY_DISPATCH_FAILED: inspect configuration and source sizes.');
+
+            return 1;
+        }
+
+        return 0;
+    } catch (Throwable) {
+        // Scheduler logs must not contain DB connection details or source-bearing exception traces.
+        $this->error('AI_DAILY_DISPATCH_FAILED: inspect the configured principal, permissions and database readiness.');
+
+        return 1;
     }
 })->purpose('Idempotently enqueue locked reports in the configured principal scope, including makeup reports');
 
