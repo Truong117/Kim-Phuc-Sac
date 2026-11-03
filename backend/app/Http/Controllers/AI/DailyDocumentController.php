@@ -21,6 +21,13 @@ class DailyDocumentController extends Controller
         return response()->json(['data' => $service->request($request->user(), $report)], 202);
     }
 
+    public function batch(Request $request, DailyDocumentService $service): JsonResponse
+    {
+        $input = $request->validate(['date' => ['required', 'date_format:Y-m-d']]);
+
+        return response()->json(['data' => $service->requestDate($request->user(), $input['date'])], 202);
+    }
+
     public function show(int $document, Request $request, DailyDocumentService $service): JsonResponse
     {
         return response()->json(['data' => $service->show($request->user(), $document)]);

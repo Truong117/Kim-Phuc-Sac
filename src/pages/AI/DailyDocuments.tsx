@@ -9,9 +9,10 @@ import DailyDocumentEmployee from "@/components/ai/DailyDocumentEmployee";
 import Button from "@/components/ui/button/Button";
 import useDailyDocuments from "@/hooks/useDailyDocuments";
 import {
-  requestDailyDocument,
+  requestDailyDocumentBatch,
   retryDailyDocument,
 } from "@/services/dailyDocumentService";
+import type { DailyDocumentBatch } from "@/types/dailyDocument";
 import { dateOnlyInTimeZone, isDateOnly } from "@/utils/dateOnly";
 
 export default function DailyDocuments() {
@@ -51,6 +52,7 @@ function DailyDocumentsView({
 }) {
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [batchResult, setBatchResult] = useState<DailyDocumentBatch>();
   const [actionError, setActionError] = useState<string>();
   const { data, error } = useDailyDocuments(date, page, revision);
   async function act(request: () => Promise<unknown>) {
@@ -58,10 +60,10 @@ function DailyDocumentsView({
     setActionError(undefined);
     try {
       await request();
-      setRevision((value) => value + 1);
     } catch (failure) {
       setActionError(failure instanceof Error ? failure.message : t("failed"));
     } finally {
+      setRevision((value) => value + 1);
       setBusy(false);
     }
   }
@@ -89,14 +91,54 @@ function DailyDocumentsView({
           <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
             {t("coverage")}
           </p>
-          <Button
-            variant="outline"
-            onClick={() => setRevision((value) => value + 1)}
-            disabled={busy}
-          >
-            {t("reload")}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            {data?.enabled && (
+              <Button
+                onClick={() =>
+                  void act(async () => {
+                    setBatchResult(undefined);
+                    setBatchResult(await requestDailyDocumentBatch(date));
+                  })
+                }
+                disabled={busy || data.total === 0}
+              >
+                {t(
+                  busy
+                    ? "batchScheduling"
+                    : data.company_scope
+                      ? "batchCompany"
+                      : "batchScope",
+                )}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => setRevision((value) => value + 1)}
+              disabled={busy}
+            >
+              {t("reload")}
+            </Button>
+          </div>
+          {data?.enabled && (
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              {t("batchHint", { count: data.total })}
+            </p>
+          )}
+          {data?.summary && (
+            <p
+              role="status"
+              className="mt-2 text-sm text-gray-600 dark:text-gray-400"
+            >
+              {t("batchProgress", data.summary)}
+            </p>
+          )}
         </ComponentCard>
+        {batchResult && (
+          <p role="status" className="text-sm text-gray-700 dark:text-gray-300">
+            {t("batchAccepted", { ...batchResult })}
+            {batchResult.failed > 0 && <> {t("batchFailuresKept")}</>}
+          </p>
+        )}
         {(error || actionError) && (
           <p
             role="alert"
@@ -118,9 +160,6 @@ function DailyDocumentsView({
                 key={row.report_id}
                 row={row}
                 busy={busy}
-                onRequest={() =>
-                  void act(() => requestDailyDocument(row.report_id))
-                }
                 onRetry={() =>
                   row.document &&
                   void act(() => retryDailyDocument(row.document!.id))

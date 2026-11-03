@@ -29,7 +29,11 @@ export interface DailyDocument {
   completed_units: number;
   total_units: number;
   result: null | {
-    work_groups?: { title: string; text: string; evidence: { report_id: number; item_id: number; quote: string }[] }[];
+    work_groups?: {
+      title: string;
+      text: string;
+      evidence: { report_id: number; item_id: number; quote: string }[];
+    }[];
     comments: { item_id: number; text: string; quote: string }[];
     recommendations: { item_id: number; text: string; quote: string }[];
     work_totals: {
@@ -53,6 +57,14 @@ export interface DailyDocumentsPage {
   page: number;
   last_page: number;
   total: number;
+  company_scope?: boolean;
+  summary?: {
+    total: number;
+    completed: number;
+    processing: number;
+    failed: number;
+    not_started: number;
+  };
   reports: {
     report_id: number;
     employee_name: string;
@@ -60,4 +72,12 @@ export interface DailyDocumentsPage {
     document: DailyDocument | null;
     source_changed: boolean;
   }[];
+}
+
+export interface DailyDocumentBatch {
+  date: string;
+  total: number;
+  created: number;
+  reused: number;
+  failed: number;
 }

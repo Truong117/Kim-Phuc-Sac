@@ -63,7 +63,6 @@ function render(document, changed = false) {
           source_changed: changed,
         },
         busy: false,
-        onRequest() {},
         onRetry() {},
       }),
     ),

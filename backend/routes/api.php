@@ -246,6 +246,7 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
 
     Route::prefix('ai/daily-documents')->middleware(['permission:ai.insights.view', 'permission:reports.view'])->group(function (): void {
         Route::get('/', [DailyDocumentController::class, 'index']);
+        Route::post('/batch', [DailyDocumentController::class, 'batch'])->middleware('throttle:4,1');
         Route::post('/reports/{report}', [DailyDocumentController::class, 'store'])->whereNumber('report')->middleware('throttle:4,1');
         Route::get('/{document}', [DailyDocumentController::class, 'show'])->whereNumber('document');
         Route::post('/{document}/retry', [DailyDocumentController::class, 'retry'])->whereNumber('document')->middleware('throttle:4,1');

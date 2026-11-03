@@ -1,5 +1,9 @@
 import { apiRequest } from "@/services/apiClient";
-import type { DailyDocument, DailyDocumentsPage } from "@/types/dailyDocument";
+import type {
+  DailyDocument,
+  DailyDocumentBatch,
+  DailyDocumentsPage,
+} from "@/types/dailyDocument";
 
 export async function listDailyDocuments(
   date: string,
@@ -26,6 +30,15 @@ export async function retryDailyDocument(documentId: number) {
     await apiRequest<{ data: DailyDocument }>(
       `/api/ai/daily-documents/${documentId}/retry`,
       { method: "POST", body: "{}" },
+    )
+  ).data;
+}
+
+export async function requestDailyDocumentBatch(date: string) {
+  return (
+    await apiRequest<{ data: DailyDocumentBatch }>(
+      "/api/ai/daily-documents/batch",
+      { method: "POST", body: JSON.stringify({ date }) },
     )
   ).data;
 }

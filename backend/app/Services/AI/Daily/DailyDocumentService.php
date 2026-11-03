@@ -3,6 +3,7 @@
 namespace App\Services\AI\Daily;
 
 use App\Jobs\GenerateDailyReportDocument;
+use App\Models\DailyReport;
 use App\Models\DailyReportAiDocument;
 use App\Models\DailyReportAiUnit;
 use App\Models\User;
@@ -39,11 +40,22 @@ class DailyDocumentService
         if (! config('daily_report_ai.enabled')) {
             return ['enabled' => false, 'date' => $date, 'reports' => [], 'total' => 0, 'page' => $page, 'last_page' => 1];
         }
+        $allReportIds = (clone $query)->select('daily_reports.id');
         $reports = $query->with(['items', 'user:id,name'])->orderBy('id')->paginate(25, ['*'], 'page', $page);
         $documents = DailyReportAiDocument::query()->with('units')->whereIn('daily_report_id', $reports->pluck('id'))
             ->orderByDesc('id')->get()->unique('daily_report_id')->keyBy('daily_report_id');
 
-        return ['enabled' => true, 'date' => $date, 'total' => $reports->total(), 'page' => $reports->currentPage(), 'last_page' => $reports->lastPage(),
+        $latest = DailyReportAiDocument::query()->whereIn('daily_report_id', $allReportIds)
+            ->selectRaw('MAX(id)')->groupBy('daily_report_id');
+        $statuses = DailyReportAiDocument::query()->whereIn('id', $latest)->selectRaw('status, COUNT(*) AS aggregate')->groupBy('status')->pluck('aggregate', 'status');
+        $scope = app(WorkReportSnapshot::class)->scope($viewer);
+        $company = collect($scope['restrictions'])->every(fn ($restriction) => $restriction[0] === 'organization');
+        $summary = ['total' => $reports->total(), 'completed' => (int) ($statuses['completed'] ?? 0),
+            'processing' => (int) ($statuses['pending'] ?? 0) + (int) ($statuses['running'] ?? 0),
+            'failed' => (int) ($statuses['partial'] ?? 0) + (int) ($statuses['failed'] ?? 0),
+            'not_started' => $reports->total() - $statuses->sum()];
+
+        return ['enabled' => true, 'company_scope' => $company, 'summary' => $summary, 'date' => $date, 'total' => $reports->total(), 'page' => $reports->currentPage(), 'last_page' => $reports->lastPage(),
             'reports' => $reports->map(function ($report) use ($documents) {
                 $snapshot = DailyReportSource::capture($report);
                 $document = $documents->get($report->id);
@@ -54,9 +66,8 @@ class DailyDocumentService
             })->all()];
     }
 
-    public function request(User $viewer, int $reportId): array
+    private function settings(): array
     {
-        $this->enabled();
         $settings = ['driver' => config('daily_report_ai.driver'), 'model' => config('daily_report_ai.model'),
             'schema' => DailyReportOutput::VERSION, 'source' => DailyReportSource::VERSION, 'prompt' => 'daily-document-v3',
             'unit_bytes' => (int) config('daily_report_ai.unit_bytes'), 'max_parts' => (int) config('daily_report_ai.max_parts'),
@@ -75,36 +86,79 @@ class DailyDocumentService
         if ($settings['driver'] === 'openai' && ! (new OpenAiGateway([...$gateway, 'api_key' => config('daily_report_ai.gateway.api_key')]))->isConfigured()) {
             throw ValidationException::withMessages(['driver' => 'Luna chưa đủ cấu hình khóa API, giá token và hạn mức.']);
         }
-        $document = DB::transaction(function () use ($viewer, $reportId, $settings) {
-            $report = $this->eligible($viewer)->with('items')->lockForUpdate()->findOrFail($reportId);
-            $snapshot = DailyReportSource::capture($report);
-            $parts = DailyReportSource::parts($snapshot, $settings['unit_bytes'], $settings['max_parts']);
-            if ($settings['driver'] === 'openai') {
-                $maximum = count($parts) * $settings['max_attempts'] * ($settings['gateway']['max_input_tokens'] * $settings['gateway']['input_usd_per_million_tokens']
-                    + $settings['gateway']['max_output_tokens'] * $settings['gateway']['output_usd_per_million_tokens']);
-                if ($settings['max_document_budget_usd'] <= 0 || $maximum > (int) round($settings['max_document_budget_usd'] * 1000000)) {
-                    throw ValidationException::withMessages(['budget' => 'Báo cáo vượt dự phòng ngân sách ngày, gồm cả các lần thử lại. Chưa tạo lượt AI.']);
-                }
-            }
-            $sourceHash = DailyReportSource::hash($snapshot);
-            $key = DailyReportSource::hash([$report->organization_id, $reportId, $sourceHash, $settings]);
-            $document = DailyReportAiDocument::query()->createOrFirst(['cache_key' => $key], [
-                'organization_id' => $report->organization_id, 'daily_report_id' => $reportId,
-                'requested_by_user_id' => $viewer->id, 'report_date' => $report->report_date,
-                'source_hash' => $sourceHash, 'snapshot' => $snapshot, 'analysis_config' => $settings,
-                'status' => 'pending', 'captured_at' => now(),
-            ]);
-            if ($document->wasRecentlyCreated) {
-                foreach ($parts as $part => $input) {
-                    $unit = $document->units()->create(['part' => $part, 'input' => $input, 'status' => 'pending']);
-                    GenerateDailyReportDocument::dispatch($unit->id)->onConnection(config('daily_report_ai.queue_connection'))->onQueue('ai-daily-reports')->afterCommit();
-                }
-            }
 
-            return $document;
+        return $settings;
+    }
+
+    private function allocate(User $viewer, DailyReport $report, array $settings): DailyReportAiDocument
+    {
+        $reportId = (int) $report->id;
+        $snapshot = DailyReportSource::capture($report);
+        $parts = DailyReportSource::parts($snapshot, $settings['unit_bytes'], $settings['max_parts']);
+        if ($settings['driver'] === 'openai') {
+            $maximum = count($parts) * $settings['max_attempts'] * ($settings['gateway']['max_input_tokens'] * $settings['gateway']['input_usd_per_million_tokens']
+                + $settings['gateway']['max_output_tokens'] * $settings['gateway']['output_usd_per_million_tokens']);
+            if ($settings['max_document_budget_usd'] <= 0 || $maximum > (int) round($settings['max_document_budget_usd'] * 1000000)) {
+                throw ValidationException::withMessages(['budget' => 'Báo cáo vượt dự phòng ngân sách ngày, gồm cả các lần thử lại. Chưa tạo lượt AI.']);
+            }
+        }
+        $sourceHash = DailyReportSource::hash($snapshot);
+        $key = DailyReportSource::hash([$report->organization_id, $reportId, $sourceHash, $settings]);
+        $document = DailyReportAiDocument::query()->createOrFirst(['cache_key' => $key], [
+            'organization_id' => $report->organization_id, 'daily_report_id' => $reportId,
+            'requested_by_user_id' => $viewer->id, 'report_date' => $report->report_date,
+            'source_hash' => $sourceHash, 'snapshot' => $snapshot, 'analysis_config' => $settings,
+            'status' => 'pending', 'captured_at' => now(),
+        ]);
+        if ($document->wasRecentlyCreated) {
+            foreach ($parts as $part => $input) {
+                $unit = $document->units()->create(['part' => $part, 'input' => $input, 'status' => 'pending']);
+                DB::afterCommit(fn () => GenerateDailyReportDocument::dispatch($unit->id)->onConnection(config('daily_report_ai.queue_connection'))->onQueue('ai-daily-reports'));
+            }
+        }
+
+        return $document;
+    }
+
+    public function request(User $viewer, int $reportId): array
+    {
+        $this->enabled();
+        $query = $this->eligible($viewer);
+        $settings = $this->settings();
+        $document = DB::transaction(function () use ($viewer, $reportId, $settings, $query) {
+            return $this->allocate($viewer, $query->with('items')->lockForUpdate()->findOrFail($reportId), $settings);
         });
 
         return $this->payload($document->fresh());
+    }
+
+    public function requestDate(User $viewer, string $date): array
+    {
+        $this->enabled();
+        $query = $this->eligible($viewer)->whereDate('report_date', $date);
+        $connection = config('daily_report_ai.queue_connection');
+        if (! is_array(config("queue.connections.$connection")) || config("queue.connections.$connection.driver") === 'sync') {
+            throw ValidationException::withMessages(['queue' => 'Tổng hợp toàn công ty cần hàng đợi nền được cấu hình.']);
+        }
+        $settings = $this->settings();
+
+        return DB::transaction(function () use ($viewer, $date, $query, $settings): array {
+            $limit = max(1, (int) config('daily_report_ai.max_batch_reports', 500));
+            $reports = $query->with('items')->orderBy('daily_reports.id')->limit($limit + 1)->lockForUpdate()->get();
+            if ($reports->count() > $limit) {
+                throw ValidationException::withMessages(['date' => 'Vượt số báo cáo hỗ trợ trong một lượt. Không báo cáo nào được tạo hoặc bị cắt bỏ.']);
+            }
+            $counts = ['date' => $date, 'total' => $reports->count(), 'created' => 0, 'reused' => 0, 'failed' => 0];
+            foreach ($reports as $report) {
+                $document = $this->allocate($viewer, $report, $settings);
+                $counts[$document->wasRecentlyCreated ? 'created' : 'reused']++;
+                if (in_array($document->status, ['partial', 'failed'], true)) {
+                    $counts['failed']++;
+                }
+            }
+
+            return $counts;
+        });
     }
 
     public function authorized(User $viewer, int $documentId): DailyReportAiDocument
