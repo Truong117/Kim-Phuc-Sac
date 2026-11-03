@@ -10,6 +10,7 @@ interface TextareaProps {
   onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
   className?: string; // Additional CSS classes
   containerClassName?: string;
+  required?: boolean;
   disabled?: boolean; // Disabled state
   error?: boolean; // Error state
   hint?: string; // Hint text to display
@@ -25,6 +26,7 @@ const TextArea: React.FC<TextareaProps> = ({
   onBlur,
   className = "", // Additional custom styles
   containerClassName = "",
+  required = false,
   disabled = false, // Disabled state
   error = false, // Error state
   hint = "", // Default hint text
@@ -56,6 +58,7 @@ const TextArea: React.FC<TextareaProps> = ({
         onChange={handleChange}
         onBlur={onBlur}
         disabled={disabled}
+        required={required}
         aria-invalid={error || undefined}
         aria-describedby={hint && id ? `${id}-hint` : undefined}
         className={textareaClasses}

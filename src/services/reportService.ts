@@ -1,6 +1,7 @@
 import { apiRequest } from "@/services/apiClient";
 import type {
   DailyReport,
+  MakeupReportOptions,
   MarkReportNotificationsReadResponse,
   ReportComment,
   ReportListQuery,
@@ -111,3 +112,34 @@ export const markReportNotificationsRead = (
     `/api/reports/${reportId}/notifications/read`,
     { method: "PATCH" },
   );
+
+export const getMakeupReportOptions = async (
+  signal?: AbortSignal,
+): Promise<MakeupReportOptions> =>
+  (
+    await apiRequest<DataResponse<MakeupReportOptions>>("/api/reports/makeup", {
+      signal,
+    })
+  ).data;
+
+export const getMakeupReportState = async (
+  date: string,
+  signal?: AbortSignal,
+): Promise<TodayReportState> =>
+  (
+    await apiRequest<DataResponse<TodayReportState>>(
+      `/api/reports/makeup/state?report_date=${encodeURIComponent(date)}`,
+      { signal },
+    )
+  ).data;
+
+export const createMakeupReport = async (
+  date: string,
+  input: SaveReportInput,
+): Promise<DailyReport> =>
+  (
+    await apiRequest<DataResponse<DailyReport>>("/api/reports/makeup", {
+      method: "POST",
+      body: JSON.stringify({ ...input, report_date: date }),
+    })
+  ).data;

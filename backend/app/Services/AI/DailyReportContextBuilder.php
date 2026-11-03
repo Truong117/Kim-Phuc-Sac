@@ -55,7 +55,7 @@ class DailyReportContextBuilder
                     'status' => $status,
                     'content' => $item->content,
                     'result' => $item->result,
-                    'note' => $item->note,
+                    'note' => filled($item->issue) ? implode("\n", array_filter([$item->note, 'Vướng mắc / cần hỗ trợ: '.$item->issue])) : $item->note,
                 ];
             }
             $payload[] = [

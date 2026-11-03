@@ -13,6 +13,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -86,29 +87,75 @@ class WorkReportService
         ];
     }
 
+    public function makeupOptions(User $user): array
+    {
+        $membership = $this->activeMembership($user);
+        $this->participation->ensureParticipant($membership);
+        $today = $this->clock->businessDate();
+        $end = $this->clock->isWorkingDate($today) && $this->clock->isWindowClosed() ? $today : $this->clock->now()->subDay()->toDateString();
+        $dates = $end < $this->clock->makeupPeriodStart() ? [] : $this->clock->workingDatesBetween($this->clock->makeupPeriodStart(), $end);
+        $existing = DailyReport::query()->where('organization_id', $membership->organization_id)
+            ->where('user_id', $user->id)->whereBetween('report_date', [$this->clock->makeupPeriodStart(), $end])
+            ->pluck('report_date')->map(fn ($date) => substr((string) $date, 0, 10))->all();
+
+        return [
+            'business_date' => $this->clock->businessDate(),
+            'period_start' => $this->clock->makeupPeriodStart(), 'period_end' => $this->clock->now()->startOfWeek(1)->addDays(5)->toDateString(),
+            'days' => collect(array_reverse($dates))->reject(fn ($date) => in_array($date, $existing, true))
+                ->map(fn ($date) => ['date' => $date, 'can_submit' => $this->clock->canMakeupDate($date),
+                    'deadline_at' => $this->clock->inBusinessTimezone($this->clock->makeupDeadline($date)->subSecond())->toIso8601String()])->values()->all(),
+        ];
+    }
+
+    public function makeupState(User $user, string $date): array
+    {
+        $membership = $this->activeMembership($user);
+        $this->participation->ensureParticipant($membership);
+        if ($date < $this->clock->makeupPeriodStart() || $date > $this->clock->businessDate() || ! $this->clock->isWorkingDate($date)) {
+            throw ValidationException::withMessages(['report_date' => 'Chọn ngày làm việc trong tuần hiện tại (Thứ Hai–Thứ Bảy).']);
+        }
+        $report = DailyReport::query()->where('organization_id', $membership->organization_id)
+            ->where('user_id', $user->id)->whereDate('report_date', $date)->first();
+        if ($report) {
+            $this->loadDetail($report, $user);
+        }
+
+        return [
+            'business_date' => $date, 'cutoff_at' => $this->clock->inBusinessTimezone($this->clock->makeupDeadline($date)->subSecond())->toIso8601String(),
+            'is_working_day' => true, 'is_window_closed' => ! $this->clock->canMakeupDate($date),
+            'reporting_required' => true, 'report' => $report,
+            'can_create' => $report === null && $this->clock->canMakeupDate($date) && $this->authorization->allows($user, 'reports.create'),
+        ];
+    }
+
+    public function createMakeup(User $author, string $date, array $items, array $details): DailyReport
+    {
+        return $this->createForDate($author, $items, $details, $date, true);
+    }
+
     /**
      * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
-    public function create(User $author, array $items): DailyReport
+    public function create(User $author, array $items, array $details = []): DailyReport
+    {
+        return $this->createForDate($author, $items, $details, $this->clock->businessDate(), false);
+    }
+
+    private function createForDate(User $author, array $items, array $details, string $date, bool $isMakeup): DailyReport
     {
         $membership = $this->activeMembership($author);
         $this->participation->ensureParticipant($membership);
-        $date = $this->clock->businessDate();
         $lockedAt = $this->clock->cutoffForDate($date);
 
         if (! $this->clock->isWorkingDate($date)) {
             throw new ConflictHttpException('Chủ Nhật là ngày nghỉ, không thể tạo báo cáo công việc mới.');
         }
 
-        if ($this->clock->isLocked($lockedAt)) {
-            throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
-        }
+        $this->ensureSubmissionWindow($date, $isMakeup);
 
         try {
-            $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items): DailyReport {
-                if ($this->clock->isLocked($lockedAt)) {
-                    throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
-                }
+            $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items, $details, $isMakeup): DailyReport {
+                $this->ensureSubmissionWindow($date, $isMakeup);
 
                 $report = DailyReport::query()->create([
                     'organization_id' => $membership->organization_id,
@@ -116,7 +163,9 @@ class WorkReportService
                     'department_id' => $membership->department_id,
                     'location_id' => $membership->location_id,
                     'report_date' => $date,
+                    'is_makeup' => $isMakeup,
                     'locked_at' => $lockedAt,
+                    'next_day_plan' => $details['next_day_plan'] ?? null,
                 ]);
 
                 $this->replaceItems($report, $items);
@@ -131,13 +180,24 @@ class WorkReportService
                 ->exists();
 
             if ($duplicateExists) {
-                throw new ConflictHttpException('Báo cáo hôm nay đã tồn tại.');
+                throw new ConflictHttpException('Báo cáo cho ngày này đã tồn tại.');
             }
 
             throw $exception;
         }
 
         return $this->loadDetail($report, $author);
+    }
+
+    private function ensureSubmissionWindow(string $date, bool $isMakeup): void
+    {
+        if ($isMakeup) {
+            if (! $this->clock->canMakeupDate($date)) {
+                throw ValidationException::withMessages(['report_date' => 'Chỉ được nộp bù trong 3 ngày lịch tiếp theo và trong cùng tuần (Thứ Hai–Thứ Bảy).']);
+            }
+        } elseif ($this->clock->isLocked($this->clock->cutoffForDate($date))) {
+            throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
+        }
     }
 
     public function findVisible(User $viewer, int $reportId): DailyReport
@@ -150,12 +210,12 @@ class WorkReportService
     /**
      * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
-    public function update(User $author, int $reportId, array $items): DailyReport
+    public function update(User $author, int $reportId, array $items, array $details = []): DailyReport
     {
         $membership = $this->activeMembership($author);
         $this->participation->ensureParticipant($membership);
 
-        $report = DB::transaction(function () use ($author, $membership, $reportId, $items): DailyReport {
+        $report = DB::transaction(function () use ($author, $membership, $reportId, $items, $details): DailyReport {
             $report = DailyReport::query()
                 ->where('organization_id', $membership->organization_id)
                 ->where('user_id', $author->id)
@@ -170,8 +230,41 @@ class WorkReportService
                 throw new ConflictHttpException('Báo cáo đã bị khóa và không thể chỉnh sửa.');
             }
 
-            $report->items()->delete();
-            $this->replaceItems($report, $items);
+            $existing = $report->items()->get()->keyBy('id');
+            if ((int) ($details['form_version'] ?? 0) !== 3
+                && $existing->contains(fn ($item) => filled($item->issue) || ! empty($item->evidence_links))) {
+                throw new ConflictHttpException('Báo cáo có nội dung mới. Hãy tải lại trang trước khi chỉnh sửa.');
+            }
+            // Validate every identity before changing anything. IDs from another report are never accepted.
+            foreach ($items as $item) {
+                if (isset($item['id']) && ! $existing->has($item['id'])) {
+                    throw ValidationException::withMessages(['items' => 'Đầu việc không thuộc báo cáo đang sửa.']);
+                }
+            }
+            // Move old positions outside the destination range before reordering a unique position index.
+            $offset = (int) $existing->max('sort_order') + count($items) + 1;
+            $report->items()->update(['sort_order' => DB::raw('sort_order + '.$offset)]);
+            $existing = $report->items()->get()->keyBy('id');
+            $kept = [];
+            foreach ($items as $index => $item) {
+                $values = [
+                    'content' => $item['content'], 'result' => $item['result'] ?? '',
+                    'status' => $item['status'], 'note' => $item['note'] ?? null, 'sort_order' => $index + 1,
+                ];
+                foreach (['issue', 'evidence_links'] as $field) {
+                    if (array_key_exists($field, $item)) {
+                        $values[$field] = $item[$field];
+                    }
+                }
+                $row = isset($item['id']) ? $existing->get($item['id']) : $report->items()->make();
+                $row->fill($values)->save();
+                $kept[] = $row->id;
+            }
+            $report->items()->whereNotIn('id', $kept)->delete();
+            if (array_key_exists('next_day_plan', $details)) {
+                $report->next_day_plan = $details['next_day_plan'];
+            }
+            $report->touch();
 
             return $report;
         });
@@ -270,8 +363,8 @@ class WorkReportService
                     WorkStatus::BLOCKED => $query->whereHas('items', fn (Builder $query) => $query->where('status', WorkStatus::BLOCKED->value)),
                     WorkStatus::IN_PROGRESS => $query
                         ->whereDoesntHave('items', fn (Builder $query) => $query->where('status', WorkStatus::BLOCKED->value))
-                        ->whereHas('items', fn (Builder $query) => $query->where('status', WorkStatus::IN_PROGRESS->value)),
-                    WorkStatus::COMPLETED => $query->whereDoesntHave('items', fn (Builder $query) => $query->where('status', '!=', WorkStatus::COMPLETED->value)),
+                        ->where(fn (Builder $query) => $query->whereHas('items', fn (Builder $items) => $items->where('status', WorkStatus::IN_PROGRESS->value))->orWhereDoesntHave('items')),
+                    WorkStatus::COMPLETED => $query->whereHas('items')->whereDoesntHave('items', fn (Builder $query) => $query->where('status', '!=', WorkStatus::COMPLETED->value)),
                 };
             });
     }
@@ -287,6 +380,8 @@ class WorkReportService
                 'result' => $item['result'] ?? '',
                 'status' => $item['status'],
                 'note' => $item['note'] ?? null,
+                'issue' => $item['issue'] ?? null,
+                'evidence_links' => $item['evidence_links'] ?? null,
                 'sort_order' => $index + 1,
             ],
             $items,

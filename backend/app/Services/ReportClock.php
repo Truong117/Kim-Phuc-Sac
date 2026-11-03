@@ -39,6 +39,27 @@ class ReportClock
         return CarbonImmutable::now('UTC')->greaterThanOrEqualTo($lockedAt->utc());
     }
 
+    public function makeupPeriodStart(): string
+    {
+        return $this->now()->startOfWeek(CarbonInterface::MONDAY)->toDateString();
+    }
+
+    public function makeupDeadline(string $date): CarbonImmutable
+    {
+        $day = $this->date($date);
+        $graceEnd = $day->addDays((int) config('reports.makeup_grace_days', 3) + 1)->startOfDay();
+        $weekEnd = $day->startOfWeek(CarbonInterface::MONDAY)->addDays(6);
+
+        return $graceEnd->min($weekEnd)->utc();
+    }
+
+    public function canMakeupDate(string $date): bool
+    {
+        return $date >= $this->makeupPeriodStart() && $date <= $this->businessDate()
+            && $this->isWorkingDate($date) && $this->isLocked($this->cutoffForDate($date))
+            && ! $this->isLocked($this->makeupDeadline($date));
+    }
+
     public function isWindowClosed(): bool
     {
         if (! $this->isWorkingDate($this->businessDate())) {

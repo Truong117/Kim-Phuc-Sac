@@ -1,3 +1,4 @@
+import { isEvidenceUrl } from "@/utils/reportEvidence";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import type { ReportWorkItem } from "@/types/reports";
 import { useTranslation } from "react-i18next";
@@ -60,6 +61,46 @@ export default function ReportWorkItemDetails({
                 </dt>
                 <dd className="mt-1 text-theme-sm whitespace-pre-wrap text-gray-700 dark:text-gray-300">
                   {item.note}
+                </dd>
+              </div>
+            )}
+            {item.issue?.trim() && (
+              <div className="lg:col-span-2">
+                <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                  {t("issue")}
+                </dt>
+                <dd className="mt-1 text-theme-sm break-words whitespace-pre-wrap text-gray-700 dark:text-gray-300">
+                  {item.issue}
+                </dd>
+              </div>
+            )}
+            {Boolean(item.evidence_links?.length) && (
+              <div className="lg:col-span-2">
+                <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                  {t("evidence")}
+                </dt>
+                <dd className="mt-1 space-y-1 text-theme-sm">
+                  {item.evidence_links?.map((url, index) => (
+                    <div key={`${index}-${url}`}>
+                      {isEvidenceUrl(url) ? (
+                        <a
+                          className="break-all text-brand-600 underline dark:text-brand-400"
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {url}
+                        </a>
+                      ) : (
+                        <span className="break-all text-gray-700 dark:text-gray-300">
+                          {url}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                    {t("unverified")}
+                  </p>
                 </dd>
               </div>
             )}

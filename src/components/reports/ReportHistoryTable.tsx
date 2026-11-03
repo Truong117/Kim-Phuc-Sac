@@ -28,6 +28,9 @@ const formatWeekday = (date: string) =>
 export default function ReportHistoryTable({
   reports,
 }: ReportHistoryTableProps) {
+  const { t: tMakeup } = useTranslation("common", {
+    keyPrefix: "dailyReport.makeup",
+  });
   const { t } = useTranslation("common", {
     keyPrefix: "reportHistory.table",
   });
@@ -87,6 +90,11 @@ export default function ReportHistoryTable({
                     </span>
                     <span className="mt-0.5 block text-theme-xs text-gray-500 capitalize dark:text-gray-400">
                       {formatWeekday(report.report_date)}
+                      {report.is_makeup && (
+                        <span className="ms-2 rounded-full bg-warning-50 px-2 py-0.5 text-warning-700 dark:bg-warning-500/15 dark:text-warning-400">
+                          {tMakeup("badge")}
+                        </span>
+                      )}
                     </span>
                   </TableCell>
                   <TableCell className="px-4 py-4 text-theme-sm font-medium whitespace-nowrap text-gray-800 dark:text-white/90">

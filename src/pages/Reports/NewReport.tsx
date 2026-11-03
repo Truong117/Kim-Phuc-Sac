@@ -1,3 +1,9 @@
+import { normalizeNextDayPlan } from "@/utils/nextDayPlan";
+import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
+import {
+  hasValidEvidenceLinks,
+  parseEvidenceLinks,
+} from "@/utils/reportEvidence";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import Form from "@/components/form/Form";
@@ -12,6 +18,7 @@ import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
 import QuickReportEditor from "@/components/reports/QuickReportEditor";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
+import { useAuthorization } from "@/hooks/useAuthorization";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkReportDraft } from "@/hooks/useWorkReportDraft";
 import { DocsIcon, TimeIcon } from "@/icons";
@@ -19,6 +26,8 @@ import { ApiServiceError } from "@/services/apiClient";
 import type { WorkReportDraftData } from "@/services/workReportDraftStorage";
 import {
   createReport,
+  createMakeupReport,
+  getMakeupReportState,
   getTodayReport,
   updateReport,
 } from "@/services/reportService";
@@ -41,7 +50,14 @@ import {
   type QuickReportBatchError,
   type QuickReportDrafts,
 } from "@/utils/quickReport";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 
@@ -66,6 +82,9 @@ const createEmptyWorkItem = (): WorkItemFormData => ({
 const mapReportItems = (report: DailyReport): WorkItemFormData[] =>
   report.items.map((item) => ({
     clientId: `report-item-${item.id}`,
+    id: item.id,
+    issue: item.issue ?? "",
+    evidenceLinks: (item.evidence_links ?? []).join("\n"),
     content: item.content,
     result: item.result,
     status: item.status,
@@ -107,11 +126,23 @@ const ReportStateActions = ({
   </div>
 );
 
-export default function NewReport() {
+export default function NewReport({
+  makeupDate,
+  dateSelection,
+}: { makeupDate?: string; dateSelection?: ReactNode } = {}) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
   const { currentUser } = useAuth();
+  const { canNavigate } = useAuthorization();
   const navigate = useNavigate();
+  const fetchReportState = useCallback(
+    (signal?: AbortSignal) =>
+      makeupDate
+        ? getMakeupReportState(makeupDate, signal)
+        : getTodayReport(signal),
+    [makeupDate],
+  );
   const [today, setToday] = useState<TodayReportState | null>(null);
+  const [nextDayPlan, setNextDayPlan] = useState("");
   const [items, setItems] = useState<WorkItemFormData[]>([]);
   const [editorMode, setEditorMode] = useState<"quick" | "detailed">("quick");
   const [quickDrafts, setQuickDrafts] = useState<QuickReportDrafts>(
@@ -137,6 +168,7 @@ export default function NewReport() {
 
   const applyTodayState = useCallback((state: TodayReportState) => {
     setToday(state);
+    setNextDayPlan(state.report?.next_day_plan ?? "");
     setItems(state.report ? mapReportItems(state.report) : []);
     setEditorMode("quick");
     setQuickDrafts(createEmptyQuickReportDrafts());
@@ -148,7 +180,7 @@ export default function NewReport() {
   const loadToday = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        applyTodayState(await getTodayReport(signal));
+        applyTodayState(await fetchReportState(signal));
         setError(null);
       } catch (loadError) {
         if (isAbortError(loadError)) return;
@@ -161,12 +193,12 @@ export default function NewReport() {
         if (!signal?.aborted) setIsLoading(false);
       }
     },
-    [applyTodayState, t],
+    [applyTodayState, fetchReportState, t],
   );
 
   useEffect(() => {
     const abortController = new AbortController();
-    getTodayReport(abortController.signal)
+    fetchReportState(abortController.signal)
       .then((state) => {
         applyTodayState(state);
         setError(null);
@@ -183,7 +215,7 @@ export default function NewReport() {
         if (!abortController.signal.aborted) setIsLoading(false);
       });
     return () => abortController.abort();
-  }, [applyTodayState, t]);
+  }, [applyTodayState, fetchReportState, t]);
 
   const isClosed = Boolean(today?.is_window_closed);
   const isReadOnly = Boolean(
@@ -194,11 +226,11 @@ export default function NewReport() {
   );
   const isDraftEditable = Boolean(
     today &&
-      today.is_working_day &&
-      today.reporting_required &&
-      !isClosed &&
-      !isReadOnly &&
-      !cannotCreate,
+    today.is_working_day &&
+    today.reporting_required &&
+    !isClosed &&
+    !isReadOnly &&
+    !cannotCreate,
   );
 
   const draftContext = useMemo(
@@ -216,14 +248,16 @@ export default function NewReport() {
       items: today?.report ? mapReportItems(today.report) : [],
       quickDrafts: createEmptyQuickReportDrafts(),
       editorMode: "quick",
+      nextDayPlan: today?.report?.next_day_plan ?? "",
     }),
     [today],
   );
   const currentDraftData = useMemo<WorkReportDraftData>(
-    () => ({ items, quickDrafts, editorMode }),
-    [editorMode, items, quickDrafts],
+    () => ({ items, quickDrafts, editorMode, nextDayPlan }),
+    [editorMode, items, quickDrafts, nextDayPlan],
   );
   const applyDraftData = useCallback((draftData: WorkReportDraftData) => {
+    setNextDayPlan(draftData.nextDayPlan ?? "");
     setItems(draftData.items.map((item) => ({ ...item })));
     setQuickDrafts({ ...draftData.quickDrafts });
     setEditorMode(draftData.editorMode);
@@ -251,6 +285,7 @@ export default function NewReport() {
     const draft = reportDraft.dialog.draft.data;
     const savedItems = serializeWorkItems(draft.items, {
       note: t("workItem.note.label"),
+      issue: t("v3.issueLabel"),
       unselectedStatus: t("recovery.unselectedStatus"),
       statuses: {
         COMPLETED: t("workItem.statuses.completed"),
@@ -258,16 +293,20 @@ export default function NewReport() {
         BLOCKED: t("workItem.statuses.blocked"),
       },
     });
-    const pendingGroups = (
-      ["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const
-    )
+    const pendingGroups = (["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const)
       .filter((status) => draft.quickDrafts[status].trim())
       .map(
         (status) =>
           `${t(`draft.pending.${status}`)}:\n${draft.quickDrafts[status]}`,
       );
 
-    return [savedItems, ...pendingGroups].filter(Boolean).join("\n\n");
+    return [
+      savedItems,
+      ...pendingGroups,
+      draft.nextDayPlan ? `${t("v3.planTitle")}:\n${draft.nextDayPlan}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   }, [reportDraft.dialog, t]);
 
   const validateItems = (candidateItems: WorkItemFormData[]) =>
@@ -281,7 +320,9 @@ export default function NewReport() {
             limit: QUICK_REPORT_MAX_FIELD_LENGTH,
           });
         }
-        if (item.result.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
+        if (item.status === "COMPLETED" && !item.result.trim()) {
+          itemErrors.result = t("validation.resultRequired");
+        } else if (item.result.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
           itemErrors.result = t("validation.maxLength", {
             limit: QUICK_REPORT_MAX_FIELD_LENGTH,
           });
@@ -291,6 +332,12 @@ export default function NewReport() {
             limit: QUICK_REPORT_MAX_FIELD_LENGTH,
           });
         }
+        if ((item.issue ?? "").trim().length > QUICK_REPORT_MAX_FIELD_LENGTH)
+          itemErrors.issue = t("validation.maxLength", {
+            limit: QUICK_REPORT_MAX_FIELD_LENGTH,
+          });
+        if (!hasValidEvidenceLinks(item.evidenceLinks ?? ""))
+          itemErrors.evidenceLinks = t("v3.evidenceInvalid");
         if (!item.status) itemErrors.status = t("validation.status");
         if (Object.keys(itemErrors).length > 0) {
           errors[item.clientId] = itemErrors;
@@ -432,18 +479,40 @@ export default function NewReport() {
     const candidateItems = candidate.items;
     const candidateErrors = validateItems(candidateItems);
     if (!today) return;
-    if (candidateItems.length === 0) {
-      setError(t("validation.atLeastOne"));
+    const normalizedPlan = normalizeNextDayPlan(nextDayPlan);
+    if (!normalizedPlan) {
+      setError(t("v3.planRequired"));
       return;
     }
     if (Object.keys(candidateErrors).length > 0) {
-      setError(t("validation.reviewItems"));
+      const pendingResultMissing = candidateItems.some(
+        (item) =>
+          item.status === "COMPLETED" &&
+          !item.result.trim() &&
+          !items.some((saved) => saved.clientId === item.clientId),
+      );
+      setError(
+        t(
+          pendingResultMissing
+            ? "quick.errors.completedResultRequired"
+            : "validation.reviewItems",
+        ),
+      );
       return;
     }
     setBatchError(null);
 
+    if (normalizedPlan.length > 5000) {
+      setError(t("v3.planTooLong"));
+      return;
+    }
     const input: SaveReportInput = {
+      form_version: 3,
+      next_day_plan: normalizedPlan,
       items: candidateItems.map((item) => ({
+        ...(item.id ? { id: item.id } : {}),
+        issue: item.issue?.trim() || null,
+        evidence_links: parseEvidenceLinks(item.evidenceLinks ?? ""),
         content: item.content.trim(),
         result: item.result.trim(),
         status: item.status as WorkStatus,
@@ -455,9 +524,11 @@ export default function NewReport() {
     saveInFlightRef.current = true;
     setSaveState({ status: "saving" });
     try {
-      const savedReport = today.report
-        ? await updateReport(today.report.id, input)
-        : await createReport(input);
+      const savedReport = makeupDate
+        ? await createMakeupReport(makeupDate, input)
+        : today.report
+          ? await updateReport(today.report.id, input)
+          : await createReport(input);
       reportDraft.handleSubmitSuccess();
       setToday((current) =>
         current
@@ -483,8 +554,9 @@ export default function NewReport() {
 
         if (submitError.status === 409) {
           reportDraft.suspend();
-          const unsavedContent = serializeWorkItems(candidateItems, {
+          let unsavedContent = serializeWorkItems(candidateItems, {
             note: t("workItem.note.label"),
+            issue: t("v3.issueLabel"),
             unselectedStatus: t("recovery.unselectedStatus"),
             statuses: {
               COMPLETED: t("workItem.statuses.completed"),
@@ -492,9 +564,11 @@ export default function NewReport() {
               BLOCKED: t("workItem.statuses.blocked"),
             },
           });
+          if (nextDayPlan.trim())
+            unsavedContent += `\n\n${t("v3.planTitle")}:\n${nextDayPlan}`;
           setRecoveryText(unsavedContent || null);
           try {
-            applyTodayState(await getTodayReport());
+            applyTodayState(await fetchReportState());
           } catch {
             // Keep the safe conflict message when the follow-up refresh fails.
           }
@@ -519,14 +593,23 @@ export default function NewReport() {
   return (
     <>
       <PageMeta
-        title={`${t("title")} | KIM PHỤC SẮC`}
+        title={`${t(makeupDate ? "makeup.title" : "title")} | KIM PHỤC SẮC`}
         description={t("metaDescription")}
       />
-      <PageBreadCrumb pageTitle={t("title")} />
+      <PageBreadCrumb pageTitle={t(makeupDate ? "makeup.title" : "title")} />
       <p className="-mt-4 mb-6 text-theme-sm text-gray-500 dark:text-gray-400">
-        {t("subtitle")}
+        {t(makeupDate ? "makeup.description" : "subtitle")}
       </p>
 
+      {dateSelection}
+      {!makeupDate && canNavigate("reports.new") && (
+        <Link
+          to="/reports/makeup/new"
+          className="mb-6 inline-flex rounded-lg border border-gray-300 px-4 py-3 text-theme-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+        >
+          {t("makeup.open")}
+        </Link>
+      )}
       <ReportSaveModal
         state={saveState}
         onGoHome={() => navigate("/")}
@@ -694,6 +777,11 @@ export default function NewReport() {
                 </div>
               </section>
               <ReportWorkItemDetails items={today.report.items} />
+              <ReportNextDayPlan
+                referenceDate={makeupDate}
+                readOnly
+                value={today.report.next_day_plan ?? ""}
+              />
               <ReportStateActions
                 homeLabel={t("actions.goHome")}
                 historyLabel={t("actions.viewHistory")}
@@ -708,7 +796,11 @@ export default function NewReport() {
                 </h2>
                 <p className="mt-2 text-theme-sm text-gray-600 dark:text-gray-300">
                   {t(
-                    isClosed ? "closed.description" : "unavailable.description",
+                    makeupDate
+                      ? "makeup.expired"
+                      : isClosed
+                        ? "closed.description"
+                        : "unavailable.description",
                     {
                       date: formatDate(today.business_date),
                       cutoff: formatTime(today.cutoff_at),
@@ -792,6 +884,15 @@ export default function NewReport() {
                     aria-labelledby="quick-report-tab"
                   >
                     <QuickReportEditor
+                      planSection={
+                        <ReportNextDayPlan
+                          referenceDate={makeupDate}
+                          showValidation={submitAttempted}
+                          value={nextDayPlan}
+                          onChange={setNextDayPlan}
+                          disabled={isSaveFlowActive}
+                        />
+                      }
                       items={realWorkItems(items)}
                       drafts={quickDrafts}
                       errors={visibleErrors}
@@ -817,14 +918,23 @@ export default function NewReport() {
                     aria-labelledby="detailed-report-tab"
                   >
                     <WorkItemList
+                      planSection={
+                        <ReportNextDayPlan
+                          referenceDate={makeupDate}
+                          showValidation={submitAttempted}
+                          value={nextDayPlan}
+                          onChange={setNextDayPlan}
+                          disabled={isSaveFlowActive}
+                        />
+                      }
                       items={items}
                       errors={visibleErrors}
                       onItemChange={handleItemChange}
                       onItemBlur={handleItemBlur}
-                      onItemAdd={() =>
+                      onItemAdd={(status) =>
                         setItems((current) => [
                           ...current,
-                          createEmptyWorkItem(),
+                          { ...createEmptyWorkItem(), status },
                         ])
                       }
                       onItemDelete={handleDeleteItem}
@@ -846,9 +956,7 @@ export default function NewReport() {
                     size="sm"
                     className="w-full sm:w-auto"
                     onClick={reportDraft.requestDiscard}
-                    disabled={
-                      isSaveFlowActive || !reportDraft.hasUnsavedData
-                    }
+                    disabled={isSaveFlowActive || !reportDraft.hasUnsavedData}
                   >
                     {t("actions.reset")}
                   </Button>

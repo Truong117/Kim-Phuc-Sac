@@ -160,7 +160,7 @@ class WorkReportSnapshot
                         'item_id' => (int) $item->id, 'status' => $status,
                         'content' => $this->redact($item->content, $identities),
                         'result' => $item->result === null ? null : $this->redact($item->result, $identities),
-                        'note' => $item->note === null ? null : $this->redact($item->note, $identities),
+                        'note' => filled($item->issue) ? $this->redact(implode("\n", array_filter([$item->note, 'Vướng mắc / cần hỗ trợ: '.$item->issue])), $identities) : ($item->note === null ? null : $this->redact($item->note, $identities)),
                     ];
                 }
                 $counts['reports']++;
