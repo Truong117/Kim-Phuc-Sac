@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import PageMeta from "@/components/common/PageMeta";
@@ -32,7 +32,42 @@ const time = (value: string) =>
     timeStyle: "short",
   }).format(new Date(value));
 
+const DailyDocuments = lazy(() => import("./DailyDocuments"));
+
 export default function WorkReportInsights() {
+  const [params] = useSearchParams();
+  const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
+  const daily = params.get("view") === "daily";
+  return (
+    <>
+      <nav aria-label={t("modeLabel")} className="mb-5 flex gap-3 text-sm">
+        <Link
+          to="/ai/insights?view=daily"
+          aria-current={daily ? "page" : undefined}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-brand-600 dark:border-gray-700 dark:text-brand-300"
+        >
+          {t("dayMode")}
+        </Link>
+        <Link
+          to="/ai/insights"
+          aria-current={!daily ? "page" : undefined}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-brand-600 dark:border-gray-700 dark:text-brand-300"
+        >
+          {t("periodMode")}
+        </Link>
+      </nav>
+      {daily ? (
+        <Suspense fallback={<p role="status">{t("loading")}</p>}>
+          <DailyDocuments />
+        </Suspense>
+      ) : (
+        <PeriodWorkReportInsights />
+      )}
+    </>
+  );
+}
+
+function PeriodWorkReportInsights() {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("employees");
