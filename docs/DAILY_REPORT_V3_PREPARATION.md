@@ -63,21 +63,74 @@ Không bắt điền đủ năm mục. Không tạo đầu việc giả “Khôn
 
 ### Hợp đồng kết quả
 
-- Mỗi phần xử lý gắn với báo cáo đã khóa của một nhân viên/ngày, có s…47008 tokens truncated…a. Nội dung giống nhau được xếp cùng nhóm; từng lần báo cáo vẫn giữ riêng ngày, kết quả và trạng thái. Không mặc định các lần lặp là một nhiệm vụ liên tục.",
-      "totals": "Tổng số lượng từ báo cáo",
-      "partialTotals": "Số tổng hiện chỉ dùng các phần AI đã đọc thành công; chưa đại diện đầy đủ cho kỳ này.",
-      "unconfirmed": "Cần xác nhận cách cộng",
-      "cumulative": "Có số lũy kế, kế hoạch hoặc số liệu có thể trùng. Chưa cộng thành tổng để tránh sai lệch.",
-      "quantitySources": "Xem số liệu và căn cứ",
-      "source": "Báo cáo #{report} · Đầu việc #{item}",
-      "result": "Kết quả đã báo cáo",
-      "note": "Ghi chú",
-      "review": "2. Nhận xét và đề xuất dựa trên công việc đã tổng hợp",
-      "status": {
-        "COMPLETED": "Nhân viên báo đã hoàn thành",
-        "IN_PROGRESS": "Đang thực hiện",
-        "BLOCKED": "Đang vướng mắc"
-      }
-    }
-  }
-}
+- Mỗi phần xử lý gắn với báo cáo đã khóa của một nhân viên/ngày, có source hash, cấu hình/model/prompt/schema và thời điểm chốt.
+- Lưu đầy đủ năm nhóm, nguồn report/item/date cho từng dữ kiện, các vấn đề chưa rõ và số liệu cần xác nhận.
+- Server giữ bản kê công việc đầy đủ; AI chuẩn hóa/nhận xét, không được bỏ mất đầu việc chỉ vì không đưa vào văn bản nhận xét.
+- Kế hoạch là dự kiến; kết quả tự báo cáo chưa đồng nghĩa nghiệm thu. Không tự chấm thái độ, năng lực hoặc đạt KPI.
+- Số lượng trích từ văn bản chỉ là quan sát có căn cứ; hệ thống kiểm tra nguồn và cộng bằng code. Không cộng trùng, không cộng số lũy kế hoặc kế hoạch vào thành tích.
+- Không ngầm chạy Sol khi Luna lỗi; nếu bổ sung cơ chế chuyển model phải có cấu hình, giới hạn chi phí và provenance riêng.
+
+### Cấu hình đề xuất, tách khỏi AI tuần
+
+Tạo namespace cấu hình riêng cho luồng ngày mới. Tên ENV dự kiến:
+- `DAILY_REPORT_AI_ENABLED`
+- `DAILY_REPORT_AI_DRIVER` (mặc định fake trong phát triển/kiểm thử)
+- `DAILY_REPORT_AI_MODEL=gpt-6-luna`
+- `DAILY_REPORT_AI_QUEUE_CONNECTION`
+- `DAILY_REPORT_AI_OUTPUT_TOKENS` (đề xuất khởi điểm 6000/phần; kiểm chứng bằng fixture trước khi chốt)
+- `DAILY_REPORT_AI_MAX_RUN_BUDGET_USD`
+- `DAILY_REPORT_AI_MONTHLY_BUDGET_USD`
+- `DAILY_REPORT_AI_INPUT_USD_PER_MILLION_TOKENS`
+- `DAILY_REPORT_AI_OUTPUT_USD_PER_MILLION_TOKENS`
+
+Không đổi `KPS_AI_MODEL` chung để chuyển riêng báo cáo ngày và không đổi `WORK_REPORT_AI_MODEL`. Dùng cùng cơ chế giữ bí mật API key và sổ usage hiện có; không reset ngân sách khi retry. Kiểm tra lại đơn giá model tại thời điểm triển khai, không lấy cấu hình ước tính của model cũ làm hóa đơn thực tế.
+
+### Chốt nguồn, hàng đợi và quyền
+
+- Chỉ tạo phần xử lý sau mốc khóa thật từ ReportClock; không gọi AI sau mỗi lần autosave.
+- Phần xử lý có khóa chống chạy trùng theo tổ chức/báo cáo/phiên bản nguồn/cấu hình; kết quả bất biến, nguồn hoặc cấu hình đổi thì tạo phiên bản mới.
+- Chuẩn bị nơi lưu source snapshot, input/config hash, kết quả, trạng thái, attempt/lease và provenance; migration cho luồng này tách khỏi migration form.
+- Job ngắn theo từng nhân viên, có lease, retry phần lỗi và phục hồi job treo; kết quả gọi provider không rõ phải hiển thị rõ và không tự trả phí lặp vô hạn.
+- Hợp nhất việc chạy theo yêu cầu và chạy cuối ngày qua cùng hàng đợi/khóa, tránh hai đường tạo trùng.
+- Nếu tự chạy toàn tổ chức: cần danh tính hệ thống có quyền được xác định rõ; không giả lập tài khoản OWNER và không tái sử dụng kết quả tổng tổ chức cho người chỉ được xem phòng ban.
+- Kiểm tra lại RBAC khi xử lý và khi đọc cache, kể cả lịch sử; minimization/redaction tương đương luồng hiện tại.
+- Tự động cuối ngày cần scheduler và worker hoạt động thực sự. Render Free có thể ngủ; không cam kết tự chạy đúng giờ khi chưa có cấu hình vận hành đáp ứng. Giữ nút chạy thủ công/khôi phục ngày thiếu qua cùng cơ chế chống trùng.
+
+## Ranh giới với bước tối ưu tuần sau đó
+
+- Trong giai đoạn này giữ model và luồng tuần hiện tại.
+- Sau nghiệm thu ngày, bổ sung adapter để tuần dùng dữ liệu ngày có cấu trúc và nguồn gốc; không chỉ nối các đoạn overview.
+- Chỉ tái sử dụng phần ngày cùng hợp đồng/model/provenance được hỗ trợ; không đổi nhãn lịch sử V1.
+- Ngày thiếu hoặc lỗi phải hiển thị phạm vi còn thiếu; không ghi “hoàn tất” cho cả kỳ nếu nguồn chưa đủ.
+- Báo cáo tháng và API MXH sẽ có thiết kế/triển khai riêng.
+
+## Tiêu chí nghiệm thu trước khi đưa vào staging
+
+- Tạo/sửa/xem đủ năm mục; báo cáo cũ đọc được và không mất dữ liệu khi client cũ lưu.
+- Quick/detailed và nháp V1/V3 không mất nội dung; reload, nhiều tab, đổi ngày, mất mạng, 409 và khóa báo cáo.
+- Gửi thiếu dữ liệu thực tế nhưng chỉ có kế hoạch không tạo thành tích giả; người không phải tác giả không sửa được báo cáo.
+- Một việc có ảnh + video giữ hai chỉ số riêng; 10+30=40 cho số phát sinh, số lũy kế/không rõ không cộng bừa.
+- Hai URL cùng bài không tự trở thành hai video; hai video trên ba kênh không tự thành sáu nội dung sản xuất. Chưa tích hợp MXH luôn là chưa xác minh.
+- Khóa trùng giữa chạy tay và scheduler; retry chỉ phần lỗi; timeout/lease, quyền bị thu hồi, source revision và không log secret/payload.
+- Hợp đồng Luna được kiểm thử bằng fixture tiếng Việt đa dạng, so sánh với nguồn; kiểm tra không bỏ đầu việc, trộn kế hoạch, bịa số lượng hay nguồn.
+- Kiểm thử fake không gọi API trả phí. Thử Luna thật trên staging là bước nghiệm thu riêng sau cấu hình.
+- Kiểm tra ảnh hưởng nguồn và thống kê tuần, form kế hoạch tuần và các AI feature dùng Gateway chung.
+- Test frontend/backend phù hợp, lint/build/container khi mã tương ứng thay đổi; browser thực tế cho nhập/nháp/detail.
+- Kế hoạch này chỉ có tài liệu, không chứng minh các tiêu chí trên đã đạt.
+
+## Thứ tự triển khai
+
+1. Form/schema/API và chuyển bản nháp; PR vào staging, nghiệm thu trước.
+2. Hợp đồng nguồn/ngày + Luna cấu hình riêng + queue/recovery/scheduler; nghiệm thu dữ liệu giả rồi staging.
+3. Adapter báo cáo tuần sử dụng kết quả ngày có nguồn, nghiệm thu đầy đủ trước production.
+4. Sau đó mới phát triển module Tích hợp và báo cáo tháng.
+
+Không chạy migration, gọi model trả phí hoặc deploy từ PR chuẩn bị này. Migration thực tế phải lấy thứ tự theo ledger/schema tại thời điểm triển khai; không đặt số M mới dựa trên giả định.
+
+## Tài liệu model đã tham khảo
+
+- https://developers.openai.com/api/docs/models/gpt-6-luna
+- https://developers.openai.com/api/docs/guides/model-selection
+- https://developers.openai.com/api/docs/pricing
+
+Giá Standard tham khảo ngày 2026-11-03: Luna 0,10 USD/triệu token đầu vào và 0,50 USD/triệu token đầu ra. Giá, quyền truy cập và usage thực tế cần kiểm chứng tại thời điểm bật provider.
