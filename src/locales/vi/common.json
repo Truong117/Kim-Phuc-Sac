@@ -316,7 +316,8 @@
         "completed": "Hoàn thành",
         "inProgress": "Đang thực hiện",
         "blocked": "Có vấn đề"
-      }
+      },
+      "datePlaceholder": "Chọn ngày"
     },
     "table": {
       "title": "Danh sách báo cáo",

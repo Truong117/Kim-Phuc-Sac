@@ -1,3 +1,4 @@
+import KpsDatePicker from "@/components/common/KpsDatePicker";
 import ComponentCard from "@/components/common/ComponentCard";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -44,25 +45,27 @@ export default function ReportHistoryFilters({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
           <Label htmlFor="report-from-date">{t("fromDate")}</Label>
-          <Input
+          <KpsDatePicker
             id="report-from-date"
-            name="fromDate"
-            type="date"
             value={filters.fromDate}
-            max={filters.toDate || undefined}
-            onChange={(event) => onChange("fromDate", event.target.value)}
+            ariaLabel={t("fromDate")}
+            placeholder={t("datePlaceholder")}
+            clearable
+            maxDate={filters.toDate || undefined}
+            onChange={(date) => onChange("fromDate", date)}
           />
         </div>
 
         <div>
           <Label htmlFor="report-to-date">{t("toDate")}</Label>
-          <Input
+          <KpsDatePicker
             id="report-to-date"
-            name="toDate"
-            type="date"
             value={filters.toDate}
-            min={filters.fromDate || undefined}
-            onChange={(event) => onChange("toDate", event.target.value)}
+            ariaLabel={t("toDate")}
+            placeholder={t("datePlaceholder")}
+            clearable
+            minDate={filters.fromDate || undefined}
+            onChange={(date) => onChange("toDate", date)}
           />
         </div>
 
