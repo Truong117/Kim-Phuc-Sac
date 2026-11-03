@@ -139,6 +139,24 @@ jobs:
       - name: Run backend tests
         run: php artisan test
 
+      - name: Verify staging AI acceptance loader
+        run: php ../tools/test-kps-ai-acceptance.php
+
+      - name: Parse PowerShell acceptance loader
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ../tools/New-KpsAiAcceptance.ps1).Path,
+            [ref]$tokens,
+            [ref]$parseErrors
+          ) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
   backend-container:
     name: Backend container build
     runs-on: ubuntu-latest
