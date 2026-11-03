@@ -1,3 +1,5 @@
+> Tiến độ hiện tại: xem [DAILY_REPORT_AI_V2_IMPLEMENTATION.md](DAILY_REPORT_AI_V2_IMPLEMENTATION.md). Phần trạng thái chuẩn bị bên dưới là lịch sử thiết kế, không phải trạng thái mã hiện tại.
+
 # AI báo cáo ngày V2 — chuẩn bị triển khai Luna
 
 Ngày 03/11/2026 (Asia/Ho_Chi_Minh). Đây là thiết kế để triển khai, chưa phải tính năng đã bật.

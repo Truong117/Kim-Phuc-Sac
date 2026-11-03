@@ -5,9 +5,10 @@ namespace App\Jobs;
 use App\Models\DailyReportAiDocument;
 use App\Models\DailyReportAiUnit;
 use App\Models\User;
+use App\Services\AI\AiGatewayException;
+use App\Services\AI\Daily\DailyDocumentProvider;
 use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\AI\Daily\DailyReportOutput;
-use App\Services\AI\Daily\FakeDailyDocumentProvider;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ class GenerateDailyReportDocument implements ShouldQueue
 
     public function __construct(public readonly int $unitId) {}
 
-    public function handle(DailyDocumentService $service, FakeDailyDocumentProvider $provider): void
+    public function handle(DailyDocumentService $service, DailyDocumentProvider $provider): void
     {
         $unit = DailyReportAiUnit::query()->findOrFail($this->unitId);
         $document = DailyReportAiDocument::query()->findOrFail($unit->daily_report_ai_document_id);
@@ -36,14 +37,13 @@ class GenerateDailyReportDocument implements ShouldQueue
         }
         try {
             $service->authorized(User::query()->findOrFail($document->requested_by_user_id), $document->id);
-            abort_unless($document->analysis_config['driver'] === 'fake' && config('daily_report_ai.driver') === 'fake', 409);
-            $result = DailyReportOutput::validate($provider->analyze($unit->input), $unit->input);
+            $result = DailyReportOutput::validate($provider->analyze($document, $unit), $unit->input);
             DailyReportAiUnit::query()->whereKey($unit->id)->where('status', 'running')->where('lease_token', $token)
                 ->where('leased_until', '>', now())->update(['status' => 'completed', 'result' => app('encrypter')->encrypt(json_encode($result, JSON_THROW_ON_ERROR), false),
                     'error_code' => null, 'lease_token' => null, 'leased_until' => null]);
         } catch (Throwable $e) {
             DailyReportAiUnit::query()->whereKey($unit->id)->where('status', 'running')->where('lease_token', $token)
-                ->update(['status' => 'failed', 'error_code' => 'AI_DAILY_PROCESSING_FAILED', 'lease_token' => null, 'leased_until' => null]);
+                ->update(['status' => 'failed', 'error_code' => $e instanceof AiGatewayException ? $e->errorCode : (in_array($e->getMessage(), ['AI_INVALID_EVIDENCE', 'AI_INVALID_SCHEMA', 'AI_INCOMPLETE_INVENTORY'], true) ? $e->getMessage() : 'AI_DAILY_PROCESSING_FAILED'), 'lease_token' => null, 'leased_until' => null]);
         }
         DailyDocumentService::settle($document);
     }

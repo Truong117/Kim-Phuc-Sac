@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\AI\Daily\DailyDocumentDispatcher;
 use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\AI\WorkReportAnalysisWorker;
 use Illuminate\Foundation\Inspiring;
@@ -25,3 +26,16 @@ Artisan::command('daily-report-ai:recover', function (DailyDocumentService $serv
     }
     $this->info('Interrupted units marked for review: '.$service->recover());
 })->purpose('Recover expired daily-document leases without invoking a provider');
+
+Artisan::command('daily-report-ai:dispatch', function (DailyDocumentDispatcher $dispatcher): void {
+    $counts = $dispatcher->dispatch();
+    $this->info(json_encode($counts, JSON_THROW_ON_ERROR));
+    if ($counts['errors'] > 0) {
+        $this->fail('Some daily documents were not dispatched; inspect configuration and source sizes.');
+    }
+})->purpose('Idempotently enqueue locked reports in the configured principal scope, including makeup reports');
+
+Schedule::command('daily-report-ai:dispatch')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => (bool) config('daily_report_ai.enabled') && (bool) config('daily_report_ai.auto_dispatch'));
+Schedule::command('daily-report-ai:recover')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => (bool) config('daily_report_ai.enabled'));

@@ -2468,8 +2468,12 @@
         "COMPLETED": "Nhân viên báo đã hoàn thành",
         "IN_PROGRESS": "Đang thực hiện",
         "BLOCKED": "Đang vướng mắc"
-      }
-    }
+      },
+      "groupSources": "Đối chiếu {count} đầu việc nguồn",
+      "sourceDetails": "Chi tiết công việc theo ngày"
+    },
+    "dailyCoverage": "Nguồn tổng hợp ngày: {ready}/{total} báo cáo hợp lệ.",
+    "dailyMissing": "Cần xử lý ngày thiếu/lỗi hoặc đã đổi nguồn trước khi tạo lượt mới."
   },
   "dailyDocuments": {
     "title": "Tổng hợp báo cáo ngày",
@@ -2525,6 +2529,9 @@
       "completed": "Đã xử lý đủ phần",
       "partial": "Hoàn tất một phần",
       "failed": "Chưa xử lý thành công"
-    }
+    },
+    "groupedWork": "Tổng hợp công việc trong ngày",
+    "groupSources": "Đối chiếu công việc nguồn",
+    "contractChanged": "Bản ngày dùng cấu hình cũ. Hãy tạo bản mới để dùng trong tổng hợp tuần."
   }
 }

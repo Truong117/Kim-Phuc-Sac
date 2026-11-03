@@ -2,17 +2,21 @@
 
 namespace App\Services\AI\Daily;
 
+use App\Services\AI\WorkReportGroupedWork;
 use App\Services\AI\WorkReportWorkTotals;
 use RuntimeException;
 
 final class DailyReportOutput
 {
-    public const VERSION = 'daily-output-v2';
+    public const VERSION = 'daily-output-v3';
 
-    public static function validate(array $output, array $source): array
+    public static function validate(array $output, array $source, bool $completeInventory = true): array
     {
-        if (count($output) !== 3 || array_diff(['observations', 'comments', 'recommendations'], array_keys($output))) {
+        if (array_diff(array_keys($output), ['observations', 'comments', 'recommendations', 'work_groups']) || array_diff(['observations', 'comments', 'recommendations'], array_keys($output))) {
             throw new RuntimeException('AI_INVALID_SCHEMA');
+        }
+        if (array_key_exists('work_groups', $output)) {
+            WorkReportGroupedWork::validate($output['work_groups'], [$source], $completeInventory);
         }
         $items = array_column($source['items'], null, 'item_id');
         foreach (['comments', 'recommendations'] as $field) {
@@ -67,12 +71,19 @@ final class DailyReportOutput
     public static function assemble(array $results, array $snapshot): array
     {
         $output = ['observations' => [], 'comments' => [], 'recommendations' => []];
+        $groups = [];
+        $grouped = true;
         foreach ($results as $result) {
+            $grouped = $grouped && array_key_exists('work_groups', $result);
+            array_push($groups, ...($result['work_groups'] ?? []));
             foreach (array_keys($output) as $key) {
                 array_push($output[$key], ...$result[$key]);
             }
         }
-        $output = self::validate($output, $snapshot);
+        if ($grouped) {
+            $output['work_groups'] = $groups;
+        }
+        $output = self::validate($output, $snapshot, false);
         $output['work_totals'] = WorkReportWorkTotals::totals($output['observations']);
         // Daily metrics use fixed six-decimal arithmetic for accumulation (not floating-point sums).
         foreach ($output['work_totals'] as &$group) {

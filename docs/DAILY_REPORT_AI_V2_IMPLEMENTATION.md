@@ -1,61 +1,94 @@
-# AI ngày V2 — mốc triển khai 1 (nguồn, hợp đồng, giao diện, fake)
+# AI ngày → tổng hợp tuần
 
-## Đã có trong PR này
+## Luồng đã triển khai
 
-- Bổ sung hai bảng documents/units bằng migration `2026_11_03_030000_create_daily_report_ai_documents`. Trên nền đã nghiệm thu 26 migration, đây là bước thứ 27. Giữ nguyên nguồn báo cáo và lịch sử AI V1/tuần; down từ chối nếu đã có lịch sử mới.
-- Nguồn bất biến theo từng báo cáo đã khóa: report_date, người viết, bản kê đầy đủ, kết quả, ghi chú/vướng mắc, kế hoạch theo dòng, minh chứng chưa xác minh, cờ bù và thời điểm nộp thật. Nội dung snapshot/input/result mã hóa bằng APP_KEY.
-- Mỗi source/config hash dùng lại một document trong cùng tổ chức, kể cả nhiều quản lý bấm. Nguồn thay đổi tạo revision mới; đọc lại lịch sử vẫn kiểm tra quyền hiện tại.
-- Chia phần theo đầu việc đầy đủ; dữ liệu quá lớn bị từ chối rõ trước khi ghi document, không tự cắt nguồn. Danh sách ngày phân trang 25 báo cáo, hiển thị tổng số và trang; không ngầm bỏ các báo cáo còn lại.
-- Worker fake chạy từng unit trên queue `ai-daily-reports`, claim bằng lease token; duplicate delivery không chạy lại phần đạt, stale worker không ghi đè kết quả. Retry phần lỗi có giới hạn, giữ phần đạt; recover lease hết hạn hoặc dispatch pending quá 480 giây không gọi provider. Trạng thái partial/failed rõ và bản kê nguồn luôn xem được.
-- Hợp đồng output có nguồn item/quote, kiểm tra report/item/đơn vị/số lượng, chỉ chấp nhận kết quả của việc COMPLETED; kế hoạch không được đưa vào kết quả đạt. Kế thừa quy tắc số lũy kế/chưa rõ của tuần; cộng số phát sinh với fixed-point sáu chữ số thập phân. Nhận xét/đề xuất có trích nguồn; số chưa rõ không hiển thị tổng chắc chắn.
-- Giao diện tại `/ai/insights?view=daily`: đủ công việc/kết quả từng nhân viên trước nhận xét/đề xuất, kế hoạch riêng, nguồn bù, minh chứng chưa xác minh, tiến độ/retry, nguồn đã đổi. Chuyển về Theo kỳ giữ luồng tuần cũ.
-- Vite bỏ theo dõi thư mục vendor/storage PHP khỏi HMR, tránh tràn file watcher khi kiểm thử frontend; không thay pipeline CI/CD hay HTTP proxy.
+1. Báo cáo nguồn đã khóa được chụp bất biến vào `daily_report_ai_documents`; các phần xử lý nằm trong `daily_report_ai_units`. Nguồn và kết quả được mã hóa bằng APP_KEY. Bản gốc không bị sửa/xóa.
+2. Daily output V3 có `work_groups` (nhóm công việc, diễn biến/kết quả/tồn đọng, tham chiếu nguồn), quan sát số lượng và nhận xét/đề xuất riêng. Mỗi đầu việc phải thuộc đúng một nhóm. Phần lỗi không được coi là đã tổng hợp; toàn bộ nguồn vẫn xem được.
+3. Luna `gpt-6-luna` dùng Responses API/strict JSON schema, reasoning low, `store=false`. Provider không có công cụ mở URL. Không gửi danh tính/ngày nộp/URL minh chứng; che dữ liệu nhạy cảm trong nội dung theo quy tắc đang dùng cho tuần. Output kiểm tra với cả nguồn đã che và nguồn gốc; quote qua vùng đã che không khớp sẽ bị từ chối, không đoán lại.
+4. Worker chạy queue riêng, lease token chống ghi đè, timeout 270s, lease 420s, retry_after 480s. Một lần HTTP tối đa 120s, không tự retry HTTP mơ hồ. Phần lỗi chỉ được thử lại theo thao tác có quyền, tối đa 2 lần/unit; phần đạt dùng lại.
+5. Dispatcher quét 7 ngày gần nhất, chỉ báo cáo đã khóa theo ReportClock Việt Nam, kể cả nộp bù. Dùng một tài khoản được cấu hình rõ và quyền hiện tại (giao phạm vi ai.insights.view và reports.view); không tự chọn OWNER hay mở rộng scope. Source/config hash chống document/job trùng. Không tự retry lỗi đã xảy ra.
+6. Khi bật adapter tuần, snapshot tuần đóng băng document_id/source_hash/schema cùng nhóm công việc và số liệu ngày. Chỉ đọc bản hoàn tất, đúng nguồn hiện tại và schema. Bản fake không được đưa vào lượt tuần trả phí. Ngày thiếu/lỗi/đã đổi nguồn chặn tạo lượt tuần, không âm thầm dùng dữ liệu thô thay thế.
+7. AI tuần nhận nhóm công việc ngày và số liệu đã kiểm tra, không nhận lại toàn bộ nội dung/ghi chú gốc để trích xuất số lượng. Backend giữ nguồn gốc trong snapshot riêng để kiểm tra bằng chứng và đối chiếu UI. Các đầu việc vẫn phải được phủ đủ khi AI gom nhóm tuần. Chỉ sau danh sách nhóm mới nhận xét và đề xuất. Tổng số lượng dùng phép tính trên quan sát ngày, không cộng lại tổng ngày hay kế hoạch.
+8. Tổng hợp công ty đọc danh sách nhóm tuần của nhân viên và nhận xét; adapter không đưa lại toàn bộ bản kê thô vào bước này. Chia batch theo ranh giới nhóm/nhận định; không tự cắt nội dung.
 
-## Giới hạn của mốc 1
+Nhóm chủ đề là cách trình bày, không chứng minh các dòng là cùng một nhiệm vụ hoặc sản lượng độc lập. Lũy kế/chưa rõ giữ tổng null; sản xuất và đăng tải phải khác metric. Các kiểm tra nguồn không chứng minh AI hiểu đúng ngữ nghĩa; vẫn cần nghiệm thu mẫu thật.
 
-**Chỉ hỗ trợ fake**, không có nhận xét hoặc số lượng AI giả định. Provider fake trả danh sách quan sát/nhận xét trống; UI ghi rõ “chưa gọi AI thật”. Các ví dụ 40 sp và 5 ảnh/3 video kiểm tra hợp đồng/validator bằng fixture, chưa chứng minh model Luna trích xuất đúng văn bản thật.
+## Schema, phiên bản và lịch sử
 
-Model đã chọn cho bước tiếp theo là 6 Luna; PR này chưa nối provider trả phí, chưa tự quét/chạy cuối ngày và chưa chuyển nguồn báo cáo tuần sang ngày. Bộ bật mặc định false; driver ngoài fake bị từ chối trước khi dispatch. Không gọi URL/MXH hoặc backfill lịch sử tự động.
+Migration mới duy nhất của cả PR vẫn là M27: `2026_11_03_030000_create_daily_report_ai_documents.php`. Không thêm migration sau M27 cho bước nối tuần. Trên nền 26 bước, áp dụng M27 trước khi bật tính năng. Down từ chối nếu có lịch sử.
 
-Phát hiện cần giải quyết trước bước Luna: OpenAiGateway hiện dùng một AiBudgetPeriod theo environment/provider/tháng, không tách theo feature. Inject cấu hình giá/limit riêng đơn thuần chưa tạo ngân sách ngày độc lập. Cần thiết kế/tái kiểm thử reservation/quota ngày mà vẫn giữ giới hạn tổng, usage và phí của tuần/lịch sử; không đặt lại ledger chi phí hoặc nhân đôi tổng ngân sách. Danh tính scheduler cũng cần phù hợp Gateway requested_by_user_id và scope thực tế.
+Bản ngày V2 và lượt tuần dùng prompt/schema cũ vẫn đọc được, không được relabel hoặc tự đổi kết quả. UI cho tạo bản ngày mới khi contract/driver đổi. Lượt tuần cũ cần tạo lượt mới để dùng contract `work-report-v2.5` / schema `work-report-v2.3`; không tiếp tục job cũ bằng chỉ dẫn mới.
 
-## Thử ở local/fake cô lập
+## Cấu hình local/fake
 
-Dùng DB local thử nghiệm đã xác nhận, **không lấy .env production/staging**. Giữ APP_KEY nhất quán để đọc nguồn đã mã hóa. Áp dụng migration mới trên DB thử nghiệm theo workflow local hiện có, rồi cấu hình:
+Dùng DB local cô lập, giữ APP_KEY. Sau M27:
 
 ```dotenv
 DAILY_REPORT_AI_ENABLED=true
 DAILY_REPORT_AI_DRIVER=fake
 DAILY_REPORT_AI_QUEUE_CONNECTION=daily_report_ai
+WORK_REPORT_AI_USE_DAILY_DOCUMENTS=true
 ```
 
-Chạy worker từ thư mục backend:
+Từ backend:
 
 ```sh
+php artisan config:clear
 php artisan queue:work daily_report_ai --queue=ai-daily-reports --timeout=270 --tries=1 --sleep=1
 ```
 
-Tạo báo cáo đã khóa bằng fixture local; vào Phân tích AI → Theo ngày → chọn ngày → Tạo/mở tổng hợp. Mở lại hoặc bấm lại không tạo document/job trùng. Không thay giờ khóa production để tạo fixture. Khi thử worker bị gián đoạn, sau lease 420 giây:
+Vào `/ai/insights?view=daily`, tạo bản ngày; khi hoàn tất các ngày trong kỳ, sang Theo kỳ tạo lượt tuần. Luồng tuần vẫn cần worker `ai-work-reports` hiện có nếu không dùng sync local. Fake chỉ kiểm tra luồng/phủ nguồn, gom chính xác cùng nội dung; không giả lập nhận xét hay khả năng gom ngữ nghĩa của Luna/Sol.
 
-```sh
-php artisan daily-report-ai:recover
+Tự động quét là một tùy chọn riêng, mặc định false:
+
+```dotenv
+DAILY_REPORT_AI_AUTO_DISPATCH=true
+DAILY_REPORT_AI_DISPATCH_USER_ID=<id người dùng có quyền phù hợp trong DB môi trường này>
 ```
 
-Lệnh chỉ đánh dấu unit có lease quá hạn hoặc pending quá 480 giây; người có quyền có thể Thử lại phần lỗi (tối đa 2 lần xử lý/part). Không reset attempts để lách giới hạn. `retry_after=480` lớn hơn timeout/lease; worker chạy ngoài request. Mốc fake này chưa cấu hình scheduler.
+```sh
+php artisan daily-report-ai:dispatch
+php artisan daily-report-ai:recover
+php artisan schedule:list
+```
 
-## API mới
+Lệnh dispatch chạy lại idempotent; số requested là số report đã yêu cầu/mở cache, không phải số paid call. Kết quả lỗi từng report được đếm, CLI trả thất bại nếu có lỗi cấu hình/kích thước. Thu hồi quyền tài khoản dispatch phải chặn xử lý.
 
-Cùng Sanctum + ai.insights.view + reports.view và ReportScopeService như luồng hiện tại:
+Ứng dụng đã đăng ký lịch 5 phút; môi trường triển khai PHẢI có Laravel scheduler thực sự chạy (`schedule:run` mỗi phút hoặc `schedule:work`) và queue worker độc lập. Không có scheduler/worker thì code không tự chạy chỉ vì web đã deploy. PR không tạo/chỉnh dịch vụ Render hay bật ENV.
 
-- GET `/api/ai/daily-documents?date=YYYY-MM-DD&page=1`: inventory ngày được phép xem, document mới nhất, changed-source và pagination. Khi disabled không query các bảng mới.
-- POST `/api/ai/daily-documents/reports/{report}`: chốt nguồn đã khóa, tạo hoặc dùng lại document; 202. Bấm lại không tự retry một document lỗi.
-- GET `/api/ai/daily-documents/{document}`: đọc snapshot/result theo quyền hiện tại.
-- POST `/api/ai/daily-documents/{document}/retry`: chỉ các part failed còn lượt, không xử lý lại phần completed.
+## Cấu hình Luna (chỉ bật sau nghiệm thu staging)
 
-Không có endpoint chấp nhận snapshot/provider/settings/employee ID do client gửi để ghi đè nguồn. Báo cáo chưa khóa và nguồn ngoài scope không dùng được. Người chỉ có thành viên tổ chức khác bị middleware KPS từ chối.
+```dotenv
+DAILY_REPORT_AI_DRIVER=openai
+DAILY_REPORT_AI_MONTHLY_BUDGET_USD=<trần dùng chung đã duyệt>
+DAILY_REPORT_AI_MAX_DOCUMENT_BUDGET_USD=1
+DAILY_REPORT_AI_INPUT_USD_PER_MILLION_TOKENS=<giá đầu vào đã xác minh>
+DAILY_REPORT_AI_OUTPUT_USD_PER_MILLION_TOKENS=<giá đầu ra đã xác minh>
+DAILY_REPORT_AI_OUTPUT_TOKENS=16000
+```
 
-## Kiểm tra và phát hành
+Dùng OPENAI_API_KEY/OPENAI_BASE_URL đang được quản lý trong môi trường; khóa không lưu trong snapshot/job/log. Không dùng khóa thật trong test. Output default 16000 token, điều chỉnh 1000–32000; không có trần nội dung 3000 ký tự. Nếu API trả incomplete, phần bị lỗi rõ, không coi JSON dở dang là hoàn tất.
 
-Test backend gồm quyền/khóa/disabled, encrypted snapshot, idempotency/cached reads, version nguồn, phần lớn/rollback trước ghi, partial/retry/recovery, stale worker, không cho paid driver, kế hoạch không thành kết quả, số lũy kế và nhiều đơn vị. SSR frontend kiểm tra đủ nguồn khi partial, XSS/URL, nhãn fake/chưa xác minh, trích dẫn và giữ snapshot cũ. Có kịch bản browser `e2e/daily-documents.spec.ts` dùng API giả với fixture E2E có sẵn; chạy thật browser cần môi trường E2E cô lập.
+**Ngân sách:** Gateway hiện có một ledger theo environment/provider/tháng, không phải mỗi feature một ngân sách độc lập. AI ngày dùng ledger này; cap hiệu lực không lớn hơn cap ngày và các cap dương KPS_AI/WORK_REPORT_AI hiện có. Nếu không có cap tổng dương, không bật paid. Không reset ledger hoặc nhân đôi allowance. Trần ngày nhỏ hơn tổng sẽ chặn AI ngày khi tổng chi chung đã vượt trần đó; đây KHÔNG phải quota chi phí riêng của ngày. Tuần có thể dùng phần còn lại theo cấu hình hiện hữu. Nếu cần quota feature độc lập phải thêm thiết kế ledger riêng.
 
-Không chạy migration hoặc bật feature trên môi trường dùng chung trong lúc viết PR. Sau CI và nghiệm thu local mới dùng migration tool với staging, deploy và bật fake; production vẫn tắt cho đến khi nghiệm thu. Chưa cần thêm API key hoặc đổi model/budget đang vận hành.
+Trước tạo document, kiểm tra dự phòng tối đa cho toàn bộ parts × số lần xử lý cho phép × giá/max token; vượt trần document thì từ chối trước job/API. Gateway tiếp tục giữ reserve chi phí tháng cả khi outcome mơ hồ. API usage thật ghi trong ai_usage_records feature daily_report_document; không tự suy ra phí đo được từ dự phòng.
+
+Giá/model đã đối chiếu tài liệu chính thức 2026-11-03: https://developers.openai.com/api/docs/models/gpt-6-luna (Standard: input $0.10/output $0.50 mỗi triệu token tại thời điểm kiểm tra). Không hardcode giá này; operator xác nhận giá áp dụng trước bật.
+
+## Phạm vi nghiệm thu
+
+- Ngày thiếu là thiếu bản AI hợp lệ của **báo cáo đã khóa hiện có**, không suy luận nhân viên vắng/chưa nộp từ roster hoặc ngày nghỉ.
+- Nguồn đổi sau snapshot tuần không làm đổi lịch sử/job đã xếp; tạo lượt mới để nhận bản ngày mới. Tạo lại từ bản nguồn cũ vẫn giữ nguồn cũ.
+- Báo cáo chỉ có kế hoạch không được biến thành kết quả đạt được.
+- Một nhóm ngày quá lớn bị chặn rõ để tổng hợp lại nhóm nhỏ hơn; không âm thầm mất dữ liệu.
+- Chưa có tổng hợp tháng, tích hợp MXH, xác minh link, hoặc tự tạo báo cáo tuần theo lịch.
+- Chưa chạy gọi Luna/Sol trả phí hay nghiệm thu browser trên staging trong phiên này. HTTP tests dùng provider mô phỏng; không chứng nhận chất lượng ngôn ngữ/ngữ nghĩa của model thật.
+- Không merge/deploy/đổi ENV hay migrate staging/production trong phiên triển khai này.
+
+## Kiểm tra trong phiên triển khai
+
+- PHPUnit toàn bộ: 853 tests / 8023 assertions đạt; sau tối ưu redaction/order nguồn chạy lại nhóm kiểm thử ngày/tuần liên quan.
+- Frontend Node: 268 tests đạt; TypeScript/Vite build đạt.
+- ESLint: 0 lỗi, 4 cảnh báo fast-refresh có sẵn. Build còn cảnh báo bundle lớn có sẵn.
+- Test HTTP mô phỏng kiểm tra Luna/strict schema/store=false/output 16000, cache không gọi lại, incomplete không hoàn tất, cap không nâng ngân sách chung, và chặn trước dispatch khi quá dự phòng document.
+- Test luồng kiểm tra 10+30=40, bản tuần bất biến sau nguồn đổi, chặn ngày stale/thiếu và fake-day trong paid-week, quét báo cáo khóa/nộp bù idempotent, phủ đủ nhóm và thứ tự nhóm trước nhận xét ở UI.

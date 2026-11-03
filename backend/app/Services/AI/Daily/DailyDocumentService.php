@@ -6,9 +6,10 @@ use App\Jobs\GenerateDailyReportDocument;
 use App\Models\DailyReportAiDocument;
 use App\Models\DailyReportAiUnit;
 use App\Models\User;
+use App\Services\AI\OpenAiGateway;
+use App\Services\AI\WorkReportSnapshot;
 use App\Services\AuthorizationService;
 use App\Services\ReportClock;
-use App\Services\ReportScopeService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -16,7 +17,6 @@ use Illuminate\Validation\ValidationException;
 class DailyDocumentService
 {
     public function __construct(
-        private readonly ReportScopeService $scope,
         private readonly AuthorizationService $authorization,
         private readonly ReportClock $clock,
     ) {}
@@ -25,7 +25,7 @@ class DailyDocumentService
     {
         abort_unless($this->authorization->allows($viewer, 'ai.insights.view') && $this->authorization->allows($viewer, 'reports.view'), 403);
 
-        return $this->scope->queryFor($viewer)->where('locked_at', '<=', $this->clock->now()->utc());
+        return app(WorkReportSnapshot::class)->scopedReports($viewer)->where('locked_at', '<=', $this->clock->now()->utc());
     }
 
     private function enabled(): void
@@ -58,16 +58,34 @@ class DailyDocumentService
     {
         $this->enabled();
         $settings = ['driver' => config('daily_report_ai.driver'), 'model' => config('daily_report_ai.model'),
-            'schema' => DailyReportOutput::VERSION, 'source' => DailyReportSource::VERSION, 'prompt' => 'daily-document-v2',
+            'schema' => DailyReportOutput::VERSION, 'source' => DailyReportSource::VERSION, 'prompt' => 'daily-document-v3',
             'unit_bytes' => (int) config('daily_report_ai.unit_bytes'), 'max_parts' => (int) config('daily_report_ai.max_parts'),
-            'max_attempts' => (int) config('daily_report_ai.max_attempts')];
-        if ($settings['driver'] !== 'fake') {
-            throw ValidationException::withMessages(['driver' => 'Bước này chỉ hỗ trợ fake; Luna thật chưa được bật.']);
+            'max_attempts' => min(2, max(1, (int) config('daily_report_ai.max_attempts'))),
+            'instructions_hash' => hash('sha256', DailyDocumentContract::instructions()),
+            'schema_hash' => DailyReportSource::hash(DailyDocumentContract::schema()),
+            'max_document_budget_usd' => (float) config('daily_report_ai.max_document_budget_usd')];
+        $gateway = config('daily_report_ai.gateway');
+        unset($gateway['api_key']);
+        $existingCaps = array_filter([(float) config('kps_ai.monthly_budget_usd'), (float) config('work_report_ai.gateway.monthly_budget_usd')], fn ($cap) => $cap > 0);
+        $gateway['monthly_budget_usd'] = $existingCaps === [] ? 0 : min($gateway['monthly_budget_usd'], ...$existingCaps);
+        $settings['gateway'] = $gateway;
+        if (! in_array($settings['driver'], ['fake', 'openai'], true)) {
+            throw ValidationException::withMessages(['driver' => 'Driver AI ngày không được hỗ trợ.']);
+        }
+        if ($settings['driver'] === 'openai' && ! (new OpenAiGateway([...$gateway, 'api_key' => config('daily_report_ai.gateway.api_key')]))->isConfigured()) {
+            throw ValidationException::withMessages(['driver' => 'Luna chưa đủ cấu hình khóa API, giá token và hạn mức.']);
         }
         $document = DB::transaction(function () use ($viewer, $reportId, $settings) {
             $report = $this->eligible($viewer)->with('items')->lockForUpdate()->findOrFail($reportId);
             $snapshot = DailyReportSource::capture($report);
             $parts = DailyReportSource::parts($snapshot, $settings['unit_bytes'], $settings['max_parts']);
+            if ($settings['driver'] === 'openai') {
+                $maximum = count($parts) * $settings['max_attempts'] * ($settings['gateway']['max_input_tokens'] * $settings['gateway']['input_usd_per_million_tokens']
+                    + $settings['gateway']['max_output_tokens'] * $settings['gateway']['output_usd_per_million_tokens']);
+                if ($settings['max_document_budget_usd'] <= 0 || $maximum > (int) round($settings['max_document_budget_usd'] * 1000000)) {
+                    throw ValidationException::withMessages(['budget' => 'Báo cáo vượt dự phòng ngân sách ngày, gồm cả các lần thử lại. Chưa tạo lượt AI.']);
+                }
+            }
             $sourceHash = DailyReportSource::hash($snapshot);
             $key = DailyReportSource::hash([$report->organization_id, $reportId, $sourceHash, $settings]);
             $document = DailyReportAiDocument::query()->createOrFirst(['cache_key' => $key], [
@@ -108,7 +126,7 @@ class DailyDocumentService
         DB::transaction(function () use ($viewer, $id): void {
             $document = $this->authorized($viewer, $id);
             $document = DailyReportAiDocument::query()->lockForUpdate()->findOrFail($document->id);
-            abort_unless($document->analysis_config['driver'] === 'fake' && config('daily_report_ai.driver') === 'fake', 409);
+            abort_unless($document->analysis_config['driver'] === config('daily_report_ai.driver') && ($document->analysis_config['schema'] ?? null) === DailyReportOutput::VERSION, 409);
             $document->update(['requested_by_user_id' => $viewer->id]);
             foreach ($document->units()->where('status', 'failed')->get() as $unit) {
                 if ($unit->attempts >= $document->analysis_config['max_attempts']) {
@@ -129,15 +147,19 @@ class DailyDocumentService
         // All callers obtained sources through eligible(), including the request cache-hit path.
         $document->loadMissing('units');
         $units = $document->units;
+        $current = ($document->analysis_config['schema'] ?? null) === DailyReportOutput::VERSION
+            && ($document->analysis_config['driver'] ?? null) === config('daily_report_ai.driver')
+            && ($document->analysis_config['instructions_hash'] ?? null) === hash('sha256', DailyDocumentContract::instructions())
+            && ($document->analysis_config['schema_hash'] ?? null) === DailyReportSource::hash(DailyDocumentContract::schema());
 
         return ['id' => $document->id, 'report_id' => $document->daily_report_id,
-            'status' => $document->status, 'source' => $document->snapshot, 'source_hash' => $document->source_hash,
+            'status' => $document->status, 'requires_new_document' => ! $current, 'source' => $document->snapshot, 'source_hash' => $document->source_hash,
             'mode' => $document->analysis_config['driver'], 'model' => $document->analysis_config['driver'] === 'fake' ? null : $document->analysis_config['model'],
             'captured_at' => $document->captured_at->toIso8601String(), 'result' => $document->result,
             'completed_units' => $units->where('status', 'completed')->count(), 'total_units' => $units->count(),
             'units' => $units->map(fn ($u) => ['id' => $u->id, 'part' => $u->part, 'status' => $u->status,
                 'attempts' => $u->attempts, 'error_code' => $u->error_code,
-                'can_retry' => $u->status === 'failed' && $u->attempts < $document->analysis_config['max_attempts']])->all()];
+                'can_retry' => $current && $u->status === 'failed' && $u->attempts < $document->analysis_config['max_attempts']])->all()];
     }
 
     public static function settle(DailyReportAiDocument $document): void

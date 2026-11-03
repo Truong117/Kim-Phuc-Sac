@@ -22,12 +22,14 @@ export interface DailyDocument {
   report_id: number;
   status: "pending" | "running" | "completed" | "partial" | "failed";
   source: DailySource;
+  requires_new_document?: boolean;
   mode: string;
   model: string | null;
   captured_at: string;
   completed_units: number;
   total_units: number;
   result: null | {
+    work_groups?: { title: string; text: string; evidence: { report_id: number; item_id: number; quote: string }[] }[];
     comments: { item_id: number; text: string; quote: string }[];
     recommendations: { item_id: number; text: string; quote: string }[];
     work_totals: {

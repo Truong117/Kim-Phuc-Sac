@@ -199,6 +199,7 @@ function PeriodWorkReportInsights() {
                   busy ||
                   (running && !run?.requires_new_run) ||
                   !preview?.enabled ||
+                  Boolean(preview?.daily_coverage?.missing_report_ids.length) ||
                   !counts?.reports
                 }
               >
@@ -230,6 +231,12 @@ function PeriodWorkReportInsights() {
             </span>
           </div>
           <WorkAnalysisRegenerate run={run} onSelect={selectRun} />
+          {(run?.daily_coverage ?? preview?.daily_coverage) && (
+            <p role="status" className="text-sm text-gray-600 dark:text-gray-400">
+              {t("dailyCoverage", { ready: (run?.daily_coverage ?? preview?.daily_coverage)?.ready_reports, total: (run?.daily_coverage ?? preview?.daily_coverage)?.total_reports })}
+              {Boolean((run?.daily_coverage ?? preview?.daily_coverage)?.missing_report_ids.length) && <> {t("dailyMissing")}</>}
+            </p>
+          )}
           {preview?.latest_attempt && !isHistory && (
             <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
               {t("defaultVersion")}{" "}

@@ -1,16 +1,18 @@
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { formatDateOnly } from "@/utils/dateOnly";
-import type { WeeklyWorkGroup, WorkTotal } from "@/types/workReportAnalysis";
+import type { GroupedWork, WeeklyWorkGroup, WorkTotal } from "@/types/workReportAnalysis";
 
 interface Props {
   inventory: WeeklyWorkGroup[];
+  groups?: GroupedWork[];
   totals: WorkTotal[];
   partial: boolean;
 }
 
 export default function WorkAnalysisWeeklyWork({
   inventory,
+  groups = [],
   totals,
   partial,
 }: Props) {
@@ -25,6 +27,29 @@ export default function WorkAnalysisWeeklyWork({
       <p className="text-xs leading-6 text-gray-600 dark:text-gray-400">
         {t("basis")}
       </p>
+      {groups.length > 0 && (
+        <ol className="space-y-3">
+          {groups.map((group, index) => (
+            <li key={index} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+              <h4 className="font-medium text-gray-900 dark:text-white">{index + 1}. {group.title}</h4>
+              <p className="mt-2 text-sm leading-7 whitespace-pre-wrap text-gray-700 dark:text-gray-300">{group.text}</p>
+              <details className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                <summary className="cursor-pointer">{t("groupSources", { count: group.evidence.length })}</summary>
+                <ul className="mt-2 space-y-2">
+                  {group.evidence.map((ref) => (
+                    <li key={`${ref.report_id}:${ref.item_id}`}>
+                      <Link to={`/reports/${ref.report_id}#work-item-${ref.item_id}`} className="text-brand-600 underline dark:text-brand-300">
+                        {t("source", { report: ref.report_id, item: ref.item_id })}
+                      </Link>
+                      <p className="mt-1 break-words whitespace-pre-wrap">{ref.quote}</p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </li>
+          ))}
+        </ol>
+      )}
       {totals.length > 0 && (
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-gray-900 dark:text-white">
@@ -82,7 +107,9 @@ export default function WorkAnalysisWeeklyWork({
           </div>
         </div>
       )}
-      <ol className="space-y-3">
+      <details open={groups.length === 0}>
+        <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">{t("sourceDetails")}</summary>
+      <ol className="mt-3 space-y-3">
         {inventory.map((group, index) => (
           <li
             key={group.content}
@@ -128,6 +155,7 @@ export default function WorkAnalysisWeeklyWork({
           </li>
         ))}
       </ol>
+      </details>
     </section>
   );
 }

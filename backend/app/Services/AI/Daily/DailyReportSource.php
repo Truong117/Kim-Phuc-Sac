@@ -23,7 +23,7 @@ final class DailyReportSource
             'date' => $report->report_date->toDateString(), 'is_makeup' => (bool) $report->is_makeup,
             'submitted_at' => $report->created_at->toIso8601String(),
             'next_day_plan' => array_values(array_filter(array_map('trim', preg_split('/\R/u', $report->next_day_plan ?? '')), fn ($line) => $line !== '')),
-            'items' => $report->items->map(fn ($item) => [
+            'items' => $report->items->sortBy([['sort_order', 'asc'], ['id', 'asc']])->values()->map(fn ($item) => [
                 'item_id' => (int) $item->id, 'status' => $item->status->value,
                 'content' => $item->content, 'result' => $item->result ?? '', 'note' => $item->note ?? '',
                 'issue' => $item->issue ?? '', 'evidence_links' => $item->evidence_links ?? [],
