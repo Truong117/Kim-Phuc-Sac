@@ -13,6 +13,8 @@ export type ReportWorkItem = {
   status: WorkStatus;
   note: string | null;
   sort_order: number;
+  issue?: string;
+  evidence_links?: string[];
 };
 
 export type ReportComment = {
@@ -28,6 +30,7 @@ export type DailyReport = {
   locked_at: string;
   is_locked: boolean;
   overall_status: ReportOverallStatus;
+  next_day_plan?: string;
   employee: ReportEmployee;
   department: ReportEntity | null;
   location: ReportEntity | null;
@@ -97,16 +100,26 @@ export type ReportReferences = {
 };
 
 export type WorkItemInput = {
+  id?: number;
+  issue?: string | null;
+  evidence_links?: string[];
   content: string;
   result?: string | null;
   status: WorkStatus;
   note: string | null;
 };
 
-export type SaveReportInput = { items: WorkItemInput[] };
+export type SaveReportInput = {
+  items: WorkItemInput[];
+  next_day_plan?: string;
+  form_version?: 3;
+};
 
 export type WorkItemFormData = {
   clientId: string;
+  id?: number;
+  issue?: string;
+  evidenceLinks?: string;
   content: string;
   result: string;
   status: WorkStatus | "";
@@ -114,6 +127,8 @@ export type WorkItemFormData = {
 };
 
 export type WorkItemValidationErrors = {
+  issue?: string;
+  evidenceLinks?: string;
   content?: string;
   result?: string;
   status?: string;

@@ -18,6 +18,7 @@ class DailyReport extends Model
         'location_id',
         'report_date',
         'locked_at',
+        'next_day_plan',
     ];
 
     protected function casts(): array
@@ -67,6 +68,10 @@ class DailyReport extends Model
 
     public function overallStatus(): WorkStatus
     {
+        if (($this->relationLoaded('items') && $this->items->isEmpty())
+            || (! $this->relationLoaded('items') && ($this->getAttribute('items_count') !== null ? (int) $this->items_count === 0 : ! $this->items()->exists()))) {
+            return WorkStatus::IN_PROGRESS;
+        }
         if ($this->relationLoaded('items')) {
             $statuses = $this->items->pluck('status');
 

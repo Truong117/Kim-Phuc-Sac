@@ -13,6 +13,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -89,7 +90,7 @@ class WorkReportService
     /**
      * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
-    public function create(User $author, array $items): DailyReport
+    public function create(User $author, array $items, array $details = []): DailyReport
     {
         $membership = $this->activeMembership($author);
         $this->participation->ensureParticipant($membership);
@@ -105,7 +106,7 @@ class WorkReportService
         }
 
         try {
-            $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items): DailyReport {
+            $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items, $details): DailyReport {
                 if ($this->clock->isLocked($lockedAt)) {
                     throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
                 }
@@ -117,6 +118,7 @@ class WorkReportService
                     'location_id' => $membership->location_id,
                     'report_date' => $date,
                     'locked_at' => $lockedAt,
+                    'next_day_plan' => $details['next_day_plan'] ?? null,
                 ]);
 
                 $this->replaceItems($report, $items);
@@ -150,12 +152,12 @@ class WorkReportService
     /**
      * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
-    public function update(User $author, int $reportId, array $items): DailyReport
+    public function update(User $author, int $reportId, array $items, array $details = []): DailyReport
     {
         $membership = $this->activeMembership($author);
         $this->participation->ensureParticipant($membership);
 
-        $report = DB::transaction(function () use ($author, $membership, $reportId, $items): DailyReport {
+        $report = DB::transaction(function () use ($author, $membership, $reportId, $items, $details): DailyReport {
             $report = DailyReport::query()
                 ->where('organization_id', $membership->organization_id)
                 ->where('user_id', $author->id)
@@ -170,8 +172,41 @@ class WorkReportService
                 throw new ConflictHttpException('Báo cáo đã bị khóa và không thể chỉnh sửa.');
             }
 
-            $report->items()->delete();
-            $this->replaceItems($report, $items);
+            $existing = $report->items()->get()->keyBy('id');
+            if ((int) ($details['form_version'] ?? 0) !== 3
+                && $existing->contains(fn ($item) => filled($item->issue) || ! empty($item->evidence_links))) {
+                throw new ConflictHttpException('Báo cáo có nội dung mới. Hãy tải lại trang trước khi chỉnh sửa.');
+            }
+            // Validate every identity before changing anything. IDs from another report are never accepted.
+            foreach ($items as $item) {
+                if (isset($item['id']) && ! $existing->has($item['id'])) {
+                    throw ValidationException::withMessages(['items' => 'Đầu việc không thuộc báo cáo đang sửa.']);
+                }
+            }
+            // Move old positions outside the destination range before reordering a unique position index.
+            $offset = (int) $existing->max('sort_order') + count($items) + 1;
+            $report->items()->update(['sort_order' => DB::raw('sort_order + '.$offset)]);
+            $existing = $report->items()->get()->keyBy('id');
+            $kept = [];
+            foreach ($items as $index => $item) {
+                $values = [
+                    'content' => $item['content'], 'result' => $item['result'] ?? '',
+                    'status' => $item['status'], 'note' => $item['note'] ?? null, 'sort_order' => $index + 1,
+                ];
+                foreach (['issue', 'evidence_links'] as $field) {
+                    if (array_key_exists($field, $item)) {
+                        $values[$field] = $item[$field];
+                    }
+                }
+                $row = isset($item['id']) ? $existing->get($item['id']) : $report->items()->make();
+                $row->fill($values)->save();
+                $kept[] = $row->id;
+            }
+            $report->items()->whereNotIn('id', $kept)->delete();
+            if (array_key_exists('next_day_plan', $details)) {
+                $report->next_day_plan = $details['next_day_plan'];
+            }
+            $report->touch();
 
             return $report;
         });
@@ -270,8 +305,8 @@ class WorkReportService
                     WorkStatus::BLOCKED => $query->whereHas('items', fn (Builder $query) => $query->where('status', WorkStatus::BLOCKED->value)),
                     WorkStatus::IN_PROGRESS => $query
                         ->whereDoesntHave('items', fn (Builder $query) => $query->where('status', WorkStatus::BLOCKED->value))
-                        ->whereHas('items', fn (Builder $query) => $query->where('status', WorkStatus::IN_PROGRESS->value)),
-                    WorkStatus::COMPLETED => $query->whereDoesntHave('items', fn (Builder $query) => $query->where('status', '!=', WorkStatus::COMPLETED->value)),
+                        ->where(fn (Builder $query) => $query->whereHas('items', fn (Builder $items) => $items->where('status', WorkStatus::IN_PROGRESS->value))->orWhereDoesntHave('items')),
+                    WorkStatus::COMPLETED => $query->whereHas('items')->whereDoesntHave('items', fn (Builder $query) => $query->where('status', '!=', WorkStatus::COMPLETED->value)),
                 };
             });
     }
@@ -287,6 +322,8 @@ class WorkReportService
                 'result' => $item['result'] ?? '',
                 'status' => $item['status'],
                 'note' => $item['note'] ?? null,
+                'issue' => $item['issue'] ?? null,
+                'evidence_links' => $item['evidence_links'] ?? null,
                 'sort_order' => $index + 1,
             ],
             $items,

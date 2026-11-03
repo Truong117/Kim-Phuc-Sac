@@ -13,6 +13,8 @@ class DailyReportItem extends Model
         'result',
         'status',
         'note',
+        'issue',
+        'evidence_links',
         'sort_order',
     ];
 
@@ -21,6 +23,7 @@ class DailyReportItem extends Model
         return [
             'status' => WorkStatus::class,
             'sort_order' => 'integer',
+            'evidence_links' => 'array',
         ];
     }
 

@@ -20,6 +20,7 @@ class DailyReportResource extends JsonResource
             'report_date' => $this->report_date->toDateString(),
             'locked_at' => $this->locked_at->utc()->toIso8601String(),
             'is_locked' => $clock->isLocked($this->locked_at),
+            'next_day_plan' => $this->next_day_plan ?? '',
             'overall_status' => $this->overallStatus()->value,
             'employee' => [
                 'id' => $this->user->id,
@@ -40,6 +41,8 @@ class DailyReportResource extends JsonResource
                 'result' => $item->result,
                 'status' => $item->status->value,
                 'note' => $item->note,
+                'issue' => $item->issue ?? '',
+                'evidence_links' => $item->evidence_links ?? [],
                 'sort_order' => $item->sort_order,
             ])->values(),
             'comments' => ReportCommentResource::collection($this->whenLoaded('comments')),

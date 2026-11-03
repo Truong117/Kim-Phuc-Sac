@@ -50,7 +50,7 @@
   },
   "dailyReport": {
     "title": "Báo cáo công việc hằng ngày",
-    "subtitle": "Ghi nhận công việc, tiến độ và những vấn đề phát sinh trong ngày.",
+    "subtitle": "Ghi công việc, kết quả, kế hoạch ngày mai và những vấn đề cần hỗ trợ.",
     "metaDescription": "Tạo báo cáo công việc hằng ngày trong hệ thống nội bộ Kim Phục Sắc",
     "loading": "Đang tải báo cáo hôm nay...",
     "unknown": "Chưa xác định",
@@ -82,16 +82,16 @@
       "emptyGroup": "Chưa có công việc trong nhóm này.",
       "groups": {
         "completed": {
-          "title": "Đã hoàn thành",
+          "title": "1. Công việc đã hoàn thành",
           "placeholder": "Mỗi dòng một công việc đã hoàn thành"
         },
         "inProgress": {
-          "title": "Đang thực hiện",
+          "title": "3. Công việc đang thực hiện",
           "placeholder": "Mỗi dòng một công việc đang thực hiện"
         },
         "blocked": {
-          "title": "Có vấn đề / Bị chặn",
-          "placeholder": "Mỗi dòng một công việc đang gặp vấn đề"
+          "title": "5. Công việc có vấn đề / cần hỗ trợ",
+          "placeholder": "Mỗi dòng một việc đang bị vướng mắc; ghi thêm nguyên nhân và hỗ trợ cần thiết tại đầu việc."
         }
       },
       "errors": {
@@ -131,7 +131,7 @@
       "content": "Vui lòng nhập nội dung công việc.",
       "status": "Vui lòng chọn trạng thái.",
       "maxLength": "Nội dung không được vượt quá {limit} ký tự.",
-      "atLeastOne": "Báo cáo cần có ít nhất một công việc.",
+      "atLeastOne": "Nhập ít nhất một công việc hôm nay hoặc kế hoạch ngày mai.",
       "reviewItems": "Vui lòng kiểm tra lại các công việc chưa hợp lệ."
     },
     "draft": {
@@ -248,6 +248,24 @@
       "network": "Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối và thử lại.",
       "load": "Không thể tải trạng thái báo cáo hôm nay. Vui lòng thử lại.",
       "save": "Không thể lưu báo cáo. Vui lòng thử lại."
+    },
+    "v3": {
+      "resultsTitle": "2. Kết quả đạt được",
+      "resultsHint": "Tự tổng hợp từ kết quả ở từng công việc; chỉnh sửa ngay tại công việc tương ứng.",
+      "resultsEmpty": "Chưa nhập kết quả. Có thể ghi số lượng, đơn vị hoặc sản phẩm đã bàn giao tại từng công việc.",
+      "planTitle": "4. Kế hoạch ngày mai",
+      "planLabel": "Công việc dự kiến và ưu tiên (không bắt buộc)",
+      "planPlaceholder": "Mỗi dòng một việc: sẽ làm gì, kết quả dự kiến. Ghi rõ ngày nếu dự kiến thực hiện sau ngày mai.",
+      "planMissing": "Chưa cung cấp kế hoạch.",
+      "planHint": "Kế hoạch là dự kiến, chưa tính là công việc đã hoàn thành và không tự tạo nhiệm vụ được giao.",
+      "planTooLong": "Kế hoạch tối đa 5.000 ký tự.",
+      "issueLabel": "Vướng mắc / hỗ trợ cần thiết (không bắt buộc)",
+      "issuePlaceholder": "Đang vướng gì, ảnh hưởng ra sao, cần hỗ trợ điều gì?",
+      "evidenceLabel": "Đường dẫn minh chứng (không bắt buộc)",
+      "evidencePlaceholder": "Mỗi dòng một đường dẫn http:// hoặc https://, tối đa 10 đường dẫn.",
+      "unverified": "Chưa xác minh nội dung đường dẫn.",
+      "evidenceInvalid": "Nhập tối đa 10 đường dẫn HTTP/HTTPS khác nhau, mỗi dòng một link (tối đa 2.048 ký tự/link), không kèm tên đăng nhập hoặc mật khẩu.",
+      "otherIssues": "Vướng mắc ở các công việc khác"
     }
   },
   "reportHistory": {
@@ -339,7 +357,10 @@
       "itemTitle": "Công việc #{number}",
       "content": "Nội dung công việc",
       "result": "Kết quả",
-      "note": "Ghi chú"
+      "note": "Ghi chú",
+      "issue": "Vướng mắc / cần hỗ trợ",
+      "evidence": "Minh chứng",
+      "unverified": "Chưa xác minh nội dung đường dẫn."
     },
     "comments": {
       "title": "Nhận xét",

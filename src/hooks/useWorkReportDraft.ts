@@ -264,8 +264,13 @@ export const useWorkReportDraft = ({
     if (!contextKey || !context) return;
 
     const handleStorage = (event: StorageEvent) => {
-      if (event.key !== contextKey) return;
+      if (
+        event.key !== contextKey &&
+        event.key !== contextKey.replace(":v2:", ":v1:")
+      )
+        return;
 
+      if (event.key !== contextKey && event.newValue === null) return;
       if (event.newValue === null) {
         enterConflict(null);
         return;

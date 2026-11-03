@@ -1,3 +1,4 @@
+import WorkItemExtras from "./WorkItemExtras";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
 import {
@@ -177,6 +178,12 @@ export default function WorkItemForm({
             onBlur={() => onBlur(item.clientId, "note")}
           />
         </div>
+        <WorkItemExtras
+          item={item}
+          errors={errors}
+          onChange={onChange}
+          onBlur={onBlur}
+        />
       </div>
     </section>
   );

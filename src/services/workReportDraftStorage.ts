@@ -1,9 +1,10 @@
 import type { WorkItemFormData } from "@/types/reports";
 import type { QuickReportDrafts } from "@/utils/quickReport";
 
-export const WORK_REPORT_DRAFT_SCHEMA_VERSION = 1;
+export const WORK_REPORT_DRAFT_SCHEMA_VERSION = 2;
 export const WORK_REPORT_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const WORK_REPORT_DRAFT_KEY_PREFIX = "kps:work-report:draft:v1:";
+const WORK_REPORT_DRAFT_KEY_PREFIX = "kps:work-report:draft:v2:";
+const LEGACY_DRAFT_KEY_PREFIX = "kps:work-report:draft:v1:";
 
 export type WorkReportEditorMode = "quick" | "detailed";
 
@@ -16,10 +17,11 @@ export type WorkReportDraftData = {
   items: WorkItemFormData[];
   quickDrafts: QuickReportDrafts;
   editorMode: WorkReportEditorMode;
+  nextDayPlan?: string;
 };
 
 export type WorkReportDraftRecord = WorkReportDraftContext & {
-  schemaVersion: typeof WORK_REPORT_DRAFT_SCHEMA_VERSION;
+  schemaVersion: 1 | typeof WORK_REPORT_DRAFT_SCHEMA_VERSION;
   revision: string;
   writerId: string;
   updatedAt: string;
@@ -30,7 +32,9 @@ export type WorkReportDraftRecord = WorkReportDraftContext & {
 
 export type DraftLoadResult =
   | { status: "found"; draft: WorkReportDraftRecord }
-  | { status: "missing" | "expired" | "invalid" | "unavailable" };
+  | {
+      status: "missing" | "expired" | "invalid" | "unsupported" | "unavailable";
+    };
 
 export type DraftWriteResult =
   | { status: "saved"; draft: WorkReportDraftRecord }
@@ -77,6 +81,10 @@ const isWorkItem = (value: unknown): value is WorkItemFormData => {
 
   return (
     isString(item.clientId) &&
+    (item.id === undefined ||
+      (Number.isInteger(item.id) && Number(item.id) > 0)) &&
+    (item.issue === undefined || isString(item.issue)) &&
+    (item.evidenceLinks === undefined || isString(item.evidenceLinks)) &&
     isString(item.content) &&
     isString(item.result) &&
     isString(item.note) &&
@@ -104,7 +112,8 @@ const isDraftRecord = (value: unknown): value is WorkReportDraftRecord => {
   const data = draft.data as Record<string, unknown> | undefined;
 
   return (
-    draft.schemaVersion === WORK_REPORT_DRAFT_SCHEMA_VERSION &&
+    (draft.schemaVersion === 1 ||
+      draft.schemaVersion === WORK_REPORT_DRAFT_SCHEMA_VERSION) &&
     isString(draft.userId) &&
     isString(draft.reportDate) &&
     isString(draft.revision) &&
@@ -116,6 +125,7 @@ const isDraftRecord = (value: unknown): value is WorkReportDraftRecord => {
         Number.isInteger(draft.serverReportId))) &&
     (draft.serverUpdatedAt === null || isString(draft.serverUpdatedAt)) &&
     Boolean(data) &&
+    (data?.nextDayPlan === undefined || isString(data.nextDayPlan)) &&
     (data?.editorMode === "quick" || data?.editorMode === "detailed") &&
     Array.isArray(data?.items) &&
     data.items.every(isWorkItem) &&
@@ -138,8 +148,12 @@ export const hasMeaningfulDraftData = (data: WorkReportDraftData): boolean =>
       Boolean(item.content.trim()) ||
       Boolean(item.result.trim()) ||
       Boolean(item.note.trim()) ||
+      Boolean(item.issue?.trim()) ||
+      Boolean(item.evidenceLinks?.trim()) ||
       Boolean(item.status),
-  ) || Object.values(data.quickDrafts).some((value) => Boolean(value.trim()));
+  ) ||
+  Boolean(data.nextDayPlan?.trim()) ||
+  Object.values(data.quickDrafts).some((value) => Boolean(value.trim()));
 
 export const parseWorkReportDraftValue = (
   value: string | null,
@@ -150,6 +164,13 @@ export const parseWorkReportDraftValue = (
 
   try {
     const draft: unknown = JSON.parse(value);
+    if (
+      draft &&
+      typeof draft === "object" &&
+      "schemaVersion" in draft &&
+      ![1, 2].includes(Number(draft.schemaVersion))
+    )
+      return { status: "unsupported" };
     if (!isDraftRecord(draft)) return { status: "invalid" };
     if (
       draft.userId !== context.userId ||
@@ -189,12 +210,35 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
     this.revisionFactory = revisionFactory;
   }
 
+  private legacyKey(context: WorkReportDraftContext): string {
+    return workReportDraftKey(context).replace(
+      WORK_REPORT_DRAFT_KEY_PREFIX,
+      LEGACY_DRAFT_KEY_PREFIX,
+    );
+  }
+
+  private readStored(context: WorkReportDraftContext): string | null {
+    const current = this.storage.getItem(workReportDraftKey(context));
+    const legacy = this.storage.getItem(this.legacyKey(context));
+    if (current !== null && legacy !== null) {
+      const newer = parseWorkReportDraftValue(current, context, this.now());
+      const older = parseWorkReportDraftValue(legacy, context, this.now());
+      if (
+        newer.status === "found" &&
+        older.status === "found" &&
+        Date.parse(older.draft.updatedAt) > Date.parse(newer.draft.updatedAt)
+      )
+        return legacy;
+    }
+    return current ?? legacy;
+  }
+
   load(context: WorkReportDraftContext): DraftLoadResult {
     const key = workReportDraftKey(context);
 
     try {
       const result = parseWorkReportDraftValue(
-        this.storage.getItem(key),
+        this.readStored(context),
         context,
         this.now(),
       );
@@ -216,10 +260,12 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
 
     try {
       const currentResult = parseWorkReportDraftValue(
-        this.storage.getItem(key),
+        this.readStored(context),
         context,
         this.now(),
       );
+      if (currentResult.status === "unsupported")
+        return { status: "unavailable" };
       const current =
         currentResult.status === "found" ? currentResult.draft : null;
 
@@ -257,10 +303,12 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
 
     try {
       const currentResult = parseWorkReportDraftValue(
-        this.storage.getItem(key),
+        this.readStored(context),
         context,
         this.now(),
       );
+      if (currentResult.status === "unsupported")
+        return { status: "unavailable" };
       const current =
         currentResult.status === "found" ? currentResult.draft : null;
 
@@ -269,6 +317,7 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
       }
 
       this.storage.removeItem(key);
+      this.storage.removeItem(this.legacyKey(context));
       return { status: "removed" };
     } catch {
       return { status: "unavailable" };
@@ -282,7 +331,8 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
       ).filter(
         (key): key is string =>
           typeof key === "string" &&
-          key.startsWith(WORK_REPORT_DRAFT_KEY_PREFIX),
+          (key.startsWith(WORK_REPORT_DRAFT_KEY_PREFIX) ||
+            key.startsWith(LEGACY_DRAFT_KEY_PREFIX)),
       );
 
       for (const key of keys) {
@@ -290,10 +340,16 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
         let shouldRemove = false;
         try {
           const value: unknown = raw === null ? null : JSON.parse(raw);
+          if (
+            value &&
+            typeof value === "object" &&
+            "schemaVersion" in value &&
+            ![1, 2].includes(Number(value.schemaVersion))
+          )
+            continue;
           shouldRemove =
             !isDraftRecord(value) ||
-            this.now() - Date.parse(value.updatedAt) >
-              WORK_REPORT_DRAFT_TTL_MS;
+            this.now() - Date.parse(value.updatedAt) > WORK_REPORT_DRAFT_TTL_MS;
         } catch {
           shouldRemove = true;
         }
@@ -306,12 +362,13 @@ export class WorkReportDraftStorage implements WorkReportDraftAdapter {
   }
 }
 
-export const createBrowserWorkReportDraftStorage = (): WorkReportDraftStorage | null => {
-  try {
-    return typeof window === "undefined"
-      ? null
-      : new WorkReportDraftStorage(window.localStorage);
-  } catch {
-    return null;
-  }
-};
+export const createBrowserWorkReportDraftStorage =
+  (): WorkReportDraftStorage | null => {
+    try {
+      return typeof window === "undefined"
+        ? null
+        : new WorkReportDraftStorage(window.localStorage);
+    } catch {
+      return null;
+    }
+  };

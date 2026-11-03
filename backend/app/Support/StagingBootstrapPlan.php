@@ -36,6 +36,7 @@ final class StagingBootstrapPlan
         '2026_10_31_000001_create_account_audit_events_table',
         '2026_11_02_000000_create_work_report_analyses',
         '2026_11_02_010000_create_work_report_regeneration_tables',
+        '2026_11_03_010000_add_daily_report_v3_fields',
     ];
 
     /** @var list<string> */

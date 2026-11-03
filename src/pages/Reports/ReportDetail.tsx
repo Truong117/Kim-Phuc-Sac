@@ -1,3 +1,4 @@
+import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
 import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
@@ -224,6 +225,7 @@ export default function ReportDetail() {
 
           <ComponentCard title={t("items.title")} compact>
             <ReportWorkItemDetails items={report.items} />
+            <ReportNextDayPlan readOnly value={report.next_day_plan ?? ""} />
           </ComponentCard>
 
           <ComponentCard title={t("comments.title")} compact>
@@ -251,7 +253,7 @@ export default function ReportDetail() {
                             {formatDateTime(item.created_at)}
                           </time>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap text-theme-sm text-gray-700 dark:text-gray-300">
+                        <p className="mt-2 text-theme-sm whitespace-pre-wrap text-gray-700 dark:text-gray-300">
                           {item.content}
                         </p>
                       </div>

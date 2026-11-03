@@ -26,7 +26,7 @@ class WorkReportRegenerationMigrationTest extends TestCase
         foreach ($before as $table => $rows) {
             $this->assertSame($rows, DB::table($table)->get()->toJson(), $table);
         }
-        $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, DB::table('migrations')->orderBy('id')->pluck('migration')->all());
+        $this->assertSame(array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 24), DB::table('migrations')->orderBy('id')->pluck('migration')->all());
         $operation = collect(Schema::getIndexes('work_report_regeneration_requests'))->firstWhere('name', 'work_regeneration_operation_unique');
         $this->assertTrue($operation['unique']);
         $this->assertSame(['organization_id', 'requested_by_user_id', 'idempotency_key'], $operation['columns']);

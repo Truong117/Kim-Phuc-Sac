@@ -68,6 +68,13 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         parent::tearDown();
     }
 
+    public function test_daily_report_v3_ledger_refuses_missing_schema_columns(): void
+    {
+        Schema::table('daily_report_items', fn ($table) => $table->dropColumn('issue'));
+        $this->expectExceptionMessage('FIXTURE_DAILY_REPORT_V3_SCHEMA_DRIFT');
+        $this->fixture->dryRun($this->batch, $this->end, $this->store);
+    }
+
     private function apply(): array
     {
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
@@ -231,12 +238,13 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_dry_run_before_m23_m24_is_readable_but_apply_requires_both_migrations(): void
     {
+        (require database_path('migrations/2026_11_03_010000_add_daily_report_v3_fields.php'))->down();
         (require database_path('migrations/2026_11_02_010000_create_work_report_regeneration_tables.php'))->down();
         (require database_path('migrations/2026_11_02_000000_create_work_report_analyses.php'))->down();
         DB::table('migrations')->whereIn('migration', array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 22))->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertFalse($preview['schema_ready']);
-        $this->assertCount(2, $preview['pending_migrations']);
+        $this->assertCount(3, $preview['pending_migrations']);
         $this->expectExceptionMessage('FIXTURE_APPLY_REQUIRES_M23_M24');
         $this->fixture->apply($this->batch, $this->end, $this->store, $preview['fingerprint'], []);
     }

@@ -23,8 +23,16 @@ final class WorkReportAcceptanceFixture
         $identity = $this->target->verify();
         $plan = $this->dataset->build($batch, $end);
         $ledger = DB::table('migrations')->orderBy('id')->pluck('migration')->all();
-        if (! in_array(count($ledger), [22, 23, 24], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
+        if (! in_array(count($ledger), [22, 23, 24, 25], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
             throw new LogicException('FIXTURE_UNREVIEWED_MIGRATION_LEDGER');
+        }
+        if (count($ledger) === 25 && (! Schema::hasColumn('daily_reports', 'next_day_plan')
+            || ! Schema::hasColumns('daily_report_items', ['issue', 'evidence_links']))) {
+            throw new LogicException('FIXTURE_DAILY_REPORT_V3_SCHEMA_DRIFT');
+        }
+        if (count($ledger) < 25 && (Schema::hasColumn('daily_reports', 'next_day_plan')
+            || Schema::hasColumn('daily_report_items', 'issue') || Schema::hasColumn('daily_report_items', 'evidence_links'))) {
+            throw new LogicException('FIXTURE_DAILY_REPORT_V3_SCHEMA_DRIFT');
         }
         foreach (['work_report_analyses' => 23, 'work_report_analysis_units' => 23, 'work_report_analysis_revisions' => 24, 'work_report_regeneration_requests' => 24] as $table => $step) {
             if (Schema::hasTable($table) !== (count($ledger) >= $step)) {
@@ -49,7 +57,8 @@ final class WorkReportAcceptanceFixture
             'app/Services/AI/WorkReportAcceptanceFixture.php', 'app/Console/Commands/WorkReportFixtureCommand.php', 'app/Services/ReportClock.php',
             'app/Services/AI/WorkReportSnapshot.php', 'app/Services/AI/WorkReportAnalysisService.php', 'app/Services/AI/WorkReportAnalysisWorker.php',
             'app/Services/AI/WorkReportAnalysisOutput.php', 'app/Services/AI/WorkReportAnalysisProvider.php',
-            'database/migrations/2026_11_02_000000_create_work_report_analyses.php', 'database/migrations/2026_11_02_010000_create_work_report_regeneration_tables.php'];
+            'database/migrations/2026_11_02_000000_create_work_report_analyses.php', 'database/migrations/2026_11_02_010000_create_work_report_regeneration_tables.php',
+            'database/migrations/2026_11_03_010000_add_daily_report_v3_fields.php'];
         $hashes = [];
         // Match a Git checkout on Windows and Linux without weakening content binding.
         foreach ($files as $file) {
@@ -78,7 +87,7 @@ final class WorkReportAcceptanceFixture
         return ['status' => 'PASS', 'mode' => 'dry-run', 'writes_executed' => false, 'identity' => $identity, 'fingerprint' => $fingerprint,
             'budget_context' => ['billing_period' => $billingPeriod, 'environment' => config('app.env'), 'provider' => 'openai',
                 'reserved_cost_microusd' => (int) ($budget->reserved_cost_microusd ?? 0), 'spent_cost_microusd' => (int) ($budget->spent_cost_microusd ?? 0), 'ledger_reset' => false],
-            'schema_ready' => count($ledger) === 24, 'pending_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, count($ledger)),
+            'schema_ready' => count($ledger) >= 24, 'pending_migrations' => array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, count($ledger)),
             'organization_id' => (int) $org->id, 'roles' => $roles, 'already_applied' => $existing !== null, 'plan' => $plan, 'code_hashes' => $hashes,
             'expected_inserts' => ['users' => 7, 'departments' => 2, 'organization_memberships' => 7, 'membership_roles' => 7,
                 'daily_reports' => count($plan['reports']), 'daily_report_items' => array_sum(array_map(fn ($r) => count($r['items']), $plan['reports']))]];

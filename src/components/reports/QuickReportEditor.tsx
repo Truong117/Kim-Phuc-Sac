@@ -1,3 +1,6 @@
+import { Fragment, type ReactNode } from "react";
+import WorkItemExtras from "./WorkItemExtras";
+import ReportIssueSummary from "./ReportIssueSummary";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
 import Button from "@/components/ui/button/Button";
@@ -9,6 +12,7 @@ import {
   TrashBinIcon,
 } from "@/icons";
 import type {
+  WorkItemField,
   WorkItemFormData,
   WorkItemValidationErrors,
   WorkStatus,
@@ -22,6 +26,8 @@ import { cn } from "@/utils";
 import { useTranslation } from "react-i18next";
 
 interface QuickReportEditorProps {
+  resultsSection?: ReactNode;
+  planSection?: ReactNode;
   items: WorkItemFormData[];
   drafts: QuickReportDrafts;
   errors: Record<string, WorkItemValidationErrors>;
@@ -33,12 +39,14 @@ interface QuickReportEditorProps {
     clientId: string,
     changes: Partial<Omit<WorkItemFormData, "clientId">>,
   ) => void;
-  onItemBlur: (clientId: string, field: "content") => void;
+  onItemBlur: (clientId: string, field: WorkItemField) => void;
   onItemDelete: (clientId: string) => void;
 }
 
 export default function QuickReportEditor({
   items,
+  resultsSection,
+  planSection,
   drafts,
   errors,
   batchError,
@@ -117,131 +125,146 @@ export default function QuickReportEditor({
         const draftId = `quick-draft-${group.status.toLowerCase()}`;
 
         return (
-          <section
-            key={group.status}
-            className={cn(
-              "rounded-2xl border p-4 shadow-theme-xs sm:p-5",
-              group.accentClassName,
-            )}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "flex size-9 items-center justify-center rounded-lg",
-                    group.iconClassName,
-                  )}
-                >
-                  {group.icon}
-                </span>
-                <div>
-                  <h2 className="font-semibold text-gray-900 dark:text-white">
-                    {t(`groups.${groupKey}.title`)}
-                  </h2>
-                  <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                    {t("count", { count: groupItems.length })}
-                  </p>
+          <Fragment key={group.status}>
+            {group.status === "IN_PROGRESS" && resultsSection}
+            {group.status === "BLOCKED" && planSection}
+            <section
+              className={cn(
+                "rounded-2xl border p-4 shadow-theme-xs sm:p-5",
+                group.accentClassName,
+              )}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      "flex size-9 items-center justify-center rounded-lg",
+                      group.iconClassName,
+                    )}
+                  >
+                    {group.icon}
+                  </span>
+                  <div>
+                    <h2 className="font-semibold text-gray-900 dark:text-white">
+                      {t(`groups.${groupKey}.title`)}
+                    </h2>
+                    <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                      {t("count", { count: groupItems.length })}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="mt-4">
-              <Label htmlFor={draftId}>{t("inputLabel")}</Label>
-              <TextArea
-                id={draftId}
-                name={draftId}
-                rows={4}
-                value={drafts[group.status]}
-                disabled={disabled}
-                placeholder={t(`groups.${groupKey}.placeholder`)}
-                onChange={(value) => onDraftChange(group.status, value)}
-              />
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                  {t("pendingCount", { count: pendingCount })}
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  startIcon={<PlusIcon className="size-4.5" />}
-                  className="!bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none"
-                  disabled={disabled || !drafts[group.status].trim()}
-                  onClick={() => onAddBatch(group.status)}
-                >
-                  {t("add")}
-                </Button>
-              </div>
-            </div>
-
-            {groupItems.length > 0 ? (
-              <div className="mt-5 custom-scrollbar max-h-96 space-y-3 overflow-y-auto pe-1">
-                {groupItems.map((item, index) => (
-                  <article
-                    key={item.clientId}
-                    className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+              <div className="mt-4">
+                <Label htmlFor={draftId}>{t("inputLabel")}</Label>
+                <TextArea
+                  id={draftId}
+                  name={draftId}
+                  rows={4}
+                  value={drafts[group.status]}
+                  disabled={disabled}
+                  placeholder={t(`groups.${groupKey}.placeholder`)}
+                  onChange={(value) => onDraftChange(group.status, value)}
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                    {t("pendingCount", { count: pendingCount })}
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    startIcon={<PlusIcon className="size-4.5" />}
+                    className="!bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none"
+                    disabled={disabled || !drafts[group.status].trim()}
+                    onClick={() => onAddBatch(group.status)}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-theme-xs font-semibold text-gray-500 dark:text-gray-400">
-                        {t("itemTitle", { number: index + 1 })}
-                      </p>
-                      <button
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => onItemDelete(item.clientId)}
-                        aria-label={t("deleteItem", { number: index + 1 })}
-                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-error-600 transition-colors hover:bg-error-50 focus-visible:ring-2 focus-visible:ring-error-500/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                      >
-                        <TrashBinIcon className="size-4" aria-hidden="true" />
-                      </button>
-                    </div>
-                    <div className="mt-2 grid grid-cols-1 gap-3 lg:grid-cols-2">
-                      <div>
-                        <Label htmlFor={`quick-content-${item.clientId}`}>
-                          {t("contentLabel")}
-                        </Label>
-                        <TextArea
-                          id={`quick-content-${item.clientId}`}
-                          rows={2}
-                          value={item.content}
-                          disabled={disabled}
-                          error={Boolean(errors[item.clientId]?.content)}
-                          hint={errors[item.clientId]?.content}
-                          onChange={(content) =>
-                            onItemChange(item.clientId, { content })
-                          }
-                          onBlur={() => onItemBlur(item.clientId, "content")}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor={`quick-result-${item.clientId}`}>
-                          {t("resultLabel")}
-                        </Label>
-                        <TextArea
-                          id={`quick-result-${item.clientId}`}
-                          rows={2}
-                          value={item.result}
-                          disabled={disabled}
-                          placeholder={t("resultPlaceholder")}
-                          onChange={(result) =>
-                            onItemChange(item.clientId, { result })
-                          }
-                        />
-                      </div>
-                    </div>
-                    {item.note.trim() && (
-                      <p className="mt-3 text-theme-xs text-gray-500 dark:text-gray-400">
-                        {t("notePreserved")}
-                      </p>
-                    )}
-                  </article>
-                ))}
+                    {t("add")}
+                  </Button>
+                </div>
               </div>
-            ) : (
-              <p className="mt-5 rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-center text-theme-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
-                {t("emptyGroup")}
-              </p>
-            )}
-          </section>
+
+              {groupItems.length > 0 ? (
+                <div className="mt-5 custom-scrollbar max-h-96 space-y-3 overflow-y-auto pe-1">
+                  {groupItems.map((item, index) => (
+                    <article
+                      key={item.clientId}
+                      className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-theme-xs font-semibold text-gray-500 dark:text-gray-400">
+                          {t("itemTitle", { number: index + 1 })}
+                        </p>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => onItemDelete(item.clientId)}
+                          aria-label={t("deleteItem", { number: index + 1 })}
+                          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-error-600 transition-colors hover:bg-error-50 focus-visible:ring-2 focus-visible:ring-error-500/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                        >
+                          <TrashBinIcon className="size-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        <div>
+                          <Label htmlFor={`quick-content-${item.clientId}`}>
+                            {t("contentLabel")}
+                          </Label>
+                          <TextArea
+                            id={`quick-content-${item.clientId}`}
+                            rows={2}
+                            value={item.content}
+                            disabled={disabled}
+                            error={Boolean(errors[item.clientId]?.content)}
+                            hint={errors[item.clientId]?.content}
+                            onChange={(content) =>
+                              onItemChange(item.clientId, { content })
+                            }
+                            onBlur={() => onItemBlur(item.clientId, "content")}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`quick-result-${item.clientId}`}>
+                            {t("resultLabel")}
+                          </Label>
+                          <TextArea
+                            id={`quick-result-${item.clientId}`}
+                            rows={2}
+                            value={item.result}
+                            disabled={disabled}
+                            placeholder={t("resultPlaceholder")}
+                            onChange={(result) =>
+                              onItemChange(item.clientId, { result })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <WorkItemExtras
+                          item={item}
+                          errors={errors[item.clientId]}
+                          disabled={disabled}
+                          onChange={onItemChange}
+                          onBlur={onItemBlur}
+                        />
+                      </div>
+                      {item.note.trim() && (
+                        <p className="mt-3 text-theme-xs text-gray-500 dark:text-gray-400">
+                          {t("notePreserved")}
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-5 rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-center text-theme-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                  {t("emptyGroup")}
+                </p>
+              )}
+              {group.status === "BLOCKED" && (
+                <ReportIssueSummary items={items} />
+              )}
+            </section>
+          </Fragment>
         );
       })}
     </div>
