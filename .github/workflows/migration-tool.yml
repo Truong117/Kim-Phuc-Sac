@@ -1,0 +1,33 @@
+name: Migration tool (offline)
+on:
+  pull_request:
+    paths: ['tools/Migrate-Kps.ps1', 'tools/kps-migrate.php', 'tools/test-kps-migrate.php', '.github/workflows/migration-tool.yml']
+  push:
+    branches: ['feature/migration-tool', 'staging', 'main']
+    paths: ['tools/Migrate-Kps.ps1', 'tools/kps-migrate.php', 'tools/test-kps-migrate.php', '.github/workflows/migration-tool.yml']
+permissions:
+  contents: read
+jobs:
+  windows-syntax:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "$PWD/tools/Migrate-Kps.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List; exit 1 }
+          Write-Host 'Windows PowerShell syntax OK'
+  offline-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+      - run: php -l tools/kps-migrate.php
+      - run: php tools/test-kps-migrate.php
