@@ -18,6 +18,7 @@ class DailyReportResource extends JsonResource
         return [
             'id' => $this->id,
             'report_date' => $this->report_date->toDateString(),
+            'is_makeup' => (bool) $this->is_makeup,
             'locked_at' => $this->locked_at->utc()->toIso8601String(),
             'is_locked' => $clock->isLocked($this->locked_at),
             'next_day_plan' => $this->next_day_plan ?? '',

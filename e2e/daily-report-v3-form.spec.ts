@@ -125,3 +125,42 @@ test("daily report V3 preserves four sections through draft reload, mode switch 
     page.getByText("Chưa xác minh nội dung đường dẫn.", { exact: true }),
   ).toBeVisible();
 });
+
+test("makeup submission uses an eligible missing date and is immediately locked", async ({
+  page,
+}) => {
+  await login(page, "employee-b");
+  const options = await browserRequest(page, "/api/reports/makeup");
+  expect(options.status).toBe(200);
+  const day = options.body.data.days.find(
+    (entry: { can_submit: boolean }) => entry.can_submit,
+  );
+  test.skip(
+    !day,
+    "Requires a missing working day before the three-day/Saturday cutoff",
+  );
+  await page.goto("/reports/new");
+  await page.getByRole("link", { name: "Nộp báo cáo bù", exact: true }).click();
+  await page.locator("#makeup-report-date").selectOption(day.date);
+  await page
+    .locator("#quick-draft-completed")
+    .fill("Đăng video bù → 2 video đã đăng");
+  const response = page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/reports/makeup") &&
+      r.request().method() === "POST",
+  );
+  await page
+    .getByRole("button", { name: "Xác nhận gửi báo cáo bù", exact: true })
+    .click();
+  const saved = await response;
+  expect(saved.status()).toBe(201);
+  const data = (await saved.json()).data;
+  expect(data.report_date).toBe(day.date);
+  expect(data.is_makeup).toBe(true);
+  expect(data.is_locked).toBe(true);
+  expect(data.actions.can_edit).toBe(false);
+  await page.goto(`/reports/${data.id}`);
+  await expect(page.getByText("Báo cáo bù", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Nộp thực tế:/)).toBeVisible();
+});

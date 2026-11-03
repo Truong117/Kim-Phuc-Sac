@@ -17,6 +17,7 @@ import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
 import QuickReportEditor from "@/components/reports/QuickReportEditor";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
+import { useAuthorization } from "@/hooks/useAuthorization";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkReportDraft } from "@/hooks/useWorkReportDraft";
 import { DocsIcon, TimeIcon } from "@/icons";
@@ -24,6 +25,8 @@ import { ApiServiceError } from "@/services/apiClient";
 import type { WorkReportDraftData } from "@/services/workReportDraftStorage";
 import {
   createReport,
+  createMakeupReport,
+  getMakeupReportState,
   getTodayReport,
   updateReport,
 } from "@/services/reportService";
@@ -46,7 +49,14 @@ import {
   type QuickReportBatchError,
   type QuickReportDrafts,
 } from "@/utils/quickReport";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router";
 
@@ -115,10 +125,21 @@ const ReportStateActions = ({
   </div>
 );
 
-export default function NewReport() {
+export default function NewReport({
+  makeupDate,
+  dateSelection,
+}: { makeupDate?: string; dateSelection?: ReactNode } = {}) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
   const { currentUser } = useAuth();
+  const { canNavigate } = useAuthorization();
   const navigate = useNavigate();
+  const fetchReportState = useCallback(
+    (signal?: AbortSignal) =>
+      makeupDate
+        ? getMakeupReportState(makeupDate, signal)
+        : getTodayReport(signal),
+    [makeupDate],
+  );
   const [today, setToday] = useState<TodayReportState | null>(null);
   const [nextDayPlan, setNextDayPlan] = useState("");
   const [items, setItems] = useState<WorkItemFormData[]>([]);
@@ -158,7 +179,7 @@ export default function NewReport() {
   const loadToday = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        applyTodayState(await getTodayReport(signal));
+        applyTodayState(await fetchReportState(signal));
         setError(null);
       } catch (loadError) {
         if (isAbortError(loadError)) return;
@@ -171,12 +192,12 @@ export default function NewReport() {
         if (!signal?.aborted) setIsLoading(false);
       }
     },
-    [applyTodayState, t],
+    [applyTodayState, fetchReportState, t],
   );
 
   useEffect(() => {
     const abortController = new AbortController();
-    getTodayReport(abortController.signal)
+    fetchReportState(abortController.signal)
       .then((state) => {
         applyTodayState(state);
         setError(null);
@@ -193,7 +214,7 @@ export default function NewReport() {
         if (!abortController.signal.aborted) setIsLoading(false);
       });
     return () => abortController.abort();
-  }, [applyTodayState, t]);
+  }, [applyTodayState, fetchReportState, t]);
 
   const isClosed = Boolean(today?.is_window_closed);
   const isReadOnly = Boolean(
@@ -501,9 +522,11 @@ export default function NewReport() {
     saveInFlightRef.current = true;
     setSaveState({ status: "saving" });
     try {
-      const savedReport = today.report
-        ? await updateReport(today.report.id, input)
-        : await createReport(input);
+      const savedReport = makeupDate
+        ? await createMakeupReport(makeupDate, input)
+        : today.report
+          ? await updateReport(today.report.id, input)
+          : await createReport(input);
       reportDraft.handleSubmitSuccess();
       setToday((current) =>
         current
@@ -543,7 +566,7 @@ export default function NewReport() {
             unsavedContent += `\n\n${t("v3.planTitle")}:\n${nextDayPlan}`;
           setRecoveryText(unsavedContent || null);
           try {
-            applyTodayState(await getTodayReport());
+            applyTodayState(await fetchReportState());
           } catch {
             // Keep the safe conflict message when the follow-up refresh fails.
           }
@@ -568,14 +591,23 @@ export default function NewReport() {
   return (
     <>
       <PageMeta
-        title={`${t("title")} | KIM PHỤC SẮC`}
+        title={`${t(makeupDate ? "makeup.title" : "title")} | KIM PHỤC SẮC`}
         description={t("metaDescription")}
       />
-      <PageBreadCrumb pageTitle={t("title")} />
+      <PageBreadCrumb pageTitle={t(makeupDate ? "makeup.title" : "title")} />
       <p className="-mt-4 mb-6 text-theme-sm text-gray-500 dark:text-gray-400">
-        {t("subtitle")}
+        {t(makeupDate ? "makeup.description" : "subtitle")}
       </p>
 
+      {dateSelection}
+      {!makeupDate && canNavigate("reports.new") && (
+        <Link
+          to="/reports/makeup/new"
+          className="mb-6 inline-flex rounded-lg border border-gray-300 px-4 py-3 text-theme-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+        >
+          {t("makeup.open")}
+        </Link>
+      )}
       <ReportSaveModal
         state={saveState}
         onGoHome={() => navigate("/")}
@@ -744,6 +776,7 @@ export default function NewReport() {
               </section>
               <ReportWorkItemDetails items={today.report.items} />
               <ReportNextDayPlan
+                referenceDate={makeupDate}
                 readOnly
                 value={today.report.next_day_plan ?? ""}
               />
@@ -761,7 +794,11 @@ export default function NewReport() {
                 </h2>
                 <p className="mt-2 text-theme-sm text-gray-600 dark:text-gray-300">
                   {t(
-                    isClosed ? "closed.description" : "unavailable.description",
+                    makeupDate
+                      ? "makeup.expired"
+                      : isClosed
+                        ? "closed.description"
+                        : "unavailable.description",
                     {
                       date: formatDate(today.business_date),
                       cutoff: formatTime(today.cutoff_at),
@@ -847,6 +884,7 @@ export default function NewReport() {
                     <QuickReportEditor
                       planSection={
                         <ReportNextDayPlan
+                          referenceDate={makeupDate}
                           value={nextDayPlan}
                           onChange={setNextDayPlan}
                           disabled={isSaveFlowActive}
@@ -879,6 +917,7 @@ export default function NewReport() {
                     <WorkItemList
                       planSection={
                         <ReportNextDayPlan
+                          referenceDate={makeupDate}
                           value={nextDayPlan}
                           onChange={setNextDayPlan}
                           disabled={isSaveFlowActive}

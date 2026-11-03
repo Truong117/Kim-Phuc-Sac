@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\Reports\MakeupReportController;
 use App\Http\Controllers\Reports\ReportCommentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportNotificationController;
@@ -55,6 +56,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         ->middleware('permission:dashboard.view');
 
     Route::get('/reports/today', TodayReportController::class);
+    Route::get('/reports/makeup', [MakeupReportController::class, 'options'])->middleware(['report_participant', 'permission:reports.create']);
+    Route::get('/reports/makeup/state', [MakeupReportController::class, 'state'])->middleware(['report_participant', 'permission:reports.create']);
+    Route::post('/reports/makeup', [MakeupReportController::class, 'store'])->middleware(['report_participant', 'permission:reports.create']);
     Route::get('/reports/references', ReportReferenceController::class)
         ->middleware('permission:reports.view');
     Route::get('/reports', [ReportController::class, 'index'])

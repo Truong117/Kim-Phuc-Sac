@@ -267,7 +267,28 @@
       "evidencePlaceholder": "Mỗi dòng một đường dẫn http:// hoặc https://, tối đa 10 đường dẫn.",
       "unverified": "Chưa xác minh nội dung đường dẫn.",
       "evidenceInvalid": "Nhập tối đa 10 đường dẫn HTTP/HTTPS khác nhau, mỗi dòng một link (tối đa 2.048 ký tự/link), không kèm tên đăng nhập hoặc mật khẩu.",
-      "otherIssues": "Vướng mắc ở các công việc khác"
+      "otherIssues": "Vướng mắc ở các công việc khác",
+      "planHistoricalHint": "Kế hoạch thuộc thời điểm sau ngày báo cáo {date}; hãy ghi rõ ngày dự kiến. Không tính là kết quả đã thực hiện."
+    },
+    "makeup": {
+      "title": "Báo cáo bù",
+      "open": "Nộp báo cáo bù",
+      "description": "Chỉ bổ sung ngày làm việc còn thiếu trong tuần hiện tại. Hạn nộp là mốc sớm hơn giữa 3 ngày lịch sau ngày bị thiếu và hết Thứ Bảy. Chủ Nhật không nhận báo cáo bù. Báo cáo khóa ngay sau khi gửi.",
+      "period": "Tuần {start} – {end}",
+      "date": "Ngày cần báo cáo bù",
+      "dateOption": "{date} — hạn {deadline}",
+      "empty": "Không có ngày còn thiếu đủ điều kiện nộp bù.",
+      "expiredDates": "Ngày còn thiếu đã quá hạn: {dates}.",
+      "loadError": "Không tải được ngày báo cáo bù. Kiểm tra quyền báo cáo và thử lại.",
+      "retry": "Thử lại",
+      "loading": "Đang tải các ngày còn thiếu...",
+      "back": "Về báo cáo hôm nay",
+      "submit": "Xác nhận gửi báo cáo bù",
+      "expired": "Ngày này đã hết hạn nộp bù: quá 3 ngày hoặc đã chốt tuần vào hết Thứ Bảy.",
+      "badge": "Báo cáo bù",
+      "submittedAt": "Nộp thực tế: {time}",
+      "planLabel": "Kế hoạch sau ngày báo cáo (không bắt buộc)",
+      "planHint": "Kế hoạch thuộc thời điểm ngày được báo cáo; ghi rõ ngày dự kiến. Không tính là kết quả đã thực hiện."
     }
   },
   "reportHistory": {

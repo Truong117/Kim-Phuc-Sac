@@ -87,29 +87,75 @@ class WorkReportService
         ];
     }
 
+    public function makeupOptions(User $user): array
+    {
+        $membership = $this->activeMembership($user);
+        $this->participation->ensureParticipant($membership);
+        $today = $this->clock->businessDate();
+        $end = $this->clock->isWorkingDate($today) && $this->clock->isWindowClosed() ? $today : $this->clock->now()->subDay()->toDateString();
+        $dates = $end < $this->clock->makeupPeriodStart() ? [] : $this->clock->workingDatesBetween($this->clock->makeupPeriodStart(), $end);
+        $existing = DailyReport::query()->where('organization_id', $membership->organization_id)
+            ->where('user_id', $user->id)->whereBetween('report_date', [$this->clock->makeupPeriodStart(), $end])
+            ->pluck('report_date')->map(fn ($date) => substr((string) $date, 0, 10))->all();
+
+        return [
+            'business_date' => $this->clock->businessDate(),
+            'period_start' => $this->clock->makeupPeriodStart(), 'period_end' => $this->clock->now()->startOfWeek(1)->addDays(5)->toDateString(),
+            'days' => collect(array_reverse($dates))->reject(fn ($date) => in_array($date, $existing, true))
+                ->map(fn ($date) => ['date' => $date, 'can_submit' => $this->clock->canMakeupDate($date),
+                    'deadline_at' => $this->clock->inBusinessTimezone($this->clock->makeupDeadline($date)->subSecond())->toIso8601String()])->values()->all(),
+        ];
+    }
+
+    public function makeupState(User $user, string $date): array
+    {
+        $membership = $this->activeMembership($user);
+        $this->participation->ensureParticipant($membership);
+        if ($date < $this->clock->makeupPeriodStart() || $date > $this->clock->businessDate() || ! $this->clock->isWorkingDate($date)) {
+            throw ValidationException::withMessages(['report_date' => 'Chọn ngày làm việc trong tuần hiện tại (Thứ Hai–Thứ Bảy).']);
+        }
+        $report = DailyReport::query()->where('organization_id', $membership->organization_id)
+            ->where('user_id', $user->id)->whereDate('report_date', $date)->first();
+        if ($report) {
+            $this->loadDetail($report, $user);
+        }
+
+        return [
+            'business_date' => $date, 'cutoff_at' => $this->clock->inBusinessTimezone($this->clock->makeupDeadline($date)->subSecond())->toIso8601String(),
+            'is_working_day' => true, 'is_window_closed' => ! $this->clock->canMakeupDate($date),
+            'reporting_required' => true, 'report' => $report,
+            'can_create' => $report === null && $this->clock->canMakeupDate($date) && $this->authorization->allows($user, 'reports.create'),
+        ];
+    }
+
+    public function createMakeup(User $author, string $date, array $items, array $details): DailyReport
+    {
+        return $this->createForDate($author, $items, $details, $date, true);
+    }
+
     /**
      * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
     public function create(User $author, array $items, array $details = []): DailyReport
     {
+        return $this->createForDate($author, $items, $details, $this->clock->businessDate(), false);
+    }
+
+    private function createForDate(User $author, array $items, array $details, string $date, bool $isMakeup): DailyReport
+    {
         $membership = $this->activeMembership($author);
         $this->participation->ensureParticipant($membership);
-        $date = $this->clock->businessDate();
         $lockedAt = $this->clock->cutoffForDate($date);
 
         if (! $this->clock->isWorkingDate($date)) {
             throw new ConflictHttpException('Chủ Nhật là ngày nghỉ, không thể tạo báo cáo công việc mới.');
         }
 
-        if ($this->clock->isLocked($lockedAt)) {
-            throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
-        }
+        $this->ensureSubmissionWindow($date, $isMakeup);
 
         try {
-            $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items, $details): DailyReport {
-                if ($this->clock->isLocked($lockedAt)) {
-                    throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
-                }
+            $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items, $details, $isMakeup): DailyReport {
+                $this->ensureSubmissionWindow($date, $isMakeup);
 
                 $report = DailyReport::query()->create([
                     'organization_id' => $membership->organization_id,
@@ -117,6 +163,7 @@ class WorkReportService
                     'department_id' => $membership->department_id,
                     'location_id' => $membership->location_id,
                     'report_date' => $date,
+                    'is_makeup' => $isMakeup,
                     'locked_at' => $lockedAt,
                     'next_day_plan' => $details['next_day_plan'] ?? null,
                 ]);
@@ -133,13 +180,24 @@ class WorkReportService
                 ->exists();
 
             if ($duplicateExists) {
-                throw new ConflictHttpException('Báo cáo hôm nay đã tồn tại.');
+                throw new ConflictHttpException('Báo cáo cho ngày này đã tồn tại.');
             }
 
             throw $exception;
         }
 
         return $this->loadDetail($report, $author);
+    }
+
+    private function ensureSubmissionWindow(string $date, bool $isMakeup): void
+    {
+        if ($isMakeup) {
+            if (! $this->clock->canMakeupDate($date)) {
+                throw ValidationException::withMessages(['report_date' => 'Chỉ được nộp bù trong 3 ngày lịch tiếp theo và trong cùng tuần (Thứ Hai–Thứ Bảy).']);
+            }
+        } elseif ($this->clock->isLocked($this->clock->cutoffForDate($date))) {
+            throw new ConflictHttpException('Đã hết thời gian tạo báo cáo hôm nay.');
+        }
     }
 
     public function findVisible(User $viewer, int $reportId): DailyReport

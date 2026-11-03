@@ -31,7 +31,21 @@ class WorkReportV3MigrationTest extends TestCase
         $this->assertSame($beforeReport, array_intersect_key($afterReport, $beforeReport));
         $this->assertSame($beforeItem, array_intersect_key($afterItem, $beforeItem));
         $this->assertSame($beforeUsers, DB::table('users')->get()->toJson());
-        $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, DB::table('migrations')->orderBy('id')->pluck('migration')->all());
+        $this->assertSame(array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 25), DB::table('migrations')->orderBy('id')->pluck('migration')->all());
+    }
+
+    public function test_m26_marks_only_new_makeup_reports_without_relabelling_existing_reports(): void
+    {
+        $prior = array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, 25);
+        $this->artisan('migrate', ['--path' => array_map(fn ($m) => 'database/migrations/'.$m.'.php', $prior), '--force' => true])->assertSuccessful();
+        $org = DB::table('organizations')->insertGetId(['code' => 'MAKEUP_PRESERVE', 'name' => 'Synthetic']);
+        $user = DB::table('users')->insertGetId(['name' => 'Preserve', 'email' => 'preserve-makeup@example.test', 'password' => 'synthetic']);
+        $id = DB::table('daily_reports')->insertGetId(['organization_id' => $org, 'user_id' => $user, 'report_date' => '2026-11-02', 'locked_at' => '2026-11-02 16:00:00', 'created_at' => '2026-11-03 08:00:00', 'next_day_plan' => 'Giữ kế hoạch']);
+        $before = (array) DB::table('daily_reports')->find($id);
+        $this->artisan('migrate', ['--path' => 'database/migrations/2026_11_03_020000_add_makeup_marker_to_daily_reports.php', '--force' => true])->assertSuccessful();
+        $after = (array) DB::table('daily_reports')->find($id);
+        $this->assertSame(0, $after['is_makeup']);
+        $this->assertSame($before, array_intersect_key($after, $before));
     }
 
     public function test_mysql_schema_compiles_as_additive_ddl_without_connecting_to_any_database(): void
@@ -52,11 +66,16 @@ class WorkReportV3MigrationTest extends TestCase
         try {
             Schema::swap($mysql->getSchemaBuilder());
             $migration = require database_path('migrations/2026_11_03_010000_add_daily_report_v3_fields.php');
-            $queries = $mysql->pretend(fn () => $migration->up());
+            $marker = require database_path('migrations/2026_11_03_020000_add_makeup_marker_to_daily_reports.php');
+            $queries = $mysql->pretend(function () use ($migration, $marker): void {
+                $migration->up();
+                $marker->up();
+            });
         } finally {
             Schema::swap($original);
         }
         $sql = implode("\n", array_column($queries, 'query'));
+        $this->assertStringContainsString('`is_makeup` tinyint(1) not null default', $sql);
         $this->assertStringContainsString('`next_day_plan` text null', $sql);
         $this->assertStringContainsString('`issue` text null', $sql);
         $this->assertStringContainsString('`evidence_links` json null', $sql);

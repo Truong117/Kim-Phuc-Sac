@@ -58,6 +58,7 @@ abstract class ReportItemsRequest extends FormRequest
             'location_id' => ['prohibited'],
             'report_date' => ['prohibited'],
             'locked_at' => ['prohibited'],
+            'is_makeup' => ['prohibited'],
             'form_version' => ['sometimes', 'integer', Rule::in([3])],
             'next_day_plan' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'items' => ['present', 'array', $this->filled('next_day_plan') ? 'min:0' : 'min:1', 'max:50'],

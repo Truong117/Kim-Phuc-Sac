@@ -27,6 +27,7 @@ export type ReportComment = {
 export type DailyReport = {
   id: number;
   report_date: string;
+  is_makeup?: boolean;
   locked_at: string;
   is_locked: boolean;
   overall_status: ReportOverallStatus;
@@ -46,6 +47,7 @@ export type DailyReport = {
 export type ReportListItem = {
   id: number;
   report_date: string;
+  is_makeup?: boolean;
   locked_at: string;
   is_locked: boolean;
   overall_status: ReportOverallStatus;
@@ -155,4 +157,11 @@ export type ReportListQuery = ReportHistoryFilterValues & {
 
 export type MarkReportNotificationsReadResponse = {
   data: { report_id: number; marked_read_count: number };
+};
+
+export type MakeupReportOptions = {
+  business_date: string;
+  period_start: string;
+  period_end: string;
+  days: { date: string; can_submit: boolean; deadline_at: string }[];
 };

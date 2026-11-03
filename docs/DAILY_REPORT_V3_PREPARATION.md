@@ -1,6 +1,6 @@
 # Chuẩn bị tối ưu báo cáo ngày V3 — GPT-6 Luna
 
-Ngày: 2026-11-03. Trạng thái: bước form/API đã triển khai trong PR #84; xem DAILY_REPORT_V3_FORM.md. Sau nghiệm thu local, form bỏ khối kết quả trùng lặp, còn bốn nhóm và bắt buộc kết quả cho việc đã hoàn thành; xem tài liệu form để biết hành vi hiện tại. Các phần AI Luna và xử lý ngày/tuần dưới đây vẫn là kế hoạch. Chưa chạy migration trên môi trường dùng chung hoặc thay đổi cấu hình triển khai.
+Ngày: 2026-11-03. Trạng thái: bước form/API đã triển khai trong PR #84; xem DAILY_REPORT_V3_FORM.md. Sau nghiệm thu local, form bỏ khối kết quả trùng lặp, còn bốn nhóm và bắt buộc kết quả cho việc đã hoàn thành; xem tài liệu form để biết hành vi hiện tại. Form đã bổ sung nộp bù tối đa 3 ngày lịch, giới hạn trong tuần hiện tại và chốt hết Thứ Bảy (M26); xem tài liệu form. Các phần AI Luna và xử lý ngày/tuần dưới đây vẫn là kế hoạch. Chưa chạy migration trên môi trường dùng chung hoặc thay đổi cấu hình triển khai.
 Nền đã rà soát: main `758c0db4153177045e344cd424088c1d0aeb21ae`; staging `9dafc5fda7f6200a189206574626a34150b15194` (cùng mã ứng dụng).
 
 ## Quyết định đã chốt và phạm vi

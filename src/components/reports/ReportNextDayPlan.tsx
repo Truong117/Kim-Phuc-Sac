@@ -6,11 +6,13 @@ export default function ReportNextDayPlan({
   onChange,
   disabled,
   readOnly = false,
+  referenceDate,
 }: {
   value: string;
   onChange?: (value: string) => void;
   disabled?: boolean;
   readOnly?: boolean;
+  referenceDate?: string;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport.v3" });
   return (
@@ -38,7 +40,11 @@ export default function ReportNextDayPlan({
         </div>
       )}
       <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-        {t("planHint")}
+        {referenceDate
+          ? t("planHistoricalHint", {
+              date: referenceDate.split("-").reverse().join("/"),
+            })
+          : t("planHint")}
       </p>
     </section>
   );

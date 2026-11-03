@@ -17,6 +17,7 @@ class DailyReport extends Model
         'department_id',
         'location_id',
         'report_date',
+        'is_makeup',
         'locked_at',
         'next_day_plan',
     ];
@@ -24,6 +25,7 @@ class DailyReport extends Model
     protected function casts(): array
     {
         return [
+            'is_makeup' => 'boolean',
             'report_date' => 'immutable_date:Y-m-d',
             'locked_at' => 'immutable_datetime',
         ];
