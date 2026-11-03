@@ -1,3 +1,4 @@
+import ReportFieldRow from "./ReportFieldRow";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
 import type {
@@ -26,7 +27,7 @@ export default function WorkItemExtras({
 }: Props) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport.v3" });
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+    <ReportFieldRow>
       <div>
         <Label htmlFor={`issue-${item.clientId}`}>{t("issueLabel")}</Label>
         <TextArea
@@ -62,6 +63,6 @@ export default function WorkItemExtras({
           {t("unverified")}
         </p>
       </div>
-    </div>
+    </ReportFieldRow>
   );
 }

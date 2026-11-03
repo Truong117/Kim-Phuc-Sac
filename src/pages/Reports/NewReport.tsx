@@ -1,4 +1,3 @@
-import ReportResultSummary from "@/components/reports/ReportResultSummary";
 import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
 import {
   hasValidEvidenceLinks,
@@ -299,7 +298,9 @@ export default function NewReport() {
             limit: QUICK_REPORT_MAX_FIELD_LENGTH,
           });
         }
-        if (item.result.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
+        if (item.status === "COMPLETED" && !item.result.trim()) {
+          itemErrors.result = t("validation.resultRequired");
+        } else if (item.result.trim().length > QUICK_REPORT_MAX_FIELD_LENGTH) {
           itemErrors.result = t("validation.maxLength", {
             limit: QUICK_REPORT_MAX_FIELD_LENGTH,
           });
@@ -461,7 +462,19 @@ export default function NewReport() {
       return;
     }
     if (Object.keys(candidateErrors).length > 0) {
-      setError(t("validation.reviewItems"));
+      const pendingResultMissing = candidateItems.some(
+        (item) =>
+          item.status === "COMPLETED" &&
+          !item.result.trim() &&
+          !items.some((saved) => saved.clientId === item.clientId),
+      );
+      setError(
+        t(
+          pendingResultMissing
+            ? "quick.errors.completedResultRequired"
+            : "validation.reviewItems",
+        ),
+      );
       return;
     }
     setBatchError(null);
@@ -832,9 +845,6 @@ export default function NewReport() {
                     aria-labelledby="quick-report-tab"
                   >
                     <QuickReportEditor
-                      resultsSection={
-                        <ReportResultSummary items={realWorkItems(items)} />
-                      }
                       planSection={
                         <ReportNextDayPlan
                           value={nextDayPlan}
@@ -867,9 +877,6 @@ export default function NewReport() {
                     aria-labelledby="detailed-report-tab"
                   >
                     <WorkItemList
-                      resultsSection={
-                        <ReportResultSummary items={realWorkItems(items)} />
-                      }
                       planSection={
                         <ReportNextDayPlan
                           value={nextDayPlan}

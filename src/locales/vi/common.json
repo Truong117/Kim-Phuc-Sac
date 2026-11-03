@@ -68,7 +68,7 @@
     },
     "quick": {
       "instructions": "Nhập nhanh nhiều công việc, mỗi dòng là một công việc.",
-      "arrowHint": "Có thể dùng dấu → hoặc -> để tách nội dung và kết quả, ví dụ: Cập nhật website -> Hoàn thành 5 bài viết.",
+      "arrowHint": "Dùng dấu → hoặc -> để tách nội dung và kết quả, ví dụ: Cập nhật website -> Hoàn thành 5 bài viết. Công việc đã hoàn thành bắt buộc có kết quả.",
       "inputLabel": "Công việc cần thêm",
       "count": "{count} công việc",
       "pendingCount": "{count} công việc mới đang chờ thêm",
@@ -76,7 +76,7 @@
       "itemTitle": "Công việc #{number}",
       "deleteItem": "Xóa công việc #{number}",
       "contentLabel": "Nội dung công việc",
-      "resultLabel": "Kết quả (không bắt buộc)",
+      "resultLabel": "Kết quả",
       "resultPlaceholder": "Có thể để trống nếu chưa có kết quả",
       "notePreserved": "Ghi chú chi tiết đang được giữ nguyên. Chuyển sang Báo cáo chi tiết để chỉnh sửa.",
       "emptyGroup": "Chưa có công việc trong nhóm này.",
@@ -86,19 +86,22 @@
           "placeholder": "Mỗi dòng một công việc đã hoàn thành"
         },
         "inProgress": {
-          "title": "3. Công việc đang thực hiện",
+          "title": "2. Công việc đang thực hiện",
           "placeholder": "Mỗi dòng một công việc đang thực hiện"
         },
         "blocked": {
-          "title": "5. Công việc có vấn đề / cần hỗ trợ",
+          "title": "4. Công việc có vấn đề / cần hỗ trợ",
           "placeholder": "Mỗi dòng một việc đang bị vướng mắc; ghi thêm nguyên nhân và hỗ trợ cần thiết tại đầu việc."
         }
       },
       "errors": {
         "itemLimit": "Không thể thêm batch này vì mỗi báo cáo chỉ được tối đa {limit} công việc. Nội dung vừa nhập vẫn được giữ nguyên.",
         "contentTooLong": "Nội dung tại dòng {line} vượt quá {limit} ký tự. Toàn bộ batch chưa được thêm.",
-        "resultTooLong": "Kết quả tại dòng {line} vượt quá {limit} ký tự. Toàn bộ batch chưa được thêm."
-      }
+        "resultTooLong": "Kết quả tại dòng {line} vượt quá {limit} ký tự. Toàn bộ batch chưa được thêm.",
+        "completedResultRequired": "Công việc đã hoàn thành cần có kết quả. Nhập theo dạng Công việc -> Kết quả, hoặc nhấn Thêm vào báo cáo rồi điền kết quả ở từng việc. Nội dung đang nhập vẫn được giữ nguyên."
+      },
+      "resultOptionalLabel": "Kết quả (không bắt buộc)",
+      "resultRequiredPlaceholder": "Ghi rõ kết quả đã hoàn thành: số lượng, sản phẩm hoặc đầu ra."
     },
     "workItem": {
       "title": "Công việc #{number}",
@@ -109,7 +112,8 @@
       },
       "result": {
         "label": "Kết quả",
-        "placeholder": "Có thể để trống nếu chưa có kết quả"
+        "placeholder": "Có thể để trống nếu chưa có kết quả",
+        "requiredPlaceholder": "Ghi rõ kết quả đã hoàn thành: số lượng, sản phẩm hoặc đầu ra."
       },
       "status": {
         "label": "Trạng thái"
@@ -132,7 +136,8 @@
       "status": "Vui lòng chọn trạng thái.",
       "maxLength": "Nội dung không được vượt quá {limit} ký tự.",
       "atLeastOne": "Nhập ít nhất một công việc hôm nay hoặc kế hoạch ngày mai.",
-      "reviewItems": "Vui lòng kiểm tra lại các công việc chưa hợp lệ."
+      "reviewItems": "Vui lòng kiểm tra lại các công việc chưa hợp lệ.",
+      "resultRequired": "Vui lòng nhập kết quả của công việc đã hoàn thành."
     },
     "draft": {
       "localOnly": "Bản nháp chỉ được lưu trên trình duyệt và thiết bị này trong tối đa 7 ngày.",
@@ -250,10 +255,7 @@
       "save": "Không thể lưu báo cáo. Vui lòng thử lại."
     },
     "v3": {
-      "resultsTitle": "2. Kết quả đạt được",
-      "resultsHint": "Tự tổng hợp từ kết quả ở từng công việc; chỉnh sửa ngay tại công việc tương ứng.",
-      "resultsEmpty": "Chưa nhập kết quả. Có thể ghi số lượng, đơn vị hoặc sản phẩm đã bàn giao tại từng công việc.",
-      "planTitle": "4. Kế hoạch ngày mai",
+      "planTitle": "3. Kế hoạch ngày mai",
       "planLabel": "Công việc dự kiến và ưu tiên (không bắt buộc)",
       "planPlaceholder": "Mỗi dòng một việc: sẽ làm gì, kết quả dự kiến. Ghi rõ ngày nếu dự kiến thực hiện sau ngày mai.",
       "planMissing": "Chưa cung cấp kế hoạch.",

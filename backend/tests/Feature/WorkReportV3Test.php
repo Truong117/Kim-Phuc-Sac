@@ -49,7 +49,7 @@ class WorkReportV3Test extends TestCase
         $unchanged = $this->patchJson('/api/reports/'.$data['id'], [
             'form_version' => 3,
             'items' => [
-                ['id' => $first['id'], 'content' => 'Đăng 2 video', 'status' => 'COMPLETED'],
+                ['id' => $first['id'], 'content' => 'Đăng 2 video', 'result' => '2 video đã đăng', 'status' => 'COMPLETED'],
                 ['id' => $second['id'], 'content' => 'Thiết kế ảnh', 'status' => 'IN_PROGRESS'],
             ],
         ])->assertOk()->json('data.items');
@@ -58,7 +58,7 @@ class WorkReportV3Test extends TestCase
             'form_version' => 3,
             'items' => [
                 ['id' => $second['id'], 'content' => 'Thiết kế ảnh mới', 'status' => 'IN_PROGRESS'],
-                ['id' => $first['id'], 'content' => 'Đăng video TikTok', 'status' => 'COMPLETED'],
+                ['id' => $first['id'], 'content' => 'Đăng video TikTok', 'result' => '2 video đã đăng', 'status' => 'COMPLETED'],
             ],
         ])->assertOk()->assertJsonPath('data.next_day_plan', 'Dựng video mới')
             ->assertJsonPath('data.items.1.id', $first['id'])->assertJsonPath('data.items.1.issue', 'Cần duyệt caption')
@@ -66,9 +66,36 @@ class WorkReportV3Test extends TestCase
         $this->getJson('/api/reports/'.$data['id'])->assertOk()->assertJsonPath('data.items.0.id', $second['id']);
         $this->patchJson('/api/reports/'.$data['id'], [
             'form_version' => 3, 'next_day_plan' => '',
-            'items' => [['id' => $first['id'], 'content' => 'Đăng video TikTok', 'status' => 'COMPLETED', 'issue' => null, 'evidence_links' => []]],
+            'items' => [['id' => $first['id'], 'content' => 'Đăng video TikTok', 'result' => '2 video đã đăng', 'status' => 'COMPLETED', 'issue' => null, 'evidence_links' => []]],
         ])->assertOk()->assertJsonPath('data.next_day_plan', '')->assertJsonPath('data.items.0.issue', '')->assertJsonCount(0, 'data.items.0.evidence_links');
         $this->assertDatabaseCount('daily_report_items', 1);
+    }
+
+    public function test_v3_completed_results_are_required_on_create_and_update(): void
+    {
+        $this->actingAs($this->author(), 'web');
+        foreach ([null, '', '   '] as $result) {
+            $this->postJson('/api/reports', ['form_version' => 3, 'items' => [
+                ['content' => 'Đăng video', 'status' => 'COMPLETED', 'result' => $result],
+                ['content' => 'Dựng video mới', 'status' => 'IN_PROGRESS'],
+            ]])->assertUnprocessable()->assertJsonValidationErrors(['items.0.result']);
+        }
+        $this->postJson('/api/reports', ['form_version' => 3, 'items' => [
+            ['content' => 'Đăng video', 'status' => 'COMPLETED'],
+        ]])->assertUnprocessable()->assertJsonValidationErrors(['items.0.result']);
+        $this->assertDatabaseCount('daily_reports', 0);
+        $data = $this->postJson('/api/reports', ['form_version' => 3, 'items' => [
+            ['content' => 'Đăng video', 'status' => 'COMPLETED', 'result' => 'Đã đăng 2 video'],
+            ['content' => 'Dựng video', 'status' => 'IN_PROGRESS'],
+            ['content' => 'Chờ nội dung', 'status' => 'BLOCKED'],
+        ]])->assertCreated()->json('data');
+        $this->patchJson('/api/reports/'.$data['id'], ['form_version' => 3, 'items' => [
+            ['id' => $data['items'][0]['id'], 'content' => 'Đăng video', 'status' => 'COMPLETED', 'result' => ' '],
+        ]])->assertUnprocessable()->assertJsonValidationErrors(['items.0.result']);
+        $this->getJson('/api/reports/'.$data['id'])->assertOk()->assertJsonPath('data.items.0.result', 'Đã đăng 2 video')->assertJsonCount(3, 'data.items');
+        $this->patchJson('/api/reports/'.$data['id'], ['form_version' => 3, 'items' => [
+            ['id' => $data['items'][1]['id'], 'content' => 'Dựng video', 'status' => 'IN_PROGRESS', 'result' => ''],
+        ]])->assertOk()->assertJsonPath('data.items.0.result', '');
     }
 
     public function test_only_plan_does_not_count_as_completed_work(): void
@@ -87,7 +114,7 @@ class WorkReportV3Test extends TestCase
         $data = $this->postJson('/api/reports', ['items' => [['content' => 'Việc', 'status' => 'COMPLETED', 'issue' => 'Cần hỗ trợ']]])->assertCreated()->json('data');
         $other = DailyReport::query()->create(['organization_id' => $author->defaultOrganizationMembership->organization_id, 'user_id' => User::factory()->create()->id, 'report_date' => '2026-11-03', 'locked_at' => '2026-11-03 16:00:00']);
         $foreign = $other->items()->create(['content' => 'Việc khác', 'result' => '', 'status' => 'COMPLETED', 'sort_order' => 1]);
-        $this->patchJson('/api/reports/'.$data['id'], ['form_version' => 3, 'next_day_plan' => 'Không được ghi', 'items' => [['id' => $foreign->id, 'content' => 'Khác', 'status' => 'COMPLETED']]])->assertUnprocessable();
+        $this->patchJson('/api/reports/'.$data['id'], ['form_version' => 3, 'next_day_plan' => 'Không được ghi', 'items' => [['id' => $foreign->id, 'content' => 'Khác', 'result' => 'Đã xong', 'status' => 'COMPLETED']]])->assertUnprocessable();
         $this->patchJson('/api/reports/'.$data['id'], ['items' => [['content' => 'Client cũ', 'status' => 'COMPLETED']]])->assertConflict();
         $this->getJson('/api/reports/'.$data['id'])->assertOk()->assertJsonPath('data.items.0.issue', 'Cần hỗ trợ')->assertJsonPath('data.next_day_plan', '');
         CarbonImmutable::setTestNow('2026-11-03 16:00:00 UTC');

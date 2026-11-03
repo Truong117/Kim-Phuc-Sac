@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import ReportFieldRow from "./ReportFieldRow";
 import WorkItemExtras from "./WorkItemExtras";
 import ReportIssueSummary from "./ReportIssueSummary";
 import Label from "@/components/form/Label";
@@ -26,7 +27,6 @@ import { cn } from "@/utils";
 import { useTranslation } from "react-i18next";
 
 interface QuickReportEditorProps {
-  resultsSection?: ReactNode;
   planSection?: ReactNode;
   items: WorkItemFormData[];
   drafts: QuickReportDrafts;
@@ -45,7 +45,6 @@ interface QuickReportEditorProps {
 
 export default function QuickReportEditor({
   items,
-  resultsSection,
   planSection,
   drafts,
   errors,
@@ -126,7 +125,6 @@ export default function QuickReportEditor({
 
         return (
           <Fragment key={group.status}>
-            {group.status === "IN_PROGRESS" && resultsSection}
             {group.status === "BLOCKED" && planSection}
             <section
               className={cn(
@@ -204,7 +202,7 @@ export default function QuickReportEditor({
                           <TrashBinIcon className="size-4" aria-hidden="true" />
                         </button>
                       </div>
-                      <div className="mt-2 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                      <ReportFieldRow className="mt-2 gap-3">
                         <div>
                           <Label htmlFor={`quick-content-${item.clientId}`}>
                             {t("contentLabel")}
@@ -224,20 +222,35 @@ export default function QuickReportEditor({
                         </div>
                         <div>
                           <Label htmlFor={`quick-result-${item.clientId}`}>
-                            {t("resultLabel")}
+                            {t(
+                              item.status === "COMPLETED"
+                                ? "resultLabel"
+                                : "resultOptionalLabel",
+                            )}
+                            {item.status === "COMPLETED" && (
+                              <span className="text-error-500"> *</span>
+                            )}
                           </Label>
                           <TextArea
                             id={`quick-result-${item.clientId}`}
                             rows={2}
                             value={item.result}
                             disabled={disabled}
-                            placeholder={t("resultPlaceholder")}
+                            required={item.status === "COMPLETED"}
+                            placeholder={t(
+                              item.status === "COMPLETED"
+                                ? "resultRequiredPlaceholder"
+                                : "resultPlaceholder",
+                            )}
+                            error={Boolean(errors[item.clientId]?.result)}
+                            hint={errors[item.clientId]?.result}
+                            onBlur={() => onItemBlur(item.clientId, "result")}
                             onChange={(result) =>
                               onItemChange(item.clientId, { result })
                             }
                           />
                         </div>
-                      </div>
+                      </ReportFieldRow>
                       <div className="mt-3">
                         <WorkItemExtras
                           item={item}

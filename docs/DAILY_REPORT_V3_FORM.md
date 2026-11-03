@@ -1,11 +1,12 @@
 # Báo cáo ngày V3 — form và lưu dữ liệu
 
-Phạm vi PR #84 bước đầu: giao diện năm mục, API và bản nháp. AI ngày Luna, lịch chạy tự động, adapter tuần/tháng và kết nối MXH chưa được triển khai trong bước này. Không thay đổi model hoặc ngân sách triển khai.
+Phạm vi PR #84 bước đầu: giao diện bốn nhóm (kết quả nằm trong từng đầu việc), API và bản nháp. AI ngày Luna, lịch chạy tự động, adapter tuần/tháng và kết nối MXH chưa được triển khai trong bước này. Không thay đổi model hoặc ngân sách triển khai.
 
 ## Hành vi
 
-- Nhập nhanh và chi tiết đều có: (1) Công việc đã hoàn thành; (2) Kết quả đạt được; (3) Công việc đang thực hiện; (4) Kế hoạch ngày mai; (5) Công việc có vấn đề / cần hỗ trợ.
-- Kết quả nhập ở từng đầu việc và tự hiển thị tại mục 2, không lưu một bản sao văn bản thứ hai. Vướng mắc có thể gắn với cả việc đang làm; mục 5 tập hợp thêm các vấn đề này. Ghi chú cũ giữ nguyên nhãn, không tự thành vướng mắc.
+- Nhập nhanh và chi tiết đều có: (1) Công việc đã hoàn thành; (2) Công việc đang thực hiện; (3) Kế hoạch ngày mai; (4) Công việc có vấn đề / cần hỗ trợ. Không có khối “Kết quả đạt được” trùng lặp.
+- Kết quả nhập ở từng đầu việc. Form V3 bắt buộc kết quả không rỗng cho COMPLETED ở cả giao diện và API; IN_PROGRESS/BLOCKED vẫn tùy chọn. Báo cáo lịch sử không bị sửa và hợp đồng API cũ chưa gửi form_version=3 giữ kết quả tùy chọn để tương thích. Vướng mắc có thể gắn với cả việc đang làm; mục 4 tập hợp thêm các vấn đề này. Ghi chú cũ giữ nguyên nhãn, không tự thành vướng mắc.
+- Kéo giãn một ô nhập theo chiều dọc đồng bộ ô cùng hàng (nội dung/kết quả hoặc vấn đề/minh chứng), cả hai chiều tăng/giảm. Các hàng và đầu việc khác được đẩy xuống theo bố cục; không đổi nội dung hay kích thước của đầu việc khác.
 - Kế hoạch là một trường văn bản tùy chọn tối đa 5.000 ký tự; có thể ghi nhiều dòng và nêu rõ ngày nếu không thực hiện vào ngày mai. Không tự tạo task hoặc ghi nhận thành tích. Báo cáo chỉ có kế hoạch được lưu với 0 đầu việc và trạng thái tổng thể IN_PROGRESS.
 - Đường dẫn: tối đa 10 URL HTTP/HTTPS khác nhau mỗi đầu việc, tối đa 2.048 ký tự/link, không kèm tên đăng nhập/mật khẩu. Không truy cập URL hoặc gọi API MXH. Giao diện luôn ghi “Chưa xác minh”.
 - Không thêm trường số lượng bắt buộc. Nội dung kết quả vẫn là văn bản; chuẩn hóa/chỉ số AI thuộc bước sau.
@@ -34,6 +35,6 @@ Manifest bootstrap được nối thêm chính xác tên M25. Các kiểm tra pr
 ## Kiểm tra
 
 - Backend: CRUD/ID/reorder, client cũ, kế hoạch không thành thành tích, URL không an toàn/trùng/quá giới hạn, ngày khóa; migration bảo toàn dữ liệu và MySQL DDL compile không kết nối DB; manifest/schema drift.
-- Frontend: render thứ tự năm mục trong cả hai chế độ, nhãn minh chứng chưa xác minh, link an toàn, lưu/khôi phục nháp V1/V2 và chống ghi đè phiên bản chưa biết.
+- Frontend: render thứ tự bốn nhóm, kết quả bắt buộc có điều kiện, đồng bộ kéo giãn trong cả hai chế độ, nhãn minh chứng chưa xác minh, link an toàn, lưu/khôi phục nháp V1/V2 và chống ghi đè phiên bản chưa biết.
 - Kịch bản browser: `e2e/daily-report-v3-form.spec.ts`, chỉ dùng môi trường fake cô lập hiện có. Chạy bằng `powershell -NoProfile -ExecutionPolicy Bypass -File e2e/run.ps1 daily-report-v3-form.spec.ts` vào ngày làm việc trong khung giờ mở. Không dùng production .env/API key.
 - Kiểm thử browser chưa được ghi nhận PASS trong phiên này; cần chạy kịch bản thật trước nghiệm thu giao diện trên staging.

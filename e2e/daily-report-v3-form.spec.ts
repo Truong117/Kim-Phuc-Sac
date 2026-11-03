@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { browserRequest, login } from "./helpers";
 
-test("daily report V3 preserves all five sections through draft reload, mode switch and a failed save", async ({
+test("daily report V3 preserves four sections through draft reload, mode switch and a failed save", async ({
   page,
 }) => {
   await login(page, "employee-b");
@@ -13,18 +13,15 @@ test("daily report V3 preserves all five sections through draft reload, mode swi
   await page.goto("/reports/new");
   for (const name of [
     "1. Công việc đã hoàn thành",
-    "2. Kết quả đạt được",
-    "3. Công việc đang thực hiện",
-    "4. Kế hoạch ngày mai",
-    "5. Công việc có vấn đề / cần hỗ trợ",
+    "2. Công việc đang thực hiện",
+    "3. Kế hoạch ngày mai",
+    "4. Công việc có vấn đề / cần hỗ trợ",
   ]) {
     await expect(
       page.getByRole("heading", { name, exact: true }),
     ).toBeVisible();
   }
-  await page
-    .locator("#quick-draft-completed")
-    .fill("Đăng video thử nghiệm → 2 video");
+  await page.locator("#quick-draft-completed").fill("Đăng video thử nghiệm");
   const completed = page.locator("section").filter({
     has: page.getByRole("heading", {
       name: "1. Công việc đã hoàn thành",
@@ -34,6 +31,35 @@ test("daily report V3 preserves all five sections through draft reload, mode swi
   await completed
     .getByRole("button", { name: "Thêm vào báo cáo", exact: true })
     .click();
+  const contentField = page.locator('textarea[id^="quick-content-"]');
+  const resultField = page.locator('textarea[id^="quick-result-"]');
+  await expect(resultField).toHaveAttribute("required", "");
+  await contentField.evaluate((field) => {
+    field.style.height = "180px";
+  });
+  await expect
+    .poll(async () => Math.round((await resultField.boundingBox())!.height))
+    .toBe(180);
+  await resultField.evaluate((field) => {
+    field.style.height = "100px";
+  });
+  await expect
+    .poll(async () => Math.round((await contentField.boundingBox())!.height))
+    .toBe(100);
+  let creations = 0;
+  page.on("request", (request) => {
+    if (request.url().endsWith("/api/reports") && request.method() === "POST")
+      creations++;
+  });
+  await resultField.fill("   ");
+  await page.locator('form button[type="submit"]').click();
+  await expect(
+    page.getByText("Vui lòng kiểm tra lại các công việc chưa hợp lệ.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(creations).toBe(0);
+  await resultField.fill("2 video");
   await page.locator('textarea[id^="issue-"]').fill("Chờ phản hồi duyệt");
   await page
     .locator('textarea[id^="evidence-"]')

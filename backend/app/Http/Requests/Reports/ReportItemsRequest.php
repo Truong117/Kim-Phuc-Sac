@@ -43,6 +43,11 @@ abstract class ReportItemsRequest extends FormRequest
         $this->merge(['items' => $items]);
     }
 
+    public function messages(): array
+    {
+        return ['items.*.result.required_if' => 'Vui lòng nhập kết quả của công việc đã hoàn thành.'];
+    }
+
     /** @return array<string, mixed> */
     public function rules(): array
     {
@@ -59,7 +64,7 @@ abstract class ReportItemsRequest extends FormRequest
             'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links'],
             'items.*.id' => $this->isMethod('POST') ? ['prohibited'] : ['sometimes', 'integer', 'min:1', 'distinct:strict'],
             'items.*.content' => ['required', 'string', 'max:5000'],
-            'items.*.result' => ['nullable', 'string', 'max:5000'],
+            'items.*.result' => [(int) $this->input('form_version') === 3 ? 'required_if:items.*.status,COMPLETED' : 'nullable', 'nullable', 'string', 'max:5000'],
             'items.*.status' => ['required', Rule::enum(WorkStatus::class)],
             'items.*.note' => ['nullable', 'string', 'max:5000'],
             'items.*.issue' => ['sometimes', 'nullable', 'string', 'max:5000'],

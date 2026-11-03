@@ -12,7 +12,6 @@ import { useTranslation } from "react-i18next";
 import WorkItemForm from "./WorkItemForm";
 
 interface WorkItemListProps {
-  resultsSection?: ReactNode;
   planSection?: ReactNode;
   items: WorkItemFormData[];
   errors: Record<string, WorkItemValidationErrors>;
@@ -27,7 +26,6 @@ interface WorkItemListProps {
 
 export default function WorkItemList({
   items,
-  resultsSection,
   planSection,
   errors,
   onItemChange,
@@ -47,7 +45,6 @@ export default function WorkItemList({
       )}
       {(["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const).map((status) => (
         <Fragment key={status}>
-          {status === "IN_PROGRESS" && resultsSection}
           {status === "BLOCKED" && planSection}
           <section className="space-y-4 rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
             <h2 className="font-semibold text-gray-900 dark:text-white">

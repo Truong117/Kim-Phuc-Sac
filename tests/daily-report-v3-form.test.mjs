@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { createServer } from "vite";
 
-let vite, Quick, Detailed, Results, Plan, Details, evidence;
+let vite, Quick, Detailed, Plan, Details, evidence, syncTextAreas;
 before(async () => {
   vite = await createServer({
     appType: "custom",
@@ -13,11 +13,10 @@ before(async () => {
     server: { middlewareMode: true, watch: { ignored: ["**/backend/**"] } },
   });
   await vite.ssrLoadModule("/src/i18n/index.ts");
-  [Quick, Detailed, Results, Plan, Details] = await Promise.all(
+  [Quick, Detailed, Plan, Details] = await Promise.all(
     [
       "QuickReportEditor",
       "WorkItemList",
-      "ReportResultSummary",
       "ReportNextDayPlan",
       "ReportWorkItemDetails",
     ].map(
@@ -27,6 +26,9 @@ before(async () => {
     ),
   );
   evidence = await vite.ssrLoadModule("/src/utils/reportEvidence.ts");
+  syncTextAreas = (
+    await vite.ssrLoadModule("/src/utils/syncReportTextAreas.ts")
+  ).syncReportTextAreas;
 });
 after(async () => {
   await vite?.close();
@@ -50,13 +52,12 @@ const render = (component, props) =>
     ),
   );
 
-test("quick and detailed modes show the five sections in order and preserve optional item fields", () => {
+test("quick and detailed modes show four sections without duplicated results in order and preserve optional item fields", () => {
   const props = {
     items: [item],
     drafts: { COMPLETED: "", IN_PROGRESS: "", BLOCKED: "" },
     errors: {},
     disabled: false,
-    resultsSection: React.createElement(Results, { items: [item] }),
     planSection: React.createElement(Plan, { value: "Dựng video ngày mai" }),
     onDraftChange() {},
     onAddBatch() {},
@@ -69,11 +70,11 @@ test("quick and detailed modes show the five sections in order and preserve opti
     const html = render(component, props);
     const titles = [
       "1. Công việc đã hoàn thành",
-      "2. Kết quả đạt được",
-      "3. Công việc đang thực hiện",
-      "4. Kế hoạch ngày mai",
-      "5. Công việc có vấn đề / cần hỗ trợ",
+      "2. Công việc đang thực hiện",
+      "3. Kế hoạch ngày mai",
+      "4. Công việc có vấn đề / cần hỗ trợ",
     ];
+    assert.ok(!html.includes("Kết quả đạt được"));
     let previous = -1;
     for (const title of titles) {
       const at = html.indexOf(title);
@@ -111,8 +112,6 @@ test("detail shows issue, untouched legacy note and unverified safe links; plan 
       "Chưa cung cấp kế hoạch",
     ),
   );
-  const results = render(Results, { items: [{ ...item, result: "" }] });
-  assert.ok(results.includes("Chưa nhập kết quả"));
 });
 
 test("evidence parser preserves distinct links but rejects executable, credential-bearing, duplicate and oversized input", () => {
@@ -135,4 +134,71 @@ test("evidence parser preserves distinct links but rejects executable, credentia
       false,
       text.slice(0, 50),
     );
+});
+
+test("completed tasks require results in both editors while unfinished tasks remain optional", () => {
+  for (const component of [Quick, Detailed]) {
+    for (const status of ["COMPLETED", "IN_PROGRESS", "BLOCKED"]) {
+      const html = render(component, {
+        items: [{ ...item, status, result: "" }],
+        drafts: { COMPLETED: "", IN_PROGRESS: "", BLOCKED: "" },
+        errors: {
+          a: { result: "Vui lòng nhập kết quả của công việc đã hoàn thành." },
+        },
+        onItemChange() {},
+        onItemBlur() {},
+        onItemDelete() {},
+        onItemAdd() {},
+        onDraftChange() {},
+        onAddBatch() {},
+      });
+      const textarea = html.match(
+        /<textarea[^>]*id="(?:quick-)?result-a"[^>]*>/,
+      )[0];
+      assert.equal(/required=""/.test(textarea), status === "COMPLETED");
+      assert.ok(html.includes("Vui lòng nhập kết quả"));
+    }
+  }
+});
+
+test("resizing synchronizes either direction within a row without feedback, value changes or leaking into other rows", () => {
+  const original = globalThis.ResizeObserver;
+  const instances = [];
+  globalThis.ResizeObserver = class {
+    observed = [];
+    constructor(callback) {
+      this.callback = callback;
+      instances.push(this);
+    }
+    observe(field) {
+      this.observed.push(field);
+    }
+    disconnect() {
+      this.disconnected = true;
+    }
+  };
+  try {
+    const a = { style: { height: "" }, value: "Nội dung" };
+    const b = { style: { height: "" }, value: "Kết quả" };
+    const c = { style: { height: "" }, value: "Minh chứng" };
+    const stop = syncTextAreas({ querySelectorAll: () => [a, b] });
+    const stopOther = syncTextAreas({ querySelectorAll: () => [c] });
+    const observer = instances[0];
+    observer.callback([{ target: a }]); // Width/layout change: leave initial rows alone.
+    assert.equal(b.style.height, "");
+    a.style.height = "180px";
+    observer.callback([{ target: a }]);
+    assert.equal(b.style.height, "180px");
+    observer.callback([{ target: b }]); // Synchronized observer event does not loop.
+    b.style.height = "90px";
+    observer.callback([{ target: b }]);
+    assert.equal(a.style.height, "90px");
+    assert.equal(c.style.height, "");
+    assert.deepEqual([a.value, b.value], ["Nội dung", "Kết quả"]);
+    stop();
+    stopOther();
+    assert.ok(instances.every((entry) => entry.disconnected));
+  } finally {
+    globalThis.ResizeObserver = original;
+  }
 });
