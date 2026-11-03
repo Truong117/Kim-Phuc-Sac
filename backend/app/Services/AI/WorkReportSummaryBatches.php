@@ -41,6 +41,9 @@ final class WorkReportSummaryBatches
                 $append($part['id'], [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata,
                     'work_totals' => $part['result']['work_totals']]);
             }
+            foreach ($part['result']['work_groups'] ?? [] as $group) {
+                $append($part['id'], [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_groups' => [$group]]);
+            }
             // Preserve source inventory before partitioning the employee's AI assessment.
             foreach ($part['result']['work_inventory'] ?? [] as $group) {
                 $fragment = [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_inventory' => [$group]];

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import PageMeta from "@/components/common/PageMeta";
@@ -32,7 +32,42 @@ const time = (value: string) =>
     timeStyle: "short",
   }).format(new Date(value));
 
+const DailyDocuments = lazy(() => import("./DailyDocuments"));
+
 export default function WorkReportInsights() {
+  const [params] = useSearchParams();
+  const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
+  const daily = params.get("view") === "daily";
+  return (
+    <>
+      <nav aria-label={t("modeLabel")} className="mb-5 flex gap-3 text-sm">
+        <Link
+          to="/ai/insights?view=daily"
+          aria-current={daily ? "page" : undefined}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-brand-600 dark:border-gray-700 dark:text-brand-300"
+        >
+          {t("dayMode")}
+        </Link>
+        <Link
+          to="/ai/insights"
+          aria-current={!daily ? "page" : undefined}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-brand-600 dark:border-gray-700 dark:text-brand-300"
+        >
+          {t("periodMode")}
+        </Link>
+      </nav>
+      {daily ? (
+        <Suspense fallback={<p role="status">{t("loading")}</p>}>
+          <DailyDocuments />
+        </Suspense>
+      ) : (
+        <PeriodWorkReportInsights />
+      )}
+    </>
+  );
+}
+
+function PeriodWorkReportInsights() {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("employees");
@@ -164,6 +199,7 @@ export default function WorkReportInsights() {
                   busy ||
                   (running && !run?.requires_new_run) ||
                   !preview?.enabled ||
+                  Boolean(preview?.daily_coverage?.missing_report_ids.length) ||
                   !counts?.reports
                 }
               >
@@ -195,6 +231,12 @@ export default function WorkReportInsights() {
             </span>
           </div>
           <WorkAnalysisRegenerate run={run} onSelect={selectRun} />
+          {(run?.daily_coverage ?? preview?.daily_coverage) && (
+            <p role="status" className="text-sm text-gray-600 dark:text-gray-400">
+              {t("dailyCoverage", { ready: (run?.daily_coverage ?? preview?.daily_coverage)?.ready_reports, total: (run?.daily_coverage ?? preview?.daily_coverage)?.total_reports })}
+              {Boolean((run?.daily_coverage ?? preview?.daily_coverage)?.missing_report_ids.length) && <> {t("dailyMissing")}</>}
+            </p>
+          )}
           {preview?.latest_attempt && !isHistory && (
             <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
               {t("defaultVersion")}{" "}

@@ -32,6 +32,10 @@ return [
     */
 
     'connections' => [
+        'daily_report_ai' => [
+            'driver' => 'database', 'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => 'jobs', 'queue' => 'ai-daily-reports', 'retry_after' => 480, 'after_commit' => true,
+        ],
 
         'work_report_ai' => [
             'driver' => 'database',

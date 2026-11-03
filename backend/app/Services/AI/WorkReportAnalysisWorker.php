@@ -75,7 +75,9 @@ class WorkReportAnalysisWorker
                 unset($input['_source_unit_ids']);
             } else {
                 $allowed = $input['reports'];
-                $input['work_inventory'] = WorkReportWeeklyWork::build($allowed);
+                if (! isset($input['daily_documents'])) {
+                    $input['work_inventory'] = WorkReportWeeklyWork::build($allowed);
+                }
                 $input['analysis_stage'] = 'employee_review';
                 unset($input['reports']);
                 unset($input['_reused_from_unit_id']);
@@ -90,7 +92,18 @@ class WorkReportAnalysisWorker
             WorkReportAnalysis::query()->whereKey($run->id)->whereIn('status', ['pending', 'running'])->update(['status' => 'running']);
             $response = $this->provider->analyze($run, $unit, $input);
             WorkReportAnalysisOutput::validate($response['result'], $allowed);
-            $quantities = $summaryUnit ? [] : WorkReportWorkTotals::normalize($response['result']['quantity_observations'] ?? [], $allowed);
+            if ($summaryUnit && ($response['result']['work_groups'] ?? []) !== []) {
+                throw new \RuntimeException('AI_INVALID_SCHEMA');
+            }
+            if (! $summaryUnit) {
+                WorkReportGroupedWork::validate($response['result']['work_groups'] ?? null, $allowed);
+            }
+            if (! $summaryUnit && isset($input['daily_documents']) && ($response['result']['quantity_observations'] ?? []) !== []) {
+                throw new \RuntimeException('AI_INVALID_EVIDENCE');
+            }
+            $quantities = $summaryUnit ? [] : WorkReportWorkTotals::normalize(isset($input['daily_documents'])
+                ? array_merge(...array_column($input['daily_documents'], 'observations'))
+                : ($response['result']['quantity_observations'] ?? []), $allowed);
             $response['result']['quantity_observations'] = $quantities;
             $response['result']['work_totals'] = WorkReportWorkTotals::totals($quantities);
             // A fenced lease prevents a response from an interrupted worker overwriting its replacement.
@@ -113,7 +126,7 @@ class WorkReportAnalysisWorker
                 (new OpenAiGateway)->rejectCompletedResult($response['usage_record_id'], 'AI_INVALID_EVIDENCE');
             }
             $code = $exception instanceof AiGatewayException ? $exception->errorCode
-                : (in_array($exception->getMessage(), ['AI_INVALID_SCHEMA', 'AI_INVALID_EVIDENCE'], true) ? $exception->getMessage() : 'AI_UNIT_FAILED');
+                : (in_array($exception->getMessage(), ['AI_INVALID_SCHEMA', 'AI_INVALID_EVIDENCE', 'AI_INCOMPLETE_INVENTORY'], true) ? $exception->getMessage() : 'AI_UNIT_FAILED');
             WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')->where('lease_token', $token)
                 ->update(['status' => 'failed', 'error_code' => $code, 'leased_until' => null]);
             // No report/provider payload or exception message enters application logs.
@@ -168,7 +181,8 @@ class WorkReportAnalysisWorker
                 ...array_intersect_key($unit->result, array_flip(WorkReportAnalysisOutput::SECTIONS)),
                 'employee_id' => $id, 'employee_name' => $people[$id] ?? null,
                 'employee_complete' => ! in_array($id, $failed, true),
-                'work_inventory' => WorkReportWeeklyWork::build($unit->input['reports']),
+                'work_groups' => $unit->result['work_groups'] ?? [],
+                'work_inventory' => isset($unit->input['daily_documents']) ? [] : WorkReportWeeklyWork::build($unit->input['reports']),
                 'work_totals' => array_map(fn ($t) => array_diff_key($t, ['entries' => true]), $totals),
             ]];
         })->values()->all();

@@ -15,6 +15,10 @@ export default defineConfig(({ mode }) => {
   });
 
   return {
+    // PHP dependencies are not frontend HMR inputs; avoid exhausting OS watchers.
+    server: {
+      watch: { ignored: ["**/backend/vendor/**", "**/backend/storage/**"] },
+    },
     resolve: {
       alias: {
         "@": fileURLToPath(new URL("./src", import.meta.url)),

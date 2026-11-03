@@ -11,6 +11,11 @@ export const analysisSections = [
 ] as const;
 export type AnalysisSection = (typeof analysisSections)[number];
 export type AnalysisResult = Record<AnalysisSection, AnalysisClaim[]>;
+export interface GroupedWork {
+  title: string;
+  text: string;
+  evidence: { report_id: number; item_id: number; quote: string }[];
+}
 export interface WeeklyWorkGroup {
   content: string;
   observations: {
@@ -58,10 +63,15 @@ export interface AnalysisEmployee {
   failed_units: number;
   source_report_ids: number[];
   result: AnalysisResult | null;
+  work_groups?: GroupedWork[];
   work_inventory?: WeeklyWorkGroup[];
   work_totals?: WorkTotal[];
 }
+export interface DailyCoverage {
+  mode: string; ready_reports: number; total_reports: number; missing_report_ids: number[];
+}
 export interface WorkReportAnalysis {
+  daily_coverage?: DailyCoverage | null;
   id: number;
   status: "pending" | "running" | "completed" | "partial" | "failed";
   period: {
@@ -112,6 +122,7 @@ export interface AnalysisFilters {
   department_id: number | null;
 }
 export interface AnalysisPreview {
+  daily_coverage?: DailyCoverage | null;
   enabled: boolean;
   mode: string;
   departments: { id: number; name: string }[];
