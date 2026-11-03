@@ -311,6 +311,24 @@ class DailyDocumentTest extends TestCase
         $this->assertDatabaseHas('daily_report_items', ['daily_report_id' => $report->id, 'result' => 'Bán được 10 sp']);
     }
 
+    public function test_recover_lost_dispatch_preserves_input_and_allows_a_single_retry_claim(): void
+    {
+        $owner = $this->member();
+        $report = $this->source($owner);
+        $id = $this->createDocument($owner, $report);
+        $unit = DailyReportAiDocument::findOrFail($id)->units()->firstOrFail();
+        $input = $unit->input;
+        $unit->update(['updated_at' => now()->subSeconds(481)]);
+        $this->assertSame(1, app(DailyDocumentService::class)->recover());
+        $this->assertSame('AI_DISPATCH_INTERRUPTED', $unit->fresh()->error_code);
+        $this->assertSame($input, $unit->fresh()->input);
+        $this->postJson('/api/ai/daily-documents/'.$id.'/retry')->assertAccepted();
+        $this->runDocument($id);
+        $this->runDocument($id);
+        $this->assertSame('completed', $unit->fresh()->status);
+        $this->assertSame(1, $unit->fresh()->attempts);
+    }
+
     public function test_oversize_source_fails_without_partial_database_writes(): void
     {
         $owner = $this->member();

@@ -6,7 +6,7 @@
 - Nguồn bất biến theo từng báo cáo đã khóa: report_date, người viết, bản kê đầy đủ, kết quả, ghi chú/vướng mắc, kế hoạch theo dòng, minh chứng chưa xác minh, cờ bù và thời điểm nộp thật. Nội dung snapshot/input/result mã hóa bằng APP_KEY.
 - Mỗi source/config hash dùng lại một document trong cùng tổ chức, kể cả nhiều quản lý bấm. Nguồn thay đổi tạo revision mới; đọc lại lịch sử vẫn kiểm tra quyền hiện tại.
 - Chia phần theo đầu việc đầy đủ; dữ liệu quá lớn bị từ chối rõ trước khi ghi document, không tự cắt nguồn. Danh sách ngày phân trang 25 báo cáo, hiển thị tổng số và trang; không ngầm bỏ các báo cáo còn lại.
-- Worker fake chạy từng unit trên queue `ai-daily-reports`, claim bằng lease token; duplicate delivery không chạy lại phần đạt, stale worker không ghi đè kết quả. Retry phần lỗi có giới hạn, giữ phần đạt; recover lease hết hạn không gọi provider. Trạng thái partial/failed rõ và bản kê nguồn luôn xem được.
+- Worker fake chạy từng unit trên queue `ai-daily-reports`, claim bằng lease token; duplicate delivery không chạy lại phần đạt, stale worker không ghi đè kết quả. Retry phần lỗi có giới hạn, giữ phần đạt; recover lease hết hạn hoặc dispatch pending quá 480 giây không gọi provider. Trạng thái partial/failed rõ và bản kê nguồn luôn xem được.
 - Hợp đồng output có nguồn item/quote, kiểm tra report/item/đơn vị/số lượng, chỉ chấp nhận kết quả của việc COMPLETED; kế hoạch không được đưa vào kết quả đạt. Kế thừa quy tắc số lũy kế/chưa rõ của tuần; cộng số phát sinh với fixed-point sáu chữ số thập phân. Nhận xét/đề xuất có trích nguồn; số chưa rõ không hiển thị tổng chắc chắn.
 - Giao diện tại `/ai/insights?view=daily`: đủ công việc/kết quả từng nhân viên trước nhận xét/đề xuất, kế hoạch riêng, nguồn bù, minh chứng chưa xác minh, tiến độ/retry, nguồn đã đổi. Chuyển về Theo kỳ giữ luồng tuần cũ.
 - Vite bỏ theo dõi thư mục vendor/storage PHP khỏi HMR, tránh tràn file watcher khi kiểm thử frontend; không thay pipeline CI/CD hay HTTP proxy.
@@ -41,7 +41,7 @@ Tạo báo cáo đã khóa bằng fixture local; vào Phân tích AI → Theo ng
 php artisan daily-report-ai:recover
 ```
 
-Lệnh chỉ đánh dấu unit quá hạn; người có quyền có thể Thử lại phần lỗi (tối đa 2 lần xử lý/part). Không reset attempts để lách giới hạn. `retry_after=480` lớn hơn timeout/lease; worker chạy ngoài request. Mốc fake này chưa cấu hình scheduler.
+Lệnh chỉ đánh dấu unit có lease quá hạn hoặc pending quá 480 giây; người có quyền có thể Thử lại phần lỗi (tối đa 2 lần xử lý/part). Không reset attempts để lách giới hạn. `retry_after=480` lớn hơn timeout/lease; worker chạy ngoài request. Mốc fake này chưa cấu hình scheduler.
 
 ## API mới
 

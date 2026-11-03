@@ -157,10 +157,21 @@ class DailyDocumentService
     public function recover(): int
     {
         $recovered = 0;
-        foreach (DailyReportAiUnit::query()->where('status', 'running')->where('leased_until', '<=', now())->get() as $unit) {
-            $changed = DailyReportAiUnit::query()->whereKey($unit->id)->where('status', 'running')
-                ->where('lease_token', $unit->lease_token)->where('leased_until', '<=', now())
-                ->update(['status' => 'failed', 'error_code' => 'AI_WORKER_INTERRUPTED', 'lease_token' => null, 'leased_until' => null]);
+        $stalePending = now()->subSeconds(480);
+        $candidates = DailyReportAiUnit::query()->where(function ($query) use ($stalePending): void {
+            $query->where(fn ($q) => $q->where('status', 'running')->where('leased_until', '<=', now()))
+                ->orWhere(fn ($q) => $q->where('status', 'pending')->where('updated_at', '<=', $stalePending));
+        })->get();
+        foreach ($candidates as $unit) {
+            $query = DailyReportAiUnit::query()->whereKey($unit->id)->where('status', $unit->status);
+            if ($unit->status === 'running') {
+                $query->where('lease_token', $unit->lease_token)->where('leased_until', '<=', now());
+            } else {
+                $query->where('updated_at', '<=', $stalePending);
+            }
+            $changed = $query->update(['status' => 'failed',
+                'error_code' => $unit->status === 'running' ? 'AI_WORKER_INTERRUPTED' : 'AI_DISPATCH_INTERRUPTED',
+                'lease_token' => null, 'leased_until' => null]);
             if ($changed) {
                 $recovered++;
                 self::settle(DailyReportAiDocument::query()->findOrFail($unit->daily_report_ai_document_id));
