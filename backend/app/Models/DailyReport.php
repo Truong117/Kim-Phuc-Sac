@@ -17,12 +17,15 @@ class DailyReport extends Model
         'department_id',
         'location_id',
         'report_date',
+        'is_makeup',
         'locked_at',
+        'next_day_plan',
     ];
 
     protected function casts(): array
     {
         return [
+            'is_makeup' => 'boolean',
             'report_date' => 'immutable_date:Y-m-d',
             'locked_at' => 'immutable_datetime',
         ];
@@ -67,6 +70,10 @@ class DailyReport extends Model
 
     public function overallStatus(): WorkStatus
     {
+        if (($this->relationLoaded('items') && $this->items->isEmpty())
+            || (! $this->relationLoaded('items') && ($this->getAttribute('items_count') !== null ? (int) $this->items_count === 0 : ! $this->items()->exists()))) {
+            return WorkStatus::IN_PROGRESS;
+        }
         if ($this->relationLoaded('items')) {
             $statuses = $this->items->pluck('status');
 

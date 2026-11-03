@@ -36,6 +36,7 @@ export type QuickReportBatchResult =
 
 export type WorkItemSerializationLabels = {
   note: string;
+  issue?: string;
   unselectedStatus: string;
   statuses: Record<WorkStatus, string>;
 };
@@ -81,6 +82,8 @@ export const isBlankWorkItem = (item: WorkItemFormData): boolean =>
   !item.content.trim() &&
   !item.result.trim() &&
   !item.note.trim() &&
+  !(item.issue ?? "").trim() &&
+  !(item.evidenceLinks ?? "").trim() &&
   !item.status;
 
 export const realWorkItems = (items: WorkItemFormData[]): WorkItemFormData[] =>
@@ -178,6 +181,12 @@ export const serializeWorkItems = (
       const status = item.status
         ? labels.statuses[item.status]
         : labels.unselectedStatus;
-      return `[${status}] ${item.content.trim()}${result}${note}`;
+      const issue = item.issue?.trim()
+        ? `\n${labels.issue ?? labels.note}: ${item.issue.trim()}`
+        : "";
+      const links = item.evidenceLinks?.trim()
+        ? `\n${item.evidenceLinks.trim()}`
+        : "";
+      return `[${status}] ${item.content.trim()}${result}${note}${issue}${links}`;
     })
     .join("\n\n");

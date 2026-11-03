@@ -14,13 +14,7 @@ import {
   type CalendarMonth,
 } from "@/utils/dateOnly";
 import { cn } from "@/utils";
-import {
-  useCallback,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 export interface KpsDatePickerProps {
@@ -87,8 +81,10 @@ export default function KpsDatePicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
-  const normalizedMinDate = minDate && isDateOnly(minDate) ? minDate : undefined;
-  const normalizedMaxDate = maxDate && isDateOnly(maxDate) ? maxDate : undefined;
+  const normalizedMinDate =
+    minDate && isDateOnly(minDate) ? minDate : undefined;
+  const normalizedMaxDate =
+    maxDate && isDateOnly(maxDate) ? maxDate : undefined;
   const normalizedAllowedDates = useMemo(
     () =>
       allowedDates === undefined
@@ -170,13 +166,14 @@ export default function KpsDatePicker({
     !lastMonth || monthIndex(visibleMonth) < monthIndex(lastMonth);
   const hasInvalidRange = Boolean(
     normalizedMinDate &&
-      normalizedMaxDate &&
-      normalizedMinDate > normalizedMaxDate,
+    normalizedMaxDate &&
+    normalizedMinDate > normalizedMaxDate,
   );
   const isTriggerDisabled =
     disabled ||
     hasInvalidRange ||
-    (normalizedAllowedDates !== undefined && selectableAllowedDates.length === 0);
+    (normalizedAllowedDates !== undefined &&
+      selectableAllowedDates.length === 0);
 
   const findSelectableDate = useCallback(
     (target: string, direction: -1 | 1): string | null => {
@@ -248,9 +245,8 @@ export default function KpsDatePicker({
       : selectableDatesInVisibleMonth[0];
 
   const focusInMonth = (month: CalendarMonth, preferLast = false) => {
-    const candidates = Array.from(
-      { length: datesInMonth(month) },
-      (_, index) => dateOnlyFromParts(month.year, month.month, index + 1),
+    const candidates = Array.from({ length: datesInMonth(month) }, (_, index) =>
+      dateOnlyFromParts(month.year, month.month, index + 1),
     ).filter(isSelectable);
     const date = preferLast ? candidates.at(-1) : candidates[0];
     setVisibleMonth(month);
@@ -336,7 +332,9 @@ export default function KpsDatePicker({
             ? "border-error-500 focus-visible:border-error-500 focus-visible:ring-error-500/20 dark:border-error-500"
             : "border-gray-300 text-gray-800 hover:border-kps-primary focus-visible:border-kps-primary focus-visible:ring-kps-primary/20 dark:border-gray-700 dark:hover:border-kps-primary dark:focus-visible:border-kps-primary",
         )}
-        aria-label={value ? `${ariaLabel}: ${formatDateOnly(value)}` : ariaLabel}
+        aria-label={
+          value ? `${ariaLabel}: ${formatDateOnly(value)}` : ariaLabel
+        }
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         aria-controls={calendarId}
@@ -352,10 +350,15 @@ export default function KpsDatePicker({
           }
         }}
       >
-        <span className={value ? undefined : "text-gray-400 dark:text-gray-500"}>
+        <span
+          className={value ? undefined : "text-gray-400 dark:text-gray-500"}
+        >
           {value ? formatDateOnly(value) : placeholder}
         </span>
-        <CalenderIcon className="size-5 shrink-0 text-kps-primary dark:text-sidebar-selected" aria-hidden="true" />
+        <CalenderIcon
+          className="size-5 shrink-0 text-kps-primary dark:text-sidebar-selected"
+          aria-hidden="true"
+        />
       </button>
 
       {hint && (
@@ -385,17 +388,7 @@ export default function KpsDatePicker({
             }
           }}
         >
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:ring-3 focus-visible:ring-kps-primary/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
-              aria-label={t("previousMonth")}
-              disabled={!canShowPrevious}
-              onClick={() => changeMonth(-1)}
-            >
-              <ArrowRightIcon className="size-4 rotate-180 rtl:rotate-0" aria-hidden="true" />
-            </button>
-
+          <div className="mb-1 flex items-center justify-between gap-2">
             <div className="flex min-w-0 flex-1 items-center justify-center gap-1">
               <label className="sr-only" htmlFor={`${calendarId}-month`}>
                 {t("chooseMonth")}
@@ -410,13 +403,15 @@ export default function KpsDatePicker({
                     month: Number(event.target.value),
                   })
                 }
-                className="min-w-0 rounded-lg border border-transparent bg-transparent px-1 py-1.5 text-theme-sm font-semibold capitalize text-gray-900 outline-none hover:border-gray-200 focus:border-kps-primary focus:ring-2 focus:ring-kps-primary/20 dark:text-white dark:hover:border-gray-700"
+                className="min-w-0 rounded-lg border border-transparent bg-transparent px-1 py-1.5 text-theme-sm font-semibold text-gray-900 capitalize outline-none hover:border-gray-200 focus:border-kps-primary focus:ring-2 focus:ring-kps-primary/20 dark:text-white dark:hover:border-gray-700"
               >
                 {Array.from({ length: 12 }, (_, month) => {
                   const candidate = { year: visibleMonth.year, month };
                   const unavailable =
-                    (firstMonth && monthIndex(candidate) < monthIndex(firstMonth)) ||
-                    (lastMonth && monthIndex(candidate) > monthIndex(lastMonth));
+                    (firstMonth &&
+                      monthIndex(candidate) < monthIndex(firstMonth)) ||
+                    (lastMonth &&
+                      monthIndex(candidate) > monthIndex(lastMonth));
                   const label = new Intl.DateTimeFormat("vi-VN", {
                     month: "long",
                     timeZone: "UTC",
@@ -450,7 +445,27 @@ export default function KpsDatePicker({
                 ))}
               </select>
             </div>
+          </div>
 
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:ring-3 focus-visible:ring-kps-primary/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
+              aria-label={t("previousMonth")}
+              disabled={!canShowPrevious}
+              onClick={() => changeMonth(-1)}
+            >
+              <ArrowRightIcon
+                className="size-4 rotate-180 fill-current rtl:rotate-0"
+                aria-hidden="true"
+              />
+            </button>
+            <p
+              aria-live="polite"
+              className="text-center text-theme-xs font-medium text-gray-500 capitalize dark:text-gray-400"
+            >
+              {monthLabel}
+            </p>
             <button
               type="button"
               className="flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:ring-3 focus-visible:ring-kps-primary/20 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-30 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-white"
@@ -458,13 +473,12 @@ export default function KpsDatePicker({
               disabled={!canShowNext}
               onClick={() => changeMonth(1)}
             >
-              <ArrowRightIcon className="size-4 rtl:rotate-180" aria-hidden="true" />
+              <ArrowRightIcon
+                className="size-4 fill-current rtl:rotate-180"
+                aria-hidden="true"
+              />
             </button>
           </div>
-
-          <p className="mb-2 text-center text-theme-xs font-medium text-gray-500 capitalize dark:text-gray-400">
-            {monthLabel}
-          </p>
 
           <div className="grid grid-cols-7 gap-1">
             {weekdayLabels.map((weekday, index) => (
@@ -476,7 +490,11 @@ export default function KpsDatePicker({
               </span>
             ))}
             {Array.from({ length: leadingBlankCount }, (_, index) => (
-              <span key={`blank-${index}`} className="size-9" aria-hidden="true" />
+              <span
+                key={`blank-${index}`}
+                className="size-9"
+                aria-hidden="true"
+              />
             ))}
             {Array.from({ length: datesInMonth(visibleMonth) }, (_, index) => {
               const day = index + 1;
@@ -540,11 +558,13 @@ export default function KpsDatePicker({
                       moveFocus(date, 7);
                     } else if (event.key === "Home") {
                       event.preventDefault();
-                      const weekday = (parseDateOnly(date)!.getUTCDay() + 6) % 7;
+                      const weekday =
+                        (parseDateOnly(date)!.getUTCDay() + 6) % 7;
                       moveFocus(date, -weekday);
                     } else if (event.key === "End") {
                       event.preventDefault();
-                      const weekday = (parseDateOnly(date)!.getUTCDay() + 6) % 7;
+                      const weekday =
+                        (parseDateOnly(date)!.getUTCDay() + 6) % 7;
                       moveFocus(date, 6 - weekday);
                     } else if (event.key === "PageUp") {
                       event.preventDefault();

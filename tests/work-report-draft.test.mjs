@@ -83,7 +83,7 @@ test("draft storage saves and restores items, pending text, mode and metadata", 
 
   const saved = adapter.save(context(), data(), saveOptions());
   assert.equal(saved.status, "saved");
-  assert.equal(saved.draft.schemaVersion, 1);
+  assert.equal(saved.draft.schemaVersion, 2);
   assert.equal(saved.draft.updatedAt, "2026-10-22T09:00:00.000Z");
   assert.equal(saved.draft.data.items[0].clientId, "item-1");
   assert.equal(
@@ -129,7 +129,10 @@ test("mode switches and duplicate work items round-trip without conversion", () 
   const restored = adapter.load(context());
   assert.equal(restored.draft.data.editorMode, "detailed");
   assert.equal(restored.draft.data.items.length, 2);
-  assert.equal(restored.draft.data.items[0].content, restored.draft.data.items[1].content);
+  assert.equal(
+    restored.draft.data.items[0].content,
+    restored.draft.data.items[1].content,
+  );
   assert.equal(
     restored.draft.data.quickDrafts.COMPLETED,
     switched.quickDrafts.COMPLETED,
@@ -153,12 +156,17 @@ test("draft keys isolate users and backend business dates", () => {
   );
   adapter.save(
     context("7", "2026-10-21"),
-    data({ quickDrafts: { COMPLETED: "Hôm qua", IN_PROGRESS: "", BLOCKED: "" } }),
+    data({
+      quickDrafts: { COMPLETED: "Hôm qua", IN_PROGRESS: "", BLOCKED: "" },
+    }),
     saveOptions(),
   );
 
   assert.equal(storage.length, 3);
-  assert.equal(adapter.load(context("7", "2026-10-22")).draft.data.editorMode, "quick");
+  assert.equal(
+    adapter.load(context("7", "2026-10-22")).draft.data.editorMode,
+    "quick",
+  );
   assert.equal(
     adapter.load(context("8", "2026-10-22")).draft.data.editorMode,
     "detailed",
@@ -201,8 +209,13 @@ test("corrupt, incompatible and expired drafts fail safely and are cleaned", () 
   assert.equal(storage.getItem(key), null);
 
   storage.setItem(key, JSON.stringify({ schemaVersion: 999 }));
-  assert.equal(adapter.load(context()).status, "invalid");
-  assert.equal(storage.getItem(key), null);
+  assert.equal(adapter.load(context()).status, "unsupported");
+  assert.notEqual(storage.getItem(key), null);
+  assert.equal(
+    adapter.save(context(), data(), saveOptions()).status,
+    "unavailable",
+  );
+  storage.removeItem(key);
 
   const oldAdapter = new drafts.WorkReportDraftStorage(
     storage,
@@ -235,7 +248,10 @@ test("unavailable local storage never crashes draft operations", () => {
   const adapter = new drafts.WorkReportDraftStorage(unavailable);
 
   assert.equal(adapter.load(context()).status, "unavailable");
-  assert.equal(adapter.save(context(), data(), saveOptions()).status, "unavailable");
+  assert.equal(
+    adapter.save(context(), data(), saveOptions()).status,
+    "unavailable",
+  );
   assert.equal(adapter.remove(context(), null).status, "unavailable");
   assert.doesNotThrow(() => adapter.cleanupExpired());
 });
@@ -265,7 +281,10 @@ test("optimistic revisions prevent stale tabs and pending callbacks from overwri
   assert.equal(stale.status, "conflict");
   assert.equal(stale.current.revision, second.draft.revision);
 
-  assert.equal(adapter.remove(context(), second.draft.revision).status, "removed");
+  assert.equal(
+    adapter.remove(context(), second.draft.revision).status,
+    "removed",
+  );
   const delayedWrite = adapter.save(
     context(),
     data(),
@@ -283,15 +302,16 @@ test("successful removal targets only the current user and report date", () => {
     () => Date.parse("2026-10-22T09:00:00.000Z"),
     () => `exact-${++revision}`,
   );
-  const current = adapter.save(context("7", "2026-10-22"), data(), saveOptions());
+  const current = adapter.save(
+    context("7", "2026-10-22"),
+    data(),
+    saveOptions(),
+  );
   adapter.save(context("7", "2026-10-21"), data(), saveOptions());
   adapter.save(context("8", "2026-10-22"), data(), saveOptions());
 
   assert.equal(
-    adapter.remove(
-      context("7", "2026-10-22"),
-      current.draft.revision,
-    ).status,
+    adapter.remove(context("7", "2026-10-22"), current.draft.revision).status,
     "removed",
   );
   assert.equal(adapter.load(context("7", "2026-10-22")).status, "missing");
@@ -317,4 +337,112 @@ test("a new draft can be created after the submitted revision is removed", () =>
   );
   assert.equal(next.status, "saved");
   assert.notEqual(next.draft.revision, submitted.draft.revision);
+});
+
+test("V1 drafts migrate into V2 without losing the backup or new fields", () => {
+  const storage = new MemoryStorage();
+  const now = () => Date.parse("2026-10-22T09:00:00.000Z");
+  const adapter = new drafts.WorkReportDraftStorage(
+    storage,
+    now,
+    () => "v2-revision",
+  );
+  const key = drafts.workReportDraftKey(context());
+  const legacyKey = key.replace(":v2:", ":v1:");
+  const legacy = JSON.stringify({
+    schemaVersion: 1,
+    ...context(),
+    revision: "v1-revision",
+    writerId: "old-tab",
+    updatedAt: new Date(now()).toISOString(),
+    serverReportId: 12,
+    serverUpdatedAt: null,
+    data: data(),
+  });
+  storage.setItem(legacyKey, legacy);
+  assert.deepEqual(adapter.load(context()).draft.data, data());
+  const next = data({
+    nextDayPlan: "Dựng 2 video",
+    items: [
+      {
+        ...data().items[0],
+        id: 42,
+        issue: "Chờ duyệt",
+        evidenceLinks: "https://example.com/video",
+      },
+    ],
+  });
+  assert.equal(
+    adapter.save(context(), next, saveOptions("v1-revision")).status,
+    "saved",
+  );
+  assert.deepEqual(
+    new drafts.WorkReportDraftStorage(storage, now).load(context()).draft.data,
+    next,
+  );
+  assert.equal(storage.getItem(legacyKey), legacy);
+  assert.equal(
+    adapter.save(context(), next, saveOptions("v1-revision")).status,
+    "conflict",
+  );
+});
+
+test("tomorrow's plan is meaningful and unknown future versions are never erased", () => {
+  assert.equal(
+    drafts.hasMeaningfulDraftData(
+      data({
+        items: [],
+        quickDrafts: { COMPLETED: "", IN_PROGRESS: "", BLOCKED: "" },
+        nextDayPlan: "Kế hoạch",
+      }),
+    ),
+    true,
+  );
+  const storage = new MemoryStorage();
+  const key = drafts.workReportDraftKey(context());
+  const value = JSON.stringify({ schemaVersion: 999, nextDayPlan: "Future" });
+  storage.setItem(key, value);
+  const adapter = new drafts.WorkReportDraftStorage(storage);
+  adapter.cleanupExpired();
+  assert.equal(storage.getItem(key), value);
+  assert.equal(adapter.remove(context(), null, true).status, "unavailable");
+});
+
+test("a still-open V1 tab cannot silently overwrite the newer V2 draft", () => {
+  const storage = new MemoryStorage();
+  let now = Date.parse("2026-10-22T09:00:00.000Z");
+  const adapter = new drafts.WorkReportDraftStorage(
+    storage,
+    () => now,
+    () => "v2-revision",
+  );
+  const key = drafts.workReportDraftKey(context());
+  const next = data({ nextDayPlan: "Giữ kế hoạch V2" });
+  adapter.save(context(), next, saveOptions());
+  now += 100;
+  const legacyKey = key.replace(":v2:", ":v1:");
+  storage.setItem(
+    legacyKey,
+    JSON.stringify({
+      schemaVersion: 1,
+      ...context(),
+      revision: "old-tab-new-write",
+      writerId: "old-tab",
+      updatedAt: new Date(now).toISOString(),
+      serverReportId: 12,
+      serverUpdatedAt: null,
+      data: data(),
+    }),
+  );
+  assert.equal(
+    adapter.save(context(), next, saveOptions("v2-revision")).status,
+    "conflict",
+  );
+  assert.equal(adapter.load(context()).draft.revision, "old-tab-new-write");
+  now += 100;
+  assert.equal(
+    adapter.save(context(), next, saveOptions("old-tab-new-write")).status,
+    "saved",
+  );
+  assert.deepEqual(adapter.load(context()).draft.data, next);
 });

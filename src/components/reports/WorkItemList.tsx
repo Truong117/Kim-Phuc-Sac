@@ -1,6 +1,9 @@
+import { Fragment, type ReactNode } from "react";
+import ReportIssueSummary from "./ReportIssueSummary";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import type {
+  WorkStatus,
   WorkItemField,
   WorkItemFormData,
   WorkItemValidationErrors,
@@ -9,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import WorkItemForm from "./WorkItemForm";
 
 interface WorkItemListProps {
+  planSection?: ReactNode;
   items: WorkItemFormData[];
   errors: Record<string, WorkItemValidationErrors>;
   onItemChange: (
@@ -16,12 +20,13 @@ interface WorkItemListProps {
     changes: Partial<Omit<WorkItemFormData, "clientId">>,
   ) => void;
   onItemBlur: (clientId: string, field: WorkItemField) => void;
-  onItemAdd: () => void;
+  onItemAdd: (status: WorkStatus) => void;
   onItemDelete: (clientId: string) => void;
 }
 
 export default function WorkItemList({
   items,
+  planSection,
   errors,
   onItemChange,
   onItemBlur,
@@ -38,36 +43,52 @@ export default function WorkItemList({
           {t("detailedEmpty")}
         </div>
       )}
-      {items.map((item, index) => (
-        <WorkItemForm
-          key={item.clientId}
-          index={index}
-          item={item}
-          errors={errors[item.clientId]}
-          canDelete
-          onChange={onItemChange}
-          onBlur={onItemBlur}
-          onDelete={onItemDelete}
-        />
+      {(["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const).map((status) => (
+        <Fragment key={status}>
+          {status === "BLOCKED" && planSection}
+          <section className="space-y-4 rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+            <h2 className="font-semibold text-gray-900 dark:text-white">
+              {t(
+                `quick.groups.${status === "COMPLETED" ? "completed" : status === "IN_PROGRESS" ? "inProgress" : "blocked"}.title`,
+              )}
+            </h2>
+            {items
+              .filter(
+                (item) =>
+                  item.status === status ||
+                  (!item.status && status === "COMPLETED"),
+              )
+              .map((item) => (
+                <WorkItemForm
+                  key={item.clientId}
+                  index={items.indexOf(item)}
+                  item={item}
+                  errors={errors[item.clientId]}
+                  canDelete
+                  onChange={onItemChange}
+                  onBlur={onItemBlur}
+                  onDelete={onItemDelete}
+                />
+              ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              startIcon={<PlusIcon className="size-5" />}
+              disabled={hasReachedLimit}
+              onClick={() => onItemAdd(status)}
+            >
+              {t("addWorkItem")}
+            </Button>
+            {status === "BLOCKED" && <ReportIssueSummary items={items} />}
+          </section>
+        </Fragment>
       ))}
-
-      <div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          startIcon={<PlusIcon className="size-5" />}
-          disabled={hasReachedLimit}
-          onClick={onItemAdd}
-        >
-          {t("addWorkItem")}
-        </Button>
-        {hasReachedLimit && (
-          <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
-            {t("workItemLimit")}
-          </p>
-        )}
-      </div>
+      {hasReachedLimit && (
+        <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+          {t("workItemLimit")}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import ReportFieldRow from "./ReportFieldRow";
+import WorkItemExtras from "./WorkItemExtras";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
 import {
@@ -88,7 +90,7 @@ export default function WorkItemForm({
       </div>
 
       <div className="space-y-5 p-5 sm:p-6">
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <ReportFieldRow className="gap-5">
           <div>
             <Label htmlFor={`content-${item.clientId}`}>
               {t("content.label")} <span className="text-error-500">*</span>
@@ -109,20 +111,28 @@ export default function WorkItemForm({
           <div>
             <Label htmlFor={`result-${item.clientId}`}>
               {t("result.label")}
+              {item.status === "COMPLETED" && (
+                <span className="text-error-500"> *</span>
+              )}
             </Label>
             <TextArea
               id={`result-${item.clientId}`}
               name={`result-${item.clientId}`}
               rows={3}
               value={item.result}
-              placeholder={t("result.placeholder")}
+              required={item.status === "COMPLETED"}
+              placeholder={t(
+                item.status === "COMPLETED"
+                  ? "result.requiredPlaceholder"
+                  : "result.placeholder",
+              )}
               error={Boolean(errors?.result)}
               hint={errors?.result}
               onChange={(result) => onChange(item.clientId, { result })}
               onBlur={() => onBlur(item.clientId, "result")}
             />
           </div>
-        </div>
+        </ReportFieldRow>
 
         <fieldset>
           <legend className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-400">
@@ -177,6 +187,12 @@ export default function WorkItemForm({
             onBlur={() => onBlur(item.clientId, "note")}
           />
         </div>
+        <WorkItemExtras
+          item={item}
+          errors={errors}
+          onChange={onChange}
+          onBlur={onBlur}
+        />
       </div>
     </section>
   );

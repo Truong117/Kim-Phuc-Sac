@@ -1,3 +1,4 @@
+import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
 import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
@@ -33,6 +34,9 @@ const formatDateTime = (value: string | null) =>
 
 export default function ReportDetail() {
   const { t } = useTranslation("common", { keyPrefix: "reportDetail" });
+  const { t: tMakeup } = useTranslation("common", {
+    keyPrefix: "dailyReport.makeup",
+  });
   const { id } = useParams();
   const { markReportCommentsRead } = useNotifications();
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -188,10 +192,22 @@ export default function ReportDetail() {
                   <TimeIcon className="size-4" />
                   {report.is_locked ? t("summary.locked") : t("summary.open")}
                 </span>
+                {report.is_makeup && (
+                  <span className="rounded-full bg-warning-50 px-3 py-1 text-theme-xs font-semibold text-warning-700 dark:bg-warning-500/15 dark:text-warning-400">
+                    {tMakeup("badge")}
+                  </span>
+                )}
                 <ReportStatusBadge status={report.overall_status} />
               </div>
             </div>
 
+            {report.is_makeup && (
+              <p className="mt-3 text-theme-sm text-gray-500 dark:text-gray-400">
+                {tMakeup("submittedAt", {
+                  time: formatDateTime(report.created_at),
+                })}
+              </p>
+            )}
             <dl className="mt-6 grid grid-cols-1 gap-5 border-t border-gray-100 pt-5 sm:grid-cols-2 xl:grid-cols-4 dark:border-gray-800">
               {[
                 [t("summary.employee"), report.employee.name],
@@ -224,6 +240,7 @@ export default function ReportDetail() {
 
           <ComponentCard title={t("items.title")} compact>
             <ReportWorkItemDetails items={report.items} />
+            <ReportNextDayPlan readOnly value={report.next_day_plan ?? ""} />
           </ComponentCard>
 
           <ComponentCard title={t("comments.title")} compact>
@@ -251,7 +268,7 @@ export default function ReportDetail() {
                             {formatDateTime(item.created_at)}
                           </time>
                         </div>
-                        <p className="mt-2 whitespace-pre-wrap text-theme-sm text-gray-700 dark:text-gray-300">
+                        <p className="mt-2 text-theme-sm whitespace-pre-wrap text-gray-700 dark:text-gray-300">
                           {item.content}
                         </p>
                       </div>

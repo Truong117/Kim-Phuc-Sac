@@ -213,7 +213,7 @@ test("report submit builds a local candidate and only refreshes state on a cutof
   assert.doesNotMatch(catchBlock, /setQuickDrafts\(/);
 });
 
-test("result is optional in the detailed editor and hidden when empty in read-only detail", () => {
+test("completed work requires results while legacy empty results remain hidden in read-only detail", () => {
   const resultLabel = detailedFormSource.slice(
     detailedFormSource.indexOf("result.label"),
     detailedFormSource.indexOf(
@@ -222,7 +222,8 @@ test("result is optional in the detailed editor and hidden when empty in read-on
     ),
   );
 
-  assert.doesNotMatch(resultLabel, /text-error-500/);
+  assert.match(resultLabel, /item.status === "COMPLETED"/);
+  assert.match(detailedFormSource, /required=\{item.status === "COMPLETED"\}/);
   assert.match(detailedFormSource, /errors\?\.result/);
   assert.match(reportDetailsSource, /item\.result\.trim\(\) &&/);
 });
