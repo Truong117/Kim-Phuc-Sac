@@ -51,3 +51,15 @@ test("confirmed totals appear before AI assessment, while ambiguous cumulative t
   assert.ok(!ambiguous.includes("40 sản phẩm"));
   assert.ok(ambiguous.includes("chưa đại diện đầy đủ"));
 });
+
+test("thematic weekly groups precede totals and assessment; source detail remains expandable", () => {
+  const result = Object.fromEntries(["overview", "highlights", "ongoing", "attention", "support", "uncertainties", "recommendations"].map(k => [k, []]));
+  result.overview = [{ text: "Nhận xét có căn cứ: Kết quả cần đối chiếu", evidence: [{ report_id: 1, item_id: 11, quote: "Bán hàng" }] }];
+  const html = render([{ ...person, status: "completed", result,
+    work_groups: [{ title: "Kinh doanh trong tuần", text: "Đã bán sản phẩm và bàn giao cho khách", evidence: [{ report_id: 1, item_id: 11, quote: "Bán hàng" }, { report_id: 2, item_id: 22, quote: "Bán hàng" }] }],
+  }]);
+  assert.ok(html.indexOf("Kinh doanh trong tuần") < html.indexOf("Nhận xét có căn cứ"));
+  assert.ok(html.includes("Đối chiếu 2 đầu việc nguồn"));
+  assert.ok(html.includes("Chi tiết công việc theo ngày"));
+  assert.ok(html.includes("Bán 30 sản phẩm"));
+});

@@ -38,6 +38,7 @@ final class StagingBootstrapPlan
         '2026_11_02_010000_create_work_report_regeneration_tables',
         '2026_11_03_010000_add_daily_report_v3_fields',
         '2026_11_03_020000_add_makeup_marker_to_daily_reports',
+        '2026_11_03_030000_create_daily_report_ai_documents',
     ];
 
     /** @var list<string> */

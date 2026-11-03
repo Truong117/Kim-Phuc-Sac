@@ -171,15 +171,37 @@ class WorkReportSnapshot
                     'date' => $report->report_date->toDateString(), 'items' => $entries,
                 ];
             }
+            foreach ($reports as $report) {
+                $report->setRelation('items', $items->get($report->id, collect()));
+            }
             ksort($people);
             $snapshot = ['period' => $period, 'scope' => $scope, 'department_id' => $department,
                 'employees' => array_values($people), 'reports' => $sources, 'work_counts' => $counts];
+            if (config('work_report_ai.use_daily_documents')) {
+                $snapshot = [...$snapshot, ...WorkReportDailyDocuments::capture($reports, fn ($text) => $this->redact($text, $identities))];
+            }
             if (strlen(json_encode($snapshot, JSON_THROW_ON_ERROR)) > (int) config('work_report_ai.max_snapshot_bytes')) {
                 $this->tooLarge();
             }
 
             return ['snapshot' => $snapshot, 'source_hash' => self::hash($snapshot), 'captured_at' => $cutoff];
         });
+    }
+
+    public function dailyProviderInput(User $viewer, array $source): array
+    {
+        $this->membership($viewer);
+        $identities = User::query()->whereIn('id', [$viewer->id, $source['employee_id']])->get(['id', 'name', 'email']);
+        $items = array_map(function ($item) use ($identities): array {
+            $entry = array_intersect_key($item, array_flip(['item_id', 'status', 'content', 'result', 'note', 'issue']));
+            foreach (['content', 'result', 'note', 'issue'] as $field) {
+                $entry[$field] = $this->redact($entry[$field], $identities);
+            }
+
+            return $entry;
+        }, $source['items']);
+
+        return ['report_id' => $source['report_id'], 'date' => $source['date'], 'items' => $items];
     }
 
     public function redactFeedback(User $viewer, string $text, array $snapshot): string

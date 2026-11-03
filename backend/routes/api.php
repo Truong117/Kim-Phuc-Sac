@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AI\AiDailyReportController;
 use App\Http\Controllers\AI\AiExecutiveDashboardController;
+use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
@@ -242,6 +243,14 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
             Route::post('/{id}/retry', [WorkReportAnalysisController::class, 'retry'])->whereNumber('id')->middleware('throttle:4,1');
             Route::post('/{id}/regenerate', [WorkReportAnalysisController::class, 'regenerate'])->whereNumber('id')->middleware('throttle:4,1');
         });
+
+    Route::prefix('ai/daily-documents')->middleware(['permission:ai.insights.view', 'permission:reports.view'])->group(function (): void {
+        Route::get('/', [DailyDocumentController::class, 'index']);
+        Route::post('/batch', [DailyDocumentController::class, 'batch'])->middleware('throttle:4,1');
+        Route::post('/reports/{report}', [DailyDocumentController::class, 'store'])->whereNumber('report')->middleware('throttle:4,1');
+        Route::get('/{document}', [DailyDocumentController::class, 'show'])->whereNumber('document');
+        Route::post('/{document}/retry', [DailyDocumentController::class, 'retry'])->whereNumber('document')->middleware('throttle:4,1');
+    });
 
     // AI Daily Report V1: same Sanctum membership + backend permission boundaries.
     Route::prefix('ai/daily-reports')

@@ -6,9 +6,9 @@ use RuntimeException;
 
 final class WorkReportAnalysisOutput
 {
-    public const VERSION = 'work-report-v2.4';
+    public const VERSION = 'work-report-v2.5';
 
-    public const SCHEMA_VERSION = 'work-report-v2.2';
+    public const SCHEMA_VERSION = 'work-report-v2.3';
 
     public const SECTIONS = ['overview', 'highlights', 'ongoing', 'attention', 'support', 'uncertainties', 'recommendations'];
 
@@ -19,6 +19,9 @@ final class WorkReportAnalysisOutput
         return implode("\n", [
             'Bạn là trợ lý phân tích báo cáo công việc KPS. Viết tiếng Việt trung lập, có căn cứ.',
             'Quy trình bắt buộc: hệ thống đã tổng hợp work_inventory từ toàn bộ đầu việc nguồn của mỗi phần nhân viên trước khi gọi AI. Đọc danh sách này và kết quả/diễn biến từng ngày trước, rồi mới nhận xét và đề xuất.',
+            'work_groups là danh sách tổng hợp theo nhóm công việc: title ngắn theo chủ đề, text nêu việc đã làm, diễn biến/kết quả và tồn đọng, evidence phủ mọi đầu việc đúng một lần. Gom các hoạt động liên quan khi có căn cứ; không chép từng gạch đầu dòng nhỏ. Nhóm chung để trình bày không có nghĩa cùng một nhiệm vụ hay được cộng số lượng.',
+            'Giai đoạn employee_review: xuất work_groups trước rồi mới các nhận xét. Mỗi đầu việc nguồn phải thuộc đúng một nhóm, kể cả việc đang làm hoặc vướng mắc. Giai đoạn company_summary: work_groups để trống; danh sách nhóm của từng người đã được giữ riêng.',
+            'Nếu daily_documents được cung cấp, đây là dữ kiện đã chuẩn hóa từng ngày, có document_id/source_hash và nhóm công việc kèm evidence. Đọc các bản này để tổng hợp tuần. Không trích xuất lại số lượng: quantity_observations để trống; hệ thống dùng các số liệu ngày đã kiểm tra. Không dùng nhận xét AI ngày làm bằng chứng độc lập.',
             'work_inventory gồm content và observations có ngày, trạng thái tự báo cáo, result, note cùng report_id/item_id gốc. Các dòng cùng content chỉ được xếp chung để đọc; không mặc định là cùng một nhiệm vụ kéo dài qua nhiều ngày.',
             'Không cộng dồn số lượng lặp lại qua các ngày nếu nguồn không xác nhận đó là các kết quả khác nhau. Giữ diễn biến và mâu thuẫn, không lấy trạng thái cuối để ghi đè các lần báo cáo khác.',
             'Giai đoạn employee_review: dựa trên work_inventory của người đó để viết overview về nhóm công việc và kết quả trong kỳ; tiếp theo nêu điểm đáng chú ý, vướng mắc có căn cứ; cuối cùng mới đề xuất cụ thể. Không chỉ chép lại một vài câu báo cáo hoặc đưa lời khuyên chung chung.',
@@ -100,15 +103,18 @@ final class WorkReportAnalysisOutput
             'basis' => ['type' => 'string', 'enum' => ['incremental', 'cumulative', 'unclear']],
             'report_id' => ['type' => 'integer'], 'item_id' => ['type' => 'integer'], 'quote' => ['type' => 'string'],
         ], 'required' => ['metric', 'unit', 'quantity', 'basis', 'report_id', 'item_id', 'quote'], 'additionalProperties' => false];
-        $properties = ['quantity_observations' => ['type' => 'array', 'items' => $observation], ...$properties];
+        $properties = ['work_groups' => WorkReportGroupedWork::schema(), 'quantity_observations' => ['type' => 'array', 'items' => $observation], ...$properties];
 
         return ['type' => 'object', 'properties' => $properties, 'required' => array_keys($properties), 'additionalProperties' => false];
     }
 
     public static function validate(array $result, array $reports): void
     {
-        if (array_diff(array_keys($result), [...self::SECTIONS, 'quantity_observations', 'work_totals']) || array_diff(self::SECTIONS, array_keys($result))) {
+        if (array_diff(array_keys($result), [...self::SECTIONS, 'quantity_observations', 'work_totals', 'work_groups']) || array_diff(self::SECTIONS, array_keys($result))) {
             throw new RuntimeException('AI_INVALID_SCHEMA');
+        }
+        if (array_key_exists('work_groups', $result)) {
+            WorkReportGroupedWork::validate($result['work_groups'], $reports, false);
         }
         if (array_key_exists('quantity_observations', $result)) {
             if (! is_array($result['quantity_observations']) || ! array_is_list($result['quantity_observations'])) {
@@ -156,7 +162,7 @@ final class WorkReportAnalysisOutput
     public static function fake(array $input): array
     {
         // Simulation intentionally makes only mechanically supported claims.
-        $result = [...array_fill_keys(self::SECTIONS, []), 'quantity_observations' => []];
+        $result = [...array_fill_keys(self::SECTIONS, []), 'quantity_observations' => [], 'work_groups' => []];
         if (isset($input['parts'])) {
             foreach (self::SECTIONS as $section) {
                 foreach ($input['parts'] as $part) {
@@ -166,6 +172,15 @@ final class WorkReportAnalysisOutput
 
             return $result;
         }
+        if (isset($input['daily_documents'])) {
+            foreach ($input['daily_documents'] as $document) {
+                array_push($result['work_groups'], ...$document['work_groups']);
+            }
+
+            return $result;
+        }
+        $reports = $input['reports'] ?? WorkReportWeeklyWork::reports($input['work_inventory'] ?? []);
+        $result['work_groups'] = WorkReportGroupedWork::fake($reports);
         foreach ($input['reports'] ?? WorkReportWeeklyWork::reports($input['work_inventory'] ?? []) as $report) {
             foreach ($report['items'] as $item) {
                 $claim = ['text' => $item['content'], 'evidence' => [[

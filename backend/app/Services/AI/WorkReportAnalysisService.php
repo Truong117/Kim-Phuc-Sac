@@ -23,6 +23,7 @@ class WorkReportAnalysisService
         foreach (['employee_output_tokens', 'summary_output_tokens'] as $key) {
             $settings[$key] = min(32000, max(1, (int) $settings[$key]));
         }
+        $settings['grouped_work_version'] = WorkReportGroupedWork::VERSION;
         $settings['prompt_version'] = WorkReportAnalysisOutput::VERSION;
         $settings['schema_version'] = WorkReportAnalysisOutput::SCHEMA_VERSION;
         $settings['instructions_hash'] = hash('sha256', WorkReportAnalysisOutput::instructions());
@@ -50,6 +51,7 @@ class WorkReportAnalysisService
             'max_days_back' => (int) config('work_report_ai.max_days_back'),
             'work_counts' => $snapshot['work_counts'],
             'employees' => array_map(fn ($e) => [...$e, 'work_inventory' => $inventories[$e['employee_id']] ?? []], $snapshot['employees']),
+            'daily_coverage' => $snapshot['daily_coverage'] ?? null,
             'source_reports' => $this->sourcePayloads($snapshot),
             'run' => $run === null ? null : $this->payload($viewer, $this->show($viewer, (int) $run->id), $capture['source_hash']),
             'latest_attempt' => $latest !== null && $latest->id !== $run?->id
@@ -132,6 +134,9 @@ class WorkReportAnalysisService
         if (count($snapshot['reports']) > (int) $settings['max_reports']
             || strlen(json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > (int) $settings['max_snapshot_bytes']) {
             $this->limitError();
+        }
+        if ($settings['use_daily_documents'] ?? false) {
+            return WorkReportDailyDocuments::inputs($snapshot, $settings, $feedback);
         }
         $groups = [];
         // Size the exact inventory the reviewer will receive, including its metadata.
@@ -233,6 +238,7 @@ class WorkReportAnalysisService
             }
             $employees[] = [...$employee,
                 'work_inventory' => $inventories[$employee['employee_id']] ?? [],
+                'work_groups' => array_merge(...$done->map(fn ($u) => $u->result['work_groups'] ?? [])->values()->all()),
                 'work_totals' => WorkReportWorkTotals::totals($quantities),
                 'status' => $parts->isEmpty() ? 'no_data' : ($done->count() === $parts->count() ? 'completed' : ($terminal->count() === $units->count() ? ($done->isNotEmpty() ? 'partial' : 'failed') : 'running')),
                 'completed_units' => $done->count(), 'total_units' => $parts->count(), 'failed_units' => $failed->count(),
@@ -264,6 +270,7 @@ class WorkReportAnalysisService
             'prompt_version' => $run->analysis_config['prompt_version'], 'schema_version' => $run->analysis_config['schema_version'],
             'work_counts' => $snapshot['work_counts'], 'progress' => ['finished' => $terminal->count(), 'total' => $units->count()],
             'result' => $includeContent ? $run->result : null, 'employees' => $includeContent ? $employees : [],
+            'daily_coverage' => $snapshot['daily_coverage'] ?? null,
             'source_reports' => $includeContent ? $this->sourcePayloads($snapshot) : [],
             'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code])->values()->all(),
             'can_retry' => (bool) config('work_report_ai.enabled') && WorkReportAnalysisOutput::canExecute($run->analysis_config)

@@ -67,6 +67,7 @@ export default function WorkAnalysisEmployees({
             {Boolean(employee.work_inventory?.length) && (
               <WorkAnalysisWeeklyWork
                 inventory={employee.work_inventory ?? []}
+                groups={employee.work_groups ?? []}
                 totals={employee.work_totals ?? []}
                 partial={employee.status !== "completed"}
               />
