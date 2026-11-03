@@ -39,19 +39,19 @@ export default function WorkReportInsights() {
   const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
   const daily = params.get("view") === "daily";
   return (
-    <>
+    <div className="kps-ai-theme">
       <nav aria-label={t("modeLabel")} className="mb-5 flex gap-3 text-sm">
         <Link
           to="/ai/insights?view=daily"
           aria-current={daily ? "page" : undefined}
-          className="rounded-lg border border-gray-200 px-4 py-2 text-brand-600 dark:border-gray-700 dark:text-brand-300"
+          className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
         >
           {t("dayMode")}
         </Link>
         <Link
           to="/ai/insights"
           aria-current={!daily ? "page" : undefined}
-          className="rounded-lg border border-gray-200 px-4 py-2 text-brand-600 dark:border-gray-700 dark:text-brand-300"
+          className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${!daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
         >
           {t("periodMode")}
         </Link>
@@ -63,7 +63,7 @@ export default function WorkReportInsights() {
       ) : (
         <PeriodWorkReportInsights />
       )}
-    </>
+    </div>
   );
 }
 

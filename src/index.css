@@ -201,6 +201,23 @@
   }
 }
 
+/* Report AI uses the existing KPS brown identity; other modules retain their theme. */
+@utility kps-ai-theme {
+  --color-brand-25: color-mix(in srgb, var(--color-kps-primary) 3%, white);
+  --color-brand-50: color-mix(in srgb, var(--color-kps-primary) 6%, white);
+  --color-brand-100: color-mix(in srgb, var(--color-kps-primary) 12%, white);
+  --color-brand-200: color-mix(in srgb, var(--color-kps-primary) 25%, white);
+  --color-brand-300: color-mix(in srgb, var(--color-kps-primary) 50%, white);
+  --color-brand-400: color-mix(in srgb, var(--color-kps-primary) 75%, white);
+  --color-brand-500: var(--color-kps-primary);
+  --color-brand-600: var(--color-kps-primary-hover);
+  --color-brand-700: color-mix(in srgb, var(--color-kps-primary-hover) 85%, black);
+  --color-brand-800: color-mix(in srgb, var(--color-kps-primary-hover) 70%, black);
+  --color-brand-900: color-mix(in srgb, var(--color-kps-primary-hover) 55%, black);
+  --color-brand-950: color-mix(in srgb, var(--color-kps-primary-hover) 35%, black);
+  --shadow-focus-ring: 0 0 0 4px color-mix(in srgb, var(--color-kps-primary) 12%, transparent);
+}
+
 @utility menu-item {
   @apply relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium;
 }
