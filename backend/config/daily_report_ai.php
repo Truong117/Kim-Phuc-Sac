@@ -19,6 +19,7 @@ return [
         'max_output_tokens' => min(32000, max(1000, (int) env('DAILY_REPORT_AI_OUTPUT_TOKENS', 16000))), 'max_attempts' => 1,
         'timeout_seconds' => 120, 'connect_timeout_seconds' => 10, 'stale_after_seconds' => 480,
     ],
+    'max_batch_reports' => 500,
     'unit_bytes' => 16000,
     'max_snapshot_bytes' => 1000000,
     'max_parts' => 100,

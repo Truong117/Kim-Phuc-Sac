@@ -10,12 +10,10 @@ type Row = DailyDocumentsPage["reports"][number];
 export default function DailyDocumentEmployee({
   row,
   busy,
-  onRequest,
   onRetry,
 }: {
   row: Row;
   busy: boolean;
-  onRequest: () => void;
   onRetry: () => void;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
@@ -39,7 +37,9 @@ export default function DailyDocumentEmployee({
           <span>{t("selfReported")}</span>
         </div>
         {row.source_changed && <p role="status">{t("sourceChanged")}</p>}
-        {document?.requires_new_document && <p role="status">{t("contractChanged")}</p>}
+        {document?.requires_new_document && (
+          <p role="status">{t("contractChanged")}</p>
+        )}
         {document && (
           <div aria-live="polite">
             <p>
@@ -132,14 +132,28 @@ export default function DailyDocumentEmployee({
           <section className="space-y-3">
             <h3 className="font-semibold">{t("groupedWork")}</h3>
             {document?.result?.work_groups?.map((group, index) => (
-              <article key={index} className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+              <article
+                key={index}
+                className="rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+              >
                 <h4 className="font-medium">{group.title}</h4>
-                <p className="mt-2 leading-7 whitespace-pre-wrap">{group.text}</p>
+                <p className="mt-2 leading-7 whitespace-pre-wrap">
+                  {group.text}
+                </p>
                 <details className="mt-2 text-xs">
-                  <summary className="cursor-pointer">{t("groupSources")}</summary>
-                  {group.evidence.map((ref) => <p key={`${ref.report_id}:${ref.item_id}`}>
-                    <Link to={`/reports/${ref.report_id}#work-item-${ref.item_id}`} className="text-brand-600 underline dark:text-brand-300">{t("quote", { id: ref.item_id, quote: ref.quote })}</Link>
-                  </p>)}
+                  <summary className="cursor-pointer">
+                    {t("groupSources")}
+                  </summary>
+                  {group.evidence.map((ref) => (
+                    <p key={`${ref.report_id}:${ref.item_id}`}>
+                      <Link
+                        to={`/reports/${ref.report_id}#work-item-${ref.item_id}`}
+                        className="text-brand-600 underline dark:text-brand-300"
+                      >
+                        {t("quote", { id: ref.item_id, quote: ref.quote })}
+                      </Link>
+                    </p>
+                  ))}
                 </details>
               </article>
             ))}
@@ -196,18 +210,6 @@ export default function DailyDocumentEmployee({
             </p>
           ))}
         <div className="flex flex-wrap gap-3">
-          <Button
-            onClick={onRequest}
-            disabled={
-              busy ||
-              (!row.source_changed &&
-                !document?.requires_new_document &&
-                !!document &&
-                ["pending", "running", "completed"].includes(document.status))
-            }
-          >
-            {t("request")}
-          </Button>
           {document?.units.some((unit) => unit.can_retry) && (
             <Button variant="outline" onClick={onRetry} disabled={busy}>
               {t("retry")}

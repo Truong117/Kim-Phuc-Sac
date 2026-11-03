@@ -22,6 +22,7 @@ export default function useDailyDocuments(
         if (controller.signal.aborted) return;
         setState({ key, data });
         if (
+          (data.summary?.processing ?? 0) > 0 ||
           data.reports.some(
             (row) =>
               row.document &&

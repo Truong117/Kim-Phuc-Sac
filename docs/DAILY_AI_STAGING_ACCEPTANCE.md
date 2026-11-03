@@ -69,10 +69,16 @@ Kết quả thành công là `FIXTURE_OK`, có department ID và receipt JSON t�
 ## Nghiệm thu trên web staging
 
 1. Đăng nhập tài khoản quản lý staging hiện hữu; vào Phân tích AI → Theo ngày.
-2. Chọn **29/10/2026** rồi **31/10/2026**. Mỗi ngày có 4 nhân viên bắt đầu bằng `[NGHIỆM THU AI]`. Chỉ tạo/mở tổng hợp cho 8 báo cáo mẫu này; không bấm tạo lại hàng loạt.
+2. Chọn **29/10/2026** rồi **31/10/2026**. Mỗi ngày có 4 nhân viên bắt đầu bằng `[NGHIỆM THU AI]`. Kiểm tra số báo cáo đã khóa rồi bấm **Tổng hợp toàn công ty** một lần cho mỗi ngày. Nút áp dụng cho toàn bộ báo cáo được phép xem của ngày đó, gồm cả các trang khác; nếu có dữ liệu staging khác cùng ngày thì các báo cáo đó cũng được xử lý. Tài khoản có phạm vi hẹp hơn thấy nút **Tổng hợp trong phạm vi được phép**.
 3. Chờ các bản ngày hoàn tất. Kiểm tra danh sách công việc trước nhận xét; kế hoạch tách riêng; nguồn minh chứng chưa xác minh. Gửi trạng thái/mã lỗi nếu có, không reset attempts trong DB.
 4. Sau khi đủ bản ngày openai, bật adapter `WORK_REPORT_AI_USE_DAILY_DOCUMENTS=true` cho staging và deploy để nhận cấu hình. Không đổi driver tuần thật sang fake, không đưa bản ngày fake vào lượt tuần thật.
 5. Theo kỳ/báo cáo tuần: kỳ 7 ngày, ngày kết thúc **31/10/2026**, chọn đúng phòng ban `[NGHIỆM THU AI] Báo cáo ngày và tuần`. Tạo lượt tuần mới; mở lịch sử cũ không chạy lại theo luồng mới.
 6. Đối chiếu bảng kỳ vọng. Phần công việc cần được tổng hợp thành nhóm, có kết quả/tồn đọng và trích nguồn; sau đó mới nhận xét và đề xuất. Không đánh giá năng suất/KPI hoặc tăng trưởng MXH từ số đầu việc hay URL mẫu.
 
 Test phần mềm không chứng nhận model luôn hiểu đúng: mục tiêu lượt staging là kiểm tra thực tế nội dung, độ đầy đủ và chi phí. Tool không bật auto-dispatch hoặc thay ngân sách/API key.
+
+## Tổng hợp một ngày bằng một nút
+
+`POST /api/ai/daily-documents/batch` nhận `date` theo `Y-m-d`. Server chọn báo cáo đã khóa theo giao của quyền `reports.view` và `ai.insights.view`, không nhận danh sách nhân viên từ client. Một transaction tạo toàn bộ bản còn thiếu và các phần công việc; job chỉ được đưa vào hàng đợi sau commit. Không gọi model trong HTTP request. Giới hạn 500 báo cáo/lượt; vượt giới hạn trả lỗi rõ ràng, không cắt bỏ nhân viên. Không cần migration mới.
+
+Bấm lại cùng nguồn và cấu hình dùng bản đã có, không chạy AI trùng. Bản lỗi được giữ nguyên, chỉ thử lại qua nút riêng có thông báo chi phí; thay đổi nguồn hoặc cấu hình tạo phiên bản mới. Kết quả vẫn lưu riêng theo nhân viên để báo cáo tuần đọc lại. Trang hiển thị tổng tiến độ cho cả ngày, không chỉ trang đang mở. Đây là thao tác xếp lịch cả ngày, chưa tạo thêm một bài nhận xét chung cấp công ty.

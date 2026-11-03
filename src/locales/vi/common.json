@@ -2532,6 +2532,13 @@
     },
     "groupedWork": "Tổng hợp công việc trong ngày",
     "groupSources": "Đối chiếu công việc nguồn",
-    "contractChanged": "Bản ngày dùng cấu hình cũ. Hãy tạo bản mới để dùng trong tổng hợp tuần."
+    "contractChanged": "Bản ngày dùng cấu hình cũ. Hãy tạo bản mới để dùng trong tổng hợp tuần.",
+    "batchCompany": "Tổng hợp toàn công ty",
+    "batchScope": "Tổng hợp trong phạm vi được phép",
+    "batchScheduling": "Đang xếp lịch tổng hợp…",
+    "batchHint": "Áp dụng cho toàn bộ {count} báo cáo đã khóa của ngày đang chọn, kể cả các trang khác. Giữ lại bản đã tạo; không tự thử lại phần lỗi.",
+    "batchProgress": "Đã hoàn tất: {completed}/{total} · Đang xử lý: {processing} · Có lỗi: {failed} · Chưa có bản: {not_started}",
+    "batchAccepted": "Đã tạo {created} bản mới, dùng lại {reused} bản trên tổng số {total} báo cáo.",
+    "batchFailuresKept": "Các bản lỗi được giữ nguyên. Dùng Thử lại phần lỗi tại nhân viên cần xử lý."
   }
 }

@@ -59,14 +59,32 @@ test("daily inventory survives partial processing and retries only the failed pa
   await page.route("**/api/ai/daily-documents**", async (route) => {
     if (route.request().method() === "POST") {
       requests++;
-      if (route.request().url().endsWith("/retry")) retried = true;
-      else created = true;
-      await route.fulfill({ status: 202, json: { data: document() } });
+      if (route.request().url().endsWith("/retry")) {
+        retried = true;
+        await route.fulfill({ status: 202, json: { data: document() } });
+      } else {
+        expect(route.request().url()).toMatch(/\/batch$/);
+        expect(route.request().postDataJSON()).toEqual({ date: "2026-11-02" });
+        created = true;
+        await route.fulfill({
+          status: 202,
+          json: {
+            data: {
+              date: "2026-11-02",
+              total: 1,
+              created: 1,
+              reused: 0,
+              failed: 0,
+            },
+          },
+        });
+      }
     } else {
       await route.fulfill({
         json: {
           data: {
             enabled: true,
+            company_scope: true,
             date: "2026-11-02",
             page: 1,
             last_page: 1,
@@ -93,7 +111,7 @@ test("daily inventory survives partial processing and retries only the failed pa
     page.getByText("Minh chứng do nhân viên cung cấp — chưa xác minh"),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Tạo / mở tổng hợp ngày", exact: true })
+    .getByRole("button", { name: "Tổng hợp toàn công ty", exact: true })
     .click();
   await expect(
     page.getByText("Hoàn tất một phần", { exact: false }),
