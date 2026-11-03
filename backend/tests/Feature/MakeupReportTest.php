@@ -40,6 +40,17 @@ class MakeupReportTest extends TestCase
         ]];
     }
 
+    public function test_makeup_requires_a_nonblank_next_day_plan(): void
+    {
+        $this->actingAs($this->author(), 'web');
+        $payload = $this->payload('2026-11-04');
+        unset($payload['next_day_plan']);
+        $this->postJson('/api/reports/makeup', $payload)->assertUnprocessable()->assertJsonValidationErrors('next_day_plan');
+        $payload['next_day_plan'] = " \r\n\t";
+        $this->postJson('/api/reports/makeup', $payload)->assertUnprocessable()->assertJsonValidationErrors('next_day_plan');
+        $this->assertDatabaseCount('daily_reports', 0);
+    }
+
     public function test_options_list_only_missing_days_of_the_current_week_and_mark_expired_days(): void
     {
         $this->actingAs($this->author(), 'web');

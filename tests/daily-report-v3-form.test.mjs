@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { createServer } from "vite";
 
-let vite, Quick, Detailed, Plan, Details, evidence, syncTextAreas;
+let vite, Quick, Detailed, Plan, Details, evidence, syncTextAreas, planUtils;
 before(async () => {
   vite = await createServer({
     appType: "custom",
@@ -25,6 +25,7 @@ before(async () => {
           .default,
     ),
   );
+  planUtils = await vite.ssrLoadModule("/src/utils/nextDayPlan.ts");
   evidence = await vite.ssrLoadModule("/src/utils/reportEvidence.ts");
   syncTextAreas = (
     await vite.ssrLoadModule("/src/utils/syncReportTextAreas.ts")
@@ -201,4 +202,30 @@ test("resizing synchronizes either direction within a row without feedback, valu
   } finally {
     globalThis.ResizeObserver = original;
   }
+});
+
+test("next-day plans are required, retain one task per nonblank line and keep legacy empty display", () => {
+  const value = "  Dựng 2 video  \r\n\r\n Thiết kế 3 ảnh \r Dựng 2 video ";
+  assert.deepEqual(planUtils.parseNextDayPlan(value), [
+    "Dựng 2 video",
+    "Thiết kế 3 ảnh",
+    "Dựng 2 video",
+  ]);
+  assert.equal(
+    planUtils.normalizeNextDayPlan(value),
+    "Dựng 2 video\nThiết kế 3 ảnh\nDựng 2 video",
+  );
+  assert.equal(planUtils.normalizeNextDayPlan(" \r\n\t\u00a0"), "");
+  const html = render(Plan, { value: " \n ", showValidation: true });
+  assert.match(html, /<textarea[^>]*required=""/);
+  assert.ok(html.includes("Vui lòng nhập kế hoạch ngày tiếp theo"));
+  assert.ok(!html.includes("không bắt buộc"));
+  const readonly = render(Plan, { value, readOnly: true });
+  assert.equal((readonly.match(/<li>/g) ?? []).length, 3);
+  assert.ok(!readonly.includes("textarea"));
+  assert.ok(
+    render(Plan, { value: "", readOnly: true }).includes(
+      "Chưa cung cấp kế hoạch",
+    ),
+  );
 });

@@ -1,3 +1,4 @@
+import { normalizeNextDayPlan } from "@/utils/nextDayPlan";
 import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
 import {
   hasValidEvidenceLinks,
@@ -478,8 +479,9 @@ export default function NewReport({
     const candidateItems = candidate.items;
     const candidateErrors = validateItems(candidateItems);
     if (!today) return;
-    if (candidateItems.length === 0 && !nextDayPlan.trim()) {
-      setError(t("validation.atLeastOne"));
+    const normalizedPlan = normalizeNextDayPlan(nextDayPlan);
+    if (!normalizedPlan) {
+      setError(t("v3.planRequired"));
       return;
     }
     if (Object.keys(candidateErrors).length > 0) {
@@ -500,13 +502,13 @@ export default function NewReport({
     }
     setBatchError(null);
 
-    if (nextDayPlan.trim().length > 5000) {
+    if (normalizedPlan.length > 5000) {
       setError(t("v3.planTooLong"));
       return;
     }
     const input: SaveReportInput = {
       form_version: 3,
-      next_day_plan: nextDayPlan.trim(),
+      next_day_plan: normalizedPlan,
       items: candidateItems.map((item) => ({
         ...(item.id ? { id: item.id } : {}),
         issue: item.issue?.trim() || null,
@@ -885,6 +887,7 @@ export default function NewReport({
                       planSection={
                         <ReportNextDayPlan
                           referenceDate={makeupDate}
+                          showValidation={submitAttempted}
                           value={nextDayPlan}
                           onChange={setNextDayPlan}
                           disabled={isSaveFlowActive}
@@ -918,6 +921,7 @@ export default function NewReport({
                       planSection={
                         <ReportNextDayPlan
                           referenceDate={makeupDate}
+                          showValidation={submitAttempted}
                           value={nextDayPlan}
                           onChange={setNextDayPlan}
                           disabled={isSaveFlowActive}

@@ -256,10 +256,10 @@
     },
     "v3": {
       "planTitle": "3. Kế hoạch ngày mai",
-      "planLabel": "Công việc dự kiến và ưu tiên (không bắt buộc)",
-      "planPlaceholder": "Mỗi dòng một việc: sẽ làm gì, kết quả dự kiến. Ghi rõ ngày nếu dự kiến thực hiện sau ngày mai.",
+      "planLabel": "Công việc dự kiến và ưu tiên",
+      "planPlaceholder": "Mỗi dòng một công việc dự kiến. Ví dụ:\nChuẩn bị nội dung cho 2 video\nThiết kế 3 ảnh sản phẩm",
       "planMissing": "Chưa cung cấp kế hoạch.",
-      "planHint": "Kế hoạch là dự kiến, chưa tính là công việc đã hoàn thành và không tự tạo nhiệm vụ được giao.",
+      "planHint": "Mỗi dòng là một công việc. Kế hoạch là dự kiến, chưa tính là công việc đã hoàn thành và không tự tạo nhiệm vụ được giao.",
       "planTooLong": "Kế hoạch tối đa 5.000 ký tự.",
       "issueLabel": "Vướng mắc / hỗ trợ cần thiết (không bắt buộc)",
       "issuePlaceholder": "Đang vướng gì, ảnh hưởng ra sao, cần hỗ trợ điều gì?",
@@ -268,7 +268,8 @@
       "unverified": "Chưa xác minh nội dung đường dẫn.",
       "evidenceInvalid": "Nhập tối đa 10 đường dẫn HTTP/HTTPS khác nhau, mỗi dòng một link (tối đa 2.048 ký tự/link), không kèm tên đăng nhập hoặc mật khẩu.",
       "otherIssues": "Vướng mắc ở các công việc khác",
-      "planHistoricalHint": "Kế hoạch thuộc thời điểm sau ngày báo cáo {date}; hãy ghi rõ ngày dự kiến. Không tính là kết quả đã thực hiện."
+      "planHistoricalHint": "Kế hoạch thuộc thời điểm sau ngày báo cáo {date}; hãy ghi rõ ngày dự kiến. Không tính là kết quả đã thực hiện.",
+      "planRequired": "Vui lòng nhập kế hoạch ngày tiếp theo, mỗi dòng một công việc."
     },
     "makeup": {
       "title": "Báo cáo bù",
@@ -287,7 +288,7 @@
       "expired": "Ngày này đã hết hạn nộp bù: quá 3 ngày hoặc đã chốt tuần vào hết Thứ Bảy.",
       "badge": "Báo cáo bù",
       "submittedAt": "Nộp thực tế: {time}",
-      "planLabel": "Kế hoạch sau ngày báo cáo (không bắt buộc)",
+      "planLabel": "Kế hoạch sau ngày báo cáo",
       "planHint": "Kế hoạch thuộc thời điểm ngày được báo cáo; ghi rõ ngày dự kiến. Không tính là kết quả đã thực hiện."
     }
   },

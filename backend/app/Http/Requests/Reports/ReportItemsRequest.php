@@ -16,7 +16,12 @@ abstract class ReportItemsRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         if (is_string($this->input('next_day_plan'))) {
-            $this->merge(['next_day_plan' => trim($this->input('next_day_plan'))]);
+            $plan = $this->input('next_day_plan');
+            if ((int) $this->input('form_version') === 3) {
+                $lines = array_map(fn ($line) => preg_replace('/^[\s\p{Z}\x{FEFF}]+|[\s\p{Z}\x{FEFF}]+$/u', '', $line), preg_split('/\r\n|\r|\n/', $plan));
+                $plan = implode("\n", array_filter($lines, fn ($line) => $line !== ''));
+            }
+            $this->merge(['next_day_plan' => trim($plan)]);
         }
         if (! is_array($this->input('items'))) {
             return;
@@ -45,7 +50,10 @@ abstract class ReportItemsRequest extends FormRequest
 
     public function messages(): array
     {
-        return ['items.*.result.required_if' => 'Vui lòng nhập kết quả của công việc đã hoàn thành.'];
+        return [
+            'items.*.result.required_if' => 'Vui lòng nhập kết quả của công việc đã hoàn thành.',
+            'next_day_plan.required' => 'Vui lòng nhập kế hoạch ngày tiếp theo, mỗi dòng một công việc.',
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -60,7 +68,7 @@ abstract class ReportItemsRequest extends FormRequest
             'locked_at' => ['prohibited'],
             'is_makeup' => ['prohibited'],
             'form_version' => ['sometimes', 'integer', Rule::in([3])],
-            'next_day_plan' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'next_day_plan' => (int) $this->input('form_version') === 3 ? ['required', 'string', 'max:5000'] : ['sometimes', 'nullable', 'string', 'max:5000'],
             'items' => ['present', 'array', $this->filled('next_day_plan') ? 'min:0' : 'min:1', 'max:50'],
             'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links'],
             'items.*.id' => $this->isMethod('POST') ? ['prohibited'] : ['sometimes', 'integer', 'min:1', 'distinct:strict'],

@@ -51,6 +51,7 @@ test("daily report V3 preserves four sections through draft reload, mode switch 
     if (request.url().endsWith("/api/reports") && request.method() === "POST")
       creations++;
   });
+  await page.locator("#next-day-plan").fill("Chuẩn bị video ngày mai");
   await resultField.fill("   ");
   await page.locator('form button[type="submit"]').click();
   await expect(
@@ -145,6 +146,9 @@ test("makeup submission uses an eligible missing date and is immediately locked"
   await page
     .locator("#quick-draft-completed")
     .fill("Đăng video bù → 2 video đã đăng");
+  await page
+    .locator("#next-day-plan")
+    .fill("  Dựng video tiếp theo  \n\n  Thiết kế ảnh  ");
   const response = page.waitForResponse(
     (r) =>
       r.url().endsWith("/api/reports/makeup") &&
@@ -158,6 +162,7 @@ test("makeup submission uses an eligible missing date and is immediately locked"
   const data = (await saved.json()).data;
   expect(data.report_date).toBe(day.date);
   expect(data.is_makeup).toBe(true);
+  expect(data.next_day_plan).toBe("Dựng video tiếp theo\nThiết kế ảnh");
   expect(data.is_locked).toBe(true);
   expect(data.actions.can_edit).toBe(false);
   await page.goto(`/reports/${data.id}`);
