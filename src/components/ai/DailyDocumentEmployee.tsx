@@ -9,6 +9,19 @@ import { formatDateOnly } from "@/utils/dateOnly";
 import type { DailyDocumentsPage } from "@/types/dailyDocument";
 
 type Row = DailyDocumentsPage["reports"][number];
+type WorkTotal = NonNullable<
+  NonNullable<Row["document"]>["result"]
+>["work_totals"][number];
+
+function hasQuantifiedTotal(total: WorkTotal) {
+  return (
+    total.status === "confirmed" &&
+    total.total !== null &&
+    Number.isFinite(total.total) &&
+    total.total >= 0
+  );
+}
+
 const statusColors = {
   pending: "info",
   running: "info",
@@ -40,6 +53,9 @@ export default function DailyDocumentEmployee({
   // Counts must refer to the same frozen source as the AI result.
   const source = document?.source ?? row.source;
   const result = document?.result;
+  const quantifiedTotals = result?.work_totals.filter(hasQuantifiedTotal) ?? [];
+  const unresolvedTotals =
+    result?.work_totals.filter((total) => !hasQuantifiedTotal(total)) ?? [];
   const errors = document?.units.filter((unit) => unit.error_code) ?? [];
   const canRetry = document?.units.some((unit) => unit.can_retry) ?? false;
   const retryUnavailable =
@@ -119,25 +135,38 @@ export default function DailyDocumentEmployee({
                   ))}
                 </section>
               )}
-              <section className="rounded-lg bg-success-50 p-3 dark:bg-success-500/10">
-                <h3 className="font-semibold text-success-700 dark:text-success-400">
-                  {t("totals")}
-                </h3>
-                {!result.work_totals.length ? (
-                  <p className="mt-2">{t("noTotals")}</p>
-                ) : (
+              {quantifiedTotals.length > 0 && (
+                <section className="rounded-lg bg-success-50 p-3 dark:bg-success-500/10">
+                  <h3 className="font-semibold text-success-700 dark:text-success-400">
+                    {t("totals")}
+                  </h3>
                   <ul className="mt-2 space-y-1">
-                    {result.work_totals.map((total, index) => (
+                    {quantifiedTotals.map((total, index) => (
                       <li key={index}>
-                        {total.metric}:{" "}
-                        {total.total === null
-                          ? t("needsConfirmation")
-                          : `${total.total} ${total.unit}`}
+                        {total.metric}: {total.total} {total.unit}
                       </li>
                     ))}
                   </ul>
-                )}
-              </section>
+                </section>
+              )}
+              {unresolvedTotals.length > 0 && (
+                <section className="rounded-lg bg-warning-50 p-3 dark:bg-warning-500/10">
+                  <h3 className="font-semibold text-warning-700 dark:text-warning-400">
+                    {t("unresolvedTotals")}
+                  </h3>
+                  <p className="mt-2">{t("unresolvedTotalsHint")}</p>
+                  <ul className="mt-2 list-disc space-y-1 ps-5">
+                    {unresolvedTotals.map((total, index) => (
+                      <li key={index}>{total.metric}</li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {!result.work_totals.length && (
+                <p className="text-gray-500 dark:text-gray-400">
+                  {t("noTotals")}
+                </p>
+              )}
               {(["comments", "recommendations"] as const).map((field) => (
                 <section
                   key={field}

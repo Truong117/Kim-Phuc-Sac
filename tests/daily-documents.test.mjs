@@ -216,19 +216,92 @@ test("AI grouped work is escaped and shown before metrics and assessment, with s
       },
     }),
   );
-  assert.ok(html.includes("bg-success-50"));
+  assert.doesNotMatch(html, /<section class="[^"]*\bbg-success-50/);
   assert.ok(html.includes("&lt;script&gt;AI text&lt;/script&gt;"));
   assert.ok(!html.includes("<script>"));
-  assert.ok(html.includes("Cần xác nhận"));
+  assert.ok(html.includes("Số liệu cần làm rõ"));
   assert.ok(!html.includes("null video"));
   assert.ok(
-    html.indexOf("Nội dung truyền thông") < html.indexOf("Số liệu có căn cứ"),
+    html.indexOf("Nội dung truyền thông") < html.indexOf("Số liệu cần làm rõ"),
   );
   assert.ok(
-    html.indexOf("Số liệu có căn cứ") < html.indexOf("Cần làm rõ việc duyệt"),
+    html.indexOf("Số liệu cần làm rõ") < html.indexOf("Cần làm rõ việc duyệt"),
   );
   assert.ok(html.includes('href="/reports/7#work-item-9"'));
   assert.ok(!html.includes("Đã hết lượt"));
+});
+
+function renderTotals(work_totals) {
+  return render(
+    doc({
+      status: "completed",
+      units: [],
+      result: { work_totals, comments: [], recommendations: [] },
+    }),
+  );
+}
+
+test("quantified report totals and unresolved metrics appear in separate sections", () => {
+  const html = renderTotals([
+    { metric: "Video đã đăng", total: 2, unit: "video", status: "confirmed" },
+    { metric: "Khách đã tư vấn", total: 0, unit: "khách", status: "confirmed" },
+    {
+      metric: "Doanh số lũy kế",
+      total: null,
+      unit: "đồng",
+      status: "needs_confirmation",
+    },
+  ]);
+  const sections = [
+    ...html.matchAll(/<section\b[^>]*>[\s\S]*?<\/section>/g),
+  ].map(([section]) => section);
+  const quantified = sections.find((section) =>
+    section.includes("Số liệu tổng hợp từ báo cáo"),
+  );
+  const unresolved = sections.find((section) =>
+    section.includes("Số liệu cần làm rõ"),
+  );
+  assert.ok(quantified?.includes("Video đã đăng: 2 video"));
+  assert.ok(quantified?.includes("Khách đã tư vấn: 0 khách"));
+  assert.ok(!quantified.includes("Doanh số lũy kế"));
+  assert.ok(unresolved?.includes("Doanh số lũy kế"));
+  assert.ok(unresolved.includes("bg-warning-50"));
+  assert.ok(!unresolved.includes("Video đã đăng"));
+  assert.ok(!html.includes("Số liệu có căn cứ"));
+});
+
+test("a numeric value alone never promotes an unresolved metric to a quantified total", () => {
+  const html = renderTotals([
+    {
+      metric: "Doanh số cần làm rõ",
+      total: 999,
+      unit: "đồng",
+      status: "needs_confirmation",
+    },
+    {
+      metric: "Chưa đủ dữ liệu",
+      total: null,
+      unit: "bài",
+      status: "confirmed",
+    },
+  ]);
+  assert.ok(html.includes("Số liệu cần làm rõ"));
+  assert.ok(!html.includes("Số liệu tổng hợp từ báo cáo"));
+  assert.ok(!html.includes("999 đồng"));
+  assert.ok(!html.includes("null bài"));
+  assert.doesNotMatch(html, /<section class="[^"]*\bbg-success-50/);
+});
+
+test("empty and quantified-only reports do not display an unresolved section", () => {
+  const empty = renderTotals([]);
+  assert.ok(empty.includes("Chưa có số liệu đủ điều kiện"));
+  assert.ok(!empty.includes("Số liệu tổng hợp từ báo cáo"));
+  assert.ok(!empty.includes("Số liệu cần làm rõ"));
+  const quantified = renderTotals([
+    { metric: "Bài đã đăng", total: 1, unit: "bài", status: "confirmed" },
+  ]);
+  assert.ok(quantified.includes("Bài đã đăng: 1 bài"));
+  assert.ok(!quantified.includes("Số liệu cần làm rõ"));
 });
 
 test("rebuild is offered only for failed older contracts, never for exhausted current or completed documents", () => {
