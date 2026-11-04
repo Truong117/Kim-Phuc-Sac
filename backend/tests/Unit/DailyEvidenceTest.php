@@ -16,7 +16,7 @@ class DailyEvidenceTest extends TestCase
         ]];
     }
 
-    private function output(): array
+    private function sampleOutput(): array
     {
         return ['work_groups' => [['title' => 'Nội dung', 'text' => 'Đăng nội dung và chờ duyệt.', 'evidence' => [
             ['report_id' => 7, 'item_id' => 9, 'field' => 'content'],
@@ -29,7 +29,7 @@ class DailyEvidenceTest extends TestCase
     public function test_quotes_are_copied_from_exact_source_fields_and_persisted_contract_stays_compatible(): void
     {
         $source = $this->source();
-        $bound = DailyEvidence::bind($this->output(), $source);
+        $bound = DailyEvidence::bind($this->sampleOutput(), $source);
         $this->assertSame($source['items'][0]['content'], $bound['work_groups'][0]['evidence'][0]['quote']);
         $this->assertSame('Chờ duyệt', $bound['comments'][0]['quote']);
         $this->assertSame('Đã đăng 2 video', $bound['observations'][0]['quote']);
@@ -45,7 +45,7 @@ class DailyEvidenceTest extends TestCase
         $source['items'][0]['content'] = 'Gửi cho user@example.test';
         $redacted['items'][0]['content'] = 'Gửi cho [REDACTED]';
         foreach ([$source, $redacted] as $input) {
-            $bound = DailyEvidence::bind($this->output(), $input);
+            $bound = DailyEvidence::bind($this->sampleOutput(), $input);
             DailyReportOutput::validate($bound, $input);
             $this->assertSame($input['items'][0]['content'], $bound['work_groups'][0]['evidence'][0]['quote']);
         }
@@ -61,14 +61,14 @@ class DailyEvidenceTest extends TestCase
             ['report_id' => 7, 'item_id' => 9, 'field' => 'note'],
             ['report_id' => 7, 'item_id' => 9, 'field' => 'content', 'quote' => 'invented'],
         ] as $ref) {
-            $output = $this->output();
+            $output = $this->sampleOutput();
             $output['work_groups'][0]['evidence'] = [$ref];
             $variants[] = $output;
         }
-        $output = $this->output();
+        $output = $this->sampleOutput();
         $output['observations'][0]['quantity'] = 999;
         $variants[] = $output;
-        $output = $this->output();
+        $output = $this->sampleOutput();
         $output['observations'][0]['field'] = 'issue';
         $variants[] = $output;
         foreach ($variants as $variant) {
@@ -85,7 +85,7 @@ class DailyEvidenceTest extends TestCase
     {
         $source = $this->source();
         $source['items'][0]['result'] = str_repeat('Công việc đang đối chiếu. ', 180).'Đã đăng 2 video '.str_repeat('Đã chốt. ', 180);
-        $bound = DailyEvidence::bind($this->output(), $source);
+        $bound = DailyEvidence::bind($this->sampleOutput(), $source);
         $quote = $bound['observations'][0]['quote'];
         $this->assertLessThanOrEqual(1500, strlen($quote));
         $this->assertTrue(mb_check_encoding($quote, 'UTF-8'));
@@ -93,7 +93,7 @@ class DailyEvidenceTest extends TestCase
         DailyReportOutput::validate($bound, $source);
         $source['items'][0]['result'] = str_repeat('Nội dung ', 180).'200 video '.str_repeat('Nội dung ', 180);
         $this->expectException(RuntimeException::class);
-        DailyEvidence::bind($this->output(), $source);
+        DailyEvidence::bind($this->sampleOutput(), $source);
     }
 
     public function test_in_progress_items_cannot_contribute_completed_quantities(): void
@@ -101,13 +101,13 @@ class DailyEvidenceTest extends TestCase
         $source = $this->source();
         $source['items'][0]['status'] = 'IN_PROGRESS';
         $this->expectException(RuntimeException::class);
-        DailyReportOutput::validate(DailyEvidence::bind($this->output(), $source), $source);
+        DailyReportOutput::validate(DailyEvidence::bind($this->sampleOutput(), $source), $source);
     }
 
     public function test_missing_inventory_and_duplicate_references_still_fail_closed(): void
     {
         foreach (['missing', 'duplicate'] as $case) {
-            $output = $this->output();
+            $output = $this->sampleOutput();
             if ($case === 'missing') {
                 $output['work_groups'] = [];
             } else {
@@ -127,7 +127,7 @@ class DailyEvidenceTest extends TestCase
         foreach (['Dự kiến đăng 2 video', 'Lũy kế đã đăng 2 video'] as $text) {
             $source = $this->source();
             $source['items'][0]['result'] = $text;
-            $result = DailyReportOutput::assemble([DailyEvidence::bind($this->output(), $source)], $source);
+            $result = DailyReportOutput::assemble([DailyEvidence::bind($this->sampleOutput(), $source)], $source);
             $this->assertNull($result['work_totals'][0]['total']);
             $this->assertSame('needs_confirmation', $result['work_totals'][0]['status']);
         }
