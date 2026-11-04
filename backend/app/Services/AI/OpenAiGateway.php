@@ -780,7 +780,7 @@ class OpenAiGateway
         $missingScopes = [];
         if (str_contains($message, 'missing scope')) {
             foreach (['model.request', 'api.model.request', 'api.responses.write', 'api.responses.read'] as $scope) {
-                if (preg_match('/(?<![a-z0-9_.])'.preg_quote($scope, '/').'(?![a-z0-9_.])/', $message) === 1) {
+                if (preg_match('/(?<![a-z0-9_.])'.preg_quote($scope, '/').'(?![a-z0-9_]|[.][a-z0-9_])/', $message) === 1) {
                     $missingScopes[] = $scope;
                 }
             }
