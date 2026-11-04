@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { login } from "./helpers";
 
-test("daily cards collapse AI details and retry only the failed part", async ({
+test("focused daily reader shows AI groups and retries only the failed part", async ({
   page,
 }) => {
   await login(page, "owner");
@@ -126,25 +126,23 @@ test("daily cards collapse AI details and retry only the failed part", async ({
     .locator("article")
     .filter({ has: page.getByText("Nhân viên minh họa", { exact: true }) })
     .first();
-  await expect(card.locator("details.group")).not.toHaveAttribute("open");
+  await expect(
+    card.getByRole("heading", { name: "Nhân viên minh họa" }),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: "Tổng hợp toàn công ty", exact: true })
     .click();
   await expect(
-    page.getByText("Hoàn tất một phần", { exact: false }),
+    card.getByText("Hoàn tất một phần", { exact: false }),
   ).toBeVisible();
-  await expect(page.getByText("Đã dựng 2 video", { exact: true })).toBeHidden();
-  await card.locator("details.group > summary").click();
   await expect(
-    page.getByText("Đã dựng 2 video", { exact: true }),
-  ).toBeVisible();
-  await card.locator("details.group > summary").press("Enter");
-  await expect(page.getByText("Đã dựng 2 video", { exact: true })).toBeHidden();
+    card.getByRole("region", { name: "Tổng hợp từ báo cáo", exact: true }),
+  ).toContainText("Sản xuất video: Đã dựng 2 video");
   await page
     .getByRole("button", { name: "Thử lại phần lỗi", exact: true })
     .click();
   await expect(
-    page.getByText("Đã xử lý đủ phần", { exact: false }),
+    card.getByText("Đã xử lý đủ phần", { exact: false }),
   ).toBeVisible();
   expect(requests).toBe(2);
   await expect(
