@@ -161,6 +161,15 @@ export default function NewReport({
     items: {},
   });
   const reportSurfaceRef = useRef<HTMLDivElement>(null);
+  const [errorFocusRequest, setErrorFocusRequest] = useState(0);
+  const requestErrorFocus = () => setErrorFocusRequest((value) => value + 1);
+  // Focus only after the error state and save-modal close have committed.
+  // Focusing from the submit callback can race with modal focus restoration.
+  useEffect(() => {
+    if (errorFocusRequest > 0) {
+      focusFirstReportError(reportSurfaceRef.current);
+    }
+  }, [errorFocusRequest]);
   const [recoveryText, setRecoveryText] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
     "idle",
@@ -460,7 +469,7 @@ export default function NewReport({
           .map((status) => [status, message]),
       ),
     );
-    focusFirstReportError(reportSurfaceRef.current);
+    requestErrorFocus();
   };
 
   const handlePlanChange = (value: string) => {
@@ -547,7 +556,7 @@ export default function NewReport({
       )
         setEditorMode("detailed");
       setError(t("validation.reviewFields"));
-      focusFirstReportError(reportSurfaceRef.current);
+      requestErrorFocus();
       return;
     }
     setBatchError(null);
@@ -609,7 +618,7 @@ export default function NewReport({
               ? t("validation.reviewFields")
               : submitError.message || t("errors.save"),
           );
-          focusFirstReportError(reportSurfaceRef.current);
+          requestErrorFocus();
           return;
         }
         setError(
@@ -617,7 +626,7 @@ export default function NewReport({
             ? t("errors.network")
             : submitError.message || t("errors.save"),
         );
-        focusFirstReportError(reportSurfaceRef.current);
+        requestErrorFocus();
 
         if (submitError.status === 409) {
           reportDraft.suspend();
@@ -642,7 +651,7 @@ export default function NewReport({
         }
       } else {
         setError(t("errors.save"));
-        focusFirstReportError(reportSurfaceRef.current);
+        requestErrorFocus();
       }
     } finally {
       saveInFlightRef.current = false;

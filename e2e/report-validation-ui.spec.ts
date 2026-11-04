@@ -107,18 +107,21 @@ for (const makeup of [false, true]) {
     });
     const evidence = page.locator('textarea[id^="evidence-"]');
     await evidence.fill("https://example.com/video");
-    await save.click();
-    await expect(evidence).toBeFocused();
-    await expect(evidence).toHaveAttribute("aria-invalid", "true");
-    await expect(evidence).toBeInViewport();
-    await expect(
-      page.getByText("Link minh chứng chưa hợp lệ.", { exact: true }),
-    ).toBeVisible();
-    await expect(page.locator("#next-day-plan")).toHaveAttribute(
-      "aria-invalid",
-      "true",
-    );
-    expect(api.count()).toBe(1);
+    // Repeated modal open/close cycles must not steal focus back from API errors.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await save.click();
+      await expect(evidence).toBeFocused();
+      await expect(evidence).toHaveAttribute("aria-invalid", "true");
+      await expect(evidence).toBeInViewport();
+      await expect(
+        page.getByText("Link minh chứng chưa hợp lệ.", { exact: true }),
+      ).toBeVisible();
+      await expect(page.locator("#next-day-plan")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      expect(api.count()).toBe(attempt);
+    }
     await evidence.fill("https://example.com/fixed");
     await expect(evidence).not.toHaveAttribute("aria-invalid", "true");
     await expect(page.locator("#next-day-plan")).toHaveAttribute(
