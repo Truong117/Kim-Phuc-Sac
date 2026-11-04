@@ -4,6 +4,7 @@ namespace App\Http\Requests\Reports;
 
 use App\Enums\WorkStatus;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 abstract class ReportItemsRequest extends FormRequest
@@ -78,7 +79,12 @@ abstract class ReportItemsRequest extends FormRequest
             'items.*.note' => ['nullable', 'string', 'max:5000'],
             'items.*.issue' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'items.*.evidence_links' => ['sometimes', 'array', 'max:10'],
-            'items.*.evidence_links.*' => ['required', 'string', 'max:2048', 'url:http,https', 'distinct:strict', function (string $attribute, mixed $value, \Closure $fail): void {
+            'items.*.evidence_links.*' => ['required', 'string', 'max:2048', 'url:http,https', function (string $attribute, mixed $value, \Closure $fail): void {
+                // Wildcard distinct compares links across all items; only this item's links must be unique.
+                $links = $this->input(Str::beforeLast($attribute, '.'), []);
+                if (is_array($links) && count(array_filter($links, fn (mixed $link): bool => $link === $value)) > 1) {
+                    $fail('Đường dẫn minh chứng bị trùng trong cùng một công việc.');
+                }
                 if (is_string($value) && (isset(parse_url($value)['user']) || isset(parse_url($value)['pass']))) {
                     $fail('Đường dẫn không được chứa tên đăng nhập hoặc mật khẩu.');
                 }
