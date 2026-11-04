@@ -1,6 +1,7 @@
 import { useId } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
+import DailyDocumentResult from "@/components/ai/DailyDocumentResult";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
@@ -40,6 +41,24 @@ export default function DailyDocumentEmployee({
   // Counts must refer to the same frozen source as the AI result.
   const source = document?.source ?? row.source;
   const result = document?.result;
+  const references = [
+    ...new Map(
+      [
+        ...(result?.work_groups?.flatMap((group) => group.evidence) ?? []),
+        ...[
+          ...(result?.comments ?? []),
+          ...(result?.recommendations ?? []),
+        ].map((entry) => ({
+          report_id: source.report_id,
+          item_id: entry.item_id,
+          quote: entry.quote,
+        })),
+      ].map((ref) => [
+        JSON.stringify([ref.report_id, ref.item_id, ref.quote]),
+        ref,
+      ]),
+    ).values(),
+  ];
   const errors = document?.units.filter((unit) => unit.error_code) ?? [];
   const canRetry = document?.units.some((unit) => unit.can_retry) ?? false;
   const retryUnavailable =
@@ -81,112 +100,7 @@ export default function DailyDocumentEmployee({
           {!result ? (
             <p>{t("noAiResult")}</p>
           ) : (
-            <>
-              {Boolean(result.work_groups?.length) && (
-                <section className="space-y-3">
-                  <h3 className="font-semibold">{t("groupedWork")}</h3>
-                  {result.work_groups?.map((group, index) => (
-                    <article
-                      key={index}
-                      className="rounded-lg border border-brand-100 bg-brand-25 p-3 dark:border-brand-800 dark:bg-brand-500/5"
-                    >
-                      <h4 className="font-medium">{group.title}</h4>
-                      <p className="mt-2 leading-7 break-words whitespace-pre-wrap">
-                        {group.text}
-                      </p>
-                      <details className="mt-2 text-xs">
-                        <summary className="cursor-pointer text-brand-600 dark:text-brand-300">
-                          {t("groupSources")}
-                        </summary>
-                        {group.evidence.map((ref) => (
-                          <p
-                            key={`${ref.report_id}:${ref.item_id}`}
-                            className="mt-2 break-words"
-                          >
-                            <Link
-                              to={`/reports/${ref.report_id}#work-item-${ref.item_id}`}
-                              className="text-brand-600 underline dark:text-brand-300"
-                            >
-                              {t("quote", {
-                                id: ref.item_id,
-                                quote: ref.quote,
-                              })}
-                            </Link>
-                          </p>
-                        ))}
-                      </details>
-                    </article>
-                  ))}
-                </section>
-              )}
-              <section className="rounded-lg bg-success-50 p-3 dark:bg-success-500/10">
-                <h3 className="font-semibold text-success-700 dark:text-success-400">
-                  {t("totals")}
-                </h3>
-                {!result.work_totals.length ? (
-                  <p className="mt-2">{t("noTotals")}</p>
-                ) : (
-                  <ul className="mt-2 space-y-1">
-                    {result.work_totals.map((total, index) => (
-                      <li key={index}>
-                        {total.metric}:{" "}
-                        {total.total === null
-                          ? t("needsConfirmation")
-                          : `${total.total} ${total.unit}`}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-              {(["comments", "recommendations"] as const).map((field) => (
-                <section
-                  key={field}
-                  className={
-                    field === "comments"
-                      ? "rounded-lg bg-blue-light-50 p-3 dark:bg-blue-light-500/10"
-                      : "rounded-lg bg-warning-50 p-3 dark:bg-warning-500/10"
-                  }
-                >
-                  <h3
-                    className={
-                      field === "comments"
-                        ? "font-semibold text-blue-light-700 dark:text-blue-light-400"
-                        : "font-semibold text-warning-700 dark:text-warning-400"
-                    }
-                  >
-                    {t(field)}
-                  </h3>
-                  {!result[field].length ? (
-                    <p className="mt-2">{t("noReview")}</p>
-                  ) : (
-                    <ul className="mt-2 space-y-3">
-                      {result[field].map((entry, index) => (
-                        <li
-                          key={index}
-                          className="break-words whitespace-pre-wrap"
-                        >
-                          <p>{entry.text}</p>
-                          <details className="mt-1 text-xs">
-                            <summary className="cursor-pointer">
-                              {t("groupSources")}
-                            </summary>
-                            <Link
-                              to={`/reports/${source.report_id}#work-item-${entry.item_id}`}
-                              className="text-brand-600 underline dark:text-brand-300"
-                            >
-                              {t("quote", {
-                                quote: entry.quote,
-                                id: entry.item_id,
-                              })}
-                            </Link>
-                          </details>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              ))}
-            </>
+            <DailyDocumentResult result={result} />
           )}
           {errors.length > 0 && (
             <details className="text-xs text-error-600 dark:text-error-400">
@@ -229,6 +143,28 @@ export default function DailyDocumentEmployee({
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {t("selfReported")}
         </p>
+        {references.length > 0 && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-brand-600 dark:text-brand-300">
+              {t("referenceSources")}
+            </summary>
+            <ul className="mt-2 space-y-2">
+              {references.map((ref) => (
+                <li
+                  key={JSON.stringify([ref.report_id, ref.item_id, ref.quote])}
+                  className="break-words"
+                >
+                  <Link
+                    to={`/reports/${ref.report_id}#work-item-${ref.item_id}`}
+                    className="text-brand-600 underline dark:text-brand-300"
+                  >
+                    {t("quote", { id: ref.item_id, quote: ref.quote })}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {row.source_changed && (
           <p role="status" className="text-warning-700 dark:text-warning-400">
             {t("sourceChanged")}
