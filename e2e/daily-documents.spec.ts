@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { login } from "./helpers";
 
-test("daily inventory survives partial processing and retries only the failed part", async ({
+test("daily cards collapse AI details and retry only the failed part", async ({
   page,
 }) => {
   await login(page, "owner");
@@ -38,7 +38,18 @@ test("daily inventory survives partial processing and retries only the failed pa
     captured_at: "2026-11-03T00:00:00Z",
     completed_units: retried ? 2 : 1,
     total_units: 2,
-    result: { comments: [], recommendations: [], work_totals: [] },
+    result: {
+      work_groups: [
+        {
+          title: "Sản xuất video",
+          text: "Đã dựng 2 video",
+          evidence: [{ report_id: 7, item_id: 9, quote: "Đã dựng 2 video" }],
+        },
+      ],
+      comments: [],
+      recommendations: [],
+      work_totals: [],
+    },
     units: [
       {
         id: 1,
@@ -104,21 +115,31 @@ test("daily inventory survives partial processing and retries only the failed pa
     }
   });
   await page.goto("/ai/insights?view=daily&date=2026-11-02");
+  await expect(page.getByRole("link", { name: /Báo cáo #7/ })).toHaveAttribute(
+    "href",
+    "/reports/7",
+  );
   await expect(
-    page.getByText("Đã dựng 2 video", { exact: false }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Minh chứng do nhân viên cung cấp — chưa xác minh"),
-  ).toBeVisible();
+    page.getByText("Biên tập video minh họa", { exact: true }),
+  ).toHaveCount(0);
+  const card = page
+    .locator("article")
+    .filter({ has: page.getByText("Nhân viên minh họa", { exact: true }) })
+    .first();
+  await expect(card.locator("details.group")).not.toHaveAttribute("open");
   await page
     .getByRole("button", { name: "Tổng hợp toàn công ty", exact: true })
     .click();
   await expect(
     page.getByText("Hoàn tất một phần", { exact: false }),
   ).toBeVisible();
+  await expect(page.getByText("Đã dựng 2 video", { exact: true })).toBeHidden();
+  await card.locator("details.group > summary").click();
   await expect(
-    page.getByText("Đã dựng 2 video", { exact: false }),
+    page.getByText("Đã dựng 2 video", { exact: true }),
   ).toBeVisible();
+  await card.locator("details.group > summary").press("Enter");
+  await expect(page.getByText("Đã dựng 2 video", { exact: true })).toBeHidden();
   await page
     .getByRole("button", { name: "Thử lại phần lỗi", exact: true })
     .click();
@@ -131,7 +152,7 @@ test("daily inventory survives partial processing and retries only the failed pa
   ).toHaveCount(0);
   await expect(
     page.getByText("Dự kiến đăng 30 video", { exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("link", { name: "Theo kỳ / báo cáo tuần", exact: true })
     .click();
