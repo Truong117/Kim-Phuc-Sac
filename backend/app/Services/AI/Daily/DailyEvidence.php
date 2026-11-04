@@ -37,12 +37,15 @@ final class DailyEvidence
             return $ref;
         };
         foreach ($output['work_groups'] as &$group) {
-            if (! is_array($group) || ! is_array($group['evidence'] ?? null) || ! array_is_list($group['evidence'])) {
+            if (! is_array($group) || count($group) !== 3 || ! is_string($group['title'] ?? null) || trim($group['title']) === ''
+                || ! is_string($group['text'] ?? null) || trim($group['text']) === ''
+                || ! is_array($group['evidence'] ?? null) || ! array_is_list($group['evidence']) || $group['evidence'] === []) {
                 throw new RuntimeException('AI_INVALID_SCHEMA');
             }
             $group['evidence'] = array_map(fn ($ref) => $resolve($ref, ['report_id', 'item_id', 'field']), $group['evidence']);
         }
         unset($group);
+        $output['work_groups'] = self::mergeOverlappingGroups($output['work_groups']);
         foreach (['comments', 'recommendations'] as $key) {
             $output[$key] = array_map(fn ($ref) => $resolve($ref, ['text', 'item_id', 'field']), $output[$key]);
         }
@@ -50,6 +53,37 @@ final class DailyEvidence
             ['metric', 'unit', 'quantity', 'basis', 'report_id', 'item_id', 'field'], true), $output['observations']);
 
         return $output;
+    }
+
+    private static function mergeOverlappingGroups(array $groups): array
+    {
+        $merged = [];
+        foreach ($groups as $group) {
+            $refs = [];
+            foreach ($group['evidence'] as $ref) {
+                // Each ref has already been bound to a real, nonempty source field.
+                $refs[$ref['report_id'].':'.$ref['item_id']] ??= $ref;
+            }
+            $titles = [$group['title']];
+            $texts = [$group['text']];
+            // Existing groups are disjoint. A new group may bridge several of them.
+            foreach ($merged as $index => $previous) {
+                if (array_intersect_key($refs, $previous['refs']) === []) {
+                    continue;
+                }
+                $refs = $previous['refs'] + $refs;
+                $titles = [...$previous['titles'], ...$titles];
+                $texts = [...$previous['texts'], ...$texts];
+                unset($merged[$index]);
+            }
+            $merged[] = ['refs' => $refs, 'titles' => $titles, 'texts' => $texts];
+        }
+
+        return array_values(array_map(fn ($group) => [
+            'title' => implode(' / ', array_unique($group['titles'])),
+            'text' => implode("\n\n", array_unique($group['texts'])),
+            'evidence' => array_values($group['refs']),
+        ], $merged));
     }
 
     private static function metricQuote(string $text, array $entry, array $source): string
