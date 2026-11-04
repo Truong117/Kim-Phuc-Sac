@@ -339,4 +339,52 @@ class DailyDocumentTest extends TestCase
         $this->assertDatabaseCount('daily_report_ai_documents', 0);
         $this->assertDatabaseCount('daily_report_ai_units', 0);
     }
+
+    public function test_old_failed_contract_can_be_explicitly_rebuilt_once_without_resetting_history_or_batch_retry(): void
+    {
+        $owner = $this->member();
+        $report = $this->source($owner);
+        $oldId = $this->createDocument($owner, $report);
+        $old = DailyReportAiDocument::findOrFail($oldId);
+        $unit = $old->units()->firstOrFail();
+        $unit->update(['status' => 'failed', 'attempts' => 2, 'error_code' => 'AI_AUTHENTICATION_FAILED']);
+        $old->update(['analysis_config' => [...$old->analysis_config, 'instructions_hash' => 'previous-contract'],
+            'cache_key' => hash('sha256', 'previous-contract:'.$oldId)]);
+        DailyDocumentService::settle($old);
+        Queue::fake();
+        $this->getJson('/api/ai/daily-documents/'.$oldId)->assertOk()->assertJsonPath('data.requires_new_document', true);
+        $this->postJson('/api/ai/daily-documents/'.$oldId.'/retry')->assertStatus(409);
+        $batch = app(DailyDocumentService::class)->requestDate($owner, '2026-11-02');
+        $this->assertSame(0, $batch['created']);
+        $this->assertSame(1, $batch['reused']);
+        $this->assertSame(1, $batch['failed']);
+        Queue::assertNothingPushed();
+        $newId = $this->createDocument($owner, $report);
+        $this->assertNotSame($oldId, $newId);
+        $this->assertSame($newId, $this->createDocument($owner, $report));
+        Queue::assertPushed(GenerateDailyReportDocument::class, 1);
+        $this->assertSame(2, $unit->fresh()->attempts);
+        $this->assertSame('failed', $old->fresh()->status);
+        $this->runDocument($newId);
+        $this->assertSame('completed', DailyReportAiDocument::findOrFail($newId)->status);
+        $this->getJson('/api/ai/daily-documents/'.$oldId)->assertOk()->assertJsonPath('data.status', 'failed');
+        Http::assertNothingSent();
+    }
+
+    public function test_batch_does_not_recompute_completed_source_after_provider_contract_upgrade(): void
+    {
+        $owner = $this->member();
+        $report = $this->source($owner);
+        $id = $this->createDocument($owner, $report);
+        $this->runDocument($id);
+        $document = DailyReportAiDocument::findOrFail($id);
+        $document->update(['analysis_config' => [...$document->analysis_config, 'instructions_hash' => 'previous-contract'],
+            'cache_key' => hash('sha256', 'previous-contract:'.$id)]);
+        Queue::fake();
+        $batch = app(DailyDocumentService::class)->requestDate($owner, '2026-11-02');
+        $this->assertSame(0, $batch['created']);
+        $this->assertSame(1, $batch['reused']);
+        $this->assertDatabaseCount('daily_report_ai_documents', 1);
+        Queue::assertNothingPushed();
+    }
 }

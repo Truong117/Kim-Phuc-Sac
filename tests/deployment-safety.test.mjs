@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import ts from "typescript";
 
 import { assertNoFrontendCredentials } from "../deployment/frontend-environment-safety.mjs";
 import {
@@ -337,7 +338,9 @@ test("frontend API base rejects ambiguous or token-bearing values", () => {
   }
 
   assert.doesNotThrow(() =>
-    assertNoFrontendCredentials({ VITE_API_BASE_URL: "https://api.example.test" }),
+    assertNoFrontendCredentials({
+      VITE_API_BASE_URL: "https://api.example.test",
+    }),
   );
 });
 
@@ -364,4 +367,79 @@ test("frontend explicitly accepts the same-origin API base", async () => {
   assert.match(source, /configuredApiBaseUrl === ["']\/["']/);
   assert.match(source, /credentials: ["']include["']/);
   assert.match(source, /getCookie\(["']XSRF-TOKEN["']\)/);
+});
+
+test("Vercel entrypoint exposes static deployment properties without a dynamic root or spread", async () => {
+  const source = await readFile(
+    new URL("../vercel.mjs", import.meta.url),
+    "utf8",
+  );
+  const ast = ts.createSourceFile(
+    "vercel.mjs",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const declaration = ast.statements
+    .filter(ts.isVariableStatement)
+    .filter((node) =>
+      node.modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      ),
+    )
+    .flatMap((node) => [...node.declarationList.declarations])
+    .find((node) => ts.isIdentifier(node.name) && node.name.text === "config");
+  assert.ok(
+    declaration?.initializer &&
+      ts.isObjectLiteralExpression(declaration.initializer),
+    "Vercel must statically discover the exported configuration keys",
+  );
+  const properties = new Map();
+  for (const node of declaration.initializer.properties) {
+    assert.ok(
+      ts.isPropertyAssignment(node) && !ts.isComputedPropertyName(node.name),
+      "a spread/computed property hides static deployment settings",
+    );
+    properties.set(node.name.text, node.initializer);
+  }
+  function literal(node) {
+    if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (node.kind === ts.SyntaxKind.NullKeyword) return null;
+    if (ts.isStringLiteral(node) || ts.isNumericLiteral(node))
+      return ts.isNumericLiteral(node) ? Number(node.text) : node.text;
+    if (ts.isArrayLiteralExpression(node)) return node.elements.map(literal);
+    assert.ok(
+      ts.isObjectLiteralExpression(node),
+      "deployment properties must be literal, not function/env results",
+    );
+    return Object.fromEntries(
+      node.properties.map((entry) => {
+        assert.ok(
+          ts.isPropertyAssignment(entry) &&
+            !ts.isComputedPropertyName(entry.name),
+        );
+        return [entry.name.text, literal(entry.initializer)];
+      }),
+    );
+  }
+  for (const key of [
+    "git",
+    "github",
+    "relatedProjects",
+    "buildCommand",
+    "devCommand",
+    "installCommand",
+    "framework",
+    "nodeVersion",
+    "outputDirectory",
+  ]) {
+    if (properties.has(key)) literal(properties.get(key));
+  }
+  assert.deepEqual(
+    literal(properties.get("git")),
+    expectedProxyConfig("https://api.example.test").git,
+  );
+  assert.ok(properties.has("rewrites") && properties.has("headers"));
 });

@@ -1,7 +1,10 @@
+import { useId } from "react";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
+import { Modal } from "@/components/ui/modal";
+import { useModal } from "@/hooks/useModal";
 import { formatDateOnly } from "@/utils/dateOnly";
 import type { DailyDocumentsPage } from "@/types/dailyDocument";
 
@@ -18,13 +21,22 @@ export default function DailyDocumentEmployee({
   row,
   busy,
   onRetry,
+  onRebuild,
 }: {
   row: Row;
   busy: boolean;
   onRetry: () => void;
+  onRebuild?: () => void;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
+  const { isOpen, openModal, closeModal } = useModal();
+  const modalTitle = useId();
   const document = row.document;
+  const canRebuild = Boolean(
+    onRebuild &&
+    document?.requires_new_document &&
+    ["failed", "partial"].includes(document.status),
+  );
   // Counts must refer to the same frozen source as the AI result.
   const source = document?.source ?? row.source;
   const result = document?.result;
@@ -222,7 +234,7 @@ export default function DailyDocumentEmployee({
             {t("sourceChanged")}
           </p>
         )}
-        {document?.requires_new_document && (
+        {document?.requires_new_document && document.status !== "completed" && (
           <p role="status" className="text-warning-700 dark:text-warning-400">
             {t("contractChanged")}
           </p>
@@ -242,7 +254,43 @@ export default function DailyDocumentEmployee({
             )}
           </div>
         )}
+        {canRebuild && (
+          <Button variant="outline" onClick={openModal} disabled={busy}>
+            {t("rebuild")}
+          </Button>
+        )}
       </div>
+      <Modal
+        isOpen={isOpen}
+        onClose={closeModal}
+        className="max-w-lg p-6"
+        ariaLabelledBy={modalTitle}
+        showCloseButton={false}
+      >
+        <h3
+          id={modalTitle}
+          className="font-semibold text-gray-900 dark:text-gray-100"
+        >
+          {t("rebuild")}
+        </h3>
+        <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
+          {t("rebuildConfirm")}
+        </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Button variant="outline" onClick={closeModal} disabled={busy}>
+            {t("cancel")}
+          </Button>
+          <Button
+            disabled={busy || !canRebuild}
+            onClick={() => {
+              closeModal();
+              onRebuild?.();
+            }}
+          >
+            {t("rebuildConfirmAction")}
+          </Button>
+        </div>
+      </Modal>
     </article>
   );
 }

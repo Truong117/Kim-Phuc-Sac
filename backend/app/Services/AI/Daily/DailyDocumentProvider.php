@@ -8,8 +8,8 @@ use App\Models\User;
 use App\Services\AI\AiGatewayException;
 use App\Services\AI\AiGatewayRequest;
 use App\Services\AI\OpenAiGateway;
-use App\Services\AI\WorkReportGroupedWork;
 use App\Services\AI\WorkReportSnapshot;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class DailyDocumentProvider
@@ -35,21 +35,28 @@ class DailyDocumentProvider
         // Provider sees no user identity, submission metadata, URLs or credentials.
         $viewer = User::query()->findOrFail($document->requested_by_user_id);
         $input = app(WorkReportSnapshot::class)->dailyProviderInput($viewer, $source);
-        $items = $input['items'];
         $response = $gateway->respond(new AiGatewayRequest(
             organizationId: (int) $document->organization_id, requestedByUserId: (int) $document->requested_by_user_id,
             feature: 'daily_report_document', idempotencyKey: 'daily-document:'.$document->id.':'.$unit->part,
             instructions: DailyDocumentContract::instructions(), input: $input,
-            schemaName: 'kps_daily_document_v3', schema: DailyDocumentContract::schema(),
+            schemaName: 'kps_daily_document_v4', schema: DailyDocumentContract::schema(),
             maxOutputTokens: (int) $config['gateway']['max_output_tokens'], reasoningEffort: 'low',
         ));
+        $stage = 'bind_redacted';
         try {
-            // Check redacted sources first, then original sources; neither may be invented.
-            WorkReportGroupedWork::validate($response->result['work_groups'] ?? null, [$input]);
-            DailyReportOutput::validate($response->result, [...$source, 'items' => $items]);
+            $redacted = DailyEvidence::bind($response->result, $input);
+            $stage = 'validate_redacted';
+            DailyReportOutput::validate($redacted, $input);
+            $stage = 'bind_original';
+            $original = DailyEvidence::bind($response->result, $source);
+            $stage = 'validate_original';
 
-            return DailyReportOutput::validate($response->result, $source);
+            return DailyReportOutput::validate($original, $source);
         } catch (Throwable $e) {
+            Log::warning('daily_document_validation_rejected', [
+                'document_id' => $document->id, 'unit_id' => $unit->id,
+                'usage_record_id' => $response->usageRecordId, 'stage' => $stage,
+            ]);
             $gateway->rejectCompletedResult($response->usageRecordId, 'AI_INVALID_EVIDENCE');
             throw $e;
         }

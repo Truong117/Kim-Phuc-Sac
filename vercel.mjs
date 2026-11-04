@@ -3,7 +3,7 @@ import { createVercelConfig } from "./deployment/vercel-config.mjs";
 
 assertNoFrontendCredentials(process.env);
 
-export const config = createVercelConfig({
+const proxy = createVercelConfig({
   vercelEnvironment: process.env.VERCEL_ENV,
   gitBranch: process.env.VERCEL_GIT_COMMIT_REF,
   backendOrigin: process.env.KPS_BACKEND_ORIGIN,
@@ -12,3 +12,16 @@ export const config = createVercelConfig({
   frontendEnvironment: process.env.VITE_KPS_ENVIRONMENT,
   frontendApiBaseUrl: process.env.VITE_API_BASE_URL,
 });
+
+/* Git policy must be statically readable before Vercel evaluates environment-dependent routing. */
+export const config = {
+  git: {
+    deploymentEnabled: {
+      "*": false,
+      main: true,
+      staging: true,
+    },
+  },
+  rewrites: proxy.rewrites,
+  headers: proxy.headers,
+};

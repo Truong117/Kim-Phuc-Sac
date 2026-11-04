@@ -2532,7 +2532,7 @@
     },
     "groupedWork": "Tổng hợp công việc trong ngày",
     "groupSources": "Đối chiếu công việc nguồn",
-    "contractChanged": "Bản ngày dùng cấu hình cũ. Hãy tạo bản mới để dùng trong tổng hợp tuần.",
+    "contractChanged": "Bản lỗi dùng cấu hình AI cũ. Có thể tạo bản mới bằng cấu hình đã sửa; lịch sử cũ vẫn được giữ.",
     "batchCompany": "Tổng hợp toàn công ty",
     "batchScope": "Tổng hợp trong phạm vi được phép",
     "batchScheduling": "Đang xếp lịch tổng hợp…",
@@ -2550,6 +2550,10 @@
     "summaryCompleted": "Hoàn tất: {completed}/{total}",
     "summaryProcessing": "Đang xử lý: {processing}",
     "summaryFailed": "Có lỗi: {failed}",
-    "summaryNotStarted": "Chưa tổng hợp: {not_started}"
+    "summaryNotStarted": "Chưa tổng hợp: {not_started}",
+    "rebuild": "Tạo lại bằng bản sửa",
+    "rebuildConfirm": "Tạo bản tổng hợp mới từ báo cáo đã khóa hiện tại, dùng cấu hình AI mới. Bản cũ và số lượt đã dùng vẫn được giữ; bản mới có giới hạn 2 lượt và có thể phát sinh chi phí AI, trong hạn mức ngân sách hiện có. Các phần của bản mới sẽ được xử lý lại.",
+    "rebuildConfirmAction": "Xác nhận tạo bản mới",
+    "cancel": "Hủy"
   }
 }
