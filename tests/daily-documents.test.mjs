@@ -91,26 +91,35 @@ const doc = (patch = {}) => ({
   ],
   ...patch,
 });
-test("inventory is complete before and after a partial AI failure; data is escaped and unsafe links excluded", () => {
+
+test("employee cards start collapsed, show source counts and do not duplicate self-reported text", () => {
   for (const document of [null, doc()]) {
     const html = render(document);
+    assert.match(html, /<details class="group">/);
+    assert.ok(!html.includes("<details open"));
+    for (const text of [
+      "Nhân viên thử",
+      "Xem kết quả",
+      "Báo cáo bù",
+      "Báo cáo #7",
+      'href="/reports/7"',
+      "Công việc đã hoàn thành: 1",
+      "Công việc đang thực hiện: 1",
+    ])
+      assert.ok(html.includes(text), text);
     for (const text of [
       "Đã đăng 2 video",
       "Dựng video",
       "Làm 30 video",
       "Chờ duyệt",
       "Ghi chú cũ",
-      "Báo cáo bù",
+      "javascript:",
+      "<script>",
     ])
-      assert.ok(html.includes(text), text);
-    assert.ok(html.includes("&lt;script&gt;bad()&lt;/script&gt;"));
-    assert.ok(!html.includes("<script>"));
-    assert.ok(!html.includes("javascript:"));
-    assert.ok(html.includes('href="https://example.com/post"'));
-    assert.ok(html.includes("chưa xác minh"));
+      assert.ok(!html.includes(text), text);
   }
 });
-test("fake/partial state, progress and retry are clear without untranslated placeholders", () => {
+test("partial errors retain explicit retry, while exhausted retries have a visible explanation", () => {
   const html = render(doc());
   for (const text of [
     "Bản thử nghiệm dữ liệu",
@@ -126,23 +135,71 @@ test("fake/partial state, progress and retry are clear without untranslated plac
       !html.includes("{part}") &&
       !html.includes("{total}"),
   );
+  const exhausted = render(
+    doc({
+      units: [
+        {
+          id: 2,
+          part: 0,
+          status: "failed",
+          error_code: "AI_AUTHENTICATION_FAILED",
+          can_retry: false,
+        },
+      ],
+    }),
+  );
+  assert.ok(exhausted.includes("Đã hết lượt thử lại cho bản này"));
+  assert.ok(!exhausted.includes(">Thử lại phần lỗi<"));
+  assert.ok(
+    exhausted.indexOf("Đã hết lượt") >
+      exhausted.indexOf("</details></details>"),
+  );
+  const changed = render(
+    doc({
+      requires_new_document: true,
+      units: [
+        {
+          id: 2,
+          part: 0,
+          status: "failed",
+          error_code: "AI_AUTHENTICATION_FAILED",
+          can_retry: false,
+        },
+      ],
+    }),
+  );
+  assert.ok(changed.includes("Bản ngày dùng cấu hình cũ"));
+  assert.ok(!changed.includes("Đã hết lượt"));
 });
-test("frozen source stays distinct from newer source and is not replaced by current report text", () => {
+test("source link and counts refer to the frozen report instead of changed current content", () => {
   const document = doc({
     source: {
       ...source,
-      items: [{ ...source.items[0], content: "Nguồn đã chốt" }],
+      report_id: 8,
+      items: [{ ...source.items[0], status: "BLOCKED" }],
     },
   });
   const html = render(document, true);
-  assert.ok(html.includes("Nguồn đã chốt"));
-  assert.ok(!html.includes("Dựng video"));
+  assert.ok(html.includes('href="/reports/8"'));
+  assert.ok(html.includes("Công việc bị vướng mắc: 1"));
+  assert.ok(html.includes("Công việc đang thực hiện: 0"));
   assert.ok(html.includes("Nguồn hiện tại đã khác"));
 });
-test("uncertain totals are never displayed as a number and grounded review follows the inventory", () => {
+test("AI grouped work is escaped and shown before metrics and assessment, with source references", () => {
   const html = render(
     doc({
+      status: "completed",
+      mode: "openai",
+      model: "gpt-6-luna",
+      units: [],
       result: {
+        work_groups: [
+          {
+            title: "Nội dung truyền thông",
+            text: "<script>AI text</script>",
+            evidence: [{ report_id: 7, item_id: 9, quote: "Đã đăng 2 video" }],
+          },
+        ],
         work_totals: [
           {
             metric: "Video đăng",
@@ -158,10 +215,17 @@ test("uncertain totals are never displayed as a number and grounded review follo
       },
     }),
   );
+  assert.ok(html.includes("bg-success-50"));
+  assert.ok(html.includes("&lt;script&gt;AI text&lt;/script&gt;"));
+  assert.ok(!html.includes("<script>"));
   assert.ok(html.includes("Cần xác nhận"));
   assert.ok(!html.includes("null video"));
   assert.ok(
-    html.indexOf("Đã đăng 2 video") < html.indexOf("Cần làm rõ việc duyệt"),
+    html.indexOf("Nội dung truyền thông") < html.indexOf("Số liệu có căn cứ"),
   );
-  assert.ok(html.includes("Đầu việc #9"));
+  assert.ok(
+    html.indexOf("Số liệu có căn cứ") < html.indexOf("Cần làm rõ việc duyệt"),
+  );
+  assert.ok(html.includes('href="/reports/7#work-item-9"'));
+  assert.ok(!html.includes("Đã hết lượt"));
 });

@@ -7,6 +7,7 @@ import ComponentCard from "@/components/common/ComponentCard";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
 import DailyDocumentEmployee from "@/components/ai/DailyDocumentEmployee";
 import Button from "@/components/ui/button/Button";
+import Badge from "@/components/ui/badge/Badge";
 import useDailyDocuments from "@/hooks/useDailyDocuments";
 import {
   requestDailyDocumentBatch,
@@ -125,12 +126,16 @@ function DailyDocumentsView({
             </p>
           )}
           {data?.summary && (
-            <p
-              role="status"
-              className="mt-2 text-sm text-gray-600 dark:text-gray-400"
-            >
-              {t("batchProgress", data.summary)}
-            </p>
+            <div role="status" className="mt-2 flex flex-wrap gap-2">
+              <Badge color="success">
+                {t("summaryCompleted", data.summary)}
+              </Badge>
+              <Badge color="info">{t("summaryProcessing", data.summary)}</Badge>
+              <Badge color="error">{t("summaryFailed", data.summary)}</Badge>
+              <Badge color="light">
+                {t("summaryNotStarted", data.summary)}
+              </Badge>
+            </div>
           )}
         </ComponentCard>
         {batchResult && (
