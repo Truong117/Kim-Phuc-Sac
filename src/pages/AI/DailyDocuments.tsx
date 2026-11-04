@@ -11,6 +11,7 @@ import Badge from "@/components/ui/badge/Badge";
 import useDailyDocuments from "@/hooks/useDailyDocuments";
 import {
   requestDailyDocumentBatch,
+  requestDailyDocument,
   retryDailyDocument,
 } from "@/services/dailyDocumentService";
 import type { DailyDocumentBatch } from "@/types/dailyDocument";
@@ -165,6 +166,9 @@ function DailyDocumentsView({
                 key={row.report_id}
                 row={row}
                 busy={busy}
+                onRebuild={() =>
+                  void act(() => requestDailyDocument(row.report_id))
+                }
                 onRetry={() =>
                   row.document &&
                   void act(() => retryDailyDocument(row.document!.id))

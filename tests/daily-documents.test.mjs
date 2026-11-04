@@ -64,6 +64,7 @@ function render(document, changed = false) {
         },
         busy: false,
         onRetry() {},
+        onRebuild() {},
       }),
     ),
   );
@@ -168,7 +169,7 @@ test("partial errors retain explicit retry, while exhausted retries have a visib
       ],
     }),
   );
-  assert.ok(changed.includes("Bản ngày dùng cấu hình cũ"));
+  assert.ok(changed.includes("Bản lỗi dùng cấu hình AI cũ"));
   assert.ok(!changed.includes("Đã hết lượt"));
 });
 test("source link and counts refer to the frozen report instead of changed current content", () => {
@@ -228,4 +229,45 @@ test("AI grouped work is escaped and shown before metrics and assessment, with s
   );
   assert.ok(html.includes('href="/reports/7#work-item-9"'));
   assert.ok(!html.includes("Đã hết lượt"));
+});
+
+test("rebuild is offered only for failed older contracts, never for exhausted current or completed documents", () => {
+  const old = render(
+    doc({
+      requires_new_document: true,
+      status: "failed",
+      units: [
+        {
+          id: 2,
+          part: 0,
+          status: "failed",
+          error_code: "AI_INVALID_EVIDENCE",
+          can_retry: false,
+        },
+      ],
+    }),
+  );
+  assert.ok(old.includes(">Tạo lại bằng bản sửa<"));
+  const current = render(
+    doc({
+      requires_new_document: false,
+      status: "failed",
+      units: [
+        {
+          id: 2,
+          part: 0,
+          status: "failed",
+          error_code: "AI_INVALID_EVIDENCE",
+          can_retry: false,
+        },
+      ],
+    }),
+  );
+  assert.ok(!current.includes(">Tạo lại bằng bản sửa<"));
+  assert.ok(current.includes("Đã hết lượt"));
+  const completed = render(
+    doc({ requires_new_document: true, status: "completed", units: [] }),
+  );
+  assert.ok(!completed.includes(">Tạo lại bằng bản sửa<"));
+  assert.ok(!completed.includes("Bản lỗi dùng cấu hình"));
 });

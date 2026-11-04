@@ -69,7 +69,7 @@ class DailyDocumentService
     private function settings(): array
     {
         $settings = ['driver' => config('daily_report_ai.driver'), 'model' => config('daily_report_ai.model'),
-            'schema' => DailyReportOutput::VERSION, 'source' => DailyReportSource::VERSION, 'prompt' => 'daily-document-v3',
+            'schema' => DailyReportOutput::VERSION, 'source' => DailyReportSource::VERSION, 'prompt' => 'daily-document-v4',
             'unit_bytes' => (int) config('daily_report_ai.unit_bytes'), 'max_parts' => (int) config('daily_report_ai.max_parts'),
             'max_attempts' => min(2, max(1, (int) config('daily_report_ai.max_attempts'))),
             'instructions_hash' => hash('sha256', DailyDocumentContract::instructions()),
@@ -150,7 +150,14 @@ class DailyDocumentService
             }
             $counts = ['date' => $date, 'total' => $reports->count(), 'created' => 0, 'reused' => 0, 'failed' => 0];
             foreach ($reports as $report) {
-                $document = $this->allocate($viewer, $report, $settings);
+                // Batch creation never retries or replaces an existing compatible source.
+                // A failed older provider contract is rebuilt only by an explicit per-report action.
+                $hash = DailyReportSource::hash(DailyReportSource::capture($report));
+                $document = DailyReportAiDocument::query()->where('daily_report_id', $report->id)
+                    ->where('source_hash', $hash)->orderByDesc('id')->get()->first(fn ($candidate) =>
+                        ($candidate->analysis_config['schema'] ?? null) === $settings['schema']
+                        && ($candidate->analysis_config['driver'] ?? null) === $settings['driver']);
+                $document ??= $this->allocate($viewer, $report, $settings);
                 $counts[$document->wasRecentlyCreated ? 'created' : 'reused']++;
                 if (in_array($document->status, ['partial', 'failed'], true)) {
                     $counts['failed']++;
@@ -180,7 +187,9 @@ class DailyDocumentService
         DB::transaction(function () use ($viewer, $id): void {
             $document = $this->authorized($viewer, $id);
             $document = DailyReportAiDocument::query()->lockForUpdate()->findOrFail($document->id);
-            abort_unless($document->analysis_config['driver'] === config('daily_report_ai.driver') && ($document->analysis_config['schema'] ?? null) === DailyReportOutput::VERSION, 409);
+            abort_unless($document->analysis_config['driver'] === config('daily_report_ai.driver') && ($document->analysis_config['schema'] ?? null) === DailyReportOutput::VERSION
+                && ($document->analysis_config['instructions_hash'] ?? null) === hash('sha256', DailyDocumentContract::instructions())
+                && ($document->analysis_config['schema_hash'] ?? null) === DailyReportSource::hash(DailyDocumentContract::schema()), 409);
             $document->update(['requested_by_user_id' => $viewer->id]);
             foreach ($document->units()->where('status', 'failed')->get() as $unit) {
                 if ($unit->attempts >= $document->analysis_config['max_attempts']) {
@@ -257,3 +266,4 @@ class DailyDocumentService
         return $recovered;
     }
 }
+
