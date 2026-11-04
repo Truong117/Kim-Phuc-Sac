@@ -249,7 +249,7 @@ test("focused reader keeps separate AI work lines, selected employee on reload a
     page.getByRole("heading", { name: "Nhân viên B", exact: true }),
   ).toBeVisible();
   expect(posts).toHaveLength(0);
-  await page.getByRole("button", { name: "Trang tiếp", exact: true }).click();
+  await page.getByRole("button", { name: "Trang sau", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "Nhân viên C", exact: true }),
   ).toBeVisible();
