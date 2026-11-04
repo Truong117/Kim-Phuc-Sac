@@ -55,9 +55,12 @@ test("daily report V3 preserves four sections through draft reload, mode switch 
   await resultField.fill("   ");
   await page.locator('form button[type="submit"]').click();
   await expect(
-    page.getByText("Vui lòng kiểm tra lại các công việc chưa hợp lệ.", {
-      exact: true,
-    }),
+    page.getByText(
+      "Vui lòng kiểm tra các trường được tô đỏ và hoàn thiện thông tin trước khi lưu.",
+      {
+        exact: true,
+      },
+    ),
   ).toBeVisible();
   expect(creations).toBe(0);
   await resultField.fill("2 video");

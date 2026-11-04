@@ -1,0 +1,24 @@
+import { defineConfig, devices } from "@playwright/test";
+
+// Isolated UI tests: all API calls are intercepted; no database or real login.
+export default defineConfig({
+  testDir: "./e2e",
+  testMatch: "report-validation-ui.spec.ts",
+  workers: 1,
+  timeout: 45_000,
+  expect: { timeout: 10_000 },
+  reporter: "list",
+  outputDir: "test-results/report-validation",
+  use: {
+    ...devices["Desktop Chrome"],
+    baseURL: "http://127.0.0.1:5176",
+    screenshot: "only-on-failure",
+    trace: "retain-on-failure",
+  },
+  webServer: {
+    command: "npm run dev -- --host 127.0.0.1 --port 5176 --strictPort",
+    url: "http://127.0.0.1:5176",
+    env: { VITE_API_BASE_URL: "/" },
+    reuseExistingServer: !process.env.CI,
+  },
+});
