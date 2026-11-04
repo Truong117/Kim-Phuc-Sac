@@ -32,6 +32,7 @@ interface QuickReportEditorProps {
   drafts: QuickReportDrafts;
   errors: Record<string, WorkItemValidationErrors>;
   batchError: string | null;
+  draftErrors?: Partial<Record<WorkStatus, string>>;
   disabled: boolean;
   onDraftChange: (status: WorkStatus, value: string) => void;
   onAddBatch: (status: WorkStatus) => void;
@@ -49,6 +50,7 @@ export default function QuickReportEditor({
   drafts,
   errors,
   batchError,
+  draftErrors = {},
   disabled,
   onDraftChange,
   onAddBatch,
@@ -161,6 +163,8 @@ export default function QuickReportEditor({
                   rows={4}
                   value={drafts[group.status]}
                   disabled={disabled}
+                  error={Boolean(draftErrors[group.status])}
+                  hint={draftErrors[group.status]}
                   placeholder={t(`groups.${groupKey}.placeholder`)}
                   onChange={(value) => onDraftChange(group.status, value)}
                 />

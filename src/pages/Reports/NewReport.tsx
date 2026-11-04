@@ -1,4 +1,9 @@
 import { normalizeNextDayPlan } from "@/utils/nextDayPlan";
+import {
+  focusFirstReportError,
+  mapReportFieldErrors,
+  type ReportFieldErrors,
+} from "@/utils/reportValidation";
 import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
 import {
   hasValidEvidenceLinks,
@@ -149,6 +154,13 @@ export default function NewReport({
     createEmptyQuickReportDrafts,
   );
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [draftErrors, setDraftErrors] = useState<
+    Partial<Record<WorkStatus, string>>
+  >({});
+  const [serverErrors, setServerErrors] = useState<ReportFieldErrors>({
+    items: {},
+  });
+  const reportSurfaceRef = useRef<HTMLDivElement>(null);
   const [recoveryText, setRecoveryText] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">(
     "idle",
@@ -173,6 +185,8 @@ export default function NewReport({
     setEditorMode("quick");
     setQuickDrafts(createEmptyQuickReportDrafts());
     setBatchError(null);
+    setDraftErrors({});
+    setServerErrors({ items: {} });
     setTouchedFields({});
     setSubmitAttempted(false);
   }, []);
@@ -262,6 +276,8 @@ export default function NewReport({
     setQuickDrafts({ ...draftData.quickDrafts });
     setEditorMode(draftData.editorMode);
     setBatchError(null);
+    setDraftErrors({});
+    setServerErrors({ items: {} });
     setRecoveryText(null);
     setCopyStatus("idle");
     setTouchedFields({});
@@ -348,6 +364,9 @@ export default function NewReport({
     );
 
   const validationErrors = validateItems(items);
+  for (const [clientId, errors] of Object.entries(serverErrors.items)) {
+    validationErrors[clientId] = { ...errors, ...validationErrors[clientId] };
+  }
 
   const describeBatchError = (batchIssue: QuickReportBatchError) => {
     if (batchIssue.code === "item_limit") {
@@ -383,6 +402,12 @@ export default function NewReport({
     clientId: string,
     changes: Partial<Omit<WorkItemFormData, "clientId">>,
   ) => {
+    setServerErrors((current) => {
+      const errors = { ...current.items[clientId] };
+      for (const field of Object.keys(changes))
+        delete errors[field as WorkItemField];
+      return { ...current, items: { ...current.items, [clientId]: errors } };
+    });
     setItems((current) =>
       current.map((item) =>
         item.clientId === clientId ? { ...item, ...changes } : item,
@@ -409,13 +434,38 @@ export default function NewReport({
   const appendQuickDrafts = (drafts: QuickReportDrafts) => {
     const candidate = buildCandidateItems(items, drafts, createClientId);
     if (!candidate.ok) {
-      setBatchError(describeBatchError(candidate.error));
+      showBatchError(candidate.error, drafts);
       return false;
     }
 
     setItems(candidate.items);
     setBatchError(null);
+    setDraftErrors({});
     return true;
+  };
+
+  const showBatchError = (
+    issue: QuickReportBatchError,
+    drafts: QuickReportDrafts,
+  ) => {
+    const message = describeBatchError(issue);
+    setBatchError(message);
+    setError(message);
+    setDraftErrors(
+      Object.fromEntries(
+        (["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const)
+          .filter((status) =>
+            issue.status ? status === issue.status : drafts[status].trim(),
+          )
+          .map((status) => [status, message]),
+      ),
+    );
+    focusFirstReportError(reportSurfaceRef.current);
+  };
+
+  const handlePlanChange = (value: string) => {
+    setNextDayPlan(value);
+    setServerErrors((current) => ({ ...current, plan: undefined }));
   };
 
   const handleAddBatch = (status: WorkStatus) => {
@@ -467,45 +517,41 @@ export default function NewReport({
 
     setSubmitAttempted(true);
     setError(null);
+    setServerErrors({ items: {} });
+    setDraftErrors({});
     setRecoveryText(null);
     setCopyStatus("idle");
 
     const candidate = buildCandidateItems(items, quickDrafts, createClientId);
     if (!candidate.ok) {
-      setBatchError(describeBatchError(candidate.error));
+      showBatchError(candidate.error, quickDrafts);
       return;
     }
 
     const candidateItems = candidate.items;
+    // Materialize pending quick entries once so errors point to editable fields.
+    setItems(candidateItems);
+    setQuickDrafts(createEmptyQuickReportDrafts());
     const candidateErrors = validateItems(candidateItems);
     if (!today) return;
     const normalizedPlan = normalizeNextDayPlan(nextDayPlan);
-    if (!normalizedPlan) {
-      setError(t("v3.planRequired"));
-      return;
-    }
-    if (Object.keys(candidateErrors).length > 0) {
-      const pendingResultMissing = candidateItems.some(
-        (item) =>
-          item.status === "COMPLETED" &&
-          !item.result.trim() &&
-          !items.some((saved) => saved.clientId === item.clientId),
-      );
-      setError(
-        t(
-          pendingResultMissing
-            ? "quick.errors.completedResultRequired"
-            : "validation.reviewItems",
-        ),
-      );
+    if (
+      !normalizedPlan ||
+      normalizedPlan.length > 5000 ||
+      Object.keys(candidateErrors).length > 0
+    ) {
+      if (
+        Object.values(candidateErrors).some(
+          (fields) => fields.status || fields.note,
+        )
+      )
+        setEditorMode("detailed");
+      setError(t("validation.reviewFields"));
+      focusFirstReportError(reportSurfaceRef.current);
       return;
     }
     setBatchError(null);
 
-    if (normalizedPlan.length > 5000) {
-      setError(t("v3.planTooLong"));
-      return;
-    }
     const input: SaveReportInput = {
       form_version: 3,
       next_day_plan: normalizedPlan,
@@ -546,11 +592,32 @@ export default function NewReport({
     } catch (submitError) {
       setSaveState({ status: "idle" });
       if (submitError instanceof ApiServiceError) {
+        if (submitError.status === 422) {
+          const fields = mapReportFieldErrors(
+            submitError.validationErrors,
+            candidateItems,
+          );
+          setServerErrors(fields);
+          if (
+            Object.values(fields.items).some(
+              (errors) => errors.status || errors.note,
+            )
+          )
+            setEditorMode("detailed");
+          setError(
+            fields.plan || Object.keys(fields.items).length > 0
+              ? t("validation.reviewFields")
+              : submitError.message || t("errors.save"),
+          );
+          focusFirstReportError(reportSurfaceRef.current);
+          return;
+        }
         setError(
           submitError.status === 0
             ? t("errors.network")
             : submitError.message || t("errors.save"),
         );
+        focusFirstReportError(reportSurfaceRef.current);
 
         if (submitError.status === 409) {
           reportDraft.suspend();
@@ -575,6 +642,7 @@ export default function NewReport({
         }
       } else {
         setError(t("errors.save"));
+        focusFirstReportError(reportSurfaceRef.current);
       }
     } finally {
       saveInFlightRef.current = false;
@@ -689,7 +757,7 @@ export default function NewReport({
           />
         </div>
       ) : today ? (
-        <div className="space-y-6">
+        <div ref={reportSurfaceRef} className="space-y-6">
           <ReportInfo
             employeeName={employeeName}
             department={department}
@@ -699,6 +767,8 @@ export default function NewReport({
           {error && (
             <div
               role="alert"
+              data-report-error-summary
+              tabIndex={-1}
               className="rounded-xl border border-error-200 bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:border-error-800 dark:bg-error-500/10 dark:text-error-300"
             >
               {error}
@@ -831,7 +901,11 @@ export default function NewReport({
                 </section>
               )}
 
-              <Form onSubmit={() => void handleSubmit()} className="space-y-6">
+              <Form
+                noValidate
+                onSubmit={() => void handleSubmit()}
+                className="space-y-6"
+              >
                 <section className="rounded-2xl border border-gray-200 bg-white p-2 shadow-theme-xs dark:border-gray-800 dark:bg-white/3">
                   <div
                     role="tablist"
@@ -888,8 +962,9 @@ export default function NewReport({
                         <ReportNextDayPlan
                           referenceDate={makeupDate}
                           showValidation={submitAttempted}
+                          serverError={serverErrors.plan}
                           value={nextDayPlan}
-                          onChange={setNextDayPlan}
+                          onChange={handlePlanChange}
                           disabled={isSaveFlowActive}
                         />
                       }
@@ -897,6 +972,7 @@ export default function NewReport({
                       drafts={quickDrafts}
                       errors={visibleErrors}
                       batchError={batchError}
+                      draftErrors={draftErrors}
                       disabled={isSaveFlowActive}
                       onDraftChange={(status, value) => {
                         setQuickDrafts((current) => ({
@@ -904,6 +980,10 @@ export default function NewReport({
                           [status]: value,
                         }));
                         setBatchError(null);
+                        setDraftErrors((current) => ({
+                          ...current,
+                          [status]: undefined,
+                        }));
                       }}
                       onAddBatch={handleAddBatch}
                       onItemChange={handleItemChange}
@@ -922,8 +1002,9 @@ export default function NewReport({
                         <ReportNextDayPlan
                           referenceDate={makeupDate}
                           showValidation={submitAttempted}
+                          serverError={serverErrors.plan}
                           value={nextDayPlan}
-                          onChange={setNextDayPlan}
+                          onChange={handlePlanChange}
                           disabled={isSaveFlowActive}
                         />
                       }

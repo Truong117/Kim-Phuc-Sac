@@ -137,6 +137,7 @@
       "maxLength": "Nội dung không được vượt quá {limit} ký tự.",
       "atLeastOne": "Nhập ít nhất một công việc hôm nay hoặc kế hoạch ngày mai.",
       "reviewItems": "Vui lòng kiểm tra lại các công việc chưa hợp lệ.",
+      "reviewFields": "Vui lòng kiểm tra các trường được tô đỏ và hoàn thiện thông tin trước khi lưu.",
       "resultRequired": "Vui lòng nhập kết quả của công việc đã hoàn thành."
     },
     "draft": {
