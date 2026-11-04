@@ -5,7 +5,7 @@ import PageMeta from "@/components/common/PageMeta";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import ComponentCard from "@/components/common/ComponentCard";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
-import DailyDocumentEmployee from "@/components/ai/DailyDocumentEmployee";
+import DailyDocumentReader from "@/components/ai/DailyDocumentReader";
 import Button from "@/components/ui/button/Button";
 import Badge from "@/components/ui/badge/Badge";
 import useDailyDocuments from "@/hooks/useDailyDocuments";
@@ -53,6 +53,7 @@ function DailyDocumentsView({
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   const [revision, setRevision] = useState(0);
+  const [selectedReportId, setSelectedReportId] = useState<number>();
   const [busy, setBusy] = useState(false);
   const [batchResult, setBatchResult] = useState<DailyDocumentBatch>();
   const [actionError, setActionError] = useState<string>();
@@ -161,20 +162,18 @@ function DailyDocumentsView({
               {t("coverageCount", { count: data.total })}
             </p>
             {data.reports.length === 0 && <p>{t("empty")}</p>}
-            {data.reports.map((row) => (
-              <DailyDocumentEmployee
-                key={row.report_id}
-                row={row}
-                busy={busy}
-                onRebuild={() =>
-                  void act(() => requestDailyDocument(row.report_id))
-                }
-                onRetry={() =>
-                  row.document &&
-                  void act(() => retryDailyDocument(row.document!.id))
-                }
-              />
-            ))}
+            <DailyDocumentReader
+              reports={data.reports}
+              selectedReportId={selectedReportId}
+              onSelect={setSelectedReportId}
+              busy={busy}
+              onRebuild={(reportId) =>
+                void act(() => requestDailyDocument(reportId))
+              }
+              onRetry={(documentId) =>
+                void act(() => retryDailyDocument(documentId))
+              }
+            />
             {data.last_page > 1 && (
               <nav
                 aria-label={t("pagination")}

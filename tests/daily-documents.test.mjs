@@ -4,7 +4,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { createServer } from "vite";
-let vite, Employee;
+let vite, Employee, Reader;
 before(async () => {
   vite = await createServer({
     appType: "custom",
@@ -14,6 +14,9 @@ before(async () => {
   await vite.ssrLoadModule("/src/i18n/index.ts");
   Employee = (
     await vite.ssrLoadModule("/src/components/ai/DailyDocumentEmployee.tsx")
+  ).default;
+  Reader = (
+    await vite.ssrLoadModule("/src/components/ai/DailyDocumentReader.tsx")
   ).default;
 });
 after(async () => {
@@ -93,14 +96,14 @@ const doc = (patch = {}) => ({
   ...patch,
 });
 
-test("employee cards start collapsed, show source counts and do not duplicate self-reported text", () => {
+test("focused report is visible, shows frozen source counts and does not duplicate self-reported text", () => {
   for (const document of [null, doc()]) {
     const html = render(document);
-    assert.match(html, /<details class="group">/);
+    assert.ok(!html.includes('<details class="group">'));
+    assert.match(html, /<h2[^>]*>Nhân viên thử<\/h2>/);
     assert.ok(!html.includes("<details open"));
     for (const text of [
       "Nhân viên thử",
-      "Xem kết quả",
       "Báo cáo bù",
       "Báo cáo #7",
       'href="/reports/7"',
@@ -151,10 +154,7 @@ test("partial errors retain explicit retry, while exhausted retries have a visib
   );
   assert.ok(exhausted.includes("Đã hết lượt thử lại cho bản này"));
   assert.ok(!exhausted.includes(">Thử lại phần lỗi<"));
-  assert.ok(
-    exhausted.indexOf("Đã hết lượt") >
-      exhausted.indexOf("</details></details>"),
-  );
+  assert.ok(exhausted.indexOf("Đã hết lượt") < exhausted.indexOf("<footer"));
   const changed = render(
     doc({
       requires_new_document: true,
@@ -186,7 +186,7 @@ test("source link and counts refer to the frozen report instead of changed curre
   assert.ok(html.includes("Công việc đang thực hiện: 0"));
   assert.ok(html.includes("Nguồn hiện tại đã khác"));
 });
-test("daily AI result uses four merged sections, with all sources in the footer", () => {
+test("daily AI result has one line per work group and four sections, with sources in the footer", () => {
   const html = render(
     doc({
       status: "completed",
@@ -237,15 +237,19 @@ test("daily AI result uses four merged sections, with all sources in the footer"
     }),
   );
   assert.deepEqual(
-    [...html.matchAll(/<h3[^>]*>(.*?)<\/h3>/g)].map(([, title]) => title),
+    [...html.matchAll(/<h3[^>]*>(.*?)<\/h3>/g)].map(([, title]) =>
+      title.replace(/<[^>]+>/g, "").trim(),
+    ),
     ["Tổng hợp từ báo cáo", "Cần làm rõ", "Nhận xét", "Đề xuất hỗ trợ"],
   );
   assert.equal((html.match(/<article\b/g) ?? []).length, 1);
   assert.ok(!html.includes("<h4"));
-  assert.ok(!html.includes("Nội dung truyền thông"));
-  assert.ok(
-    html.includes("&lt;script&gt;AI text&lt;/script&gt; Đang tìm ứng viên."),
-  );
+  assert.ok(html.includes("Nội dung truyền thông"));
+  const summary = sections(html)[0];
+  assert.equal((summary.match(/<li\b/g) ?? []).length, 2);
+  assert.ok(summary.includes("&lt;script&gt;AI text&lt;/script&gt;"));
+  assert.ok(summary.includes("Tuyển dụng"));
+  assert.ok(summary.includes("Đang tìm ứng viên."));
   assert.ok(!html.includes("<script>"));
   assert.ok(
     html.includes("Cần làm rõ việc duyệt. Công việc tuyển dụng đang tiếp tục."),
@@ -295,9 +299,9 @@ test("report quantities stay in the summary, while unresolved metrics stay in cl
     },
   ]);
   const [summary, clarification] = sections(html);
-  assert.ok(
-    summary.includes("Video đã đăng: 2 video; Khách đã tư vấn: 0 khách"),
-  );
+  const plainSummary = summary.replace(/<[^>]+>/g, "");
+  assert.ok(plainSummary.includes("Video đã đăng: 2 video"));
+  assert.ok(plainSummary.includes("Khách đã tư vấn: 0 khách"));
   assert.ok(!summary.includes("Doanh số lũy kế"));
   assert.ok(clarification.includes("Doanh số lũy kế"));
   assert.ok(clarification.includes("bg-warning-50"));
@@ -344,7 +348,11 @@ test("empty AI fields retain all four sections without fabricating review or sup
   const quantified = renderTotals([
     { metric: "Bài đã đăng", total: 1, unit: "bài", status: "confirmed" },
   ]);
-  assert.ok(sections(quantified)[0].includes("Bài đã đăng: 1 bài"));
+  assert.ok(
+    sections(quantified)[0]
+      .replace(/<[^>]+>/g, "")
+      .includes("Bài đã đăng: 1 bài"),
+  );
   assert.ok(
     sections(quantified)[1].includes("Chưa ghi nhận số liệu cần làm rõ."),
   );
@@ -389,4 +397,46 @@ test("rebuild is offered only for failed older contracts, never for exhausted cu
   );
   assert.ok(!completed.includes(">Tạo lại bằng bản sửa<"));
   assert.ok(!completed.includes("Bản lỗi dùng cấu hình"));
+});
+
+function readerHtml(reports, selectedReportId) {
+  return renderToStaticMarkup(
+    React.createElement(
+      MemoryRouter,
+      null,
+      React.createElement(Reader, {
+        reports,
+        selectedReportId,
+        busy: false,
+        onSelect() {},
+        onRetry() {},
+        onRebuild() {},
+      }),
+    ),
+  );
+}
+function sampleRows() {
+  return [7, 8].map((id) => ({
+    report_id: id,
+    employee_name: `Nhân viên ${id}`,
+    source: { ...source, report_id: id },
+    source_changed: false,
+    document: doc({ source: { ...source, report_id: id } }),
+  }));
+}
+test("reader selects only one report and shows its source, while keeping all employees available", () => {
+  const html = readerHtml(sampleRows(), 8);
+  assert.equal((html.match(/<article\b/g) ?? []).length, 1);
+  assert.match(html, /<h2[^>]*>Nhân viên 8<\/h2>/);
+  assert.ok(html.includes('href="/reports/8"'));
+  assert.ok(!html.includes('href="/reports/7"'));
+  assert.ok(html.includes("Nhân viên 7"));
+  assert.ok(html.includes('aria-pressed="true"'));
+  assert.ok(html.includes("<select"));
+  assert.match(html, /<option(?=[^>]*value="8")(?=[^>]*selected="")[^>]*>/);
+});
+test("reader falls back when a saved selection disappears and handles empty pages", () => {
+  const html = readerHtml(sampleRows(), 999);
+  assert.match(html, /<h2[^>]*>Nhân viên 7<\/h2>/);
+  assert.equal(readerHtml([], 7), "");
 });

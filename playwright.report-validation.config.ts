@@ -3,7 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 // Isolated UI tests: all API calls are intercepted; no database or real login.
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "report-validation-ui.spec.ts",
+  testMatch: [
+    "report-validation-ui.spec.ts",
+    "daily-document-reader-ui.spec.ts",
+  ],
   workers: 1,
   timeout: 45_000,
   expect: { timeout: 10_000 },
