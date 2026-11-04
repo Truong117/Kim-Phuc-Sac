@@ -2,7 +2,6 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import viCommon from "../locales/vi/common.json";
-import integrationsUi from "../locales/vi/integrations.json";
 import {
   defaultLocale,
   getLanguage,
@@ -12,7 +11,7 @@ import {
 
 export const resources = {
   vi: {
-    common: { ...viCommon, integrationsUi },
+    common: viCommon,
   },
 } as const;
 
