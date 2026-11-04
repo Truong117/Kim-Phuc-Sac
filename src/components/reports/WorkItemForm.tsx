@@ -134,7 +134,13 @@ export default function WorkItemForm({
           </div>
         </ReportFieldRow>
 
-        <fieldset>
+        <fieldset
+          className={
+            errors?.status
+              ? "rounded-lg border border-error-500 p-3 dark:border-error-400"
+              : undefined
+          }
+        >
           <legend className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-400">
             {t("status.label")} <span className="text-error-500">*</span>
           </legend>
@@ -161,6 +167,12 @@ export default function WorkItemForm({
                     }
                     onBlur={() => onBlur(item.clientId, "status")}
                     className="sr-only"
+                    aria-invalid={Boolean(errors?.status) || undefined}
+                    aria-describedby={
+                      errors?.status
+                        ? `status-${item.clientId}-hint`
+                        : undefined
+                    }
                   />
                   {status.icon}
                   <span>{status.label}</span>
@@ -169,7 +181,12 @@ export default function WorkItemForm({
             })}
           </div>
           {errors?.status && (
-            <p className="mt-2 text-sm text-error-500">{errors.status}</p>
+            <p
+              id={`status-${item.clientId}-hint`}
+              className="mt-2 text-sm text-error-500"
+            >
+              {errors.status}
+            </p>
           )}
         </fieldset>
 

@@ -10,6 +10,7 @@ export default function ReportNextDayPlan({
   readOnly = false,
   referenceDate,
   showValidation = false,
+  serverError,
 }: {
   value: string;
   onChange?: (value: string) => void;
@@ -17,15 +18,18 @@ export default function ReportNextDayPlan({
   readOnly?: boolean;
   referenceDate?: string;
   showValidation?: boolean;
+  serverError?: string;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport.v3" });
   const [touched, setTouched] = useState(false);
   const normalized = normalizeNextDayPlan(value);
-  const error = !normalized
-    ? t("planRequired")
-    : normalized.length > 5000
-      ? t("planTooLong")
-      : undefined;
+  const error =
+    serverError ??
+    (!normalized
+      ? t("planRequired")
+      : normalized.length > 5000
+        ? t("planTooLong")
+        : undefined);
   return (
     <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
       <h2 className="font-semibold text-gray-900 dark:text-white">
