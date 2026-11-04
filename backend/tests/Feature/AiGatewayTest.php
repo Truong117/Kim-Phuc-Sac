@@ -103,15 +103,16 @@ class AiGatewayTest extends TestCase
             ['Private provider response', 'unsupported_country_region_territory', 'region_denied', []],
             ['test-openai-key private passages', 'sk-do-not-log-this', 'forbidden_unclassified', []],
         ];
+        Log::spy();
+        $sequence = Http::sequence();
+        foreach ($cases as $index => [$message, $code]) {
+            $sequence->push([
+                'error' => ['message' => $message, 'code' => $code, 'type' => 'invalid_request_error'],
+                'private_data' => 'must-not-be-logged',
+            ], 403, ['x-request-id' => 'req_diagnostic_'.$index]);
+        }
+        Http::fake(['api.openai.test/v1/responses' => $sequence]);
         foreach ($cases as $index => [$message, $code, $reason, $scopes]) {
-            Log::spy();
-            Http::fake([
-                'api.openai.test/v1/responses' => Http::response([
-                    'error' => ['message' => $message, 'code' => $code, 'type' => 'invalid_request_error'],
-                    'private_data' => 'must-not-be-logged',
-                ], 403, ['x-request-id' => 'req_diagnostic_'.$index]),
-            ]);
-
             try {
                 app(OpenAiGateway::class)->respond(
                     $this->request($organizationId, $user->id, 'permission-diagnostic-'.$index),
@@ -135,7 +136,7 @@ class AiGatewayTest extends TestCase
                         && ! str_contains($serialized, 'must-not-be-logged');
                 },
             ))->once();
-            Http::assertSentCount(1);
+            Http::assertSentCount($index + 1);
         }
         $this->assertDatabaseHas('ai_budget_periods', [
             'reserved_cost_microusd' => 0,
