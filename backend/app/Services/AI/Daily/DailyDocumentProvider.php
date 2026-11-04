@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\AI\AiGatewayException;
 use App\Services\AI\AiGatewayRequest;
 use App\Services\AI\OpenAiGateway;
+use App\Services\AI\WorkReportGroupedWork;
 use App\Services\AI\WorkReportSnapshot;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -45,17 +46,24 @@ class DailyDocumentProvider
         $stage = 'bind_redacted';
         try {
             $redacted = DailyEvidence::bind($response->result, $input);
-            $stage = 'validate_redacted';
+            $stage = 'validate_redacted_groups';
+            WorkReportGroupedWork::validate($redacted['work_groups'], [$input]);
+            $stage = 'validate_redacted_details';
             DailyReportOutput::validate($redacted, $input);
             $stage = 'bind_original';
             $original = DailyEvidence::bind($response->result, $source);
-            $stage = 'validate_original';
+            $stage = 'validate_original_groups';
+            WorkReportGroupedWork::validate($original['work_groups'], [$source]);
+            $stage = 'validate_original_details';
 
             return DailyReportOutput::validate($original, $source);
         } catch (Throwable $e) {
             Log::warning('daily_document_validation_rejected', [
                 'document_id' => $document->id, 'unit_id' => $unit->id,
                 'usage_record_id' => $response->usageRecordId, 'stage' => $stage,
+                'reason' => in_array($e->getMessage(), ['AI_INVALID_EVIDENCE', 'AI_INVALID_SCHEMA', 'AI_INCOMPLETE_INVENTORY', 'AI_QUANTITY_PRECISION'], true)
+                    ? $e->getMessage() : 'AI_DAILY_PROCESSING_FAILED',
+                'source_item_count' => count($source['items']),
             ]);
             $gateway->rejectCompletedResult($response->usageRecordId, 'AI_INVALID_EVIDENCE');
             throw $e;

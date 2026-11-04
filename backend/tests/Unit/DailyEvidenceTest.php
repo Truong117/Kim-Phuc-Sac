@@ -104,22 +104,43 @@ class DailyEvidenceTest extends TestCase
         DailyReportOutput::validate(DailyEvidence::bind($this->sampleOutput(), $source), $source);
     }
 
-    public function test_missing_inventory_and_duplicate_references_still_fail_closed(): void
+    public function test_missing_inventory_still_fails_closed(): void
     {
-        foreach (['missing', 'duplicate'] as $case) {
-            $output = $this->sampleOutput();
-            if ($case === 'missing') {
-                $output['work_groups'] = [];
-            } else {
-                $output['work_groups'][0]['evidence'][] = $output['work_groups'][0]['evidence'][0];
-            }
-            try {
-                DailyReportOutput::validate(DailyEvidence::bind($output, $this->source()), $this->source());
-                $this->fail('Inventory validation must not be bypassed');
-            } catch (RuntimeException $e) {
-                $this->assertSame($case === 'missing' ? 'AI_INCOMPLETE_INVENTORY' : 'AI_INVALID_EVIDENCE', $e->getMessage());
-            }
+        $output = $this->sampleOutput();
+        $output['work_groups'] = [];
+        $this->expectExceptionMessage('AI_INCOMPLETE_INVENTORY');
+        DailyReportOutput::validate(DailyEvidence::bind($output, $this->source()), $this->source());
+    }
+
+    public function test_overlapping_valid_groups_merge_with_every_item_once_and_without_duplicating_totals(): void
+    {
+        $source = $this->source();
+        $source['items'][] = [...$source['items'][0], 'item_id' => 10, 'content' => 'Công việc thứ hai'];
+        $source['items'][] = [...$source['items'][0], 'item_id' => 11, 'content' => 'Công việc thứ ba'];
+        $ref = fn ($id, $field = 'content') => ['report_id' => 7, 'item_id' => $id, 'field' => $field];
+        $group = fn ($title, $refs) => ['title' => $title, 'text' => $title, 'evidence' => $refs];
+        $output = $this->sampleOutput();
+        $output['work_groups'] = [
+            $group('Nhóm A', [$ref(9), $ref(9, 'result')]),
+            $group('Nhóm B', [$ref(10)]),
+            $group('Nhóm nối', [$ref(9), $ref(10), $ref(11)]),
+        ];
+        $bound = DailyEvidence::bind($output, $source);
+        $this->assertCount(1, $bound['work_groups']);
+        $this->assertEqualsCanonicalizing([9, 10, 11], array_column($bound['work_groups'][0]['evidence'], 'item_id'));
+        foreach (['Nhóm A', 'Nhóm B', 'Nhóm nối'] as $text) {
+            $this->assertStringContainsString($text, $bound['work_groups'][0]['text']);
         }
+        $result = DailyReportOutput::assemble([$bound], $source);
+        $this->assertEquals(2, $result['work_totals'][0]['total']);
+    }
+
+    public function test_group_normalization_does_not_hide_empty_or_malformed_groups(): void
+    {
+        $output = $this->sampleOutput();
+        $output['work_groups'][] = ['title' => 'Trống', 'text' => 'Không có nguồn', 'evidence' => []];
+        $this->expectExceptionMessage('AI_INVALID_SCHEMA');
+        DailyEvidence::bind($output, $this->source());
     }
 
     public function test_planned_or_cumulative_numbers_are_not_promoted_to_confirmed_totals(): void

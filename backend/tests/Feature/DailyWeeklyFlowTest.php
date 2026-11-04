@@ -278,15 +278,22 @@ class DailyWeeklyFlowTest extends TestCase
             $id = $input['items'][0]['item_id'];
             $result = ['work_groups' => [['title' => 'Nội dung video', 'text' => 'Đã gửi video, đang chờ duyệt.', 'evidence' => [
                 ['report_id' => $input['report_id'], 'item_id' => $id, 'field' => 'content'],
+                ['report_id' => $input['report_id'], 'item_id' => $id, 'field' => 'result'],
             ]]], 'observations' => [['metric' => 'Video đã gửi', 'unit' => 'video', 'quantity' => 2,
                 'basis' => 'incremental', 'report_id' => $input['report_id'], 'item_id' => $id, 'field' => 'result']],
                 'comments' => [['text' => 'Cần duyệt nội dung', 'item_id' => $id, 'field' => 'issue']], 'recommendations' => []];
+
+            $result['work_groups'][] = ['title' => 'Phê duyệt', 'text' => 'Đang chờ duyệt.', 'evidence' => [
+                ['report_id' => $input['report_id'], 'item_id' => $id, 'field' => 'issue'],
+            ]];
 
             return Http::response(['status' => 'completed', 'usage' => ['input_tokens' => 100, 'output_tokens' => 100],
                 'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode($result)]]]]]);
         }]);
         $document = $this->daily($owner, $report);
         $this->assertSame('completed', $document->status);
+        $this->assertCount(1, $document->result['work_groups']);
+        $this->assertCount(1, $document->result['work_groups'][0]['evidence']);
         $this->assertSame('Gửi video cho '.$owner->email, $document->result['work_groups'][0]['evidence'][0]['quote']);
         $this->assertEquals(2, $document->result['work_totals'][0]['total']);
         $this->assertSame('Chờ duyệt', $document->result['comments'][0]['quote']);
