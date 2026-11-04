@@ -186,7 +186,7 @@ test("source link and counts refer to the frozen report instead of changed curre
   assert.ok(html.includes("Công việc đang thực hiện: 0"));
   assert.ok(html.includes("Nguồn hiện tại đã khác"));
 });
-test("AI grouped work is escaped and shown before metrics and assessment, with source references", () => {
+test("daily AI result uses four merged sections, with all sources in the footer", () => {
   const html = render(
     doc({
       status: "completed",
@@ -200,6 +200,11 @@ test("AI grouped work is escaped and shown before metrics and assessment, with s
             text: "<script>AI text</script>",
             evidence: [{ report_id: 7, item_id: 9, quote: "Đã đăng 2 video" }],
           },
+          {
+            title: "Tuyển dụng",
+            text: "Đang tìm ứng viên.",
+            evidence: [{ report_id: 7, item_id: 10, quote: "Đang dựng" }],
+          },
         ],
         work_totals: [
           {
@@ -210,25 +215,139 @@ test("AI grouped work is escaped and shown before metrics and assessment, with s
           },
         ],
         comments: [
-          { item_id: 9, text: "Cần làm rõ việc duyệt", quote: "Chờ duyệt" },
+          {
+            item_id: 9,
+            text: "Cần làm rõ việc duyệt.",
+            quote: "Đã đăng 2 video",
+          },
+          {
+            item_id: 10,
+            text: "Công việc tuyển dụng đang tiếp tục.",
+            quote: "Đang dựng",
+          },
         ],
-        recommendations: [],
+        recommendations: [
+          {
+            item_id: 9,
+            text: "Đề nghị người phụ trách xác nhận nội dung.",
+            quote: "Chờ duyệt",
+          },
+        ],
       },
     }),
   );
-  assert.ok(html.includes("bg-success-50"));
-  assert.ok(html.includes("&lt;script&gt;AI text&lt;/script&gt;"));
+  assert.deepEqual(
+    [...html.matchAll(/<h3[^>]*>(.*?)<\/h3>/g)].map(([, title]) => title),
+    ["Tổng hợp từ báo cáo", "Cần làm rõ", "Nhận xét", "Đề xuất hỗ trợ"],
+  );
+  assert.equal((html.match(/<article\b/g) ?? []).length, 1);
+  assert.ok(!html.includes("<h4"));
+  assert.ok(!html.includes("Nội dung truyền thông"));
+  assert.ok(
+    html.includes("&lt;script&gt;AI text&lt;/script&gt; Đang tìm ứng viên."),
+  );
   assert.ok(!html.includes("<script>"));
-  assert.ok(html.includes("Cần xác nhận"));
+  assert.ok(
+    html.includes("Cần làm rõ việc duyệt. Công việc tuyển dụng đang tiếp tục."),
+  );
+  assert.ok(html.includes("Đề nghị người phụ trách xác nhận nội dung."));
   assert.ok(!html.includes("null video"));
+  assert.ok(html.indexOf('href="/reports/7"') > html.lastIndexOf("</section>"));
   assert.ok(
-    html.indexOf("Nội dung truyền thông") < html.indexOf("Số liệu có căn cứ"),
+    html.indexOf("Đối chiếu nguồn báo cáo") > html.lastIndexOf("</section>"),
   );
-  assert.ok(
-    html.indexOf("Số liệu có căn cứ") < html.indexOf("Cần làm rõ việc duyệt"),
+  // Repeated citations are consolidated, while a distinct quotation is retained.
+  assert.equal(
+    (html.match(/href="\/reports\/7#work-item-9"/g) ?? []).length,
+    2,
   );
-  assert.ok(html.includes('href="/reports/7#work-item-9"'));
+  assert.equal(
+    (html.match(/href="\/reports\/7#work-item-10"/g) ?? []).length,
+    1,
+  );
   assert.ok(!html.includes("Đã hết lượt"));
+});
+
+function renderTotals(work_totals) {
+  return render(
+    doc({
+      status: "completed",
+      units: [],
+      result: { work_totals, comments: [], recommendations: [] },
+    }),
+  );
+}
+function sections(html) {
+  return [...html.matchAll(/<section\b[^>]*>[\s\S]*?<\/section>/g)].map(
+    ([section]) => section,
+  );
+}
+
+test("report quantities stay in the summary, while unresolved metrics stay in clarification", () => {
+  const html = renderTotals([
+    { metric: "Video đã đăng", total: 2, unit: "video", status: "confirmed" },
+    { metric: "Khách đã tư vấn", total: 0, unit: "khách", status: "confirmed" },
+    {
+      metric: "Doanh số lũy kế",
+      total: null,
+      unit: "đồng",
+      status: "needs_confirmation",
+    },
+  ]);
+  const [summary, clarification] = sections(html);
+  assert.ok(
+    summary.includes("Video đã đăng: 2 video; Khách đã tư vấn: 0 khách"),
+  );
+  assert.ok(!summary.includes("Doanh số lũy kế"));
+  assert.ok(clarification.includes("Doanh số lũy kế"));
+  assert.ok(clarification.includes("bg-warning-50"));
+  assert.ok(!clarification.includes("Video đã đăng"));
+  assert.ok(!html.includes("Số liệu có căn cứ"));
+});
+
+test("numeric values never promote unresolved or inconsistent metrics into the summary", () => {
+  const html = renderTotals([
+    {
+      metric: "Doanh số cần làm rõ",
+      total: 999,
+      unit: "đồng",
+      status: "needs_confirmation",
+    },
+    {
+      metric: "Chưa đủ dữ liệu",
+      total: null,
+      unit: "bài",
+      status: "confirmed",
+    },
+    { metric: "Không hợp lệ", total: -1, unit: "bài", status: "confirmed" },
+  ]);
+  const [summary, clarification] = sections(html);
+  assert.ok(!summary.includes("Số liệu ghi nhận"));
+  for (const metric of [
+    "Doanh số cần làm rõ",
+    "Chưa đủ dữ liệu",
+    "Không hợp lệ",
+  ])
+    assert.ok(clarification.includes(metric));
+  assert.ok(!html.includes("999 đồng"));
+  assert.ok(!html.includes("null bài"));
+});
+
+test("empty AI fields retain all four sections without fabricating review or support", () => {
+  const html = renderTotals([]);
+  assert.equal(sections(html).length, 4);
+  assert.ok(html.includes("Bản này chưa có nội dung tổng hợp công việc"));
+  assert.ok(html.includes("Chưa ghi nhận số liệu cần làm rõ."));
+  assert.ok(html.includes("Chưa có nhận xét AI cho bản tổng hợp này."));
+  assert.ok(html.includes("Chưa có đề xuất hỗ trợ AI cho bản tổng hợp này."));
+  assert.ok(!html.includes("Số liệu ghi nhận"));
+  const quantified = renderTotals([
+    { metric: "Bài đã đăng", total: 1, unit: "bài", status: "confirmed" },
+  ]);
+  assert.ok(sections(quantified)[0].includes("Bài đã đăng: 1 bài"));
+  assert.ok(
+    sections(quantified)[1].includes("Chưa ghi nhận số liệu cần làm rõ."),
+  );
 });
 
 test("rebuild is offered only for failed older contracts, never for exhausted current or completed documents", () => {
