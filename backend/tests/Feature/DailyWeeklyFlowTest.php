@@ -315,4 +315,3 @@ class DailyWeeklyFlowTest extends TestCase
         Http::assertSentCount(1);
     }
 }
-

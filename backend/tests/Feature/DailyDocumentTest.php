@@ -388,4 +388,3 @@ class DailyDocumentTest extends TestCase
         Queue::assertNothingPushed();
     }
 }
-

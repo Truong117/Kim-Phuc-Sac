@@ -42,4 +42,3 @@ final class DailyDocumentContract
         return ['type' => 'object', 'properties' => $properties, 'required' => array_keys($properties), 'additionalProperties' => false];
     }
 }
-

@@ -96,12 +96,40 @@ class DailyEvidenceTest extends TestCase
         DailyEvidence::bind($this->output(), $source);
     }
 
-    public function test_plans_in_progress_items_missing_inventory_and_duplicates_are_not_accepted(): void
+    public function test_in_progress_items_cannot_contribute_completed_quantities(): void
     {
         $source = $this->source();
         $source['items'][0]['status'] = 'IN_PROGRESS';
         $this->expectException(RuntimeException::class);
         DailyReportOutput::validate(DailyEvidence::bind($this->output(), $source), $source);
     }
-}
 
+    public function test_missing_inventory_and_duplicate_references_still_fail_closed(): void
+    {
+        foreach (['missing', 'duplicate'] as $case) {
+            $output = $this->output();
+            if ($case === 'missing') {
+                $output['work_groups'] = [];
+            } else {
+                $output['work_groups'][0]['evidence'][] = $output['work_groups'][0]['evidence'][0];
+            }
+            try {
+                DailyReportOutput::validate(DailyEvidence::bind($output, $this->source()), $this->source());
+                $this->fail('Inventory validation must not be bypassed');
+            } catch (RuntimeException $e) {
+                $this->assertSame($case === 'missing' ? 'AI_INCOMPLETE_INVENTORY' : 'AI_INVALID_EVIDENCE', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_planned_or_cumulative_numbers_are_not_promoted_to_confirmed_totals(): void
+    {
+        foreach (['Dự kiến đăng 2 video', 'Lũy kế đã đăng 2 video'] as $text) {
+            $source = $this->source();
+            $source['items'][0]['result'] = $text;
+            $result = DailyReportOutput::assemble([DailyEvidence::bind($this->output(), $source)], $source);
+            $this->assertNull($result['work_totals'][0]['total']);
+            $this->assertSame('needs_confirmation', $result['work_totals'][0]['status']);
+        }
+    }
+}

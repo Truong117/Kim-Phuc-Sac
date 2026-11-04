@@ -154,8 +154,7 @@ class DailyDocumentService
                 // A failed older provider contract is rebuilt only by an explicit per-report action.
                 $hash = DailyReportSource::hash(DailyReportSource::capture($report));
                 $document = DailyReportAiDocument::query()->where('daily_report_id', $report->id)
-                    ->where('source_hash', $hash)->orderByDesc('id')->get()->first(fn ($candidate) =>
-                        ($candidate->analysis_config['schema'] ?? null) === $settings['schema']
+                    ->where('source_hash', $hash)->orderByDesc('id')->get()->first(fn ($candidate) => ($candidate->analysis_config['schema'] ?? null) === $settings['schema']
                         && ($candidate->analysis_config['driver'] ?? null) === $settings['driver']);
                 $document ??= $this->allocate($viewer, $report, $settings);
                 $counts[$document->wasRecentlyCreated ? 'created' : 'reused']++;
@@ -266,4 +265,3 @@ class DailyDocumentService
         return $recovered;
     }
 }
-

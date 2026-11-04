@@ -81,4 +81,3 @@ final class DailyEvidence
         throw new RuntimeException('AI_INVALID_EVIDENCE');
     }
 }
-
