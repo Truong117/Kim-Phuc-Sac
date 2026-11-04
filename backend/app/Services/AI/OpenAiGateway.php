@@ -766,6 +766,54 @@ class OpenAiGateway
         return preg_match('/^[a-zA-Z0-9._-]{1,64}$/', $value) === 1 ? $value : null;
     }
 
+    /** Only fixed diagnostic labels may leave an error response; never log its message/body. */
+    private function providerErrorMetadata(Response $response): array
+    {
+        if ($response->successful()) {
+            return [];
+        }
+
+        $code = $response->json('error.code');
+        $type = $response->json('error.type');
+        $message = $response->json('error.message');
+        $message = is_string($message) ? strtolower($message) : '';
+        $missingScopes = [];
+        if (str_contains($message, 'missing scope')) {
+            foreach (['model.request', 'api.model.request', 'api.responses.write', 'api.responses.read'] as $scope) {
+                if (preg_match('/(?<![a-z0-9_.])'.preg_quote($scope, '/').'(?![a-z0-9_.])/', $message) === 1) {
+                    $missingScopes[] = $scope;
+                }
+            }
+        }
+
+        $reason = match (true) {
+            $missingScopes !== [] => 'missing_scopes',
+            in_array($code, ['unsupported_country_region_territory', 'unsupported_country'], true) => 'region_denied',
+            in_array($code, ['model_not_found', 'model_access_denied'], true)
+                || str_contains($message, 'does not have access to model') => 'model_access_denied',
+            in_array($code, ['invalid_api_key', 'revoked_api_key'], true) => 'credential_rejected',
+            in_array($code, ['ip_not_authorized', 'ip_not_allowed'], true) => 'ip_denied',
+            $response->status() === 403 => 'forbidden_unclassified',
+            default => 'provider_error',
+        };
+        $requestId = $response->header('x-request-id');
+
+        return [
+            'provider_error_code' => in_array($code, [
+                'unsupported_country_region_territory', 'unsupported_country', 'model_not_found',
+                'model_access_denied', 'invalid_api_key', 'revoked_api_key', 'ip_not_authorized',
+                'ip_not_allowed', 'insufficient_permissions', 'permission_denied',
+            ], true) ? $code : null,
+            'provider_error_type' => in_array($type, [
+                'invalid_request_error', 'permission_error', 'authentication_error', 'server_error',
+            ], true) ? $type : null,
+            'provider_error_reason' => $reason,
+            'missing_scopes' => $missingScopes,
+            'provider_request_id' => is_string($requestId)
+                && preg_match('/^req_[a-zA-Z0-9_-]{1,100}$/D', $requestId) === 1 ? $requestId : null,
+        ];
+    }
+
     private function logProviderMetadata(
         AiUsageRecord $record,
         Response $response,
@@ -787,6 +835,7 @@ class OpenAiGateway
             'incomplete_reason' => $this->safeProviderMetadataValue(
                 $response->json('incomplete_details.reason'),
             ),
+            ...$this->providerErrorMetadata($response),
         ]);
     }
 

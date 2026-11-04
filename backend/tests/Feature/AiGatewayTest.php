@@ -93,6 +93,56 @@ class AiGatewayTest extends TestCase
         ]);
     }
 
+    public function test_provider_permission_failures_log_fixed_reasons_without_response_secrets(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        $cases = [
+            ['You have insufficient permissions. Missing scopes: model.request. test-openai-key private passages', null, 'missing_scopes', ['model.request']],
+            ['Missing scopes: api.responses.write.', 'insufficient_permissions', 'missing_scopes', ['api.responses.write']],
+            ['Project private-project does not have access to model gpt-6-luna', 'model_not_found', 'model_access_denied', []],
+            ['Private provider response', 'unsupported_country_region_territory', 'region_denied', []],
+            ['test-openai-key private passages', 'sk-do-not-log-this', 'forbidden_unclassified', []],
+        ];
+        foreach ($cases as $index => [$message, $code, $reason, $scopes]) {
+            Log::spy();
+            Http::fake([
+                'api.openai.test/v1/responses' => Http::response([
+                    'error' => ['message' => $message, 'code' => $code, 'type' => 'invalid_request_error'],
+                    'private_data' => 'must-not-be-logged',
+                ], 403, ['x-request-id' => 'req_diagnostic_'.$index]),
+            ]);
+
+            try {
+                app(OpenAiGateway::class)->respond(
+                    $this->request($organizationId, $user->id, 'permission-diagnostic-'.$index),
+                );
+                $this->fail('Expected provider permission failure.');
+            } catch (AiGatewayException $exception) {
+                $this->assertSame('AI_AUTHENTICATION_FAILED', $exception->errorCode);
+            }
+
+            Log::shouldHaveReceived('info')->with('ai_gateway_provider_metadata', Mockery::on(
+                function (array $context) use ($index, $reason, $scopes): bool {
+                    $serialized = json_encode($context, JSON_THROW_ON_ERROR);
+
+                    return $context['provider_error_reason'] === $reason
+                        && $context['missing_scopes'] === $scopes
+                        && $context['provider_request_id'] === 'req_diagnostic_'.$index
+                        && ! str_contains($serialized, 'test-openai-key')
+                        && ! str_contains($serialized, 'private passages')
+                        && ! str_contains($serialized, 'private-project')
+                        && ! str_contains($serialized, 'sk-do-not-log-this')
+                        && ! str_contains($serialized, 'must-not-be-logged');
+                },
+            ))->once();
+            Http::assertSentCount(1);
+        }
+        $this->assertDatabaseHas('ai_budget_periods', [
+            'reserved_cost_microusd' => 0,
+            'spent_cost_microusd' => 0,
+        ]);
+    }
+
     public function test_daily_report_openai_adapter_reuses_the_gateway_contract(): void
     {
         [$user, $organizationId] = $this->userContext();
