@@ -11,6 +11,7 @@ import Overview from "./pages/Dashboard/Overview";
 import EmployeeCreate from "./pages/Employees/EmployeeCreate";
 import EmployeeEdit from "./pages/Employees/EmployeeEdit";
 import EmployeeList from "./pages/Employees/EmployeeList";
+import Integrations from "./pages/Integrations/Integrations";
 import ModulePlaceholder from "./pages/OtherPage/ModulePlaceholder";
 import NotFound from "./pages/OtherPage/NotFound";
 import Profile from "./pages/Profile/Profile";
@@ -149,12 +150,7 @@ export default function App() {
               <Route
                 element={<AuthorizationRoute navigationKey="integrations" />}
               >
-                <Route
-                  path="/integrations"
-                  element={
-                    <ModulePlaceholder titleKey="modules.integrations" />
-                  }
-                />
+                <Route path="/integrations" element={<Integrations />} />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="settings" />}>
                 <Route
