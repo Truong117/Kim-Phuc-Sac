@@ -15,6 +15,7 @@ use App\Services\Social\SocialMetricsRead;
 use App\Services\Social\SocialMetricsSync;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -338,7 +339,7 @@ class SocialMetricsTest extends TestCase
     public function test_public_login_wall_has_a_finite_safe_result_and_progress(): void
     {
         $this->connect();
-        Http::swap(new \Illuminate\Http\Client\Factory);
+        Http::swap(new Factory);
         Http::preventStrayRequests();
         Http::fake([
             'https://graph.facebook.com/v26.0/100/published_posts*' => Http::response(['data' => [
