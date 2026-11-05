@@ -105,7 +105,7 @@ test("shared API CRUD persists after reload and failures preserve form input", a
   expect(api.writes()).toBe(1);
   await page.reload();
   await expect(
-    page.getByRole("cell", { name: "Kế hoạch Marketing", exact: false }),
+    page.getByRole("cell", { name: /^Kế hoạch Marketing https:/ }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Chỉnh sửa: Kế hoạch Marketing", exact: true })
