@@ -1,9 +1,36 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { apiRequest } from "@/services/apiClient";
+import { apiRequest, ApiServiceError } from "@/services/apiClient";
 import Button from "@/components/ui/button/Button";
-import Input from "@/components/form/input/InputField";
-import Label from "@/components/form/Label";
+import SocialConnectionForm, {
+  type SocialCredentials,
+} from "./SocialConnectionForm";
+
+const socialErrorKeys: Readonly<Record<string, string>> = {
+  SOCIAL_RECONNECT_REQUIRED: "integrationsUi.social.errors.reconnectRequired",
+  SOCIAL_RATE_LIMITED: "integrationsUi.social.errors.rateLimited",
+  SOCIAL_NOT_CONFIGURED: "integrationsUi.social.errors.notConfigured",
+  SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE:
+    "integrationsUi.social.errors.permissionOrObject",
+  SOCIAL_PROVIDER_UNAVAILABLE:
+    "integrationsUi.social.errors.providerUnavailable",
+  SOCIAL_PRINCIPAL_UNAVAILABLE:
+    "integrationsUi.social.errors.principalUnavailable",
+};
+
+function actionErrorKey(error: unknown): string {
+  if (error instanceof ApiServiceError) {
+    if (error.status === 429) return "integrationsUi.social.errors.rateLimited";
+    if (error.validationErrors?.page_id)
+      return "integrationsUi.social.errors.invalidPageId";
+    if (error.validationErrors?.access_token)
+      return "integrationsUi.social.errors.invalidToken";
+    if (error.code && socialErrorKeys[error.code])
+      return socialErrorKeys[error.code];
+    if (error.status === 409) return "integrationsUi.social.errors.conflict";
+  }
+  return "integrationsUi.social.actionError";
+}
 interface Metrics {
   likes: number | null;
   comments: number | null;
@@ -52,8 +79,8 @@ export default function SocialMetricsPanel({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
-  const [pageId, setPageId] = useState("");
-  const [token, setToken] = useState("");
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [actionFailed, setActionFailed] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     apiRequest<{ data: SocialData }>(
@@ -81,20 +108,24 @@ export default function SocialMetricsPanel({
     setLoading(true);
     setReload((value) => value + 1);
   }
-  async function action(kind: "connect" | "disconnect" | "sync") {
-    if (busy) return;
+  async function action(
+    kind: "connect" | "disconnect" | "sync",
+    credentials?: SocialCredentials,
+  ) {
+    if (busy || (kind === "connect" && !credentials)) return;
     setBusy(true);
     setMessage("");
+    setActionFailed(false);
     try {
       await apiRequest(
         `/api/integrations/${entryId}/social/${kind === "sync" ? "sync" : "connect"}`,
         {
           method: kind === "disconnect" ? "DELETE" : "POST",
-          ...(kind === "connect"
+          ...(kind === "connect" && credentials
             ? {
                 body: JSON.stringify({
-                  page_id: pageId.trim(),
-                  access_token: token.trim(),
+                  page_id: credentials.pageId,
+                  access_token: credentials.accessToken,
                 }),
               }
             : {}),
@@ -104,14 +135,17 @@ export default function SocialMetricsPanel({
         t(
           kind === "sync"
             ? "integrationsUi.social.queued"
-            : "integrationsUi.social.saved",
+            : kind === "disconnect"
+              ? "integrationsUi.social.disconnectedNotice"
+              : "integrationsUi.social.saved",
         ),
       );
+      if (kind !== "sync") setShowCredentials(false);
       refresh();
-    } catch {
-      setMessage(t("integrationsUi.social.actionError"));
+    } catch (error) {
+      setActionFailed(true);
+      setMessage(t(actionErrorKey(error)));
     } finally {
-      setToken("");
       setBusy(false);
     }
   }
@@ -163,11 +197,18 @@ export default function SocialMetricsPanel({
         </p>
       )}
       {message && (
-        <p role="status" className="text-sm text-gray-600 dark:text-gray-300">
+        <p
+          role={actionFailed ? "alert" : "status"}
+          className={
+            actionFailed
+              ? "text-sm text-error-600 dark:text-error-400"
+              : "text-sm text-gray-600 dark:text-gray-300"
+          }
+        >
           {message}
         </p>
       )}
-      {data && (
+      {data && !loading && (
         <>
           {!data.enabled && (
             <p className="text-sm text-warning-700 dark:text-warning-400">
@@ -186,12 +227,19 @@ export default function SocialMetricsPanel({
                   ? new Date(data.connection.synced_at).toLocaleString("vi-VN")
                   : "—"}
               </p>
-              {data.connection.error_code && (
-                <p className="text-error-600 dark:text-error-400">
-                  {t("integrationsUi.social.syncError")} (
-                  {data.connection.error_code})
-                </p>
-              )}
+              {data.connection.error_code &&
+                data.connection.status !== "disconnected" && (
+                  <p
+                    role="alert"
+                    className="text-error-600 dark:text-error-400"
+                  >
+                    {t(
+                      socialErrorKeys[data.connection.error_code] ??
+                        "integrationsUi.social.syncError",
+                    )}{" "}
+                    ({data.connection.error_code})
+                  </p>
+                )}
               {data.connection.sync_counts && (
                 <p>
                   {t(
@@ -229,51 +277,24 @@ export default function SocialMetricsPanel({
                 )}
             </div>
           )}
-          {canManage && data.enabled && (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                void action("connect");
-              }}
-              className="space-y-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700"
+          {canManage && data.enabled && !showCredentials && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => setShowCredentials(true)}
             >
-              <fieldset disabled={busy} className="space-y-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t("integrationsUi.social.connectHint")}
-                </p>
-                <div>
-                  <Label htmlFor="social-page-id">
-                    {t("integrationsUi.social.pageId")}
-                  </Label>
-                  <Input
-                    id="social-page-id"
-                    required
-                    pattern="[0-9]{1,32}"
-                    value={pageId}
-                    onChange={(e) => setPageId(e.target.value)}
-                    autoComplete="off"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="social-token">
-                    {t("integrationsUi.social.token")}
-                  </Label>
-                  <Input
-                    id="social-token"
-                    required
-                    type="password"
-                    minLength={16}
-                    maxLength={4096}
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    autoComplete="off"
-                  />
-                </div>
-                <Button type="submit" variant="outline" size="sm">
-                  {t("integrationsUi.social.connect")}
-                </Button>
-              </fieldset>
-            </form>
+              {t("integrationsUi.social.configureConnection")}
+            </Button>
+          )}
+          {canManage && data.enabled && showCredentials && (
+            <SocialConnectionForm
+              key={entryId + ":" + (data.connection?.page_id ?? "")}
+              initialPageId={data.connection?.page_id ?? ""}
+              busy={busy}
+              onConnect={(credentials) => action("connect", credentials)}
+              onClose={() => setShowCredentials(false)}
+            />
           )}
           <div className="overflow-x-auto">
             <table className="w-full text-start text-xs">

@@ -2666,7 +2666,7 @@
       "sync": "Đồng bộ số liệu",
       "disconnect": "Ngắt kết nối",
       "connect": "Xác minh và lưu kết nối",
-      "connectHint": "Kết nối thử nghiệm bằng Page Access Token đã được cấp quyền đọc nội dung và Insights. Token được mã hóa trên máy chủ, không hiển thị lại. Đây không phải mật khẩu Facebook. Khi cấp lại quyền, nhập lại Page ID và token.",
+      "connectHint": "Token được mã hóa và lưu trên máy chủ để dùng cho các lần đồng bộ tiếp theo; ô trống không có nghĩa là mất token. Chỉ nhập Page Access Token khi tạo hoặc cập nhật kết nối. Đây không phải mật khẩu Facebook hay KPS. Ô token được xóa sau khi gửi.",
       "pageId": "Facebook Page ID",
       "token": "Page Access Token",
       "post": "Bài và khoảng quan sát",
@@ -2682,6 +2682,20 @@
         "disconnected": "Đã ngắt kết nối",
         "reconnect_required": "Cần cấp quyền lại",
         "not_connected": "Chưa kết nối"
+      },
+      "configureConnection": "Thiết lập kết nối",
+      "closeConnectionForm": "Đóng form kết nối",
+      "disconnectedNotice": "Đã ngắt kết nối Page.",
+      "errors": {
+        "reconnectRequired": "Token Facebook không còn hợp lệ hoặc quyền đã bị thu hồi. Lấy Page Access Token mới và cập nhật kết nối.",
+        "rateLimited": "Đã vượt giới hạn thao tác. Chờ khoảng một phút rồi thử lại.",
+        "notConfigured": "Máy chủ chưa cấu hình Facebook đầy đủ. Kiểm tra phiên bản API và trạng thái bật chức năng.",
+        "permissionOrObject": "Token không đọc được dữ liệu Page cần thiết. Kiểm tra đúng Page Access Token, quyền đã cấp và phiên bản API.",
+        "providerUnavailable": "Chưa kết nối được tới Facebook. Thử lại sau.",
+        "principalUnavailable": "Tài khoản cấp kết nối không còn đủ quyền trong KPS. Người quản lý cần thiết lập lại kết nối.",
+        "invalidPageId": "Page ID chỉ gồm 1–32 chữ số. Nhập ID của Fanpage cần kết nối.",
+        "invalidToken": "Dán đầy đủ Page Access Token do Meta cấp.",
+        "conflict": "Page đã có kết nối khác hoặc thông tin đã thay đổi. Tải lại để kiểm tra."
       }
     }
   }
