@@ -292,7 +292,7 @@ class SocialMetricsTest extends TestCase
         $this->postJson('/api/reports/check-links', ['urls' => array_fill(0, 11, 'https://facebook.com/reel/555')])->assertUnprocessable();
         $this->postJson('/api/reports/check-links', ['urls' => ['https://user:secret@facebook.com/reel/555']])->assertUnprocessable();
         DB::table('organization_memberships')->where('user_id', $staff->id)->update(['is_active' => false]);
-        $this->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])->assertForbidden();
+        $this->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])->assertUnauthorized();
         Http::assertNothingSent();
     }
 

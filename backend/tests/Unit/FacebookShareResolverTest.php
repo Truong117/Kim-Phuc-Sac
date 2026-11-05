@@ -47,8 +47,8 @@ class FacebookShareResolverTest extends TestCase
             return Http::response('', 302, ['Location' => $targets[$index]]);
         });
         foreach ($targets as $index => $target) {
-            $this->assertSame('unverified', $this->resolve('https://www.facebook.com/share/r/Test'.$index)['status']);
-            $this->assertSame('unverified', $this->resolve('https://www.facebook.com/share/r/Test'.$index)['status']);
+            $this->assertSame('unverified', $this->resolve('https://www.facebook.com/share/r/Test'.$index)['status'], $target);
+            $this->assertSame('unverified', $this->resolve('https://www.facebook.com/share/r/Test'.$index)['status'], $target);
         }
         Http::assertSentCount(8);
     }
@@ -77,5 +77,14 @@ class FacebookShareResolverTest extends TestCase
         $this->assertSame('unverified', $this->resolve('https://facebook.com/kps')['status']);
         $this->assertSame('unverified', $this->resolve('https://example.test/share/r/Example')['status']);
         Http::assertNothingSent();
+    }
+
+    public function test_metadata_ignores_a_share_canonical_in_favor_of_a_post_identity(): void
+    {
+        Http::fake(['https://www.facebook.com/share/p/Photo' => Http::response('<link rel="canonical" href="https://facebook.com/share/p/Photo"><meta property="og:url" content="https://www.facebook.com/photo.php?fbid=555&amp;set=ignored">')]);
+        $result = $this->resolve('https://www.facebook.com/share/p/Photo');
+        $this->assertSame('resolved', $result['status']);
+        $this->assertSame('https://facebook.com/photo.php?fbid=555', $result['url']);
+        $this->assertContains('object:555', FacebookReference::keys($result['url']));
     }
 }

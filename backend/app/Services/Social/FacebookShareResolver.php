@@ -49,7 +49,7 @@ class FacebookShareResolver
                     ->connectTimeout(1)->timeout(min(2, max(0.1, $deadline - microtime(true))))
                     ->withOptions(['allow_redirects' => false, 'cookies' => false, 'stream' => true, 'read_timeout' => 2])->get($current);
                 if ($response->redirect()) {
-                    $target = $this->target((string) UriResolver::resolve(new Uri($current), new Uri($response->header('Location'))));
+                    $target = $this->redirectTarget($current, $response->header('Location'));
                 } elseif ($response->successful()) {
                     $stream = $response->toPsrResponse()->getBody();
                     $body = '';
@@ -83,6 +83,17 @@ class FacebookShareResolver
         }
 
         return $result;
+    }
+
+    private function redirectTarget(string $current, string $location): ?string
+    {
+        $parts = parse_url($location);
+        // Validate before URI resolution, which can normalize an explicit default port away.
+        if (! is_array($parts) || isset($parts['port']) || isset($parts['user']) || isset($parts['pass'])) {
+            return null;
+        }
+
+        return $this->target((string) UriResolver::resolve(new Uri($current), new Uri($location)));
     }
 
     private function target(string $value): ?string
