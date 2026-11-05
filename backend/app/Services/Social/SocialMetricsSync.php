@@ -7,6 +7,7 @@ use App\Models\IntegrationEntry;
 use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\AuthorizationService;
+use App\Services\KpsMembershipResolver;
 use App\Services\ReportScopeService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -122,7 +123,7 @@ class SocialMetricsSync
         $entry = IntegrationEntry::query()->whereKey($connection->integration_entry_id)->where('enabled', true)->where('organization_id', $connection->organization_id)->where('platform', 'facebook')->lockForUpdate()->first();
         $row = SocialConnection::query()->whereKey($connection->id)->where('revision', $connection->revision)->where('lease_token', $lease)->where('leased_until', '>', now())->where('status', 'connected')->lockForUpdate()->first();
         $actor = User::query()->find($connection->connected_by);
-        $freshAuthorization = new AuthorizationService(new \App\Services\KpsMembershipResolver);
+        $freshAuthorization = new AuthorizationService(new KpsMembershipResolver);
         if ($actor === null || ! $freshAuthorization->allows($actor, 'integrations.manage') || ! $freshAuthorization->allows($actor, 'reports.view')) {
             throw new RuntimeException('SOCIAL_PRINCIPAL_UNAVAILABLE');
         }

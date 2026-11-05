@@ -7,6 +7,7 @@ use App\Http\Requests\Integrations\SaveIntegrationRequest;
 use App\Models\IntegrationEntry;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
+use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\Integrations\IntegrationUrl;
@@ -94,7 +95,7 @@ class IntegrationController extends Controller
                     throw ValidationException::withMessages(['url' => 'Đường dẫn này đã có trong danh sách.']);
                 }
                 if ($id !== null && ($entry->url !== $input['url'] || $entry->platform !== ($input['kind'] === 'drive' ? null : $input['platform']))) {
-                    $connection = \App\Models\SocialConnection::query()->where('integration_entry_id', $entry->id)->lockForUpdate()->first();
+                    $connection = SocialConnection::query()->where('integration_entry_id', $entry->id)->lockForUpdate()->first();
                     $connection?->update(['access_token' => null, 'status' => 'disconnected', 'revision' => $connection->revision + 1, 'lease_token' => null, 'leased_until' => null]);
                 }
                 $entry->fill([
@@ -138,7 +139,7 @@ class IntegrationController extends Controller
             'id' => (string) $entry->id, 'kind' => $entry->kind, 'platform' => $entry->platform,
             'name' => $entry->name, 'url' => $entry->url, 'responsible_user_id' => (string) $entry->responsible_user_id,
             'owner' => $entry->responsible->name, 'note' => $entry->note ?? '', 'enabled' => $entry->enabled,
-            'version' => $entry->version, 'connection_status' => $entry->platform === 'facebook' && config('social_metrics.enabled') ? (\App\Models\SocialConnection::query()->where('integration_entry_id', $entry->id)->value('status') ?? 'not_connected') : 'not_connected',
+            'version' => $entry->version, 'connection_status' => $entry->platform === 'facebook' && config('social_metrics.enabled') ? (SocialConnection::query()->where('integration_entry_id', $entry->id)->value('status') ?? 'not_connected') : 'not_connected',
             'updated_at' => $entry->updated_at->toIso8601String(),
         ];
     }

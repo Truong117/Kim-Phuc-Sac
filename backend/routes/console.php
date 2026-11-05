@@ -1,5 +1,7 @@
 <?php
 
+use App\Jobs\SyncSocialMetrics;
+use App\Models\SocialConnection;
 use App\Services\AI\Daily\DailyDocumentDispatcher;
 use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\AI\WorkReportAnalysisWorker;
@@ -58,9 +60,9 @@ Artisan::command('social-metrics:dispatch', function (): void {
 
         return;
     }
-    \App\Models\SocialConnection::query()->where('status', 'connected')->orderBy('id')->chunkById(100, function ($connections): void {
+    SocialConnection::query()->where('status', 'connected')->orderBy('id')->chunkById(100, function ($connections): void {
         foreach ($connections as $connection) {
-            \App\Jobs\SyncSocialMetrics::dispatch((int) $connection->integration_entry_id);
+            SyncSocialMetrics::dispatch((int) $connection->integration_entry_id);
         }
     });
     $this->info('Social synchronization queued.');
