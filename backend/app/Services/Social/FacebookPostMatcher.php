@@ -78,7 +78,8 @@ class FacebookPostMatcher
                     $keys = [...$keys, ...FacebookReference::keys($alias)];
                 }
             }
-            $keys = array_values(array_unique($keys));
+            // Public aliases only bridge opaque IDs; numeric ownership stays anchored to the API object.
+            $keys = array_values(array_unique(array_filter($keys, fn ($key) => str_starts_with($key, 'pfbid:'))));
             $hasOpaque = count(array_filter($keys, fn ($key) => str_starts_with($key, 'pfbid:'))) > 0;
             $retained[$post['id']] = ['url' => $post['permalink_url'], 'keys' => $keys, 'until' => now()->timestamp + ($hasOpaque ? 86400 : 60)];
             $changed = true;

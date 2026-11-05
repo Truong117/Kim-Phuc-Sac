@@ -49,10 +49,11 @@ class FacebookPostMatcherTest extends TestCase
 
     public function test_metadata_can_bridge_a_numeric_canonical_and_an_opaque_og_url(): void
     {
-        Http::fake(['https://www.facebook.com/987/posts/555' => Http::response('<link rel="canonical" href="https://facebook.com/987/posts/555"><meta property="og:url" content="https://facebook.com/official/posts/pfbidExample">')]);
+        Http::fake(['https://www.facebook.com/987/posts/555' => Http::response('<link rel="canonical" href="https://facebook.com/987/posts/999"><meta property="og:url" content="https://facebook.com/official/posts/pfbidExample">')]);
         $budget = 1;
         $prepared = app(FacebookPostMatcher::class)->prepare([$this->postFixture(555)], [FacebookReference::keys('https://facebook.com/official/posts/pfbidExample')], $budget, microtime(true) + 10);
         $this->assertContains('object:555', $prepared['posts'][0]['_reference_keys']);
+        $this->assertNotContains('object:999', $prepared['posts'][0]['_reference_keys']);
         $this->assertContains('pfbid:pfbidExample', $prepared['posts'][0]['_reference_keys']);
     }
 
