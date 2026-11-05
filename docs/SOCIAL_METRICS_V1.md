@@ -28,7 +28,7 @@ Each connection scans only the manager's visible report items in the last 30 day
 
 GET `/{page-id}/published_posts` supplies at most three 100-item pages. Only provider-returned IDs for that Page are eligible. Evidence links are compared with those canonical permalinks, numeric post IDs and returned attachment target IDs. Supported common forms include Page/posts links and numeric video/watch/reel links when the Page's published-post attachment identifies them. Opaque short share links, aliases that cannot be matched, posts outside that provider window and some Reels are explicitly not guaranteed. They remain unmatched in the coverage count; use a canonical original link. This is not a public-web scraper and it does not fetch arbitrary third-party posts.
 
-The same remote post is stored once per integration. Sources link back to multiple report items without duplicate metric totals. Only ten least-recently-sampled matched posts are collected in a job; remaining posts are counted as deferred and rotate into following runs. Numeric likes and comments use their own summary edges, distinct from total reactions. The optional lifetime views metric is requested separately.
+The same remote post is stored once per integration. Sources link back to multiple report items without duplicate metric totals. Only ten least-recently-sampled matched posts are collected in a job; remaining posts are counted as deferred and rotate into following runs. Numeric likes use the reactions edge filtered to type LIKE; comments use their own summary edge. LIKE counts are distinct from all reactions. The optional lifetime views metric is requested separately.
 
 ## Stored data and period semantics
 

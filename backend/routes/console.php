@@ -53,7 +53,6 @@ Schedule::command('daily-report-ai:dispatch')->everyFiveMinutes()->withoutOverla
 Schedule::command('daily-report-ai:recover')->everyFiveMinutes()->withoutOverlapping()
     ->when(fn () => (bool) config('daily_report_ai.enabled'));
 
-
 Artisan::command('social-metrics:dispatch', function (): void {
     if (! config('social_metrics.enabled')) {
         $this->info('Social metrics disabled.');

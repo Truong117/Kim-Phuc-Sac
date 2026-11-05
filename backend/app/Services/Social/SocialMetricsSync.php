@@ -100,7 +100,7 @@ class SocialMetricsSync
             });
             $posts = DB::table('social_posts')->where('integration_entry_id', $connection->integration_entry_id)->whereIn('external_id', array_keys($matched))->orderBy('sampled_at')->orderBy('id')->get();
             $counts['deferred'] = max(0, $posts->count() - 10);
-            $definition = (string) config('social_metrics.graph_version').':likes,comments:'.(config('social_metrics.views_metric') ?: 'views_unavailable');
+            $definition = (string) config('social_metrics.graph_version').':reactions_like,comments:'.(config('social_metrics.views_metric') ?: 'views_unavailable');
             foreach ($posts->take(10) as $post) {
                 $metrics = $this->facebook->metrics($connection->access_token, $post->external_id);
                 DB::transaction(function () use ($connection, $lease, $definition, $post, $metrics): void {

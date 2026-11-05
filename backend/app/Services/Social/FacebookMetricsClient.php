@@ -14,7 +14,7 @@ class FacebookMetricsClient
         if (! config('social_metrics.enabled') || ! preg_match('/^v[0-9]+\.0$/D', $version)) {
             throw new RuntimeException('SOCIAL_NOT_CONFIGURED');
         }
-        if (! preg_match('~^(?:me|[0-9]+(?:_[0-9]+)?(?:/(?:published_posts|likes|comments|insights))?)$~D', $path)) {
+        if (! preg_match('~^(?:me|[0-9]+(?:_[0-9]+)?(?:/(?:published_posts|reactions|comments|insights))?)$~D', $path)) {
             throw new RuntimeException('SOCIAL_INVALID_OBJECT');
         }
         $secret = config('social_metrics.app_secret');
@@ -72,7 +72,7 @@ class FacebookMetricsClient
     {
         $metrics = ['likes' => null, 'comments' => null, 'media_views' => null];
         foreach (['likes', 'comments'] as $field) {
-            $data = $this->get($token, $post.'/'.$field, ['limit' => 0, 'summary' => 'true']);
+            $data = $this->get($token, $post.'/'.($field === 'likes' ? 'reactions' : 'comments'), ['limit' => 0, 'summary' => 'true', ...($field === 'likes' ? ['type' => 'LIKE'] : [])]);
             $metrics[$field] = self::number($data['summary']['total_count'] ?? null);
         }
         $metric = config('social_metrics.views_metric');

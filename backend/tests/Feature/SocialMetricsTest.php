@@ -60,7 +60,7 @@ class SocialMetricsTest extends TestCase
             return match ($path) {
                 '/v26.0/me' => Http::response(['id' => '100', 'name' => 'KPS Page', 'category' => 'Test Page']),
                 '/v26.0/100/published_posts' => Http::response(['data' => [['id' => '100_555', 'permalink_url' => 'https://facebook.com/kps/posts/555', 'from' => ['id' => '100']]]]),
-                '/v26.0/100_555/likes' => Http::response(['data' => [], 'summary' => ['total_count' => $this->likes]]),
+                '/v26.0/100_555/reactions' => Http::response(['data' => [], 'summary' => ['total_count' => $this->likes]]),
                 '/v26.0/100_555/comments' => Http::response(['data' => [], 'summary' => ['total_count' => 2]]),
                 '/v26.0/100_555/insights' => $this->views === null ? Http::response(['error' => ['code' => 100]], 400) : Http::response(['data' => [['name' => 'post_media_view', 'period' => 'lifetime', 'values' => [['value' => $this->views]]]]]),
                 default => Http::response(['error' => ['code' => 100]], 400),
@@ -111,6 +111,7 @@ class SocialMetricsTest extends TestCase
         $two = $this->item($employee, 'https://facebook.com/kps/posts/555');
         app(SocialMetricsSync::class)->run($this->entry->id);
         app(SocialMetricsSync::class)->run($this->entry->id);
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/100_555/reactions') && $request['type'] === 'LIKE');
         $this->assertDatabaseCount('social_posts', 1);
         $this->assertDatabaseCount('social_post_sources', 2);
         $this->assertDatabaseCount('social_metric_snapshots', 1);
