@@ -91,6 +91,10 @@ class FacebookPostMatcher
             }
         }
         unset($post);
+        if ($wanted === []) {
+            $pending = 0;
+            $unverified = 0;
+        }
         if ($changed) {
             Cache::put($indexKey, $retained, 86400);
         }
