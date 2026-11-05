@@ -16,7 +16,7 @@ use Throwable;
 
 class SocialMetricsSync
 {
-    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly AuthorizationService $authorization, private readonly ReportScopeService $reports) {}
+    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly AuthorizationService $authorization, private readonly ReportScopeService $reports, private readonly FacebookShareResolver $resolver) {}
 
     public function run(int $entryId): void
     {
@@ -52,10 +52,18 @@ class SocialMetricsSync
                 throw new RuntimeException('SOCIAL_SOURCE_LIMIT_EXCEEDED');
             }
             $links = [];
+            $resolutionBudget = 10;
+            $resolutionDeadline = microtime(true) + 45;
+            $unresolved = 0;
+            $resolutionPending = 0;
             foreach ($items as $item) {
                 foreach ($item->evidence_links ?? [] as $link) {
                     if (is_string($link) && FacebookReference::url($link) !== null) {
-                        $links[] = ['item' => $item->id, 'hash' => hash('sha256', FacebookReference::url($link)), 'keys' => FacebookReference::keys($link)];
+                        $resolved = $this->resolver->resolve($link, $resolutionBudget, $resolutionDeadline);
+                        if (FacebookReference::isShare($link) && $resolved['status'] !== 'resolved') {
+                            $resolved['status'] === 'pending' ? $resolutionPending++ : $unresolved++;
+                        }
+                        $links[] = ['item' => $item->id, 'hash' => hash('sha256', FacebookReference::url($link)), 'keys' => FacebookReference::keys($resolved['url'] ?? $link)];
                     }
                 }
             }
@@ -69,12 +77,7 @@ class SocialMetricsSync
                     if ($url === null || strlen($url) > 1000) {
                         continue;
                     }
-                    $keys = [...FacebookReference::keys($url), 'object:'.explode('_', $post['id'])[1]];
-                    foreach ($post['attachments']['data'] ?? [] as $attachment) {
-                        if (isset($attachment['target']['id']) && ctype_digit((string) $attachment['target']['id'])) {
-                            $keys[] = 'object:'.$attachment['target']['id'];
-                        }
-                    }
+                    $keys = FacebookReference::postKeys($post);
                     foreach ($links as $link) {
                         if (array_intersect($link['keys'], $keys) !== []) {
                             $matched[$post['id']]['url'] = $url;
@@ -83,7 +86,7 @@ class SocialMetricsSync
                     }
                 }
             }
-            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'deferred' => 0];
+            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending];
             DB::transaction(function () use ($connection, $lease, $matched, &$counts): void {
                 $this->fence($connection, $lease);
                 foreach ($matched as $external => $match) {

@@ -1,3 +1,4 @@
+import EvidenceLinkChecks from "./EvidenceLinkChecks";
 import ReportFieldRow from "./ReportFieldRow";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
@@ -59,6 +60,7 @@ export default function WorkItemExtras({
           }
           onBlur={() => onBlur?.(item.clientId, "evidenceLinks")}
         />
+        <EvidenceLinkChecks value={item.evidenceLinks ?? ""} />
         <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
           {t("unverified")}
         </p>

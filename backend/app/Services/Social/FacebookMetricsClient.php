@@ -8,7 +8,7 @@ use Throwable;
 
 class FacebookMetricsClient
 {
-    public function get(string $token, string $path, array $query = []): array
+    public function get(string $token, string $path, array $query = [], ?float $deadline = null): array
     {
         $version = (string) config('social_metrics.graph_version');
         if (! config('social_metrics.enabled') || ! preg_match('/^v[0-9]+\.0$/D', $version)) {
@@ -22,7 +22,7 @@ class FacebookMetricsClient
             $query['appsecret_proof'] = hash_hmac('sha256', $token, $secret);
         }
         try {
-            $response = Http::withToken($token)->acceptJson()->connectTimeout(3)->timeout(6)
+            $response = Http::withToken($token)->acceptJson()->connectTimeout(3)->timeout($deadline === null ? 6 : min(6, max(0.1, $deadline - microtime(true))))
                 ->withOptions(['allow_redirects' => false])->get('https://graph.facebook.com/'.$version.'/'.$path, $query);
             if (strlen($response->body()) > 1048576) {
                 throw new RuntimeException('SOCIAL_RESPONSE_TOO_LARGE');
@@ -44,14 +44,17 @@ class FacebookMetricsClient
         return $data;
     }
 
-    public function posts(string $token, string $page): array
+    public function posts(string $token, string $page, ?float $deadline = null): array
     {
         $posts = [];
         $after = null;
         for ($i = 0; $i < 3; $i++) {
+            if ($deadline !== null && microtime(true) >= $deadline) {
+                throw new RuntimeException('SOCIAL_PROVIDER_UNAVAILABLE');
+            }
             $data = $this->get($token, $page.'/published_posts', array_filter([
                 'fields' => 'id,permalink_url,from,attachments{target}', 'limit' => 100, 'after' => $after,
-            ], fn ($v) => $v !== null));
+            ], fn ($v) => $v !== null), $deadline);
             foreach ($data['data'] ?? [] as $post) {
                 if (is_array($post) && preg_match('/^'.preg_quote($page, '/').'_[0-9]+$/D', (string) ($post['id'] ?? ''))
                     && (! isset($post['from']['id']) || (string) $post['from']['id'] === $page)) {
