@@ -60,6 +60,8 @@ interface SocialData {
       matched_links: number;
       sampled: number;
       deferred: number;
+      unresolved_share_links?: number;
+      pending_share_links?: number;
     };
   };
   posts: Post[];
@@ -246,6 +248,19 @@ export default function SocialMetricsPanel({
                     "integrationsUi.social.coverage",
                     data.connection.sync_counts,
                   )}
+                </p>
+              )}
+              {Boolean(
+                (data.connection.sync_counts?.unresolved_share_links ?? 0) +
+                (data.connection.sync_counts?.pending_share_links ?? 0),
+              ) && (
+                <p className="text-warning-700 dark:text-warning-400">
+                  {t("integrationsUi.social.shareWarnings", {
+                    unresolved:
+                      data.connection.sync_counts?.unresolved_share_links ?? 0,
+                    pending:
+                      data.connection.sync_counts?.pending_share_links ?? 0,
+                  })}
                 </p>
               )}
             </div>

@@ -29,6 +29,10 @@ class SocialMetricsTest extends TestCase
 
     private IntegrationEntry $entry;
 
+    private string $shareTarget = 'https://facebook.com/reel/555';
+
+    private bool $providerFailure = false;
+
     private int $likes = 10;
 
     private ?int $views = 100;
@@ -48,6 +52,12 @@ class SocialMetricsTest extends TestCase
         $this->entry = IntegrationEntry::query()->create(['organization_id' => $organization, 'kind' => 'social', 'platform' => 'facebook', 'name' => 'KPS test', 'url' => 'https://facebook.com/kps', 'url_hash' => hash('sha256', 'kps'), 'responsible_user_id' => $this->admin->id, 'note' => '', 'enabled' => true]);
         Http::preventStrayRequests();
         Http::fake(function ($request) {
+            if (str_contains($request->url(), '/share/')) {
+                return Http::response('', 302, ['Location' => $this->shareTarget]);
+            }
+            if ($this->providerFailure) {
+                return Http::response(['error' => ['code' => 190, 'message' => 'raw-provider-secret']], 400);
+            }
             $path = parse_url($request->url(), PHP_URL_PATH);
             if ($path === '/v26.0/100/published_posts' && $this->interrupt === 'disconnect') {
                 $row = SocialConnection::query()->first();
@@ -215,5 +225,89 @@ class SocialMetricsTest extends TestCase
         foreach (['https://facebook.com.evil.test/kps/posts/555', 'http://facebook.com/kps/posts/555', 'https://user:secret@facebook.com/kps/posts/555', 'https://127.0.0.1/posts/555'] as $url) {
             $this->assertNull(FacebookReference::url($url));
         }
+    }
+
+    public function test_employee_can_check_links_without_integration_access_and_credentials_never_leave_server(): void
+    {
+        $this->connect();
+        $staff = $this->actor('OFFICE_STAFF');
+        $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['https://www.facebook.com/share/r/Example/', 'https://example.com/evidence']])
+            ->assertOk()->assertJsonPath('data.0.status', 'matched')->assertJsonPath('data.0.page_name', 'KPS Page')
+            ->assertJsonPath('data.1.status', 'unsupported')->assertDontSee($this->token)->assertDontSee('access_token');
+        $this->assertDatabaseCount('social_posts', 0);
+        $this->assertDatabaseCount('social_metric_snapshots', 0);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'example.com'));
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/share/') && ! $request->hasHeader('Authorization'));
+        $this->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/999']])
+            ->assertOk()->assertJsonPath('data.0.status', 'identified');
+        $this->getJson('/api/integrations')->assertForbidden();
+    }
+
+    public function test_share_and_original_match_one_post_and_preserve_original_report_hash_scope(): void
+    {
+        $this->connect();
+        $item = $this->item($this->admin, 'https://facebook.com/share/r/Example');
+        $item->update(['evidence_links' => ['https://facebook.com/share/r/Example', 'https://facebook.com/reel/555']]);
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertDatabaseCount('social_posts', 1);
+        $this->assertDatabaseCount('social_post_sources', 2);
+        $this->assertDatabaseCount('social_metric_snapshots', 1);
+        $this->assertDatabaseHas('social_post_sources', ['link_hash' => hash('sha256', 'https://facebook.com/share/r/Example')]);
+        $this->assertCount(1, app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05'));
+        $item->update(['evidence_links' => ['https://facebook.com/share/r/Changed']]);
+        $this->assertSame([], app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05'));
+    }
+
+    public function test_unresolved_share_is_reported_without_trusting_external_redirects_or_guessing_private_status(): void
+    {
+        $this->connect();
+        $this->shareTarget = 'https://outside.example/reel/555';
+        $this->item($this->admin, 'https://facebook.com/share/p/Unresolved');
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertDatabaseCount('social_posts', 0);
+        $this->assertSame(1, SocialConnection::query()->first()->sync_counts['unresolved_share_links']);
+        $this->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/share/p/Unresolved']])
+            ->assertOk()->assertJsonPath('data.0.status', 'unverified');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'outside.example'));
+    }
+
+    public function test_disabled_or_disconnected_connections_and_expired_tokens_never_report_a_positive_match(): void
+    {
+        $this->connect();
+        $url = ['urls' => ['https://facebook.com/reel/555']];
+        $this->providerFailure = true;
+        $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'identified')->assertDontSee('raw-provider-secret');
+        $this->providerFailure = false;
+        $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'matched');
+        $this->deleteJson('/api/integrations/'.$this->entry->id.'/social/connect')->assertNoContent();
+        $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'identified');
+        config(['social_metrics.enabled' => false]);
+        $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'unverified');
+    }
+
+    public function test_check_requires_report_permission_and_valid_bounded_input(): void
+    {
+        $staff = $this->actor('OFFICE_STAFF');
+        $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['javascript:alert(1)']])->assertUnprocessable();
+        $this->postJson('/api/reports/check-links', ['urls' => array_fill(0, 11, 'https://facebook.com/reel/555')])->assertUnprocessable();
+        $this->postJson('/api/reports/check-links', ['urls' => ['https://user:secret@facebook.com/reel/555']])->assertUnprocessable();
+        DB::table('organization_memberships')->where('user_id', $staff->id)->update(['is_active' => false]);
+        $this->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])->assertUnauthorized();
+        Http::assertNothingSent();
+    }
+
+    public function test_link_checks_cannot_use_a_different_organization_or_an_inactive_connection_principal(): void
+    {
+        $this->connect();
+        $staff = $this->actor('OFFICE_STAFF');
+        DB::table('organization_memberships')->where('user_id', $this->admin->id)->update(['is_active' => false]);
+        $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])
+            ->assertOk()->assertJsonPath('data.0.status', 'identified');
+        $this->actingAs($this->actor('NO_REPORT_PERMISSION'))->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])->assertForbidden();
+        DB::table('organization_memberships')->where('user_id', $this->admin->id)->update(['is_active' => true]);
+        $other = $this->createMembership(User::factory()->create(), organizationCode: 'OTHER');
+        $this->entry->update(['organization_id' => $other['organization_id']]);
+        $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])
+            ->assertOk()->assertJsonPath('data.0.status', 'identified');
     }
 }
