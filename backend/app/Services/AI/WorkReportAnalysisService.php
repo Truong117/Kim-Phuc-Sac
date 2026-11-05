@@ -136,7 +136,7 @@ class WorkReportAnalysisService
             $this->limitError();
         }
         if ($settings['use_daily_documents'] ?? false) {
-            return WorkReportDailyDocuments::inputs($snapshot, $settings, $feedback);
+            return $this->withSocialMetrics(WorkReportDailyDocuments::inputs($snapshot, $settings, $feedback), $snapshot, $settings);
         }
         $groups = [];
         // Size the exact inventory the reviewer will receive, including its metadata.
@@ -168,6 +168,32 @@ class WorkReportAnalysisService
         }
         if ($inputs === [] || count($inputs) + 1 > min(200, max(2, (int) $settings['max_units']))) {
             $this->limitError();
+        }
+
+        return $this->withSocialMetrics($inputs, $snapshot, $settings);
+    }
+
+    private function withSocialMetrics(array $inputs, array $snapshot, array $settings): array
+    {
+        if (empty($snapshot['social_metrics'])) {
+            return $inputs;
+        }
+        foreach ($inputs as &$input) {
+            $itemIds = array_merge([], ...array_map(fn ($report) => array_column($report['items'], 'item_id'), $input['reports']));
+            $metrics = [];
+            foreach ($snapshot['social_metrics'] ?? [] as $row) {
+                $ids = array_values(array_intersect($row['item_ids'], $itemIds));
+                if ($ids !== []) {
+                    $metrics[] = [...$row, 'item_ids' => $ids, 'report_ids' => array_values(array_intersect($row['report_ids'], array_column($input['reports'], 'report_id')))];
+                }
+            }
+            if ($metrics !== []) {
+                $input['social_metrics'] = $metrics;
+                $input['social_metrics_policy'] = 'Numbers are database-derived observations. Delta is net change only between observed_from and observed_to, not a full-period event count. Null means unavailable. Negative delta can be a provider correction. Deduplicate post_id across reports; do not assign exclusive employee credit or infer organic/paid causes.';
+            }
+            if (strlen(json_encode($input, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > (int) $settings['unit_input_bytes']) {
+                $this->limitError();
+            }
         }
 
         return $inputs;

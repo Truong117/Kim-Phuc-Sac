@@ -7,6 +7,8 @@ use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Integrations\IntegrationController;
+use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Reports\MakeupReportController;
@@ -53,6 +55,21 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
 
     Route::get('/navigation', NavigationController::class);
+
+    Route::prefix('integrations')->middleware('permission:integrations.view')->group(function (): void {
+        Route::get('/{id}/social', [SocialMetricsController::class, 'show'])->whereNumber('id')->middleware('permission:reports.view');
+        Route::post('/{id}/social/connect', [SocialMetricsController::class, 'connect'])->whereNumber('id')->middleware(['permission:integrations.manage', 'permission:reports.view', 'throttle:3,1']);
+        Route::delete('/{id}/social/connect', [SocialMetricsController::class, 'disconnect'])->whereNumber('id')->middleware('permission:integrations.manage');
+        Route::post('/{id}/social/sync', [SocialMetricsController::class, 'sync'])->whereNumber('id')->middleware(['permission:integrations.manage', 'permission:reports.view', 'throttle:2,1']);
+
+        Route::get('/', [IntegrationController::class, 'index']);
+        Route::get('/references', [IntegrationController::class, 'references']);
+        Route::get('/{id}', [IntegrationController::class, 'show'])->whereNumber('id');
+        Route::post('/', [IntegrationController::class, 'store'])->middleware(['permission:integrations.manage', 'throttle:30,1']);
+        Route::patch('/{id}', [IntegrationController::class, 'update'])->whereNumber('id')->middleware(['permission:integrations.manage', 'throttle:30,1']);
+        Route::delete('/{id}', [IntegrationController::class, 'destroy'])->whereNumber('id')->middleware(['permission:integrations.manage', 'throttle:30,1']);
+    });
+
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view');
 
