@@ -47,20 +47,20 @@ class FacebookShareResolver
                 // Each request is fresh: redirects and cookies are never followed automatically.
                 $response = Http::withHeaders(['Accept' => 'text/html', 'User-Agent' => 'KPS-Link-Check/1.0'])
                     ->connectTimeout(1)->timeout(min(2, max(0.1, $deadline - microtime(true))))
-                    ->withOptions(['allow_redirects' => false, 'cookies' => false, 'stream' => true])->get($current);
+                    ->withOptions(['allow_redirects' => false, 'cookies' => false, 'stream' => true, 'read_timeout' => 2])->get($current);
                 if ($response->redirect()) {
                     $target = $this->target((string) UriResolver::resolve(new Uri($current), new Uri($response->header('Location'))));
                 } elseif ($response->successful()) {
                     $stream = $response->toPsrResponse()->getBody();
                     $body = '';
-                    while (! $stream->eof() && strlen($body) <= 1048576) {
+                    while (! $stream->eof() && strlen($body) <= 1048576 && microtime(true) < $deadline) {
                         $chunk = $stream->read(min(8192, 1048577 - strlen($body)));
                         if ($chunk === '') {
                             break;
                         }
                         $body .= $chunk;
                     }
-                    $target = strlen($body) <= 1048576 ? $this->metadata($body) : null;
+                    $target = $stream->eof() && strlen($body) <= 1048576 ? $this->metadata($body) : null;
                 } else {
                     break;
                 }
@@ -97,12 +97,12 @@ class FacebookShareResolver
         try {
             $document->loadHTML($html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             foreach ($document->getElementsByTagName('link') as $node) {
-                if (strtolower($node->getAttribute('rel')) === 'canonical' && ($url = $this->target($node->getAttribute('href'))) !== null) {
+                if (strtolower($node->getAttribute('rel')) === 'canonical' && ($url = $this->target($node->getAttribute('href'))) !== null && ! FacebookReference::isShare($url)) {
                     return $url;
                 }
             }
             foreach ($document->getElementsByTagName('meta') as $node) {
-                if (strtolower($node->getAttribute('property')) === 'og:url' && ($url = $this->target($node->getAttribute('content'))) !== null) {
+                if (strtolower($node->getAttribute('property')) === 'og:url' && ($url = $this->target($node->getAttribute('content'))) !== null && ! FacebookReference::isShare($url)) {
                     return $url;
                 }
             }

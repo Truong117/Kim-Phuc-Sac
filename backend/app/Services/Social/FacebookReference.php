@@ -6,6 +6,10 @@ final class FacebookReference
 {
     public static function url(string $value): ?string
     {
+        $value = trim($value);
+        if (strlen($value) > 2048 || str_contains($value, '\\') || preg_match('/[\x00-\x20]/', $value)) {
+            return null;
+        }
         $url = parse_url(trim($value));
         if (! is_array($url) || ($url['scheme'] ?? '') !== 'https' || isset($url['user']) || isset($url['pass']) || isset($url['port'])) {
             return null;

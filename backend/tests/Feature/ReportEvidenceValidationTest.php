@@ -130,6 +130,7 @@ class ReportEvidenceValidationTest extends TestCase
         $this->assertDatabaseCount('daily_reports', $action === 'update' ? 1 : 0);
         $this->assertDatabaseCount('daily_report_items', $action === 'update' ? 1 : 0);
     }
+
     #[DataProvider('reportActions')]
     public function test_unverified_facebook_share_links_can_still_be_saved(string $action): void
     {
@@ -140,6 +141,5 @@ class ReportEvidenceValidationTest extends TestCase
         $this->submit($action, $payload)->assertStatus($action === 'update' ? 200 : 201)
             ->assertJsonPath('data.items.0.evidence_links.0', 'https://facebook.com/share/r/Unverified');
     }
-
 }
 

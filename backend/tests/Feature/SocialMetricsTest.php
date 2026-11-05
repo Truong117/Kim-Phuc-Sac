@@ -295,4 +295,18 @@ class SocialMetricsTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_link_checks_cannot_use_a_different_organization_or_an_inactive_connection_principal(): void
+    {
+        $this->connect();
+        $staff = $this->actor('OFFICE_STAFF');
+        DB::table('organization_memberships')->where('user_id', $this->admin->id)->update(['is_active' => false]);
+        $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])
+            ->assertOk()->assertJsonPath('data.0.status', 'identified');
+        $this->actingAs($this->actor('NO_REPORT_PERMISSION'))->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])->assertForbidden();
+        DB::table('organization_memberships')->where('user_id', $this->admin->id)->update(['is_active' => true]);
+        $other = $this->createMembership(User::factory()->create(), organizationCode: 'OTHER');
+        $this->entry->update(['organization_id' => $other['organization_id']]);
+        $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])
+            ->assertOk()->assertJsonPath('data.0.status', 'identified');
+    }
 }
