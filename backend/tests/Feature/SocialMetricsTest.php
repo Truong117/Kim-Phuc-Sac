@@ -98,9 +98,10 @@ class SocialMetricsTest extends TestCase
         $this->assertSame($this->token, SocialConnection::query()->first()->access_token);
         $this->assertArrayNotHasKey('access_token', SocialConnection::query()->first()->toArray());
         $this->getJson('/api/integrations/'.$this->entry->id.'/social')->assertOk()->assertDontSee($this->token);
+        $this->assertGreaterThan(360, config('queue.connections.social_metrics.retry_after'));
         Queue::fake();
         $this->postJson('/api/integrations/'.$this->entry->id.'/social/sync')->assertAccepted();
-        Queue::assertPushed(SyncSocialMetrics::class, fn ($job) => $job->entryId === $this->entry->id && $job->queue === 'social-metrics' && $job->connection === 'database');
+        Queue::assertPushed(SyncSocialMetrics::class, fn ($job) => $job->entryId === $this->entry->id && $job->queue === 'social-metrics' && $job->connection === 'social_metrics');
     }
 
     public function test_report_links_deduplicate_posts_and_snapshots_and_compute_observed_growth(): void
