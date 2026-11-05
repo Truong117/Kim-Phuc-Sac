@@ -62,6 +62,8 @@ interface SocialData {
       deferred: number;
       unresolved_share_links?: number;
       pending_share_links?: number;
+      pending_post_aliases?: number;
+      unverified_post_aliases?: number;
     };
   };
   posts: Post[];
@@ -260,6 +262,19 @@ export default function SocialMetricsPanel({
                       data.connection.sync_counts?.unresolved_share_links ?? 0,
                     pending:
                       data.connection.sync_counts?.pending_share_links ?? 0,
+                  })}
+                </p>
+              )}
+              {Boolean(
+                (data.connection.sync_counts?.pending_post_aliases ?? 0) +
+                (data.connection.sync_counts?.unverified_post_aliases ?? 0),
+              ) && (
+                <p className="text-warning-700 dark:text-warning-400">
+                  {t("integrationsUi.social.postAliasWarnings", {
+                    pending:
+                      data.connection.sync_counts?.pending_post_aliases ?? 0,
+                    unverified:
+                      data.connection.sync_counts?.unverified_post_aliases ?? 0,
                   })}
                 </p>
               )}

@@ -287,3 +287,35 @@ test("an old link response cannot mark the replacement link as matched", async (
     "OLD PAGE",
   );
 });
+
+test("identified Facebook links distinguish connection errors from an unfinished identity check", async ({
+  page,
+}) => {
+  await setup(page, false);
+  let reason = "SOCIAL_RECONNECT_REQUIRED";
+  await page.route("**/api/reports/check-links", async (route) => {
+    const { urls } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: "identified",
+          reason_code: reason,
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Đã đăng");
+  await page.locator('form button[type="submit"]').click();
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  const share = "https://facebook.com/share/p/Example";
+  await evidence.fill(share);
+  const checks = page.locator("[data-evidence-link-checks]");
+  await expect(checks).toContainText("kết nối Page cần cấp quyền lại");
+  await expect(checks).not.toContainText("300 bài");
+  reason = "SOCIAL_CHECK_PENDING";
+  await checks.getByRole("button", { name: "Kiểm tra lại đường dẫn" }).click();
+  await expect(checks).toContainText("cần đối chiếu thêm mã bài");
+  await expect(checks).not.toContainText("cần cấp quyền lại");
+  await expect(evidence).toHaveValue(share);
+});

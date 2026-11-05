@@ -16,6 +16,19 @@ type Check = {
     | "checking"
     | "rate_limited";
   page_name?: string;
+  reason_code?: string;
+};
+
+const reasonMessages: Record<string, string> = {
+  SOCIAL_RECONNECT_REQUIRED: "evidenceCheck.connectionExpired",
+  SOCIAL_RATE_LIMITED: "evidenceCheck.rate_limited",
+  SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE: "evidenceCheck.pageUnavailable",
+  SOCIAL_PROVIDER_UNAVAILABLE: "evidenceCheck.pageUnavailable",
+  SOCIAL_NOT_CONFIGURED: "evidenceCheck.connectionUnavailable",
+  SOCIAL_PRINCIPAL_UNAVAILABLE: "evidenceCheck.connectionUnavailable",
+  SOCIAL_CONNECTION_UNAVAILABLE: "evidenceCheck.connectionUnavailable",
+  SOCIAL_CHECK_PENDING: "evidenceCheck.matchPending",
+  SOCIAL_POST_ALIAS_UNAVAILABLE: "evidenceCheck.aliasUnavailable",
 };
 
 const isFacebook = (value: string) => {
@@ -138,7 +151,11 @@ export default function EvidenceLinkChecks({ value }: { value: string }) {
               number: sourceUrls.indexOf(row.url) + 1,
             })}{" "}
             {t(
-              `evidenceCheck.${["matched", "identified", "unverified", "pending", "unsupported", "invalid", "checking", "rate_limited"].includes(row.status) ? row.status : "unverified"}`,
+              row.status === "identified" &&
+                row.reason_code &&
+                reasonMessages[row.reason_code]
+                ? reasonMessages[row.reason_code]
+                : `evidenceCheck.${["matched", "identified", "unverified", "pending", "unsupported", "invalid", "checking", "rate_limited"].includes(row.status) ? row.status : "unverified"}`,
               { page: row.page_name ?? "" },
             )}
           </li>

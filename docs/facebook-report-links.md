@@ -21,3 +21,13 @@ No migration, new package or extra worker is required. The existing social worke
 5. Verify the login-wall/unresolvable case gives a warning, never a false private/public conclusion or fabricated metrics.
 
 Automated tests use controlled provider responses. Real Facebook share resolution must also be checked on staging because platform login and anti-bot responses can differ from test fixtures.
+
+## Numeric API permalinks and opaque post links
+
+Facebook can return an ordinary post permalink containing numeric IDs while the employee's share URL resolves to a vanity URL containing `pfbid`. Opaque IDs are compared independently of the owner segment and of the `story_fbid` versus `/posts/` URL shape.
+
+When these identities still differ, the matcher only opens permalink URLs already returned by the connected Page's API catalogue. Supported public redirects and canonical/og:url metadata can associate their numeric identity with an opaque identity. It does not decode or guess opaque IDs, compare captions/dates, execute JavaScript, or send Page credentials to the public website. The original API object remains the metric source and the source of Page ownership validation.
+
+The same matcher is used before report save and during sync. A bounded per-Page cache retains verified aliases for one day and unresolved attempts for one minute. The form's three-resolution budget and the worker's ten-resolution/45-second budget are shared with share-link resolution. Numeric ordinary-post permalinks take priority. A check that runs out of budget reports that identity matching is unfinished; retry continues past cached candidates. Public login walls can still prevent automatic matching.
+
+Advisory `reason_code` values distinguish connection/configuration errors, provider failures, pending identity work, unavailable public aliases and a completed no-match result. The form no longer suggests that every unmatched post falls outside the 300-post catalogue. The integration panel separately shows pending or unavailable identity aliases. No extra worker or migration is introduced.
