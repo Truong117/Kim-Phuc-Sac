@@ -8,11 +8,11 @@ use RuntimeException;
 
 class StagingBootstrapPlanTest extends TestCase
 {
-    public function test_reviewed_manifest_contains_the_current_twenty_eight_migrations_in_order(): void
+    public function test_reviewed_manifest_contains_the_current_twenty_nine_migrations_in_order(): void
     {
         $manifest = StagingBootstrapPlan::migrationManifest(dirname(__DIR__, 2).'/database/migrations');
 
-        $this->assertCount(28, $manifest['ordered']);
+        $this->assertCount(29, $manifest['ordered']);
         $this->assertSame('2026_11_05_000000_create_integration_entries_table', $manifest['ordered'][27]);
         $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, $manifest['ordered']);
         $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', $manifest['fingerprint']);

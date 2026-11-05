@@ -230,6 +230,7 @@ function IntegrationWorkspace() {
           entries={entries}
           onClose={modal.closeModal}
           owners={owners}
+          canManage={canManage}
           onSave={async (entry) => {
             await save(entry);
             modal.closeModal();

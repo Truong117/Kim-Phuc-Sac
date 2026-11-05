@@ -12,7 +12,8 @@ export interface IntegrationEntry {
   enabled: boolean;
   responsible_user_id: string;
   version: number;
-  connection_status?: "not_connected";
+  connection_status?:
+    "not_connected" | "connected" | "disconnected" | "reconnect_required";
 }
 export const blankEntry = (kind: IntegrationTab): IntegrationEntry => ({
   id: "",

@@ -1,3 +1,4 @@
+import SocialMetricsPanel from "./SocialMetricsPanel";
 import { ApiServiceError } from "@/services/apiClient";
 import type { IntegrationOwner } from "@/services/integrationService";
 import { useRef, useState, type FormEvent } from "react";
@@ -20,6 +21,7 @@ interface Props {
   entries: IntegrationEntry[];
   onClose: () => void;
   owners: IntegrationOwner[];
+  canManage: boolean;
   onSave: (entry: IntegrationEntry) => Promise<void>;
   onDelete: () => Promise<void>;
 }
@@ -29,6 +31,7 @@ export default function IntegrationDialog({
   entries,
   onClose,
   owners,
+  canManage,
   onSave,
   onDelete,
 }: Props) {
@@ -373,6 +376,9 @@ export default function IntegrationDialog({
           <p className="rounded-xl bg-warning-50 p-4 text-sm leading-relaxed text-warning-700 dark:bg-warning-500/10 dark:text-warning-400">
             {t(`integrationsUi.${isDrive ? "drivePending" : "socialPending"}`)}
           </p>
+          {initial.platform === "facebook" && (
+            <SocialMetricsPanel entryId={initial.id} canManage={canManage} />
+          )}
           <div className="flex justify-end">
             <Button variant="outline" onClick={close}>
               {t("integrationsUi.close")}

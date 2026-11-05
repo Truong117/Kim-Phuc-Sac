@@ -238,6 +238,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_dry_run_before_m23_m24_is_readable_but_apply_requires_both_migrations(): void
     {
+        (require database_path('migrations/2026_11_05_010000_create_social_tracking_tables.php'))->down();
         (require database_path('migrations/2026_11_05_000000_create_integration_entries_table.php'))->down();
         (require database_path('migrations/2026_11_03_030000_create_daily_report_ai_documents.php'))->down();
         (require database_path('migrations/2026_11_03_020000_add_makeup_marker_to_daily_reports.php'))->down();
@@ -247,7 +248,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         DB::table('migrations')->whereIn('migration', array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 22))->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertFalse($preview['schema_ready']);
-        $this->assertCount(6, $preview['pending_migrations']);
+        $this->assertCount(7, $preview['pending_migrations']);
         $this->expectExceptionMessage('FIXTURE_APPLY_REQUIRES_M23_M24');
         $this->fixture->apply($this->batch, $this->end, $this->store, $preview['fingerprint'], []);
     }

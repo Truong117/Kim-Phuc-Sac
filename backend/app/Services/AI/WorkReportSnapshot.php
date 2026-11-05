@@ -177,6 +177,9 @@ class WorkReportSnapshot
             ksort($people);
             $snapshot = ['period' => $period, 'scope' => $scope, 'department_id' => $department,
                 'employees' => array_values($people), 'reports' => $sources, 'work_counts' => $counts];
+            if (config('social_metrics.enabled')) {
+                $snapshot['social_metrics'] = app(\App\Services\Social\SocialMetricsRead::class)->aiContext($items->flatten(1), $period['start_date'], $period['end_date']);
+            }
             if (config('work_report_ai.use_daily_documents')) {
                 $snapshot = [...$snapshot, ...WorkReportDailyDocuments::capture($reports, fn ($text) => $this->redact($text, $identities))];
             }

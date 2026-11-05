@@ -86,7 +86,11 @@ export default function IntegrationTable({
                   className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${entry.enabled ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}
                 >
                   {t(
-                    `integrationsUi.${entry.enabled ? "unverified" : "paused"}`,
+                    entry.enabled &&
+                      entry.connection_status &&
+                      entry.connection_status !== "not_connected"
+                      ? `integrationsUi.social.status.${entry.connection_status}`
+                      : `integrationsUi.${entry.enabled ? "unverified" : "paused"}`,
                   )}
                 </span>
               </td>

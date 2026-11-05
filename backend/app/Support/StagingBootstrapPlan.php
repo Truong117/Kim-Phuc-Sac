@@ -40,6 +40,7 @@ final class StagingBootstrapPlan
         '2026_11_03_020000_add_makeup_marker_to_daily_reports',
         '2026_11_03_030000_create_daily_report_ai_documents',
         '2026_11_05_000000_create_integration_entries_table',
+        '2026_11_05_010000_create_social_tracking_tables',
     ];
 
     /** @var list<string> */

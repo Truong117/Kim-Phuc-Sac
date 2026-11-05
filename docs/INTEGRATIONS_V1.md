@@ -1,6 +1,6 @@
 # Integration directory V1
 
-The existing `/integrations` page now stores real organization-owned directory entries. It does not call Google Drive, social providers or Ads APIs. It does not change the existing weekly-planning Google Docs approved-folder registry. Enabling a directory entry is a local business setting, not API consent or approval of a weekly-plan source.
+The existing `/integrations` page now stores real organization-owned directory entries. The directory CRUD endpoints do not call external providers. The Facebook tracking extension is described in SOCIAL_METRICS_V1.md. It does not change the existing weekly-planning Google Docs approved-folder registry. Enabling a directory entry is a local business setting, not API consent or approval of a weekly-plan source.
 
 ## Access
 

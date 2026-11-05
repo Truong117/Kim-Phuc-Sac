@@ -93,6 +93,10 @@ class IntegrationController extends Controller
                 if (IntegrationEntry::query()->where('organization_id', $organization)->where('kind', $input['kind'])->where('url_hash', $hash)->when($id !== null, fn ($q) => $q->where('id', '!=', $id))->exists()) {
                     throw ValidationException::withMessages(['url' => 'Đường dẫn này đã có trong danh sách.']);
                 }
+                if ($id !== null && ($entry->url !== $input['url'] || $entry->platform !== ($input['kind'] === 'drive' ? null : $input['platform']))) {
+                    $connection = \App\Models\SocialConnection::query()->where('integration_entry_id', $entry->id)->lockForUpdate()->first();
+                    $connection?->update(['access_token' => null, 'status' => 'disconnected', 'revision' => $connection->revision + 1, 'lease_token' => null, 'leased_until' => null]);
+                }
                 $entry->fill([
                     'organization_id' => $organization, 'kind' => $input['kind'],
                     'platform' => $input['kind'] === 'drive' ? null : $input['platform'],
@@ -134,7 +138,7 @@ class IntegrationController extends Controller
             'id' => (string) $entry->id, 'kind' => $entry->kind, 'platform' => $entry->platform,
             'name' => $entry->name, 'url' => $entry->url, 'responsible_user_id' => (string) $entry->responsible_user_id,
             'owner' => $entry->responsible->name, 'note' => $entry->note ?? '', 'enabled' => $entry->enabled,
-            'version' => $entry->version, 'connection_status' => 'not_connected',
+            'version' => $entry->version, 'connection_status' => $entry->platform === 'facebook' && config('social_metrics.enabled') ? (\App\Models\SocialConnection::query()->where('integration_entry_id', $entry->id)->value('status') ?? 'not_connected') : 'not_connected',
             'updated_at' => $entry->updated_at->toIso8601String(),
         ];
     }
