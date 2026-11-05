@@ -1,3 +1,4 @@
+import { useIntegrations } from "@/hooks/useIntegrations";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import PageMeta from "@/components/common/PageMeta";
@@ -15,29 +16,22 @@ import IntegrationDialog, {
 import {
   blankEntry,
   platforms,
-  readEntries,
   type IntegrationEntry,
   type IntegrationTab,
 } from "@/components/integrations/model";
 
 export default function Integrations() {
   const { currentUser } = useAuth();
-  return (
-    <IntegrationWorkspace
-      key={currentUser?.id ?? "guest"}
-      storageKey={`kps-integrations-ui-v1:${currentUser?.id ?? "guest"}`}
-    />
-  );
+  return <IntegrationWorkspace key={currentUser?.id ?? "guest"} />;
 }
-function IntegrationWorkspace({ storageKey }: { storageKey: string }) {
+function IntegrationWorkspace() {
   const { t } = useTranslation();
-  const [initial] = useState(() => readEntries(storageKey));
-  const [entries, setEntries] = useState(initial.entries);
+  const { entries, owners, canManage, loading, error, reload, save, remove } =
+    useIntegrations();
   const [tab, setTab] = useState<IntegrationTab>("drive");
   const [query, setQuery] = useState("");
   const [platform, setPlatform] = useState("all");
   const [message, setMessage] = useState("");
-  const [warning, setWarning] = useState(initial.warning);
   const [dialog, setDialog] = useState<{
     mode: DialogMode;
     entry: IntegrationEntry;
@@ -51,18 +45,6 @@ function IntegrationWorkspace({ storageKey }: { storageKey: string }) {
         .toLocaleLowerCase("vi")
         .includes(query.trim().toLocaleLowerCase("vi")),
   );
-  function commit(next: IntegrationEntry[], action: string) {
-    setEntries(next);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      setWarning(false);
-      setMessage(t(`integrationsUi.${action}`));
-    } catch {
-      setWarning(true);
-      setMessage(t("integrationsUi.sessionOnly"));
-    }
-    modal.closeModal();
-  }
   function open(mode: DialogMode, entry: IntegrationEntry) {
     setDialog({ mode, entry });
     modal.openModal();
@@ -91,12 +73,12 @@ function IntegrationWorkspace({ storageKey }: { storageKey: string }) {
         <div className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm leading-relaxed text-warning-800 dark:border-warning-500/20 dark:bg-warning-500/10 dark:text-warning-400">
           {t("integrationsUi.previewNotice")}
         </div>
-        {warning && (
+        {error && (
           <p
             role="alert"
             className="text-sm text-error-600 dark:text-error-400"
           >
-            {t("integrationsUi.storageWarning")}
+            {t("integrationsUi.loadError")}
           </p>
         )}
         {message && (
@@ -198,18 +180,39 @@ function IntegrationWorkspace({ storageKey }: { storageKey: string }) {
                   </select>
                 )}
               </div>
-              <Button
-                variant="outline"
-                className="!bg-kps-primary !text-white !ring-0 hover:!bg-kps-primary-hover"
-                startIcon={<PlusIcon className="size-5" />}
-                onClick={() => open("add", blankEntry(tab))}
-              >
-                {t(
-                  `integrationsUi.${tab === "drive" ? "addFolder" : "addChannel"}`,
-                )}
+              {canManage && !loading && (
+                <Button
+                  variant="outline"
+                  className="!bg-kps-primary !text-white !ring-0 hover:!bg-kps-primary-hover"
+                  startIcon={<PlusIcon className="size-5" />}
+                  onClick={() => open("add", blankEntry(tab))}
+                >
+                  {t(
+                    `integrationsUi.${tab === "drive" ? "addFolder" : "addChannel"}`,
+                  )}
+                </Button>
+              )}
+              <Button variant="outline" disabled={loading} onClick={reload}>
+                {t("integrationsUi.reload")}
               </Button>
             </div>
-            <IntegrationTable entries={filtered} kind={tab} onAction={open} />
+            {loading ? (
+              <p
+                role="status"
+                className="text-sm text-gray-500 dark:text-gray-400"
+              >
+                {t("integrationsUi.loading")}
+              </p>
+            ) : (
+              !error && (
+                <IntegrationTable
+                  entries={filtered}
+                  kind={tab}
+                  onAction={open}
+                  canManage={canManage}
+                />
+              )
+            )}
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {t("integrationsUi.count", {
                 shown: filtered.length,
@@ -226,20 +229,17 @@ function IntegrationWorkspace({ storageKey }: { storageKey: string }) {
           initial={dialog.entry}
           entries={entries}
           onClose={modal.closeModal}
-          onSave={(entry) =>
-            commit(
-              entry.id
-                ? entries.map((row) => (row.id === entry.id ? entry : row))
-                : [...entries, { ...entry, id: crypto.randomUUID() }],
-              "saved",
-            )
-          }
-          onDelete={() =>
-            commit(
-              entries.filter((row) => row.id !== dialog.entry.id),
-              "deleted",
-            )
-          }
+          owners={owners}
+          onSave={async (entry) => {
+            await save(entry);
+            modal.closeModal();
+            setMessage(t("integrationsUi.saved"));
+          }}
+          onDelete={async () => {
+            await remove(dialog.entry);
+            modal.closeModal();
+            setMessage(t("integrationsUi.deleted"));
+          }}
         />
       )}
     </>
