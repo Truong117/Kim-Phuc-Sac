@@ -31,3 +31,11 @@ When these identities still differ, the matcher only opens permalink URLs alread
 The same matcher is used before report save and during sync. A bounded per-Page cache retains verified aliases for one day and unresolved attempts for one minute. The form's three-resolution budget and the worker's ten-resolution/45-second budget are shared with share-link resolution. Numeric ordinary-post permalinks take priority. A check that runs out of budget reports that identity matching is unfinished; retry continues past cached candidates. Public login walls can still prevent automatic matching.
 
 Advisory `reason_code` values distinguish connection/configuration errors, provider failures, pending identity work, unavailable public aliases and a completed no-match result. The form no longer suggests that every unmatched post falls outside the 300-post catalogue. The integration panel separately shows pending or unavailable identity aliases. No extra worker or migration is introduced.
+
+## Bounded continuation and diagnostic progress
+
+A failed alias lookup may be retried after its one-minute cache expires, but that expiry must not erase scan progress. The per-Page index now retains each attempt for up to one day and prioritizes never-attempted candidates before old failures. A lock serializes index updates. Completing a catalogue pass with no verified aliases is an unavailable result, rather than permanently pending work.
+
+The form automatically continues a pending check with at most three requests in total, separated by two seconds. It stops on a match, connection/provider error, public access/rate-limit indication, or after that bound. The final incomplete message explicitly allows saving without waiting. Leaving the form or changing the links cancels the active request and continuation timers.
+
+Safe `progress` counters show catalogue size, checked candidates, remaining candidates and verified opaque aliases. Failure counters use fixed categories such as login/access required, HTTP status, missing metadata, transport failure or response limit. Raw provider HTML, headers and credentials are never returned. These diagnostics describe what the server observed; pending work alone does not establish that Facebook blocked a link or that the post is private.

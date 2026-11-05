@@ -20,6 +20,7 @@ class ReportLinkCheck
         $budget = 3;
         $deadline = microtime(true) + 10;
         $rows = [];
+        $progress = ['catalogue_posts' => 0, 'checked_posts' => 0, 'pending_posts' => 0, 'opaque_alias_posts' => 0, 'failures' => []];
         foreach ($urls as $url) {
             $reference = FacebookReference::url($url);
             if ($reference === null || ! config('social_metrics.enabled')) {
@@ -72,6 +73,20 @@ class ReportLinkCheck
                 }
                 $references = array_map(fn ($row) => FacebookReference::keys($row['canonical_url'] ?? ''), array_filter($rows, fn ($row) => $row['status'] === 'identified'));
                 $prepared = $this->matcher->prepare($posts, $references, $budget, $deadline);
+                $detail = $prepared['progress'];
+                foreach (['catalogue_posts', 'checked_posts', 'pending_posts', 'opaque_alias_posts'] as $field) {
+                    $progress[$field] += $detail[$field];
+                }
+                foreach ($detail['failures'] as $failure => $count) {
+                    $progress['failures'][$failure] = ($progress['failures'][$failure] ?? 0) + $count;
+                }
+                if (($detail['failures']['rate_limited'] ?? 0) > 0) {
+                    $issues['SOCIAL_PUBLIC_RATE_LIMITED'] = true;
+                }
+                $gated = ($detail['failures']['login_required'] ?? 0) + ($detail['failures']['access_required'] ?? 0);
+                if ($detail['checked_posts'] >= 2 && $detail['opaque_alias_posts'] === 0 && $gated === $detail['checked_posts']) {
+                    $issues['SOCIAL_PUBLIC_ACCESS_REQUIRED'] = true;
+                }
                 if ($prepared['pending'] > 0) {
                     $issues['SOCIAL_CHECK_PENDING'] = true;
                 }
@@ -107,7 +122,7 @@ class ReportLinkCheck
         }
 
         $reason = 'SOCIAL_POST_NOT_MATCHED';
-        foreach (['SOCIAL_RECONNECT_REQUIRED', 'SOCIAL_RATE_LIMITED', 'SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE', 'SOCIAL_PROVIDER_UNAVAILABLE', 'SOCIAL_NOT_CONFIGURED', 'SOCIAL_PRINCIPAL_UNAVAILABLE', 'SOCIAL_CONNECTION_UNAVAILABLE', 'SOCIAL_CHECK_PENDING', 'SOCIAL_POST_ALIAS_UNAVAILABLE'] as $code) {
+        foreach (['SOCIAL_RECONNECT_REQUIRED', 'SOCIAL_RATE_LIMITED', 'SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE', 'SOCIAL_PROVIDER_UNAVAILABLE', 'SOCIAL_NOT_CONFIGURED', 'SOCIAL_PRINCIPAL_UNAVAILABLE', 'SOCIAL_CONNECTION_UNAVAILABLE', 'SOCIAL_PUBLIC_RATE_LIMITED', 'SOCIAL_PUBLIC_ACCESS_REQUIRED', 'SOCIAL_CHECK_PENDING', 'SOCIAL_POST_ALIAS_UNAVAILABLE'] as $code) {
             if (isset($issues[$code])) {
                 $reason = $code;
                 break;
@@ -116,6 +131,7 @@ class ReportLinkCheck
         foreach ($rows as &$row) {
             if ($row['status'] === 'identified') {
                 $row['reason_code'] = $reason;
+                $row['progress'] = $progress;
             }
         }
         unset($row);

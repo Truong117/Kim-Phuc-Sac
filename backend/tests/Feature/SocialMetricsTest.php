@@ -15,6 +15,7 @@ use App\Services\Social\SocialMetricsRead;
 use App\Services\Social\SocialMetricsSync;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -333,5 +334,27 @@ class SocialMetricsTest extends TestCase
         $this->assertCount(1, app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05'));
         $item->update(['evidence_links' => []]);
         $this->assertSame([], app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05'));
+    }
+
+    public function test_public_login_wall_has_a_finite_safe_result_and_progress(): void
+    {
+        $this->connect();
+        Http::swap(new Factory);
+        Http::preventStrayRequests();
+        Http::fake([
+            'https://graph.facebook.com/v26.0/100/published_posts*' => Http::response(['data' => [
+                ['id' => '100_555', 'permalink_url' => 'https://facebook.com/987/posts/555'],
+                ['id' => '100_556', 'permalink_url' => 'https://facebook.com/987/posts/556'],
+            ]]),
+            'https://www.facebook.com/987/posts/*' => Http::response('private-provider-html', 302, ['Location' => 'https://www.facebook.com/login/?next=/987/posts/555']),
+        ]);
+        $this->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/official/posts/pfbidExample']])
+            ->assertOk()->assertJsonPath('data.0.reason_code', 'SOCIAL_PUBLIC_ACCESS_REQUIRED')
+            ->assertJsonPath('data.0.progress.catalogue_posts', 2)->assertJsonPath('data.0.progress.checked_posts', 2)
+            ->assertJsonPath('data.0.progress.pending_posts', 0)->assertJsonPath('data.0.progress.failures.login_required', 2)
+            ->assertDontSee('private-provider-html')->assertDontSee($this->token);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/login/')
+            || (parse_url($request->url(), PHP_URL_HOST) !== 'graph.facebook.com' && $request->hasHeader('Authorization')));
+        $this->assertDatabaseCount('social_posts', 0);
     }
 }

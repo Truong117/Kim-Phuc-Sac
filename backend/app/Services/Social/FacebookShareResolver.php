@@ -38,7 +38,7 @@ class FacebookShareResolver
 
     private function fetch(string $url, int &$budget, float $deadline, bool $ownedPost): array
     {
-        $key = ($ownedPost ? 'facebook-post-alias:v1:' : 'facebook-share:v1:').hash('sha256', $url);
+        $key = ($ownedPost ? 'facebook-post-alias:v3:' : 'facebook-share:v1:').hash('sha256', $url);
         $cached = Cache::get($key);
         if (is_array($cached)) {
             return $cached;
@@ -51,7 +51,7 @@ class FacebookShareResolver
             return ['status' => 'pending', 'url' => null];
         }
         $budget--;
-        $result = ['status' => 'unverified', 'url' => null];
+        $result = ['status' => 'unverified', 'url' => null, 'reason' => 'redirect_limit'];
         try {
             $current = $url;
             $aliases = [];
@@ -59,6 +59,7 @@ class FacebookShareResolver
             for ($hop = 0; $hop < 3 && microtime(true) < $deadline; $hop++) {
                 $current = preg_replace('~^https://facebook\.com/~', 'https://www.facebook.com/', $current);
                 if (isset($visited[$current])) {
+                    $result['reason'] = 'redirect_loop';
                     break;
                 }
                 $visited[$current] = true;
@@ -67,7 +68,9 @@ class FacebookShareResolver
                     ->connectTimeout(1)->timeout(min(2, max(0.1, $deadline - microtime(true))))
                     ->withOptions(['allow_redirects' => false, 'cookies' => false, 'stream' => true, 'read_timeout' => 2])->get($current);
                 if ($response->redirect()) {
-                    $target = $this->redirectTarget($current, $response->header('Location'));
+                    $location = $response->header('Location');
+                    $result['reason'] = preg_match('~(?:^|/)(?:login|checkpoint|consent)(?:[/.?]|$)~i', $location) ? 'login_required' : 'redirect_unavailable';
+                    $target = $this->redirectTarget($current, $location);
                 } elseif ($response->successful()) {
                     $stream = $response->toPsrResponse()->getBody();
                     $body = '';
@@ -78,13 +81,20 @@ class FacebookShareResolver
                         }
                         $body .= $chunk;
                     }
-                    $metadata = $stream->eof() && strlen($body) <= 1048576 ? $this->metadataUrls($body) : [];
+                    $complete = $stream->eof() && strlen($body) <= 1048576;
+                    $result['reason'] = $complete ? 'metadata_unavailable' : 'response_limit';
+                    $metadata = $complete ? $this->metadataUrls($body) : [];
                     $target = $metadata[0] ?? null;
                     if ($ownedPost && $target !== null) {
                         $result = ['status' => 'resolved', 'url' => $target, 'aliases' => array_values(array_unique([...$aliases, ...$metadata]))];
                         break;
                     }
                 } else {
+                    $result['reason'] = match ($response->status()) {
+                        429 => 'rate_limited',
+                        401, 403 => 'access_required',
+                        default => 'http_'.$response->status(),
+                    };
                     break;
                 }
                 if ($target === null) {
@@ -104,6 +114,7 @@ class FacebookShareResolver
                 $current = $target;
             }
         } catch (Throwable) {
+            $result['reason'] = 'transport_unavailable';
             // Provider errors are advisory and must never leak HTML, credentials or raw exceptions.
         }
         try {
