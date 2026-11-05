@@ -16,9 +16,19 @@ Feature switches default OFF:
 
 In Integration -> MXH -> Facebook entry -> Detail, an authorized manager enters the Page ID and a Page access token already authorized to read the Page and relevant insights. GET `/me` must match that Page ID. The token is encrypted using Laravel's existing APP_KEY, hidden from serialized models, never returned, and cleared from the form after submission. This first version uses manual Page-token onboarding; it is not an OAuth/App Review workflow. Real token validity, Page permissions, API scopes and metric availability still require live acceptance. Keep APP_KEY stable according to the existing production key-management procedure.
 
-Start a dedicated worker with the configured database queue connection:
+Start a dedicated worker with the dedicated database-backed queue connection:
 
-`php artisan queue:work database --queue=social-metrics --timeout=300 --tries=1`
+`php artisan queue:work social_metrics --queue=social-metrics --timeout=300 --tries=1`
+
+### Staging without Shell
+
+The web container can opt into a supervised consumer with `SOCIAL_METRICS_WORKER_MODE=embedded`. The default is `off`; `external` leaves consumption to a separately managed worker. Also set `SOCIAL_METRICS_ENABLED=true` and the same `META_GRAPH_VERSION` verified in Explorer, then deploy the updated backend. Keep `SOCIAL_METRICS_AUTO_SYNC=false` during manual acceptance. This requires no new migration, Shell session or additional service.
+
+The consumer starts after a 60-second boot delay and handles the `social-metrics` queue independently from both AI queues. It restarts after a process exit, recycles after one hour or the 96 MB between-job memory threshold, and receives SIGTERM through the existing container supervisor. The dedicated `social_metrics` connection uses a 480-second visibility timeout, longer than the job's 300-second timeout and 360-second lease. Existing unreserved jobs in the same configured jobs table/queue remain consumable after the connection change.
+
+For acceptance: save a recent canonical Page-post link in a staging daily report, click Sync once, allow boot delay/processing, then reload the detail. Check successful sync time, coverage and counters rather than treating a queue-accepted response as completion. Startup logs include `Social metrics embedded worker started`; secrets are not logged. A host shutdown deadline can interrupt an in-flight job: inspect last sync/error/coverage and submit a fresh manual sync after the service returns when needed. No migration or provider call is added to startup itself.
+
+This embedded consumer does not run the scheduler. Automatic collection still requires the scheduler described below. It shares the web instance's CPU/RAM and stops whenever that instance is stopped or sleeping; a Free web instance does not provide continuous background collection. No keep-awake traffic is added. For continuous operation use an appropriate always-on worker deployment and `SOCIAL_METRICS_WORKER_MODE=external`.
 
 The scheduler must run `php artisan schedule:run` each minute through the deployment's scheduler mechanism. `social-metrics:dispatch` queues jobs; the manual sync button also queues rather than calling Facebook in the report-save request. No credentials are present in jobs, only an integration ID. A connection lease/revision fences disconnected, edited or replaced connections; jobs recheck the manager's active permissions and source report scope.
 

@@ -32,6 +32,16 @@ return [
     */
 
     'connections' => [
+        // Visibility must outlast the 300-second job timeout and 360-second sync lease.
+        'social_metrics' => [
+            'driver' => 'database',
+            'connection' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'social-metrics',
+            'retry_after' => 480,
+            'after_commit' => true,
+        ],
+
         'daily_report_ai' => [
             'driver' => 'database', 'connection' => env('DB_QUEUE_CONNECTION'),
             'table' => 'jobs', 'queue' => 'ai-daily-reports', 'retry_after' => 480, 'after_commit' => true,

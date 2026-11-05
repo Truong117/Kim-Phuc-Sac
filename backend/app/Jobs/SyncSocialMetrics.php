@@ -16,7 +16,7 @@ class SyncSocialMetrics implements ShouldQueue
 
     public function __construct(public readonly int $entryId)
     {
-        $this->onConnection('database');
+        $this->onConnection('social_metrics');
         $this->onQueue('social-metrics');
     }
 
