@@ -85,9 +85,12 @@ async function addFolder(page: Page) {
     .getByLabel("Tên thư mục", { exact: false })
     .fill("Kế hoạch Marketing");
   await page
-    .getByLabel("Đường dẫn", { exact: false })
+    .getByLabel(/^Đường dẫn/)
     .fill("https://drive.google.com/drive/folders/AbCdE123");
-  await page.getByLabel("Người phụ trách", { exact: false }).selectOption("1");
+  await page
+    .getByRole("dialog")
+    .getByLabel(/^Người phụ trách/)
+    .selectOption("1");
   await page
     .getByRole("button", { name: "Lưu thông tin", exact: true })
     .click();
