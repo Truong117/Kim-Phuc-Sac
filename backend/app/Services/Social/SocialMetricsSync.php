@@ -16,7 +16,7 @@ use Throwable;
 
 class SocialMetricsSync
 {
-    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly AuthorizationService $authorization, private readonly ReportScopeService $reports, private readonly FacebookShareResolver $resolver) {}
+    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly AuthorizationService $authorization, private readonly ReportScopeService $reports, private readonly FacebookShareResolver $resolver, private readonly FacebookPostMatcher $matcher) {}
 
     public function run(int $entryId): void
     {
@@ -71,13 +71,16 @@ class SocialMetricsSync
                 throw new RuntimeException('SOCIAL_SOURCE_LIMIT_EXCEEDED');
             }
             $matched = [];
+            $aliases = ['pending' => 0, 'unverified' => 0];
             if ($links !== []) {
-                foreach ($this->facebook->posts($connection->access_token, $connection->page_id) as $post) {
+                $catalogue = $this->facebook->posts($connection->access_token, $connection->page_id);
+                $aliases = $this->matcher->prepare($catalogue, array_column($links, 'keys'), $resolutionBudget, $resolutionDeadline);
+                foreach ($aliases['posts'] as $post) {
                     $url = FacebookReference::url((string) ($post['permalink_url'] ?? ''));
                     if ($url === null || strlen($url) > 1000) {
                         continue;
                     }
-                    $keys = FacebookReference::postKeys($post);
+                    $keys = $post['_reference_keys'];
                     foreach ($links as $link) {
                         if (array_intersect($link['keys'], $keys) !== []) {
                             $matched[$post['id']]['url'] = $url;
@@ -86,7 +89,7 @@ class SocialMetricsSync
                     }
                 }
             }
-            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending];
+            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending, 'pending_post_aliases' => $aliases['pending'], 'unverified_post_aliases' => $aliases['unverified']];
             DB::transaction(function () use ($connection, $lease, $matched, &$counts): void {
                 $this->fence($connection, $lease);
                 foreach ($matched as $external => $match) {

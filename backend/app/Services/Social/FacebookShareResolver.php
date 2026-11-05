@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
-// Resolve public share aliases only. No Page token, session cookie or login flow is used here.
+// Resolve public Facebook aliases only. No Page token, session cookie or login flow is used here.
 class FacebookShareResolver
 {
     public function resolve(string $value, int &$budget, float $deadline): array
@@ -21,7 +21,24 @@ class FacebookShareResolver
         if (! FacebookReference::isShare($url)) {
             return ['status' => FacebookReference::keys($url) !== [] ? 'resolved' : 'unverified', 'url' => $url];
         }
-        $key = 'facebook-share:v1:'.hash('sha256', $url);
+
+        return $this->fetch($url, $budget, $deadline, false);
+    }
+
+    // Only callers holding a fresh Page API catalogue may use this for its permalink URLs.
+    public function ownedPostAliases(string $value, int &$budget, float $deadline): array
+    {
+        $url = FacebookReference::url($value);
+        if ($url === null || FacebookReference::keys($url) === []) {
+            return ['status' => 'unverified', 'url' => null, 'aliases' => []];
+        }
+
+        return $this->fetch($url, $budget, $deadline, true);
+    }
+
+    private function fetch(string $url, int &$budget, float $deadline, bool $ownedPost): array
+    {
+        $key = ($ownedPost ? 'facebook-post-alias:v1:' : 'facebook-share:v1:').hash('sha256', $url);
         $cached = Cache::get($key);
         if (is_array($cached)) {
             return $cached;
@@ -37,6 +54,7 @@ class FacebookShareResolver
         $result = ['status' => 'unverified', 'url' => null];
         try {
             $current = $url;
+            $aliases = [];
             $visited = [];
             for ($hop = 0; $hop < 3 && microtime(true) < $deadline; $hop++) {
                 $current = preg_replace('~^https://facebook\.com/~', 'https://www.facebook.com/', $current);
@@ -60,14 +78,26 @@ class FacebookShareResolver
                         }
                         $body .= $chunk;
                     }
-                    $target = $stream->eof() && strlen($body) <= 1048576 ? $this->metadata($body) : null;
+                    $metadata = $stream->eof() && strlen($body) <= 1048576 ? $this->metadataUrls($body) : [];
+                    $target = $metadata[0] ?? null;
+                    if ($ownedPost && $target !== null) {
+                        $result = ['status' => 'resolved', 'url' => $target, 'aliases' => array_values(array_unique([...$aliases, ...$metadata]))];
+                        break;
+                    }
                 } else {
                     break;
                 }
                 if ($target === null) {
                     break;
                 }
-                if (! FacebookReference::isShare($target)) {
+                if ($ownedPost && ! FacebookReference::isShare($target)) {
+                    $aliases[] = $target;
+                    if (count(array_filter(FacebookReference::keys($target), fn ($key) => str_starts_with($key, 'pfbid:'))) > 0) {
+                        $result = ['status' => 'resolved', 'url' => $target, 'aliases' => array_values(array_unique($aliases))];
+                        break;
+                    }
+                }
+                if (! $ownedPost && ! FacebookReference::isShare($target)) {
                     $result = ['status' => 'resolved', 'url' => $target];
                     break;
                 }
@@ -103,20 +133,21 @@ class FacebookShareResolver
         return $url !== null && (FacebookReference::isShare($url) || FacebookReference::keys($url) !== []) ? $url : null;
     }
 
-    private function metadata(string $html): ?string
+    private function metadataUrls(string $html): array
     {
+        $urls = [];
         $document = new DOMDocument;
         $previous = libxml_use_internal_errors(true);
         try {
             $document->loadHTML($html, LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING);
             foreach ($document->getElementsByTagName('link') as $node) {
                 if (strtolower($node->getAttribute('rel')) === 'canonical' && ($url = $this->target($node->getAttribute('href'))) !== null && ! FacebookReference::isShare($url)) {
-                    return $url;
+                    $urls[] = $url;
                 }
             }
             foreach ($document->getElementsByTagName('meta') as $node) {
                 if (strtolower($node->getAttribute('property')) === 'og:url' && ($url = $this->target($node->getAttribute('content'))) !== null && ! FacebookReference::isShare($url)) {
-                    return $url;
+                    $urls[] = $url;
                 }
             }
         } finally {
@@ -124,6 +155,6 @@ class FacebookShareResolver
             libxml_use_internal_errors($previous);
         }
 
-        return null;
+        return array_values(array_unique($urls));
     }
 }

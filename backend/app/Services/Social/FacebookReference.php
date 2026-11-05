@@ -75,6 +75,12 @@ final class FacebookReference
         if (preg_match('~/(?:posts|videos|reel)/([0-9]+)$~D', $url['path'], $match)) {
             $keys[] = 'object:'.$match[1];
         }
+        if (preg_match('~^/(?:[^/]+/)?posts/(pfbid[A-Za-z0-9]+)$~D', $path, $match)) {
+            $keys[] = 'pfbid:'.$match[1];
+        }
+        if (isset($query['story_fbid']) && preg_match('/^pfbid[A-Za-z0-9]+$/D', $query['story_fbid'])) {
+            $keys[] = 'pfbid:'.$query['story_fbid'];
+        }
         foreach (['v', 'story_fbid', 'fbid'] as $field) {
             if (isset($query[$field]) && ctype_digit($query[$field])) {
                 $keys[] = 'object:'.$query[$field];

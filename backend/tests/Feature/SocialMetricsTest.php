@@ -33,6 +33,8 @@ class SocialMetricsTest extends TestCase
 
     private bool $providerFailure = false;
 
+    private bool $numericAliasMode = false;
+
     private int $likes = 10;
 
     private ?int $views = 100;
@@ -59,6 +61,9 @@ class SocialMetricsTest extends TestCase
                 return Http::response(['error' => ['code' => 190, 'message' => 'raw-provider-secret']], 400);
             }
             $path = parse_url($request->url(), PHP_URL_PATH);
+            if ($this->numericAliasMode && $path === '/987/posts/555') {
+                return Http::response('', 302, ['Location' => 'https://facebook.com/official/posts/pfbidExample']);
+            }
             if ($path === '/v26.0/100/published_posts' && $this->interrupt === 'disconnect') {
                 $row = SocialConnection::query()->first();
                 $row->update(['status' => 'disconnected', 'access_token' => null, 'revision' => $row->revision + 1, 'lease_token' => null, 'leased_until' => null]);
@@ -69,7 +74,7 @@ class SocialMetricsTest extends TestCase
 
             return match ($path) {
                 '/v26.0/me' => Http::response(['id' => '100', 'name' => 'KPS Page', 'category' => 'Test Page']),
-                '/v26.0/100/published_posts' => Http::response(['data' => [['id' => '100_555', 'permalink_url' => 'https://facebook.com/kps/posts/555', 'from' => ['id' => '100']]]]),
+                '/v26.0/100/published_posts' => Http::response(['data' => [['id' => '100_555', 'permalink_url' => $this->numericAliasMode ? 'https://facebook.com/987/posts/555' : 'https://facebook.com/kps/posts/555', 'from' => ['id' => '100']]]]),
                 '/v26.0/100_555/reactions' => Http::response(['data' => [], 'summary' => ['total_count' => $this->likes]]),
                 '/v26.0/100_555/comments' => Http::response(['data' => [], 'summary' => ['total_count' => 2]]),
                 '/v26.0/100_555/insights' => $this->views === null ? Http::response(['error' => ['code' => 100]], 400) : Http::response(['data' => [['name' => 'post_media_view', 'period' => 'lifetime', 'values' => [['value' => $this->views]]]]]),
@@ -276,7 +281,7 @@ class SocialMetricsTest extends TestCase
         $this->connect();
         $url = ['urls' => ['https://facebook.com/reel/555']];
         $this->providerFailure = true;
-        $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'identified')->assertDontSee('raw-provider-secret');
+        $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'identified')->assertJsonPath('data.0.reason_code', 'SOCIAL_RECONNECT_REQUIRED')->assertDontSee('raw-provider-secret');
         $this->providerFailure = false;
         $this->postJson('/api/reports/check-links', $url)->assertOk()->assertJsonPath('data.0.status', 'matched');
         $this->deleteJson('/api/integrations/'.$this->entry->id.'/social/connect')->assertNoContent();
@@ -309,5 +314,24 @@ class SocialMetricsTest extends TestCase
         $this->entry->update(['organization_id' => $other['organization_id']]);
         $this->actingAs($staff)->postJson('/api/reports/check-links', ['urls' => ['https://facebook.com/reel/555']])
             ->assertOk()->assertJsonPath('data.0.status', 'identified');
+    }
+
+    public function test_share_opaque_and_numeric_urls_refer_to_one_owned_post_in_check_and_sync(): void
+    {
+        $this->connect();
+        $this->numericAliasMode = true;
+        $this->shareTarget = 'https://facebook.com/official/posts/pfbidExample';
+        $share = 'https://facebook.com/share/p/Example';
+        $this->postJson('/api/reports/check-links', ['urls' => [$share]])->assertOk()->assertJsonPath('data.0.status', 'matched');
+        $item = $this->item($this->admin, $share);
+        $item->update(['evidence_links' => [$share, 'https://facebook.com/official/posts/pfbidExample', 'https://facebook.com/987/posts/555']]);
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertDatabaseCount('social_posts', 1);
+        $this->assertDatabaseCount('social_post_sources', 3);
+        $this->assertDatabaseCount('social_metric_snapshots', 1);
+        $this->assertSame(3, SocialConnection::query()->first()->sync_counts['matched_links']);
+        $this->assertCount(1, app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05'));
+        $item->update(['evidence_links' => []]);
+        $this->assertSame([], app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05'));
     }
 }
