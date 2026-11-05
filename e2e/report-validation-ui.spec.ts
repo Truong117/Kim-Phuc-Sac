@@ -319,3 +319,80 @@ test("identified Facebook links distinguish connection errors from an unfinished
   await expect(checks).not.toContainText("cần cấp quyền lại");
   await expect(evidence).toHaveValue(share);
 });
+
+test("pending Facebook checks continue automatically and stop when matched", async ({
+  page,
+}) => {
+  await setup(page, false);
+  let calls = 0;
+  await page.route("**/api/reports/check-links", async (route) => {
+    calls++;
+    const { urls } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: calls < 3 ? "identified" : "matched",
+          reason_code: calls < 3 ? "SOCIAL_CHECK_PENDING" : undefined,
+          page_name: "Kim Phục Sắc",
+          progress: {
+            catalogue_posts: 10,
+            checked_posts: calls * 3,
+            pending_posts: 10 - calls * 3,
+          },
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Đã đăng");
+  await page.locator('form button[type="submit"]').click();
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  await evidence.fill("https://facebook.com/share/p/Auto");
+  await expect(page.locator("[data-evidence-link-checks]")).toContainText(
+    "Đã đối chiếu với Page Kim Phục Sắc",
+  );
+  expect(calls).toBe(3);
+  await expect(evidence).toHaveValue("https://facebook.com/share/p/Auto");
+});
+
+test("pending Facebook checks stop after three requests and still allow report save", async ({
+  page,
+}) => {
+  const api = await setup(page, false);
+  let calls = 0;
+  await page.route("**/api/reports/check-links", async (route) => {
+    calls++;
+    const { urls } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: "identified",
+          reason_code: "SOCIAL_CHECK_PENDING",
+          progress: {
+            catalogue_posts: 20,
+            checked_posts: calls,
+            pending_posts: 20 - calls,
+          },
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Đã đăng");
+  const save = page.locator('form button[type="submit"]');
+  await save.click();
+  await page.locator("#next-day-plan").fill("Kế hoạch ngày mai");
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  await evidence.fill("https://facebook.com/share/p/Pending");
+  const checks = page.locator("[data-evidence-link-checks]");
+  await expect(checks).toContainText(
+    "Chưa hoàn tất xác minh tự động trong lượt này",
+  );
+  await expect(checks).toContainText("3/20");
+  expect(calls).toBe(3);
+  await page.waitForTimeout(3_000);
+  expect(calls).toBe(3);
+  await save.click();
+  expect(api.count()).toBe(1);
+  await expect(evidence).toHaveValue("https://facebook.com/share/p/Pending");
+});

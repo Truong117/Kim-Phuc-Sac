@@ -67,7 +67,8 @@ class FacebookPostMatcherTest extends TestCase
             $prepared = app(FacebookPostMatcher::class)->prepare($posts, $references, $budget, microtime(true) + 10);
             $this->assertSame(4 - $round, $prepared['pending']);
         }
-        $this->assertContains('pfbid:pfbid4', $prepared['posts'][3]['_reference_keys']);
+        $target = collect($prepared['posts'])->firstWhere('id', '100_4');
+        $this->assertContains('pfbid:pfbid4', $target['_reference_keys']);
         Http::assertSentCount(4);
     }
 
@@ -81,5 +82,45 @@ class FacebookPostMatcherTest extends TestCase
         $this->assertNotContains('pfbid:pfbidExample', $prepared['posts'][0]['_reference_keys']);
         $this->assertSame(1, $prepared['unverified']);
         Http::assertSentCount(1);
+    }
+
+    public function test_progress_survives_failure_cache_expiry_and_eventually_reaches_the_target(): void
+    {
+        Http::fake(function ($request) {
+            $id = basename(parse_url($request->url(), PHP_URL_PATH));
+
+            return $id === '4'
+                ? Http::response('', 302, ['Location' => 'https://facebook.com/official/posts/pfbid4'])
+                : Http::response('', 403);
+        });
+        $posts = array_map(fn ($id) => $this->postFixture($id), [1, 2, 3, 4]);
+        $references = [FacebookReference::keys('https://facebook.com/official/posts/pfbid4')];
+        for ($round = 1; $round <= 4; $round++) {
+            $budget = 1;
+            $prepared = app(FacebookPostMatcher::class)->prepare($posts, $references, $budget, microtime(true) + 10);
+            $this->assertSame($round, $prepared['progress']['checked_posts']);
+            $this->assertSame(4 - $round, $prepared['pending']);
+            $this->travel(2)->minutes();
+        }
+        $target = collect($prepared['posts'])->firstWhere('id', '100_4');
+        $this->assertContains('pfbid:pfbid4', $target['_reference_keys']);
+        Http::assertSentCount(4);
+    }
+
+    public function test_completed_failed_scan_is_not_permanently_pending_and_reports_only_safe_reasons(): void
+    {
+        Http::fake(['*' => Http::response('private-provider-html', 429)]);
+        $posts = [$this->postFixture(1), $this->postFixture(2)];
+        $references = [FacebookReference::keys('https://facebook.com/official/posts/pfbidOther')];
+        for ($round = 1; $round <= 2; $round++) {
+            $budget = 1;
+            $prepared = app(FacebookPostMatcher::class)->prepare($posts, $references, $budget, microtime(true) + 10);
+            $this->travel(2)->minutes();
+        }
+        $this->assertSame(0, $prepared['pending']);
+        $this->assertSame(2, $prepared['unverified']);
+        $this->assertSame(['rate_limited' => 2], $prepared['progress']['failures']);
+        $this->assertStringNotContainsString('private-provider-html', json_encode($prepared));
+        Http::assertSentCount(2);
     }
 }

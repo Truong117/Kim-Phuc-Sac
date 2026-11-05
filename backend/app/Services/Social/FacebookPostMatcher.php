@@ -26,50 +26,58 @@ class FacebookPostMatcher
             }
         }
         unset($post);
+        $empty = ['catalogue_posts' => count($posts), 'checked_posts' => 0, 'pending_posts' => 0, 'opaque_alias_posts' => 0, 'failures' => []];
         if ($wanted === [] || $posts === []) {
-            return ['posts' => $posts, 'pending' => 0, 'unverified' => 0];
+            return ['posts' => $posts, 'pending' => 0, 'unverified' => 0, 'progress' => $empty];
         }
-        // One bounded index read, rather than up to 300 remote cache reads per check.
         $page = explode('_', $posts[0]['id'])[0];
-        $indexKey = 'facebook-post-index:v1:'.$page;
+        $indexKey = 'facebook-post-index:v2:'.$page;
+        $lock = Cache::lock($indexKey.':lock', 60);
+        if (! $lock->get()) {
+            return ['posts' => $posts, 'pending' => count($posts), 'unverified' => 0, 'progress' => [...$empty, 'pending_posts' => count($posts)]];
+        }
+        try {
+            return $this->advance($posts, $wanted, $budget, $deadline, $indexKey);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function advance(array $posts, array $wanted, int &$budget, float $deadline, string $indexKey): array
+    {
         $index = Cache::get($indexKey, []);
         $retained = [];
         foreach ($posts as &$post) {
             $record = $index[$post['id']] ?? null;
-            if (is_array($record) && ($record['url'] ?? null) === ($post['permalink_url'] ?? null) && ($record['until'] ?? 0) > now()->timestamp) {
+            if (is_array($record) && ($record['url'] ?? null) === ($post['permalink_url'] ?? null) && ($record['checked_at'] ?? 0) > now()->timestamp - 86400) {
+                // Progress outlives the short failure cache. Expiry must not restart the scan.
                 $retained[$post['id']] = $record;
-                $post['_reference_keys'] = array_values(array_unique([...$post['_reference_keys'], ...$record['keys']]));
-                foreach ($post['_reference_keys'] as $key) {
-                    unset($wanted[$key]);
+                if (($record['until'] ?? 0) > now()->timestamp) {
+                    $post['_reference_keys'] = array_values(array_unique([...$post['_reference_keys'], ...$record['keys']]));
+                    foreach ($post['_reference_keys'] as $key) {
+                        unset($wanted[$key]);
+                    }
                 }
             }
         }
         unset($post);
-        // Numeric ordinary-post permalinks take priority; Reel IDs already match directly.
-        usort($posts, fn ($a, $b) => $this->priority($a) <=> $this->priority($b));
-        $pending = 0;
-        $unverified = 0;
+        // Never-attempted candidates first, then oldest attempts; ordinary posts win ties.
+        usort($posts, function ($a, $b) use ($retained) {
+            $rank = fn ($post) => [isset($retained[$post['id']]) ? 1 : 0, $retained[$post['id']]['checked_at'] ?? 0, $this->priority($post)];
+
+            return $rank($a) <=> $rank($b);
+        });
         $changed = false;
         foreach ($posts as &$post) {
-            if ($wanted === []) {
+            if ($wanted === [] || $budget <= 0 || microtime(true) >= $deadline) {
                 break;
             }
-            if (isset($retained[$post['id']])) {
-                if (count(array_filter($retained[$post['id']]['keys'], fn ($key) => str_starts_with($key, 'pfbid:'))) === 0) {
-                    $unverified++;
-                }
-
-                continue;
-            }
-            if ($budget <= 0 || microtime(true) >= $deadline) {
-                $pending++;
-
+            $record = $retained[$post['id']] ?? null;
+            if ($record !== null && $record['until'] > now()->timestamp) {
                 continue;
             }
             $resolved = $this->resolver->ownedPostAliases((string) ($post['permalink_url'] ?? ''), $budget, $deadline);
             if ($resolved['status'] === 'pending') {
-                $pending++;
-
                 continue;
             }
             $keys = [];
@@ -78,29 +86,31 @@ class FacebookPostMatcher
                     $keys = [...$keys, ...FacebookReference::keys($alias)];
                 }
             }
-            // Public aliases only bridge opaque IDs; numeric ownership stays anchored to the API object.
+            // Numeric identities always come from the authenticated Page API.
             $keys = array_values(array_unique(array_filter($keys, fn ($key) => str_starts_with($key, 'pfbid:'))));
-            $hasOpaque = count(array_filter($keys, fn ($key) => str_starts_with($key, 'pfbid:'))) > 0;
-            $retained[$post['id']] = ['url' => $post['permalink_url'], 'keys' => $keys, 'until' => now()->timestamp + ($hasOpaque ? 86400 : 60)];
+            $reason = $keys !== [] ? null : ($resolved['reason'] ?? 'metadata_unavailable');
+            $retained[$post['id']] = ['url' => $post['permalink_url'] ?? '', 'keys' => $keys, 'checked_at' => now()->timestamp, 'until' => now()->timestamp + ($keys !== [] ? 86400 : 60), 'reason' => $reason];
             $changed = true;
             $post['_reference_keys'] = array_values(array_unique([...$post['_reference_keys'], ...$keys]));
             foreach ($post['_reference_keys'] as $key) {
                 unset($wanted[$key]);
             }
-            if (! $hasOpaque) {
-                $unverified++;
-            }
         }
         unset($post);
-        if ($wanted === []) {
-            $pending = 0;
-            $unverified = 0;
-        }
         if ($changed) {
             Cache::put($indexKey, $retained, 86400);
         }
+        $progress = ['catalogue_posts' => count($posts), 'checked_posts' => count($retained), 'pending_posts' => count($posts) - count($retained), 'opaque_alias_posts' => 0, 'failures' => []];
+        foreach ($retained as $record) {
+            if ($record['keys'] !== [] && $record['until'] > now()->timestamp) {
+                $progress['opaque_alias_posts']++;
+            } else {
+                $reason = $record['reason'] ?? 'metadata_unavailable';
+                $progress['failures'][$reason] = ($progress['failures'][$reason] ?? 0) + 1;
+            }
+        }
 
-        return ['posts' => $posts, 'pending' => $pending, 'unverified' => $unverified];
+        return ['posts' => $posts, 'pending' => $wanted === [] ? 0 : $progress['pending_posts'], 'unverified' => $wanted === [] ? 0 : array_sum($progress['failures']), 'progress' => $progress];
     }
 
     private function priority(array $post): int
