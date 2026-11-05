@@ -226,6 +226,7 @@ class SocialMetricsTest extends TestCase
             $this->assertNull(FacebookReference::url($url));
         }
     }
+
     public function test_employee_can_check_links_without_integration_access_and_credentials_never_leave_server(): void
     {
         $this->connect();

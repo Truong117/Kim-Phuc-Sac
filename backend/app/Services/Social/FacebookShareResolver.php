@@ -75,10 +75,12 @@ class FacebookShareResolver
             }
         } catch (Throwable) {
             // Provider errors are advisory and must never leak HTML, credentials or raw exceptions.
+        }
+        try {
+            Cache::put($key, $result, $result['status'] === 'resolved' ? 86400 : 60);
         } finally {
             $lock->release();
         }
-        Cache::put($key, $result, $result['status'] === 'resolved' ? 86400 : 60);
 
         return $result;
     }

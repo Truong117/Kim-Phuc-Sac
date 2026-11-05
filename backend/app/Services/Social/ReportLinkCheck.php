@@ -24,6 +24,7 @@ class ReportLinkCheck
             $reference = FacebookReference::url($url);
             if ($reference === null || ! config('social_metrics.enabled')) {
                 $rows[] = ['url' => $url, 'status' => $reference === null ? 'unsupported' : 'unverified'];
+
                 continue;
             }
             $resolved = $this->resolver->resolve($url, $budget, $deadline);

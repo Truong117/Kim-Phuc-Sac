@@ -142,4 +142,3 @@ class ReportEvidenceValidationTest extends TestCase
             ->assertJsonPath('data.items.0.evidence_links.0', 'https://facebook.com/share/r/Unverified');
     }
 }
-
