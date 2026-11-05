@@ -301,4 +301,3 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::get('/locations', [ReferenceController::class, 'locations']);
     });
 });
-
