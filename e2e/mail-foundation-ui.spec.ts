@@ -211,7 +211,7 @@ test("admin previews a named employee and sees provider acceptance in history", 
   await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByText("Gmail đã tiếp nhận", { exact: true }).first(),
+    page.getByText("Đã gửi qua Gmail", { exact: true }).first(),
   ).toBeVisible();
   expect(api.keys).toHaveLength(1);
 });
@@ -227,7 +227,7 @@ test("assistant can send but cannot connect or disconnect Gmail", async ({
   await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByText("Gmail đã tiếp nhận", { exact: true }).first(),
+    page.getByText("Đã gửi qua Gmail", { exact: true }).first(),
   ).toBeVisible();
 });
 
@@ -370,4 +370,72 @@ test("recipient search and select-all include only allowed employees", async ({
   await expect(
     page.getByRole("button", { name: "Xem trước thư thử", exact: true }),
   ).toBeDisabled();
+});
+
+test("sent status explains delivery on hover and keyboard focus, and Escape dismisses it", async ({
+  page,
+}) => {
+  await setup(page);
+  await preview(page);
+  await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
+  const badge = page.getByText("Đã gửi qua Gmail", { exact: true }).first();
+  const info = page
+    .getByRole("button", { name: "Thông tin trạng thái gửi", exact: true })
+    .first();
+  await expect(badge).toBeVisible();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await info.hover();
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "Chưa xác nhận đã nhận/đọc",
+  );
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+  await page.getByRole("heading", { name: "Mail KPS", exact: true }).hover();
+  await info.focus();
+  await expect(info).toHaveAttribute("aria-describedby", /.+/);
+  await expect(page.getByRole("tooltip")).toHaveText(
+    "Chưa xác nhận đã nhận/đọc",
+  );
+  await info.press("Shift+Tab");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
+});
+
+test.describe("sent tooltip on touch screens", () => {
+  test.use({ hasTouch: true });
+  for (const dark of [false, true]) {
+    test(`mobile ${dark ? "dark" : "light"}: tap opens sent explanation without horizontal overflow`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 320, height: 844 });
+      await setup(page, { canConfigure: false });
+      await page.evaluate(
+        (enabled) => document.documentElement.classList.toggle("dark", enabled),
+        dark,
+      );
+      await preview(page);
+      await page
+        .getByRole("button", { name: "Gửi thư thử", exact: true })
+        .click();
+      const info = page
+        .getByRole("button", { name: "Thông tin trạng thái gửi", exact: true })
+        .first();
+      await info.tap();
+      await expect(page.getByRole("tooltip")).toHaveText(
+        "Chưa xác nhận đã nhận/đọc",
+      );
+      const bounds = await page.getByRole("tooltip").boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth > innerWidth,
+        ),
+      ).toBe(false);
+      await page
+        .getByRole("heading", { name: "Gửi thư thử", exact: true })
+        .tap();
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+    });
+  }
 });

@@ -2817,13 +2817,15 @@
     "confirmSend": "Gửi thư thử",
     "sending": "Đang gửi…",
     "cancel": "Hủy",
-    "acceptedNotice": "Gmail đã tiếp nhận thư thử. Vui lòng kiểm tra hộp thư của người nhận.",
+    "acceptedNotice": "Đã gửi thư thử qua Gmail. Vui lòng kiểm tra hộp thư của người nhận.",
     "checkHistory": "Yêu cầu đã được ghi nhận. Xem trạng thái trong lịch sử gửi.",
     "recipientInvalid": "Người nhận không còn hợp lệ hoặc chưa được cho phép nhận thử. Hãy tải lại danh sách.",
     "actionError": "Không hoàn tất được thao tác. Kiểm tra cấu hình và tải lại trạng thái.",
     "requestUncertain": "Chưa xác nhận được kết quả. Tải lại lịch sử trước khi thao tác lại; hệ thống giữ mã yêu cầu để hạn chế gửi trùng.",
     "historyTitle": "Lịch sử gửi từ KPS",
-    "historyDescription": "20 yêu cầu gần nhất. Gmail tiếp nhận không đồng nghĩa thư đã được giao hoặc người nhận đã đọc.",
+    "historyDescription": "20 yêu cầu gần nhất.",
+    "sentInfoLabel": "Thông tin trạng thái gửi",
+    "sentInfo": "Chưa xác nhận đã nhận/đọc",
     "emptyHistory": "Chưa có yêu cầu gửi mail.",
     "deliveryError": "Không hoàn tất được yêu cầu. Quản trị viên cần kiểm tra.",
     "connectionStates": {
@@ -2836,7 +2838,7 @@
     "messageStates": {
       "queued": "Chờ gửi",
       "sending": "Đang gửi",
-      "accepted": "Gmail đã tiếp nhận",
+      "accepted": "Đã gửi qua Gmail",
       "failed": "Gửi lỗi",
       "unknown": "Chưa xác định kết quả",
       "cancelled": "Đã hủy"
