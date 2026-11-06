@@ -48,6 +48,7 @@ async function setup(
               email: "recipient@example.test",
               department: "Nội bộ",
               test_allowed: true,
+              send_allowed: true,
             },
             {
               id: "4",
@@ -55,6 +56,7 @@ async function setup(
               email: "colleague@example.test",
               department: "Nội bộ",
               test_allowed: true,
+              send_allowed: true,
             },
             {
               id: "3",
@@ -62,6 +64,7 @@ async function setup(
               email: "outside@example.test",
               department: null,
               test_allowed: false,
+              send_allowed: true,
             },
           ],
         },
@@ -167,6 +170,9 @@ async function setup(
   await expect(page.getByRole("tab", { name: /Drive/ })).toBeVisible();
   if (canView) {
     await page.getByRole("tab", { name: "Mail", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Gửi thử kết nối", exact: true })
+      .click();
     await expect(
       page.getByRole("group", { name: "Nhân viên nhận thư thử" }),
     ).toBeEnabled();

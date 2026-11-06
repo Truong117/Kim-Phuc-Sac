@@ -10,6 +10,7 @@ export default defineConfig({
     "integrations-persistence-ui.spec.ts",
     "social-metrics-ui.spec.ts",
     "mail-foundation-ui.spec.ts",
+    "mail-compose-ui.spec.ts",
   ],
   workers: 1,
   // Leave one minute for failure diagnostics before the CI step times out.

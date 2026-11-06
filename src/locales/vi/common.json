@@ -2786,9 +2786,8 @@
     "newBatch": "Tạo lượt gửi mới",
     "batchResults": "Kết quả lượt gửi hiện tại",
     "batchResultsHint": "Kết quả riêng cho từng người. Giữ nguyên mã yêu cầu khi tiếp tục hoặc tải lại trang.",
-
     "title": "Mail KPS",
-    "description": "Gửi mail nội bộ từ tài khoản công ty. Phiên bản đầu hỗ trợ kết nối và gửi thử; hộp thư Gmail không được đồng bộ.",
+    "description": "Gửi mail nội bộ từ tài khoản công ty. Mỗi người nhận một thư riêng; hộp thư Gmail không được đồng bộ.",
     "loading": "Đang tải thông tin mail…",
     "loadError": "Không tải được thông tin mail. Vui lòng tải lại trang.",
     "unavailable": "Không có quyền truy cập Mail hoặc chưa tải được quyền truy cập.",
@@ -2857,5 +2856,31 @@
       "SENDER_ACCESS_REVOKED": "Người gửi không còn quyền sử dụng Mail.",
       "PROVIDER_REJECTED": "Gmail đã từ chối yêu cầu gửi."
     }
+  },
+  "mailCompose": {
+    "modeLabel": "Chức năng gửi mail",
+    "mode": "Soạn mail",
+    "testMode": "Gửi thử kết nối",
+    "title": "Soạn mail nội bộ",
+    "description": "Chọn tối đa 50 nhân viên đang hoạt động, nhập nội dung và xem trước trước khi gửi. Không cần thêm người nhận vào cấu hình gửi thử.",
+    "recipients": "Nhân viên nhận mail",
+    "invalidEmail": "Email không hợp lệ",
+    "subject": "Tiêu đề",
+    "body": "Nội dung",
+    "bodyPlaceholder": "Nhập nội dung gửi cho nhân viên…",
+    "bodyHint": "Tối đa 10.000 ký tự; nội dung quá lớn cần rút ngắn. Gửi dạng văn bản, giữ các dòng xuống hàng.",
+    "subjectError": "Nhập tiêu đề từ 1 đến 200 ký tự, không xuống dòng.",
+    "bodyError": "Nhập nội dung hợp lệ, tối đa 10.000 ký tự. Nếu thư quá lớn, hãy rút ngắn nội dung.",
+    "recipientError": "Chọn ít nhất một nhân viên đang hoạt động và có email hợp lệ.",
+    "validationError": "Người nhận hoặc nội dung không hợp lệ. Kiểm tra các trường được đánh dấu rồi xem trước lại.",
+    "preview": "Xem trước mail",
+    "confirmTitle": "Xác nhận gửi mail",
+    "send": "Gửi mail",
+    "from": "Người gửi: {name} <{email}>",
+    "backToEdit": "Quay lại chỉnh sửa",
+    "privacyHint": "Nội dung gửi đúng như bản xem trước. Mỗi nhân viên nhận một thư riêng và không thấy email người nhận khác.",
+    "resumeHint": "Lượt gửi đã được lưu và nội dung đã khóa. Tiếp tục để cập nhật kết quả; thư đã gửi hoặc chưa xác định kết quả sẽ không tự gửi lại.",
+    "acceptedNotice": "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
+    "newMessage": "Soạn mail mới"
   }
 }

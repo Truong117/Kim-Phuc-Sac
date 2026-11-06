@@ -10,6 +10,7 @@ interface Props {
   onChange: (ids: string[]) => void;
   disabled: boolean;
   invalid: boolean;
+  mode?: "test" | "internal";
 }
 export default function MailRecipientPicker({
   recipients,
@@ -17,6 +18,7 @@ export default function MailRecipientPicker({
   onChange,
   disabled,
   invalid,
+  mode = "test",
 }: Props) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
@@ -26,15 +28,20 @@ export default function MailRecipientPicker({
       .includes(query.toLocaleLowerCase("vi").trim()),
   );
   const selected = new Set(selectedIds);
-  const selectable = visible.filter((recipient) => recipient.test_allowed);
+  const allowed = (recipient: MailRecipient) =>
+    mode === "test" ? recipient.test_allowed : recipient.send_allowed;
+  const selectable = visible.filter(allowed);
   return (
     <fieldset
       disabled={disabled}
       aria-invalid={invalid || undefined}
       className={`min-w-0 space-y-3 rounded-lg border p-3 ${invalid ? "border-error-500 dark:border-error-400" : "border-gray-300 dark:border-gray-700"}`}
     >
-      <legend className="px-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-        {t("mailUi.recipient")}
+      <legend
+        id={`mail-${mode}-recipients-label`}
+        className="px-1 text-sm font-medium text-gray-700 dark:text-gray-300"
+      >
+        {t(mode === "test" ? "mailUi.recipient" : "mailCompose.recipients")}
       </legend>
       <Input
         aria-label={t("mailUi.searchRecipients")}
@@ -87,7 +94,7 @@ export default function MailRecipientPicker({
               checked={selected.has(recipient.id)}
               disabled={
                 disabled ||
-                !recipient.test_allowed ||
+                !allowed(recipient) ||
                 (!selected.has(recipient.id) && selectedIds.length >= 50)
               }
               onChange={(event) =>
@@ -102,7 +109,9 @@ export default function MailRecipientPicker({
             <span className="min-w-0 break-all">
               {recipient.name} — {recipient.email}
               {recipient.department ? ` · ${recipient.department}` : ""}
-              {!recipient.test_allowed ? ` (${t("mailUi.notAllowed")})` : ""}
+              {!allowed(recipient)
+                ? ` (${t(mode === "test" ? "mailUi.notAllowed" : "mailCompose.invalidEmail")})`
+                : ""}
             </span>
           </label>
         ))}
