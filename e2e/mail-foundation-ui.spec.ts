@@ -202,21 +202,61 @@ test("a network error preserves the same request key across a page reload", asyn
   expect(api.keys[1]).toBe(api.keys[0]);
 });
 
-test("mobile preview fits the viewport and invalid recipient preserves the selection", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  await setup(page, { canConfigure: false, invalid: true });
-  await preview(page);
-  await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
-    "Người nhận không còn hợp lệ",
-  );
-  await page.getByRole("button", { name: "Hủy", exact: true }).click();
-  await expect(page.getByLabel("Nhân viên nhận thư thử")).toHaveValue("2");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth > innerWidth,
-    ),
-  ).toBe(false);
-});
+for (const width of [320, 390]) {
+  for (const dark of [false, true]) {
+    test(`${width}px ${dark ? "dark" : "light"}: mail tabs, preview and invalid recipient stay within the viewport`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await setup(page, { canConfigure: false, invalid: true });
+      await page.evaluate(
+        (enabled) => document.documentElement.classList.toggle("dark", enabled),
+        dark,
+      );
+      const expectNoPageOverflow = async () => {
+        const dimensions = await page.evaluate(() => ({
+          viewport: innerWidth,
+          page: document.documentElement.scrollWidth,
+          overflowing: Array.from(document.querySelectorAll("main *"))
+            .filter(
+              (element) =>
+                element.getBoundingClientRect().right > innerWidth + 1,
+            )
+            .map((element) => ({
+              tag: element.tagName,
+              role: element.getAttribute("role"),
+              className: element.className,
+            })),
+        }));
+        expect(dimensions.page, JSON.stringify(dimensions)).toBeLessThanOrEqual(
+          dimensions.viewport,
+        );
+      };
+      await expectNoPageOverflow();
+      const mail = page.getByRole("tab", { name: "Mail", exact: true });
+      const drive = page.getByRole("tab", { name: /Drive/ });
+      await mail.focus();
+      await mail.press("Home");
+      await expect(drive).toBeFocused();
+      await drive.press("End");
+      await expect(mail).toBeFocused();
+      await expect(page.getByLabel("Nhân viên nhận thư thử")).toBeEnabled();
+      await expectNoPageOverflow();
+      await preview(page);
+      await expectNoPageOverflow();
+      await page
+        .getByRole("button", { name: "Gửi thư thử", exact: true })
+        .click();
+      await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+        "Người nhận không còn hợp lệ",
+      );
+      await page.getByRole("button", { name: "Hủy", exact: true }).click();
+      await expect(page.getByLabel("Nhân viên nhận thư thử")).toHaveValue("2");
+      await expect(page.getByLabel("Nhân viên nhận thư thử")).toHaveAttribute(
+        "aria-invalid",
+        "true",
+      );
+      await expectNoPageOverflow();
+    });
+  }
+}

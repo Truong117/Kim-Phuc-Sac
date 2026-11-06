@@ -118,7 +118,7 @@ function IntegrationWorkspace() {
           </p>
         )}
         <div
-          className="flex gap-2 border-b border-gray-200 dark:border-gray-800"
+          className="flex max-w-full gap-2 overflow-x-auto border-b border-gray-200 dark:border-gray-800"
           role="tablist"
           aria-label={t("integrationsUi.title")}
         >
@@ -159,7 +159,7 @@ function IntegrationWorkspace() {
                   document.getElementById(`integration-tab-${target}`)?.focus();
                 }
               }}
-              className={`flex items-center gap-2 border-b-2 px-5 py-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-kps-primary ${tab === value ? "border-kps-primary text-kps-primary" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
+              className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-4 text-sm font-semibold whitespace-nowrap focus-visible:outline-2 focus-visible:outline-kps-primary sm:px-5 ${tab === value ? "border-kps-primary text-kps-primary" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
             >
               <Icon className="size-5" />
               {t(
