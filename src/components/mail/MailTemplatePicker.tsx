@@ -146,7 +146,13 @@ export default function MailTemplatePicker({
         );
         if (signal.aborted) return;
         if (!row) throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
-        content = dailyMailTemplate(row, fromName, window.location.origin, t);
+        content = dailyMailTemplate(
+          row,
+          fromName,
+          window.location.origin,
+          t,
+          page,
+        );
       } else {
         const fresh = await getWorkAnalysis(Number(selected), signal);
         if (signal.aborted) return;
@@ -306,6 +312,7 @@ export default function MailTemplatePicker({
             <div className="flex flex-wrap gap-2">
               <Button
                 disabled={disabled}
+                className="!bg-kps-primary !text-white hover:!bg-kps-primary-hover"
                 onClick={() => {
                   onApply(candidate);
                   setCandidate(null);

@@ -48,6 +48,7 @@ test("daily template preserves AI groups, evidence, comments, recommendations an
     "KPS",
     "https://internal.example.test",
     t,
+    2,
   );
   assert.match(mail.subject, /05\/11\/2026.*Nguyễn Văn An/);
   for (const text of [
@@ -64,7 +65,7 @@ test("daily template preserves AI groups, evidence, comments, recommendations an
   assert.doesNotMatch(mail.body, /9000/);
   assert.match(
     mail.body,
-    /https:\/\/internal.example.test\/ai\/insights\?view=daily&date=2026-11-05/,
+    /https:\/\/internal.example.test\/ai\/insights\?view=daily&date=2026-11-05&page=2/,
   );
   assert.deepEqual(source, before);
 });

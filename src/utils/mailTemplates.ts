@@ -59,6 +59,7 @@ export function dailyMailTemplate(
   fromName: string,
   origin: string,
   t: TFunction,
+  page = 1,
 ): MailTemplateContent {
   if (!dailyMailReady(row)) throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
   const document = row.document!;
@@ -117,6 +118,7 @@ export function dailyMailTemplate(
   url.search = new URLSearchParams({
     view: "daily",
     date: document.source.date,
+    page: String(page),
   }).toString();
   chunks.push(
     t("mailTemplates.dailySource", {
