@@ -18,6 +18,8 @@ import { cn } from "@/utils";
 import { useTranslation } from "react-i18next";
 
 interface WorkItemFormProps {
+  reportDate?: string;
+  disabled?: boolean;
   index: number;
   item: WorkItemFormData;
   errors?: WorkItemValidationErrors;
@@ -32,6 +34,8 @@ interface WorkItemFormProps {
 
 export default function WorkItemForm({
   index,
+  reportDate,
+  disabled,
   item,
   errors,
   canDelete,
@@ -205,6 +209,8 @@ export default function WorkItemForm({
           />
         </div>
         <WorkItemExtras
+          reportDate={reportDate}
+          disabled={disabled}
           item={item}
           errors={errors}
           onChange={onChange}

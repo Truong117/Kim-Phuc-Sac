@@ -446,3 +446,21 @@ test("a still-open V1 tab cannot silently overwrite the newer V2 draft", () => {
   );
   assert.deepEqual(adapter.load(context()).draft.data, next);
 });
+
+
+test("Facebook evidence choices survive drafts and malformed choice data is rejected", () => {
+  const selection = { source_url: "https://facebook.com/share/p/Test", selection_token: "application-proof", entry_id: 1, external_id: "100_555", post_url: "https://facebook.com/kps/posts/555", page_name: "KPS" };
+  const storage = new MemoryStorage();
+  const adapter = new drafts.WorkReportDraftStorage(storage);
+  const original = data();
+  original.items[0].evidenceLinks = selection.source_url;
+  original.items[0].facebookSelections = [selection];
+  const result = adapter.save(context(), original, saveOptions());
+  assert.equal(result.status, "saved");
+  assert.deepEqual(adapter.load(context()).draft.data.items[0].facebookSelections, [selection]);
+  const key = drafts.workReportDraftKey(context());
+  const stored = JSON.parse(storage.getItem(key));
+  stored.data.items[0].facebookSelections = [{ source_url: selection.source_url }];
+  storage.setItem(key, JSON.stringify(stored));
+  assert.equal(adapter.load(context()).status, "invalid");
+});

@@ -59,6 +59,15 @@ class SocialMetricsSync
             foreach ($items as $item) {
                 foreach ($item->evidence_links ?? [] as $link) {
                     if (is_string($link) && FacebookReference::url($link) !== null) {
+                        $selection = collect($item->facebook_selections ?? [])->first(fn ($row) => ($row['source_url'] ?? '') === $link);
+                        if ($selection !== null) {
+                            // Manual choices are scoped to this evidence, never global aliases. Other Pages cannot override them.
+                            if ((int) $selection['entry_id'] === (int) $connection->integration_entry_id && $selection['page_id'] === $connection->page_id) {
+                                $links[] = ['item' => $item->id, 'hash' => hash('sha256', FacebookReference::url($link)), 'keys' => [], 'selection' => $selection];
+                            }
+
+                            continue;
+                        }
                         $resolved = $this->resolver->resolve($link, $resolutionBudget, $resolutionDeadline);
                         if (FacebookReference::isShare($link) && $resolved['status'] !== 'resolved') {
                             $resolved['status'] === 'pending' ? $resolutionPending++ : $unresolved++;
@@ -72,7 +81,14 @@ class SocialMetricsSync
             }
             $matched = [];
             $aliases = ['pending' => 0, 'unverified' => 0];
-            if ($links !== []) {
+            foreach ($links as $link) {
+                if (isset($link['selection'])) {
+                    $selection = $link['selection'];
+                    $matched[$selection['external_id']]['url'] = $selection['post_url'];
+                    $matched[$selection['external_id']]['sources'][] = $link;
+                }
+            }
+            if (collect($links)->contains(fn ($link) => ! isset($link['selection']))) {
                 $catalogue = $this->facebook->posts($connection->access_token, $connection->page_id);
                 $aliases = $this->matcher->prepare($catalogue, array_column($links, 'keys'), $resolutionBudget, $resolutionDeadline);
                 foreach ($aliases['posts'] as $post) {
@@ -97,7 +113,13 @@ class SocialMetricsSync
                     $id = $post?->id ?? DB::table('social_posts')->insertGetId(['integration_entry_id' => $connection->integration_entry_id, 'organization_id' => $connection->organization_id, 'external_id' => $external, 'url' => $match['url'], 'created_at' => now(), 'updated_at' => now()]);
                     foreach ($match['sources'] as $source) {
                         // Report items can disappear while the provider is responding; never revive them.
-                        if (DailyReportItem::query()->whereKey($source['item'])->exists()) {
+                        $freshItem = DailyReportItem::query()->whereKey($source['item'])->lockForUpdate()->first();
+                        $currentLink = collect($freshItem?->evidence_links ?? [])->first(fn ($value) => is_string($value) && FacebookReference::url($value) !== null && hash('sha256', FacebookReference::url($value)) === $source['hash']);
+                        $currentChoice = collect($freshItem?->facebook_selections ?? [])->firstWhere('source_url', $currentLink);
+                        $choiceMatches = isset($source['selection']) ? $currentChoice !== null && $currentChoice['external_id'] === $external && (int) $currentChoice['entry_id'] === (int) $connection->integration_entry_id : $currentChoice === null;
+                        if ($currentLink !== null && $choiceMatches) {
+                            // Replacing a choice must also remove a previous automatic association for this evidence.
+                            DB::table('social_post_sources')->where('daily_report_item_id', $source['item'])->where('link_hash', $source['hash'])->where('social_post_id', '!=', $id)->delete();
                             DB::table('social_post_sources')->insertOrIgnore(['social_post_id' => $id, 'daily_report_item_id' => $source['item'], 'link_hash' => $source['hash']]);
                             $counts['matched_links']++;
                         }

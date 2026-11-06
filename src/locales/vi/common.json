@@ -2722,5 +2722,52 @@
         "conflict": "Page đã có kết nối khác hoặc thông tin đã thay đổi. Tải lại để kiểm tra."
       }
     }
+  },
+  "facebookPicker": {
+    "title": "Chọn bài từ Facebook",
+    "choose": "Chọn bài từ Facebook",
+    "matchHint": "Chọn một bài tương ứng với link minh chứng. Xem preview, tick cuối dòng rồi xác nhận đúng bài.",
+    "addHint": "Bài mới nhất hiển thị trước. Xem preview, tick các bài cần thêm rồi xác nhận.",
+    "page": "Page",
+    "from": "Từ ngày",
+    "to": "Đến ngày",
+    "apply": "Áp dụng bộ lọc",
+    "reload": "Tải lại danh sách",
+    "search": "Tìm trong các bài đã tải",
+    "searchHint": "Nhập nội dung hoặc đường dẫn",
+    "kind": "Loại bài",
+    "types": {
+      "all": "Tất cả",
+      "post": "Bài viết, ảnh",
+      "video": "Video và Reel",
+      "reel": "Reel"
+    },
+    "loadedHint": "Đã tải {count} bài, mới nhất → cũ nhất. Tìm kiếm và lọc loại chỉ áp dụng các bài đã tải; bấm tải thêm để xem bài cũ hơn.",
+    "list": "Danh sách bài Facebook",
+    "preview": "Xem trước bài",
+    "previewNamed": "Xem trước: {name}",
+    "selectNamed": "Chọn: {name}",
+    "alreadyAdded": "Đã có trong minh chứng",
+    "empty": "Chưa có bài phù hợp trong danh sách đã tải. Thử đổi khoảng ngày, bộ lọc hoặc tải thêm.",
+    "noPages": "Chưa có Page Facebook khả dụng. Báo người quản lý kiểm tra kết nối; bạn vẫn có thể nhập link và lưu báo cáo.",
+    "loading": "Đang tải bài…",
+    "more": "Tải thêm bài cũ hơn",
+    "previewEmpty": "Rê chuột, dùng phím Tab hoặc chạm vào nội dung bài để xem trước.",
+    "previewImage": "Ảnh xem trước bài Facebook",
+    "noText": "Bài không có nội dung văn bản. Mở trên Facebook để xem đầy đủ.",
+    "previewHint": "Preview dùng thông tin Page cung cấp. Mở Facebook để xem đầy đủ ảnh hoặc video; xem preview chưa có nghĩa là đã chọn bài.",
+    "open": "Mở trên Facebook",
+    "selected": "Đã chọn {count}/{max} bài",
+    "cancel": "Hủy",
+    "confirmMatch": "Xác nhận đúng bài",
+    "confirm": "Xác nhận chọn {count} bài",
+    "loadFailed": "Chưa tải được bài. Thử tải lại hoặc báo người quản lý kiểm tra kết nối. Bạn vẫn có thể đóng popup và lưu báo cáo.",
+    "expired": "Kết nối Facebook cần được cấp quyền lại. Báo người quản lý cập nhật kết nối.",
+    "rateLimited": "Facebook hoặc hệ thống đang giới hạn yêu cầu. Hãy chờ rồi tải lại.",
+    "linkNumber": "Minh chứng {number}",
+    "confirmed": "{page} · Bài từ Page — nhân viên xác nhận.",
+    "change": "Đổi bài",
+    "chooseForLink": "Chọn bài tương ứng",
+    "remove": "Bỏ lựa chọn"
   }
 }

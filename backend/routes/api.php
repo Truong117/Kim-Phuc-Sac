@@ -14,6 +14,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Reports\MakeupReportController;
 use App\Http\Controllers\Reports\ReportCommentController;
 use App\Http\Controllers\Reports\ReportController;
+use App\Http\Controllers\Reports\ReportFacebookPostsController;
 use App\Http\Controllers\Reports\ReportLinkCheckController;
 use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
@@ -74,6 +75,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view');
 
+    Route::get('/reports/facebook-posts', ReportFacebookPostsController::class)
+        ->middleware(['report_participant', 'permission:reports.create', 'throttle:20,1,report-facebook-posts']);
     Route::post('/reports/check-links', ReportLinkCheckController::class)
         ->middleware(['report_participant', 'permission:reports.create', 'throttle:20,1,report-link-check']);
     Route::get('/reports/today', TodayReportController::class);

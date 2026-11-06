@@ -2,6 +2,7 @@
 
 namespace App\Services\Social;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
@@ -69,6 +70,24 @@ class FacebookMetricsClient
         }
 
         return $posts;
+    }
+
+    /** A real provider cursor, not the bounded metrics catalogue or a public HTML alias scan. */
+    public function pickerPosts(string $token, string $page, string $from, string $to, ?string $after): array
+    {
+        $data = $this->get($token, $page.'/published_posts', array_filter([
+            'fields' => 'id,permalink_url,from,message,created_time,full_picture,attachments{media_type}',
+            'limit' => 25,
+            'since' => CarbonImmutable::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay()->timestamp,
+            'until' => CarbonImmutable::parse($to, 'Asia/Ho_Chi_Minh')->addDay()->startOfDay()->timestamp,
+            'after' => $after,
+        ], fn ($value) => $value !== null));
+        $posts = array_values(array_filter($data['data'] ?? [], fn ($post) => is_array($post)
+            && preg_match('/^'.preg_quote($page, '/').'_[0-9]+$/D', (string) ($post['id'] ?? ''))
+            && (! isset($post['from']['id']) || (string) $post['from']['id'] === $page)));
+        $cursor = $data['paging']['cursors']['after'] ?? null;
+
+        return ['posts' => $posts, 'after' => isset($data['paging']['next']) && is_string($cursor) && strlen($cursor) <= 2048 ? $cursor : null];
     }
 
     public function metrics(string $token, string $post): array

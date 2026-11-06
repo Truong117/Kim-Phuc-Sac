@@ -22,15 +22,14 @@ export const mapReportFieldErrors = (
       continue;
     }
     const match =
-      /^items\.(\d+)\.(content|result|status|note|issue|evidence_links)(?:\.\d+)?$/.exec(
+      /^items\.(\d+)\.(content|result|status|note|issue|evidence_links|facebook_selections)(?:\.\d+(?:\.[a-z_]+)?)?$/.exec(
         path,
       );
     const item = match ? submittedItems[Number(match[1])] : undefined;
     if (!match || !item) continue;
-    const field =
-      match[2] === "evidence_links"
-        ? "evidenceLinks"
-        : (match[2] as keyof WorkItemValidationErrors);
+    const field = ["evidence_links", "facebook_selections"].includes(match[2])
+      ? "evidenceLinks"
+      : (match[2] as keyof WorkItemValidationErrors);
     const itemErrors = (mapped.items[item.clientId] ??= {});
     itemErrors[field] ??= message;
   }

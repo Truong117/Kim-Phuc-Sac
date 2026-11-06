@@ -23,7 +23,7 @@ final class WorkReportAcceptanceFixture
         $identity = $this->target->verify();
         $plan = $this->dataset->build($batch, $end);
         $ledger = DB::table('migrations')->orderBy('id')->pluck('migration')->all();
-        if (! in_array(count($ledger), [22, 23, 24, 25, 26, 27, 28, 29], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
+        if (! in_array(count($ledger), [22, 23, 24, 25, 26, 27, 28, 29, 30], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
             throw new LogicException('FIXTURE_UNREVIEWED_MIGRATION_LEDGER');
         }
         if (count($ledger) >= 25 && (! Schema::hasColumn('daily_reports', 'next_day_plan')
@@ -41,6 +41,9 @@ final class WorkReportAcceptanceFixture
             if (Schema::hasTable($table) !== (count($ledger) >= $step)) {
                 throw new LogicException('FIXTURE_PARTIAL_SCHEMA_REQUIRES_RECOVERY');
             }
+        }
+        if (Schema::hasColumn('daily_report_items', 'facebook_selections') !== (count($ledger) >= 30)) {
+            throw new LogicException('FIXTURE_FACEBOOK_SELECTION_SCHEMA_DRIFT');
         }
         $org = DB::table('organizations')->where('code', 'KPS')->where('is_active', true)->first();
         if ($org === null) {

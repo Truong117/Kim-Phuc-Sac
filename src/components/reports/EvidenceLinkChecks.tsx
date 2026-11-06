@@ -53,14 +53,22 @@ const isFacebook = (value: string) => {
   }
 };
 
-export default function EvidenceLinkChecks({ value }: { value: string }) {
+export default function EvidenceLinkChecks({
+  value,
+  confirmedUrls = [],
+}: {
+  value: string;
+  confirmedUrls?: string[];
+}) {
   const { t } = useTranslation();
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState<{ key: string; rows: Check[] } | null>(
     null,
   );
   const sourceUrls = [...new Set(parseEvidenceLinks(value))];
-  const urls = sourceUrls.filter(isFacebook).slice(0, 10);
+  const urls = sourceUrls
+    .filter((url) => isFacebook(url) && !confirmedUrls.includes(url))
+    .slice(0, 10);
   const key = JSON.stringify(urls);
   const initial: Check[] = urls.map((url) => ({
     url,

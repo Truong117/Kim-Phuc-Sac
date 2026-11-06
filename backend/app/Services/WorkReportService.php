@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\OrganizationMembership;
 use App\Models\ReportComment;
 use App\Models\User;
+use App\Services\Social\ReportFacebookPosts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
@@ -168,7 +169,7 @@ class WorkReportService
                     'next_day_plan' => $details['next_day_plan'] ?? null,
                 ]);
 
-                $this->replaceItems($report, $items);
+                $this->replaceItems($report, $items, $author);
 
                 return $report;
             });
@@ -241,6 +242,11 @@ class WorkReportService
                     throw ValidationException::withMessages(['items' => 'Đầu việc không thuộc báo cáo đang sửa.']);
                 }
             }
+            // Resolve and lock new Page choices before taking any item write locks (same order as sync).
+            $selections = [];
+            foreach ($items as $index => $item) {
+                $selections[$index] = app(ReportFacebookPosts::class)->selections($author, $item, isset($item['id']) ? $existing->get($item['id']) : null, $index);
+            }
             // Move old positions outside the destination range before reordering a unique position index.
             $offset = (int) $existing->max('sort_order') + count($items) + 1;
             $report->items()->update(['sort_order' => DB::raw('sort_order + '.$offset)]);
@@ -257,6 +263,10 @@ class WorkReportService
                     }
                 }
                 $row = isset($item['id']) ? $existing->get($item['id']) : $report->items()->make();
+                $values['facebook_selections'] = $selections[$index];
+                if ($row->exists && ($row->evidence_links !== ($values['evidence_links'] ?? $row->evidence_links) || ($row->facebook_selections ?? []) !== $values['facebook_selections'])) {
+                    DB::table('social_post_sources')->where('daily_report_item_id', $row->id)->delete();
+                }
                 $row->fill($values)->save();
                 $kept[] = $row->id;
             }
@@ -372,21 +382,20 @@ class WorkReportService
     /**
      * @param  list<array{content: string, result?: string|null, status: string, note?: string|null}>  $items
      */
-    private function replaceItems(DailyReport $report, array $items): void
+    private function replaceItems(DailyReport $report, array $items, User $author): void
     {
-        $report->items()->createMany(array_map(
-            fn (array $item, int $index): array => [
+        foreach ($items as $index => $item) {
+            $report->items()->create([
                 'content' => $item['content'],
                 'result' => $item['result'] ?? '',
                 'status' => $item['status'],
                 'note' => $item['note'] ?? null,
                 'issue' => $item['issue'] ?? null,
                 'evidence_links' => $item['evidence_links'] ?? null,
+                'facebook_selections' => app(ReportFacebookPosts::class)->selections($author, $item, null, $index),
                 'sort_order' => $index + 1,
-            ],
-            $items,
-            array_keys($items),
-        ));
+            ]);
+        }
     }
 
     private function loadDetail(DailyReport $report, User $viewer): DailyReport
