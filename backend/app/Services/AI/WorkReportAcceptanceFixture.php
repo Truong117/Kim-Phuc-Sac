@@ -23,7 +23,7 @@ final class WorkReportAcceptanceFixture
         $identity = $this->target->verify();
         $plan = $this->dataset->build($batch, $end);
         $ledger = DB::table('migrations')->orderBy('id')->pluck('migration')->all();
-        if (! in_array(count($ledger), [22, 23, 24, 25, 26, 27, 28, 29, 30], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
+        if (! in_array(count($ledger), [22, 23, 24, 25, 26, 27, 28, 29, 30, 31], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
             throw new LogicException('FIXTURE_UNREVIEWED_MIGRATION_LEDGER');
         }
         if (count($ledger) >= 25 && (! Schema::hasColumn('daily_reports', 'next_day_plan')
@@ -37,7 +37,7 @@ final class WorkReportAcceptanceFixture
         if (Schema::hasColumn('daily_reports', 'is_makeup') !== (count($ledger) >= 26)) {
             throw new LogicException('FIXTURE_MAKEUP_REPORT_SCHEMA_DRIFT');
         }
-        foreach (['work_report_analyses' => 23, 'work_report_analysis_units' => 23, 'work_report_analysis_revisions' => 24, 'work_report_regeneration_requests' => 24, 'daily_report_ai_documents' => 27, 'daily_report_ai_units' => 27, 'integration_entries' => 28, 'social_connections' => 29, 'social_posts' => 29, 'social_post_sources' => 29, 'social_metric_snapshots' => 29] as $table => $step) {
+        foreach (['work_report_analyses' => 23, 'work_report_analysis_units' => 23, 'work_report_analysis_revisions' => 24, 'work_report_regeneration_requests' => 24, 'daily_report_ai_documents' => 27, 'daily_report_ai_units' => 27, 'integration_entries' => 28, 'social_connections' => 29, 'social_posts' => 29, 'social_post_sources' => 29, 'social_metric_snapshots' => 29, 'mail_connections' => 31, 'mail_oauth_attempts' => 31, 'mail_messages' => 31] as $table => $step) {
             if (Schema::hasTable($table) !== (count($ledger) >= $step)) {
                 throw new LogicException('FIXTURE_PARTIAL_SCHEMA_REQUIRES_RECOVERY');
             }
