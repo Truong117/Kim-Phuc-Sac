@@ -237,7 +237,8 @@ test("company first, structured decisions and source footer; employee selection 
     page.getByLabel("Kỳ phân tích", { exact: true }),
   ).not.toBeVisible();
   await page
-    .getByText("Đề xuất: Đối chiếu kết quả chiến dịch", { exact: true })
+    .locator("summary")
+    .filter({ hasText: "Đề xuất: Đối chiếu kết quả chiến dịch" })
     .click();
   await expect(
     page.getByText("Có căn cứ quyết định ngân sách", { exact: true }),
@@ -359,7 +360,8 @@ test("older result remains readable without fabricated decision fields or automa
 }) => {
   const posts = await setup(page, { legacy: true });
   await page
-    .getByText("Đề xuất: Đối chiếu kết quả chiến dịch", { exact: true })
+    .locator("summary")
+    .filter({ hasText: "Đề xuất: Đối chiếu kết quả chiến dịch" })
     .click();
   await expect(page.getByText(/Bản cũ chưa lưu chi tiết/)).toBeVisible();
   await expect(page.getByText("Cách kiểm chứng", { exact: true })).toHaveCount(

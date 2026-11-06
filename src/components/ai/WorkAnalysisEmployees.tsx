@@ -16,11 +16,13 @@ export default function WorkAnalysisEmployees({
   sources,
   selectedEmployeeId,
   onSelect,
+  frozen = true,
 }: {
   employees: AnalysisEmployee[];
   sources: AnalysisSource[];
   selectedEmployeeId?: number;
   onSelect?: (id: number) => void;
+  frozen?: boolean;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const [query, setQuery] = useState("");
@@ -158,6 +160,7 @@ export default function WorkAnalysisEmployees({
                 )}
                 <WorkAnalysisSources
                   sources={sources}
+                  frozen={frozen}
                   inventory={selected.work_inventory ?? []}
                   reportIds={selected.source_report_ids}
                   evidence={[

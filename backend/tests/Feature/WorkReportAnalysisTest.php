@@ -438,6 +438,38 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertCount(2, $final->input['parts']);
     }
 
+    public function test_final_summary_failure_preserves_employee_and_batch_results_and_retries_only_final_review(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        foreach (range(1, 3) as $index) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Công việc '.$index);
+        }
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $worker = app(WorkReportAnalysisWorker::class);
+        foreach ($run->units()->where('unit_key', 'like', 'employee:%')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        foreach ($run->units()->where('unit_key', 'like', 'summary:batch:%')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        $before = $run->units()->where('unit_key', '!=', 'summary')->get()->toJson();
+        $final = $run->units()->where('unit_key', 'summary')->firstOrFail();
+        $provider = \Mockery::mock(WorkReportAnalysisProvider::class);
+        $provider->shouldReceive('analyze')->once()->andThrow(new AiGatewayException('AI_TIMEOUT', 'test'));
+        $this->app->instance(WorkReportAnalysisProvider::class, $provider);
+        app(WorkReportAnalysisWorker::class)->process($final->id);
+        $this->assertSame('partial', $run->refresh()->status);
+        $this->actingAs($owner, 'web')->getJson('/api/ai/work-report-analyses/'.$run->id)->assertOk()
+            ->assertJsonPath('data.can_retry', true);
+        $this->postJson('/api/ai/work-report-analyses/'.$run->id.'/retry')->assertAccepted();
+        $this->app->instance(WorkReportAnalysisProvider::class, new WorkReportAnalysisProvider);
+        app(WorkReportAnalysisWorker::class)->process($final->id);
+        $this->assertSame('completed', $run->refresh()->status);
+        $this->assertSame(2, $final->refresh()->attempts);
+        $this->assertSame($before, $run->units()->where('unit_key', '!=', 'summary')->get()->toJson());
+    }
+
     public function test_employee_retry_replans_summary_without_dispatching_obsolete_failed_batches(): void
     {
         Queue::fake();

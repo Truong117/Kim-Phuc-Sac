@@ -500,6 +500,7 @@ function PeriodWorkReportInsights() {
             {tab === "employees" && (
               <WorkAnalysisEmployees
                 employees={employees}
+                frozen={Boolean(run)}
                 sources={sources}
                 selectedEmployeeId={selectedEmployeeId}
                 onSelect={setSelectedEmployeeId}

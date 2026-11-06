@@ -14,11 +14,13 @@ export default function WorkAnalysisSources({
   sources,
   inventory = [],
   reportIds = [],
+  frozen = true,
 }: {
   evidence: Evidence[];
   sources: AnalysisSource[];
   inventory?: WeeklyWorkGroup[];
   reportIds?: number[];
+  frozen?: boolean;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const identities = new Map(sources.map((source) => [source.id, source]));
@@ -38,7 +40,7 @@ export default function WorkAnalysisSources({
         </summary>
         <div className="mt-4 space-y-4">
           <p className="text-xs leading-6 text-gray-500 dark:text-gray-400">
-            {t("frozenSources")}
+            {t(frozen ? "frozenSources" : "currentSourceHint")}
           </p>
           {refs.length > 0 && (
             <ul className="space-y-3">
