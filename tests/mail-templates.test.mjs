@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import ts from "typescript";
-import { dailyMailFixture, weeklyMailFixture } from "./fixtures/mail-ai.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const moduleUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString("base64")}`;
+const { dailyMailFixture, weeklyMailFixture } = await import(
+  moduleUrl(await read("tests/fixtures/mail-ai.ts"))
+);
 const dateUrl = moduleUrl(await read("src/utils/dateOnly.ts"));
 const templates = await import(
   moduleUrl(

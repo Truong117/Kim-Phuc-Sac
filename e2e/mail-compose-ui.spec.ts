@@ -1,8 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import {
-  dailyMailFixture,
-  weeklyMailFixture,
-} from "../tests/fixtures/mail-ai.mjs";
+import { dailyMailFixture, weeklyMailFixture } from "../tests/fixtures/mail-ai";
 
 async function setup(
   page: Page,
