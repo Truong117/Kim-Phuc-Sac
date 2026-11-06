@@ -3,6 +3,7 @@ import ReportIssueSummary from "./ReportIssueSummary";
 import Button from "@/components/ui/button/Button";
 import { PlusIcon } from "@/icons";
 import type {
+  FacebookReportPage,
   WorkStatus,
   WorkItemField,
   WorkItemFormData,
@@ -13,6 +14,7 @@ import WorkItemForm from "./WorkItemForm";
 
 interface WorkItemListProps {
   reportDate?: string;
+  facebookPages?: FacebookReportPage[];
   disabled?: boolean;
   planSection?: ReactNode;
   items: WorkItemFormData[];
@@ -28,6 +30,7 @@ interface WorkItemListProps {
 
 export default function WorkItemList({
   items,
+  facebookPages,
   reportDate,
   disabled,
   planSection,
@@ -64,6 +67,7 @@ export default function WorkItemList({
               )
               .map((item) => (
                 <WorkItemForm
+                  facebookPages={facebookPages}
                   reportDate={reportDate}
                   disabled={disabled}
                   key={item.clientId}

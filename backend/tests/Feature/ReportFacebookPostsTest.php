@@ -30,6 +30,8 @@ class ReportFacebookPostsTest extends TestCase
 
     private bool $interrupt = false;
 
+    private bool $reassign = false;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -39,13 +41,17 @@ class ReportFacebookPostsTest extends TestCase
         $this->admin = $this->actor('ADMIN');
         $this->staff = $this->actor('OFFICE_STAFF');
         $organization = DB::table('organizations')->where('code', 'KPS')->value('id');
-        $this->entry = IntegrationEntry::query()->create(['organization_id' => $organization, 'kind' => 'social', 'platform' => 'facebook', 'name' => 'KPS', 'url' => 'https://facebook.com/kps', 'url_hash' => hash('sha256', 'kps'), 'responsible_user_id' => $this->admin->id, 'enabled' => true]);
+        $this->entry = IntegrationEntry::query()->create(['organization_id' => $organization, 'kind' => 'social', 'platform' => 'facebook', 'name' => 'KPS', 'url' => 'https://facebook.com/kps', 'url_hash' => hash('sha256', 'kps'), 'responsible_user_id' => $this->staff->id, 'enabled' => true]);
         $this->connection = SocialConnection::query()->create(['organization_id' => $organization, 'integration_entry_id' => $this->entry->id, 'page_id' => '100', 'page_name' => 'KPS Page', 'access_token' => 'server-only-meta-secret', 'status' => 'connected', 'connected_by' => $this->admin->id, 'revision' => 1]);
         Http::preventStrayRequests();
         Http::fake(function ($request) {
             if (str_contains($request->url(), '/100/published_posts')) {
                 if ($this->interrupt) {
                     $this->connection->update(['status' => 'disconnected', 'revision' => 2]);
+                }
+
+                if ($this->reassign) {
+                    $this->entry->update(['responsible_user_id' => $this->admin->id, 'version' => $this->entry->refresh()->version + 1]);
                 }
 
                 return Http::response(['data' => [
@@ -80,6 +86,74 @@ class ReportFacebookPostsTest extends TestCase
             'content' => 'Đăng bài Facebook', 'result' => 'Đã đăng', 'status' => 'COMPLETED', 'evidence_links' => [$post['source_url']],
             'facebook_selections' => [['source_url' => $post['source_url'], 'selection_token' => $post['selection_token']]],
         ]]];
+    }
+
+    public function test_only_assigned_people_receive_page_metadata_without_calling_meta_including_admin(): void
+    {
+        $this->actingAs($this->staff)->getJson('/api/reports/facebook-pages')->assertOk()
+            ->assertJsonPath('data.0.id', $this->entry->id)->assertJsonCount(1, 'data')->assertDontSee('access_token')->assertDontSee('server-only-meta-secret');
+        $this->actingAs($this->admin)->getJson('/api/reports/facebook-pages')->assertOk()->assertExactJson(['data' => []]);
+        $this->actingAs($this->actor('OFFICE_STAFF'))->getJson('/api/reports/facebook-pages')->assertOk()->assertExactJson(['data' => []]);
+        $this->actingAs($this->actor('NO_REPORT_PERMISSION'))->getJson('/api/reports/facebook-pages')->assertForbidden();
+        Http::assertNothingSent();
+    }
+
+    public function test_page_dropdown_excludes_other_employees_channels_and_never_fetches_their_posts(): void
+    {
+        $other = IntegrationEntry::query()->create(['organization_id' => $this->entry->organization_id, 'kind' => 'social', 'platform' => 'facebook', 'name' => 'Other Page', 'url' => 'https://facebook.com/other', 'url_hash' => hash('sha256', 'other'), 'responsible_user_id' => $this->admin->id, 'enabled' => true]);
+        SocialConnection::query()->create(['organization_id' => $this->entry->organization_id, 'integration_entry_id' => $other->id, 'page_id' => '200', 'page_name' => 'Other Page', 'access_token' => 'other-server-only-secret', 'status' => 'connected', 'connected_by' => $this->admin->id, 'revision' => 1]);
+        $this->actingAs($this->staff)->getJson('/api/reports/facebook-pages')->assertOk()->assertJsonCount(1, 'data')->assertDontSee('Other Page');
+        $batch = $this->listing();
+        $this->assertCount(1, $batch['pages']);
+        $this->getJson('/api/reports/facebook-posts?entry_id='.$other->id.'&from_date=2026-10-30&to_date=2026-11-05')->assertUnprocessable()->assertDontSee('Other Page');
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), '/200/'));
+    }
+
+    public function test_unassigned_employee_cannot_fetch_posts_or_select_another_page_by_explicit_entry_id(): void
+    {
+        $other = $this->actor('OFFICE_STAFF');
+        $this->actingAs($other)->getJson('/api/reports/facebook-posts?from_date=2026-10-30&to_date=2026-11-05')->assertOk()->assertJsonCount(0, 'data')->assertJsonCount(0, 'pages');
+        $this->getJson('/api/reports/facebook-posts?entry_id='.$this->entry->id.'&from_date=2026-10-30&to_date=2026-11-05')->assertUnprocessable()->assertDontSee('selection_token');
+        Http::assertNothingSent();
+    }
+
+    public function test_reassignment_during_provider_io_never_returns_posts_or_tickets(): void
+    {
+        $this->reassign = true;
+        $this->actingAs($this->staff)->getJson('/api/reports/facebook-posts?from_date=2026-10-30&to_date=2026-11-05')->assertUnprocessable()->assertDontSee('selection_token');
+        $this->getJson('/api/reports/facebook-pages')->assertOk()->assertExactJson(['data' => []]);
+    }
+
+    public function test_reassignment_invalidates_drafts_and_cursors_even_if_the_channel_is_assigned_back(): void
+    {
+        $batch = $this->listing();
+        $payload = $this->payload($batch['data'][1]);
+        $this->entry->update(['responsible_user_id' => $this->admin->id, 'version' => 2]);
+        $this->postJson('/api/reports', $payload)->assertUnprocessable()->assertJsonValidationErrors('items.0.evidence_links');
+        $this->entry->update(['responsible_user_id' => $this->staff->id, 'version' => 3]);
+        $this->postJson('/api/reports', $payload)->assertUnprocessable();
+        $this->getJson('/api/reports/facebook-posts?'.http_build_query(['from_date' => '2026-10-30', 'to_date' => '2026-11-05', 'source_url' => $this->share, 'cursor' => $batch['next_cursor']]))->assertUnprocessable();
+        $this->assertDatabaseCount('daily_reports', 0);
+    }
+
+    public function test_reassignment_preserves_an_unchanged_saved_choice_but_cannot_create_a_new_report_from_it(): void
+    {
+        $payload = $this->payload($this->listing()['data'][1]);
+        $report = $this->postJson('/api/reports', $payload)->assertCreated()->json('data');
+        $choice = $report['items'][0]['facebook_selections'][0];
+        $this->entry->update(['responsible_user_id' => $this->admin->id, 'version' => 2]);
+        $payload['items'][0]['id'] = $report['items'][0]['id'];
+        $payload['items'][0]['facebook_selections'][0]['selection_token'] = $choice['selection_token'];
+        $payload['items'][0]['result'] = 'Thêm mô tả kết quả';
+        $this->patchJson('/api/reports/'.$report['id'], $payload)->assertOk()
+            ->assertJsonPath('data.items.0.facebook_selections.0.selected_at', $choice['selected_at']);
+        $other = $this->actor('OFFICE_STAFF');
+        unset($payload['items'][0]['id']);
+        $this->actingAs($other)->postJson('/api/reports', $payload)->assertUnprocessable();
+        $this->actingAs($this->staff);
+        $this->travel(1)->days();
+        $this->postJson('/api/reports', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('daily_reports', 1);
     }
 
     public function test_employee_lists_only_page_owned_candidates_newest_first_with_safe_preview_and_cursor(): void

@@ -9,6 +9,7 @@ import {
   TrashBinIcon,
 } from "@/icons";
 import type {
+  FacebookReportPage,
   WorkItemField,
   WorkItemFormData,
   WorkItemValidationErrors,
@@ -19,6 +20,7 @@ import { useTranslation } from "react-i18next";
 
 interface WorkItemFormProps {
   reportDate?: string;
+  facebookPages?: FacebookReportPage[];
   disabled?: boolean;
   index: number;
   item: WorkItemFormData;
@@ -34,6 +36,7 @@ interface WorkItemFormProps {
 
 export default function WorkItemForm({
   index,
+  facebookPages,
   reportDate,
   disabled,
   item,
@@ -209,6 +212,7 @@ export default function WorkItemForm({
           />
         </div>
         <WorkItemExtras
+          facebookPages={facebookPages}
           reportDate={reportDate}
           disabled={disabled}
           item={item}

@@ -75,6 +75,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view');
 
+    Route::get('/reports/facebook-pages', [ReportFacebookPostsController::class, 'pages'])
+        ->middleware(['report_participant', 'permission:reports.create', 'throttle:60,1,report-facebook-pages']);
     Route::get('/reports/facebook-posts', ReportFacebookPostsController::class)
         ->middleware(['report_participant', 'permission:reports.create', 'throttle:20,1,report-facebook-posts']);
     Route::post('/reports/check-links', ReportLinkCheckController::class)

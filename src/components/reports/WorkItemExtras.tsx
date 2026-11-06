@@ -5,6 +5,7 @@ import ReportFieldRow from "./ReportFieldRow";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
 import type {
+  FacebookReportPage,
   WorkItemField,
   WorkItemFormData,
   WorkItemValidationErrors,
@@ -13,6 +14,7 @@ import { useTranslation } from "react-i18next";
 
 type Props = {
   reportDate?: string;
+  facebookPages?: FacebookReportPage[];
   item: WorkItemFormData;
   errors?: WorkItemValidationErrors;
   disabled?: boolean;
@@ -24,6 +26,7 @@ type Props = {
 };
 export default function WorkItemExtras({
   item,
+  facebookPages,
   reportDate,
   errors,
   disabled,
@@ -71,6 +74,7 @@ export default function WorkItemExtras({
           onBlur={() => onBlur?.(item.clientId, "evidenceLinks")}
         />
         <FacebookEvidencePicker
+          facebookPages={facebookPages}
           value={item.evidenceLinks ?? ""}
           selections={item.facebookSelections ?? []}
           reportDate={reportDate}

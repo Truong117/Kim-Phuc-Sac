@@ -12,6 +12,11 @@ use RuntimeException;
 
 class ReportFacebookPostsController extends Controller
 {
+    public function pages(Request $request, ReportFacebookPosts $posts): JsonResponse
+    {
+        return response()->json(['data' => $posts->pages($request->user())])->header('Cache-Control', 'no-store');
+    }
+
     public function __invoke(Request $request, ReportFacebookPosts $posts): JsonResponse
     {
         $input = $request->validate([
