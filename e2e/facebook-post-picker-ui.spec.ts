@@ -336,6 +336,151 @@ test("assignment lookup failure hides picker controls without blocking the repor
   );
 });
 
+test.describe("Facebook picker calendar", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+  test("shared calendar shows Vietnamese dates, constrains the range and preserves ISO API dates across time zones", async ({
+    page,
+  }) => {
+    await setup(page, false);
+    await mockPosts(page);
+    await addWork(page);
+    await page
+      .getByRole("button", { name: "Chọn bài từ Facebook", exact: true })
+      .click();
+    const picker = page.getByRole("dialog", {
+      name: "Chọn bài từ Facebook",
+      exact: true,
+    });
+    await expect(picker.getByRole("checkbox")).toHaveCount(2);
+    await expect(picker.locator('input[type="date"]')).toHaveCount(0);
+    const from = picker.getByRole("button", { name: /^Từ ngày:/ });
+    const to = picker.getByRole("button", { name: /^Đến ngày:/ });
+    await expect(from).toContainText("30/10/2026");
+    await expect(to).toContainText("05/11/2026");
+    await from.click();
+    const fromCalendar = picker.getByRole("dialog", {
+      name: "Từ ngày",
+      exact: true,
+    });
+    await fromCalendar
+      .getByRole("button", { name: "Tháng sau", exact: true })
+      .click();
+    await expect(
+      fromCalendar.locator('[data-calendar-date="2026-11-06"]'),
+    ).toBeDisabled();
+    await fromCalendar.locator('[data-calendar-date="2026-11-01"]').click();
+    await expect(from).toContainText("01/11/2026");
+    await to.click();
+    const toCalendar = picker.getByRole("dialog", {
+      name: "Đến ngày",
+      exact: true,
+    });
+    await expect(
+      toCalendar.getByRole("button", { name: "Tháng trước", exact: true }),
+    ).toBeDisabled();
+    await toCalendar.locator('[data-calendar-date="2026-11-04"]').click();
+    await expect(to).toContainText("04/11/2026");
+    const request = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === "/api/reports/facebook-posts" &&
+        url.searchParams.get("from_date") === "2026-11-01" &&
+        url.searchParams.get("to_date") === "2026-11-04"
+      );
+    });
+    await picker
+      .getByRole("button", { name: "Áp dụng bộ lọc", exact: true })
+      .click();
+    await request;
+    await from.click();
+    await fromCalendar
+      .locator('[data-calendar-date="2026-11-01"]')
+      .press("Escape");
+    await expect(fromCalendar).not.toBeVisible();
+    await expect(picker).toBeVisible();
+    await expect(from).toBeFocused();
+    await from.click();
+    await from.focus();
+    await from.press("Escape");
+    await expect(fromCalendar).not.toBeVisible();
+    await expect(picker).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(picker).not.toBeVisible();
+  });
+});
+
+for (const dark of [false, true]) {
+  test(`${dark ? "dark mobile" : "light desktop"}: picker text, checkbox and confirmation use the KPS palette`, async ({
+    page,
+  }) => {
+    if (dark) await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page, false);
+    await mockPosts(page);
+    await addWork(page);
+    if (dark)
+      await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await page
+      .getByRole("button", { name: "Chọn bài từ Facebook", exact: true })
+      .click();
+    const picker = page.getByRole("dialog", {
+      name: "Chọn bài từ Facebook",
+      exact: true,
+    });
+    await expect(picker.getByRole("checkbox")).toHaveCount(2);
+    const colors = await picker.evaluate((element, dark) => {
+      const probe = document.createElement("span");
+      element.append(probe);
+      const resolve = (color: string) => {
+        probe.style.color = color;
+        return getComputedStyle(probe).color;
+      };
+      const values = {
+        primary: resolve("var(--color-kps-primary)"),
+        muted: resolve(
+          "color-mix(in srgb, var(--color-kps-primary) 50%, white)",
+        ),
+        accent: resolve("var(--color-kps-primary-hover)"),
+        link: resolve(
+          dark
+            ? "color-mix(in srgb, var(--color-kps-primary) 75%, white)"
+            : "var(--color-kps-primary-hover)",
+        ),
+      };
+      probe.remove();
+      return values;
+    }, dark);
+    await expect(
+      picker.getByRole("button", { name: "Xác nhận chọn 0 bài", exact: true }),
+    ).toHaveCSS("background-color", colors.muted);
+    await picker
+      .getByRole("button", { name: "Xem trước: Bài mới nhất", exact: true })
+      .click();
+    await expect(
+      picker.getByRole("link", { name: "Mở trên Facebook", exact: true }),
+    ).toHaveCSS("color", colors.link);
+    const check = picker.getByRole("checkbox", {
+      name: "Chọn: Bài mới nhất",
+      exact: true,
+    });
+    await expect(check).toHaveCSS("accent-color", colors.accent);
+    await check.check();
+    await expect(
+      picker.getByRole("button", { name: "Xác nhận chọn 1 bài", exact: true }),
+    ).toHaveCSS("background-color", colors.primary);
+    await picker.getByRole("button", { name: /^Từ ngày:/ }).click();
+    await expect(
+      picker
+        .getByRole("dialog", { name: "Từ ngày", exact: true })
+        .locator('button[aria-pressed="true"]'),
+    ).toHaveCSS("background-color", colors.primary);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBeTruthy();
+  });
+}
+
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus) {
     console.log(
