@@ -24,6 +24,7 @@ import QuickReportEditor from "@/components/reports/QuickReportEditor";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
 import { useAuthorization } from "@/hooks/useAuthorization";
+import { useFacebookReportPages } from "@/hooks/useFacebookReportPages";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkReportDraft } from "@/hooks/useWorkReportDraft";
 import { DocsIcon, TimeIcon } from "@/icons";
@@ -255,6 +256,11 @@ export default function NewReport({
     !isClosed &&
     !isReadOnly &&
     !cannotCreate,
+  );
+
+  const facebookPages = useFacebookReportPages(
+    currentUser?.id ?? null,
+    isDraftEditable,
   );
 
   const draftContext = useMemo(
@@ -978,6 +984,7 @@ export default function NewReport({
                     aria-labelledby="quick-report-tab"
                   >
                     <QuickReportEditor
+                      facebookPages={facebookPages}
                       reportDate={today.business_date}
                       planSection={
                         <ReportNextDayPlan
@@ -1019,6 +1026,7 @@ export default function NewReport({
                     aria-labelledby="detailed-report-tab"
                   >
                     <WorkItemList
+                      facebookPages={facebookPages}
                       disabled={isSaveFlowActive}
                       reportDate={today.business_date}
                       planSection={

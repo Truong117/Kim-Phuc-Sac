@@ -1,3 +1,5 @@
+export type FacebookReportPage = { id: number; name: string };
+
 export type FacebookSelection = {
   source_url: string;
   selection_token: string;

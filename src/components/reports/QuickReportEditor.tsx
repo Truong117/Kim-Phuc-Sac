@@ -13,6 +13,7 @@ import {
   TrashBinIcon,
 } from "@/icons";
 import type {
+  FacebookReportPage,
   WorkItemField,
   WorkItemFormData,
   WorkItemValidationErrors,
@@ -28,6 +29,7 @@ import { useTranslation } from "react-i18next";
 
 interface QuickReportEditorProps {
   reportDate?: string;
+  facebookPages?: FacebookReportPage[];
   planSection?: ReactNode;
   items: WorkItemFormData[];
   drafts: QuickReportDrafts;
@@ -47,6 +49,7 @@ interface QuickReportEditorProps {
 
 export default function QuickReportEditor({
   items,
+  facebookPages,
   reportDate,
   planSection,
   drafts,
@@ -259,6 +262,7 @@ export default function QuickReportEditor({
                       </ReportFieldRow>
                       <div className="mt-3">
                         <WorkItemExtras
+                          facebookPages={facebookPages}
                           reportDate={reportDate}
                           item={item}
                           errors={errors[item.clientId]}

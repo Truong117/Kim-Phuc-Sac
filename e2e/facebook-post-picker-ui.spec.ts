@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function setup(page: Page, makeup: boolean) {
+async function setup(
+  page: Page,
+  makeup: boolean,
+  assigned: boolean | "error" = true,
+) {
   let submissions = 0;
   let submitted: { items: { facebook_selections: unknown }[] } | null = null;
   let errors: Record<string, string[]> = {};
@@ -24,6 +28,9 @@ async function setup(page: Page, makeup: boolean) {
   };
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/reports/facebook-pages" && assigned === "error") {
+      return route.fulfill({ status: 503, json: { message: "Unavailable" } });
+    }
     if (
       route.request().method() === "POST" &&
       ["/api/reports", "/api/reports/makeup"].includes(path)
@@ -38,30 +45,32 @@ async function setup(page: Page, makeup: boolean) {
     const json =
       path === "/api/auth/me"
         ? user
-        : path === "/api/navigation"
-          ? { items: ["reports.new", "reports.history"] }
-          : path === "/api/reports/today" ||
-              path === "/api/reports/makeup/state"
-            ? { data: state }
-            : path === "/api/reports/makeup"
-              ? {
-                  data: {
-                    period_start: "2026-11-02",
-                    period_end: "2026-11-07",
-                    days: [
-                      {
-                        date: "2026-11-04",
-                        can_submit: true,
-                        deadline_at: "2099-11-07T23:59:59+07:00",
-                      },
-                    ],
-                  },
-                }
-              : {
-                  data: [],
-                  unread_count: 0,
-                  meta: { total: 0, current_page: 1, last_page: 1 },
-                };
+        : path === "/api/reports/facebook-pages"
+          ? { data: assigned ? [{ id: 1, name: "KPS Page" }] : [] }
+          : path === "/api/navigation"
+            ? { items: ["reports.new", "reports.history"] }
+            : path === "/api/reports/today" ||
+                path === "/api/reports/makeup/state"
+              ? { data: state }
+              : path === "/api/reports/makeup"
+                ? {
+                    data: {
+                      period_start: "2026-11-02",
+                      period_end: "2026-11-07",
+                      days: [
+                        {
+                          date: "2026-11-04",
+                          can_submit: true,
+                          deadline_at: "2099-11-07T23:59:59+07:00",
+                        },
+                      ],
+                    },
+                  }
+                : {
+                    data: [],
+                    unread_count: 0,
+                    meta: { total: 0, current_page: 1, last_page: 1 },
+                  };
     await route.fulfill({ json });
   });
   await page.goto(makeup ? "/reports/makeup/new" : "/reports/new");
@@ -271,6 +280,60 @@ test("mobile preview supports tap, pagination and focus return on cancel", async
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBeTruthy();
+});
+
+for (const makeup of [false, true]) {
+  test(`${makeup ? "makeup" : "daily"}: unassigned employee has no Facebook picker and can still use ordinary evidence`, async ({
+    page,
+  }) => {
+    await setup(page, makeup, false);
+    let catalogueRequests = 0;
+    await page.route("**/api/reports/facebook-posts?**", async (route) => {
+      catalogueRequests++;
+      await route.fulfill({
+        json: { data: [], pages: [], entry_id: null, next_cursor: null },
+      });
+    });
+    await addWork(page);
+    const evidence = page.locator('textarea[id^="evidence-"]');
+    await evidence.fill("https://facebook.com/share/p/Test");
+    await expect(page.locator("[data-facebook-evidence-picker]")).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("button", { name: "Chọn bài từ Facebook", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Chọn bài tương ứng", exact: true }),
+    ).toHaveCount(0);
+    await evidence.fill("https://drive.google.com/file/d/evidence/view");
+    await expect(evidence).toHaveValue(
+      "https://drive.google.com/file/d/evidence/view",
+    );
+    await page
+      .getByRole("tab", { name: "Báo cáo chi tiết", exact: true })
+      .click();
+    await expect(page.locator("[data-facebook-evidence-picker]")).toHaveCount(
+      0,
+    );
+    await expect(evidence).toHaveValue(
+      "https://drive.google.com/file/d/evidence/view",
+    );
+    expect(catalogueRequests).toBe(0);
+  });
+}
+
+test("assignment lookup failure hides picker controls without blocking the report editor", async ({
+  page,
+}) => {
+  await setup(page, false, "error");
+  await addWork(page);
+  await expect(
+    page.getByRole("button", { name: "Chọn bài từ Facebook", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('textarea[id^="quick-result-"]')).toHaveValue(
+    "Đã đăng",
+  );
 });
 
 test.afterEach(async ({ page }, testInfo) => {
