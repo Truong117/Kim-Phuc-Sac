@@ -7,6 +7,7 @@ async function setup(
     canConfigure?: boolean;
     uncertain?: boolean;
     invalid?: boolean;
+    mixedFailure?: boolean;
   } = {},
 ) {
   const canView = options.canView ?? true;
@@ -14,6 +15,8 @@ async function setup(
   const keys: string[] = [];
   const history: Record<string, unknown>[] = [];
   let mailReads = 0;
+  let submissions = 0;
+  const processCalls: string[] = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -47,6 +50,13 @@ async function setup(
               test_allowed: true,
             },
             {
+              id: "4",
+              name: "Trần Thị Bình",
+              email: "colleague@example.test",
+              department: "Nội bộ",
+              test_allowed: true,
+            },
+            {
               id: "3",
               name: "Nhân viên chưa được phép",
               email: "outside@example.test",
@@ -56,31 +66,63 @@ async function setup(
           ],
         },
       });
-    if (path === "/api/integrations/mail/test") {
+    if (path === "/api/integrations/mail/tests") {
       const payload = request.postDataJSON();
-      keys.push(payload.request_key);
-      expect(Object.keys(payload).sort()).toEqual([
-        "recipient_user_id",
-        "request_key",
-      ]);
+      expect(Object.keys(payload)).toEqual(["recipients"]);
+      submissions++;
+      for (const recipient of payload.recipients) {
+        keys.push(recipient.request_key);
+        expect(Object.keys(recipient).sort()).toEqual([
+          "recipient_user_id",
+          "request_key",
+        ]);
+      }
       if (options.invalid)
         return route.fulfill({
           status: 422,
           json: { errors: { recipient_user_id: ["Invalid recipient"] } },
         });
-      const entry = {
-        id: "mail-1",
-        recipient_user_id: "2",
-        recipient_email: "recipient@example.test",
-        created_by: "1",
-        kind: "test",
-        status: options.uncertain ? "unknown" : "accepted",
-        error_code: options.uncertain ? "PROVIDER_RESULT_UNKNOWN" : null,
-        created_at: "2026-11-06T04:00:00Z",
-        accepted_at: null,
-      };
-      if (!history.length) history.push(entry);
-      if (options.uncertain && keys.length === 1) return route.abort("failed");
+      const data = payload.recipients.map(
+        (recipient: { recipient_user_id: number }) => {
+          let entry = history.find(
+            (item) =>
+              item.recipient_user_id === String(recipient.recipient_user_id),
+          );
+          if (!entry) {
+            entry = {
+              id: `mail-${recipient.recipient_user_id}`,
+              recipient_user_id: String(recipient.recipient_user_id),
+              recipient_email:
+                recipient.recipient_user_id === 2
+                  ? "recipient@example.test"
+                  : "colleague@example.test",
+              created_by: "1",
+              kind: "test",
+              status: "queued",
+              error_code: null,
+              created_at: "2026-11-06T04:00:00Z",
+              accepted_at: null,
+            };
+            history.push(entry);
+          }
+          return entry;
+        },
+      );
+      if (options.uncertain && submissions === 1) return route.abort("failed");
+      return route.fulfill({ status: 202, json: { data } });
+    }
+    if (/^\/api\/integrations\/mail\/tests\/[^/]+\/process$/.test(path)) {
+      const id = path.split("/").at(-2)!;
+      processCalls.push(id);
+      if (
+        options.mixedFailure &&
+        id === "mail-4" &&
+        processCalls.filter((value) => value === id).length === 1
+      )
+        return route.abort("failed");
+      const entry = history.find((item) => item.id === id)!;
+      entry.status = options.uncertain ? "unknown" : "accepted";
+      entry.error_code = options.uncertain ? "PROVIDER_RESULT_UNKNOWN" : null;
       return route.fulfill({ status: 202, json: { data: entry } });
     }
     if (path === "/api/integrations/mail/connection") {
@@ -100,6 +142,7 @@ async function setup(
             status: "connected",
             email: "kimphucsac@gmail.com",
             connected_at: null,
+            from_name: "Kim Phục Sắc - Nội bộ",
             history,
           },
           actions: { can_configure: canConfigure },
@@ -124,13 +167,15 @@ async function setup(
   await expect(page.getByRole("tab", { name: /Drive/ })).toBeVisible();
   if (canView) {
     await page.getByRole("tab", { name: "Mail", exact: true }).click();
-    await expect(page.getByLabel("Nhân viên nhận thư thử")).toBeEnabled();
+    await expect(
+      page.getByRole("group", { name: "Nhân viên nhận thư thử" }),
+    ).toBeEnabled();
   }
-  return { keys, mailReads: () => mailReads };
+  return { keys, processCalls, mailReads: () => mailReads };
 }
 
 async function preview(page: Page) {
-  await page.getByLabel("Nhân viên nhận thư thử").selectOption("2");
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
   await page
     .getByRole("button", { name: "Xem trước thư thử", exact: true })
     .click();
@@ -156,12 +201,17 @@ test("admin previews a named employee and sees provider acceptance in history", 
   await expect(
     page.getByRole("button", { name: "Kết nối lại Gmail", exact: true }),
   ).toBeVisible();
-  await expect(page.locator('option[value="3"]')).toBeDisabled();
+  await expect(
+    page.getByRole("checkbox", { name: /Nhân viên chưa được phép/ }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText("Tên người gửi: Kim Phục Sắc - Nội bộ", { exact: true }),
+  ).toBeVisible();
   await preview(page);
   await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByText("Gmail đã tiếp nhận", { exact: true }),
+    page.getByText("Gmail đã tiếp nhận", { exact: true }).first(),
   ).toBeVisible();
   expect(api.keys).toHaveLength(1);
 });
@@ -177,7 +227,7 @@ test("assistant can send but cannot connect or disconnect Gmail", async ({
   await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByText("Gmail đã tiếp nhận", { exact: true }),
+    page.getByText("Gmail đã tiếp nhận", { exact: true }).first(),
   ).toBeVisible();
 });
 
@@ -192,11 +242,12 @@ test("a network error preserves the same request key across a page reload", asyn
   );
   await page.reload();
   await page.getByRole("tab", { name: "Mail", exact: true }).click();
-  await preview(page);
-  await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Tiếp tục / cập nhật lượt gửi", exact: true })
+    .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByText("Chưa xác định kết quả", { exact: true }),
+    page.getByText("Chưa xác định kết quả", { exact: true }).first(),
   ).toBeVisible();
   expect(api.keys).toHaveLength(2);
   expect(api.keys[1]).toBe(api.keys[0]);
@@ -240,7 +291,9 @@ for (const width of [320, 390]) {
       await expect(drive).toBeFocused();
       await drive.press("End");
       await expect(mail).toBeFocused();
-      await expect(page.getByLabel("Nhân viên nhận thư thử")).toBeEnabled();
+      await expect(
+        page.getByRole("group", { name: "Nhân viên nhận thư thử" }),
+      ).toBeEnabled();
       await expectNoPageOverflow();
       await preview(page);
       await expectNoPageOverflow();
@@ -251,12 +304,70 @@ for (const width of [320, 390]) {
         "Người nhận không còn hợp lệ",
       );
       await page.getByRole("button", { name: "Hủy", exact: true }).click();
-      await expect(page.getByLabel("Nhân viên nhận thư thử")).toHaveValue("2");
-      await expect(page.getByLabel("Nhân viên nhận thư thử")).toHaveAttribute(
-        "aria-invalid",
-        "true",
-      );
+      await expect(
+        page.getByRole("checkbox", { name: /Nguyễn Văn An/ }),
+      ).toBeChecked();
+      await expect(
+        page.getByRole("group", { name: "Nhân viên nhận thư thử" }),
+      ).toHaveAttribute("aria-invalid", "true");
       await expectNoPageOverflow();
     });
   }
 }
+
+test("assistant selects multiple employees and safely resumes a partially completed batch", async ({
+  page,
+}) => {
+  const api = await setup(page, { canConfigure: false, mixedFailure: true });
+  await page.getByRole("checkbox", { name: /Trần Thị Bình/ }).check();
+  await preview(page);
+  await expect(page.getByRole("dialog")).toContainText(
+    "Gửi thư riêng cho 2 nhân viên",
+  );
+  await page.getByRole("button", { name: "Gửi thư thử", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: "Tiếp tục / cập nhật lượt gửi",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await page.reload();
+  await page.getByRole("tab", { name: "Mail", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Tiếp tục / cập nhật lượt gửi", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Tạo lượt gửi mới", exact: true }),
+  ).toBeVisible();
+  expect(api.processCalls.filter((id) => id === "mail-2")).toHaveLength(1);
+  expect(api.processCalls.filter((id) => id === "mail-4")).toHaveLength(2);
+  expect(api.keys.slice(2).sort()).toEqual(api.keys.slice(0, 2).sort());
+  await page
+    .getByRole("button", { name: "Tạo lượt gửi mới", exact: true })
+    .click();
+  await expect(
+    page.getByRole("checkbox", { name: /Nguyễn Văn An/ }),
+  ).not.toBeChecked();
+});
+
+test("recipient search and select-all include only allowed employees", async ({
+  page,
+}) => {
+  await setup(page);
+  await page
+    .getByRole("textbox", { name: "Tìm theo tên, email hoặc phòng ban" })
+    .fill("Nội bộ");
+  await page
+    .getByRole("button", { name: "Chọn các kết quả được phép", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đã chọn 2/50 người nhận", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Bỏ chọn tất cả", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Xem trước thư thử", exact: true }),
+  ).toBeDisabled();
+});

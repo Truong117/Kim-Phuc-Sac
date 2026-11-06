@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -78,6 +80,131 @@ class MailFoundationTest extends TestCase
     private function payloadFor(User $recipient, ?string $key = null): array
     {
         return ['recipient_user_id' => $recipient->id, 'request_key' => $key ?? (string) Str::uuid()];
+    }
+
+    private function batchPayload(array $recipients): array
+    {
+        return ['recipients' => array_map(fn (User $recipient): array => $this->payloadFor($recipient), $recipients)];
+    }
+
+    public function test_assistant_sends_private_multi_recipient_mail_without_duplicates_on_replay(): void
+    {
+        $actor = $this->actor('EXECUTIVE_ASSISTANT');
+        $first = $this->actor('OFFICE_STAFF', email: 'recipient@example.test');
+        $second = $this->actor('OFFICE_STAFF', email: 'colleague@example.test');
+        config(['kps_mail.test_recipients' => [$first->email, $second->email]]);
+        $this->connection($actor);
+        $payload = $this->batchPayload([$first, $second]);
+        $queued = $this->actingAs($actor)->postJson('/api/integrations/mail/tests', $payload)->assertAccepted()->assertJsonCount(2, 'data')->json('data');
+        Http::assertNothingSent();
+        Http::fake(['https://gmail.googleapis.com/*' => Http::response(['id' => 'provider-id'])]);
+        foreach ($queued as $message) {
+            $this->postJson('/api/integrations/mail/tests/'.$message['id'].'/process')->assertAccepted()->assertJsonPath('data.status', 'accepted');
+        }
+        $this->postJson('/api/integrations/mail/tests', $payload)->assertAccepted()->assertJsonPath('data.0.id', $queued[0]['id']);
+        foreach ($queued as $message) {
+            $this->postJson('/api/integrations/mail/tests/'.$message['id'].'/process')->assertAccepted()->assertJsonPath('data.status', 'accepted');
+        }
+        Http::assertSentCount(2);
+        $this->assertDatabaseCount('mail_messages', 2);
+        Http::assertSent(function ($request) use ($first, $second): bool {
+            $raw = base64_decode(strtr($request['raw'], '-_', '+/'));
+
+            return str_contains($raw, 'To: '.$first->email) && ! str_contains($raw, $second->email) && ! str_contains($raw, 'Cc:') && ! str_contains($raw, 'Bcc:');
+        });
+        $this->postJson('/api/integrations/mail/connect')->assertForbidden();
+        $this->deleteJson('/api/integrations/mail/connection')->assertForbidden();
+    }
+
+    public function test_invalid_bulk_selection_rolls_back_all_new_messages_before_sending(): void
+    {
+        $actor = $this->actor();
+        $allowed = $this->actor('OFFICE_STAFF', email: 'recipient@example.test');
+        $denied = $this->actor('OFFICE_STAFF', email: 'outside@example.test');
+        $this->connection($actor);
+        $this->actingAs($actor)->postJson('/api/integrations/mail/tests', $this->batchPayload([$allowed, $denied]))->assertUnprocessable();
+        $this->assertDatabaseCount('mail_messages', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_bulk_rejects_duplicate_recipients_keys_external_overrides_and_over_limit(): void
+    {
+        $actor = $this->actor();
+        $first = $this->actor('OFFICE_STAFF', email: 'recipient@example.test');
+        $second = $this->actor('OFFICE_STAFF', email: 'colleague@example.test');
+        $this->connection($actor);
+        $this->actingAs($actor);
+        $this->postJson('/api/integrations/mail/tests', $this->batchPayload([$first, $first]))->assertUnprocessable();
+        $payload = $this->batchPayload([$first, $second]);
+        $payload['recipients'][1]['request_key'] = $payload['recipients'][0]['request_key'];
+        $this->postJson('/api/integrations/mail/tests', $payload)->assertUnprocessable();
+        $payload = $this->batchPayload([$first]);
+        $payload['recipients'][0]['email'] = 'outside@example.test';
+        $this->postJson('/api/integrations/mail/tests', $payload)->assertUnprocessable();
+        $this->postJson('/api/integrations/mail/tests', $this->batchPayload([$first]) + ['bcc' => 'outside@example.test'])->assertUnprocessable();
+        $this->postJson('/api/integrations/mail/tests', ['recipients' => []])->assertUnprocessable();
+        $this->postJson('/api/integrations/mail/tests', ['recipients' => array_map(fn (int $id): array => ['recipient_user_id' => $id, 'request_key' => (string) Str::uuid()], range(1, 51))])->assertUnprocessable();
+        $this->assertDatabaseCount('mail_messages', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_bulk_processing_requires_the_authorized_initiating_actor(): void
+    {
+        $actor = $this->actor('EXECUTIVE_ASSISTANT');
+        $recipient = $this->actor('OFFICE_STAFF', email: 'recipient@example.test');
+        $other = $this->actor('ADMIN');
+        $this->connection($actor);
+        $id = $this->actingAs($actor)->postJson('/api/integrations/mail/tests', $this->batchPayload([$recipient]))->assertAccepted()->json('data.0.id');
+        $this->actingAs($other)->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertNotFound();
+        foreach (['HR_MANAGER', 'DEPARTMENT_MANAGER', 'OFFICE_STAFF'] as $role) {
+            $this->actingAs($this->actor($role))->postJson('/api/integrations/mail/tests', [])->assertForbidden();
+            $this->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertForbidden();
+        }
+        DB::table('membership_roles')->where('membership_id', $actor->defaultOrganizationMembership->id)->delete();
+        $this->actingAs($actor)->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertForbidden();
+        Http::assertNothingSent();
+    }
+
+    public function test_new_sender_name_and_signature_replace_old_default_and_are_snapshotted(): void
+    {
+        $actor = $this->actor();
+        $recipient = $this->actor('OFFICE_STAFF', email: 'recipient@example.test');
+        $this->connection($actor);
+        config(['kps_mail.from_name' => 'Kim Phúc Sắc - KPS']);
+        $this->actingAs($actor)->getJson('/api/integrations/mail')->assertJsonPath('data.from_name', 'Kim Phục Sắc - Nội bộ');
+        $id = $this->postJson('/api/integrations/mail/tests', $this->batchPayload([$recipient]))->assertAccepted()->json('data.0.id');
+        $message = MailMessage::query()->findOrFail($id);
+        $this->assertSame('Kim Phục Sắc - Nội bộ', $message->payload['from_name']);
+        $this->assertStringEndsWith('Kim Phục Sắc - Nội bộ', $message->payload['text']);
+        config(['kps_mail.from_name' => 'Different later configuration']);
+        Http::fake(['https://gmail.googleapis.com/*' => Http::response(['id' => 'provider-id'])]);
+        $this->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertAccepted()->assertJsonPath('data.status', 'accepted');
+        $expectedFrom = (new Email)->from(new Address('kimphucsac@gmail.com', 'Kim Phục Sắc - Nội bộ'))->getHeaders()->get('From')->toString();
+        Http::assertSent(function ($request) use ($expectedFrom): bool {
+            $raw = base64_decode(strtr($request['raw'], '-_', '+/'));
+            $headers = explode("\r\n\r\n", $raw)[0];
+
+            return str_contains($headers, $expectedFrom) && ! str_contains($headers, 'Different later configuration');
+        });
+    }
+
+    public function test_bulk_replay_preserves_unknown_outcomes_and_processing_rechecks_recipients(): void
+    {
+        $actor = $this->actor();
+        $recipient = $this->actor('OFFICE_STAFF', email: 'recipient@example.test');
+        $this->connection($actor);
+        $payload = $this->batchPayload([$recipient]);
+        $id = $this->actingAs($actor)->postJson('/api/integrations/mail/tests', $payload)->assertAccepted()->json('data.0.id');
+        Http::fake(['https://gmail.googleapis.com/*' => Http::response([], 503)]);
+        $this->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertAccepted()->assertJsonPath('data.status', 'unknown');
+        $this->postJson('/api/integrations/mail/tests', $payload)->assertAccepted()->assertJsonPath('data.0.status', 'unknown');
+        $this->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertAccepted()->assertJsonPath('data.status', 'unknown');
+        MailMessage::query()->whereKey($id)->update(['status' => 'sending', 'started_at' => now()->subMinutes(6)]);
+        $this->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertAccepted()->assertJsonPath('data.status', 'unknown')->assertJsonPath('data.error_code', 'PROCESS_INTERRUPTED');
+        $next = $this->postJson('/api/integrations/mail/tests', $this->batchPayload([$recipient]))->assertAccepted()->json('data.0.id');
+        DB::table('organization_memberships')->where('user_id', $recipient->id)->update(['is_active' => false]);
+        $this->postJson('/api/integrations/mail/tests/'.$next.'/process')->assertAccepted()->assertJsonPath('data.status', 'cancelled');
+        Http::assertSentCount(1);
     }
 
     public function test_only_owner_admin_and_assistant_can_access_mail_even_if_other_roles_gain_integration_permission(): void

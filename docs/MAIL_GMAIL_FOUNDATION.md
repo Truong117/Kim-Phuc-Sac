@@ -41,7 +41,7 @@ hiện có, không tự thay SMTP cho các chức năng khác.
 | `KPS_MAIL_ENABLED` | Mặc định `false`; bật sau migration và cấu hình OAuth |
 | `KPS_MAIL_SEND_ENABLED` | Mặc định `false`; bật riêng khi sẵn sàng gửi thử |
 | `KPS_MAIL_TRANSPORT` | `gmail_api` |
-| `KPS_MAIL_FROM_NAME` | `Kim Phúc Sắc – KPS` |
+| `KPS_MAIL_FROM_NAME` | `Kim Phục Sắc - Nội bộ` |
 | `KPS_MAIL_TEST_RECIPIENTS` | Email nhân viên nhận thử, phân cách dấu phẩy; trống = không ai được nhận |
 | `KPS_GMAIL_CLIENT_ID` | Client ID của OAuth Web application tương ứng môi trường |
 | `KPS_GMAIL_CLIENT_SECRET` | Client Secret; chỉ lưu trong secret/env backend |
@@ -156,3 +156,37 @@ muốn; tác vụ đã bắt đầu gửi không thể thu hồi bằng nút ng�
 - Kết nối Google, refresh token thật, giao thư thật và migration TiDB thật là các
   bước nghiệm thu staging sau khi cấu hình secret, không được thay bằng kết quả
   test fake.
+
+
+## Bổ sung chọn nhiều người nhận
+
+Không có migration mới. Dùng lại `mail_messages`; mỗi người nhận có request UUID,
+From name và nội dung snapshot riêng. Tên mặc định và chữ ký mới là
+`Kim Phục Sắc - Nội bộ`; hai giá trị mặc định cũ với dấu gạch ngắn/dài cũng được
+chuẩn hóa khi đọc env, không cần kết nối OAuth lại. Tên tùy chỉnh khác vẫn được giữ.
+Lịch sử và snapshot thư đã tạo không bị sửa.
+
+Owner/Admin/EXECUTIVE_ASSISTANT chọn tối đa 50 nhân viên, tìm theo tên/email/phòng
+ban hoặc chọn các kết quả đang hiển thị được phép nhận thử. Gửi riêng từng thư,
+không dùng To/Cc/Bcc chung. Trợ lý đã có quyền gửi từ bản nền tảng; bản này kiểm
+thử lại quyền gửi nhiều người và tiếp tục chặn kết nối/ngắt Gmail đối với Trợ lý.
+Danh sách `KPS_MAIL_TEST_RECIPIENTS` vẫn áp dụng vì đây là màn gửi thử.
+
+`POST /api/integrations/mail/tests` nhận `recipients[]`, mỗi phần tử chỉ chứa
+`recipient_user_id` và `request_key`. Kiểm tra toàn bộ danh sách trong transaction;
+nếu một người không hợp lệ thì không tạo thư mới cho bất kỳ người nào. Endpoint
+chỉ lưu outbox, không gọi Google trong transaction.
+
+`POST /api/integrations/mail/tests/{uuid}/process` chỉ cho người đã tạo thư xử lý
+thư thuộc tổ chức mình; mỗi request xử lý tối đa một thư, dùng chung nghiệp vụ với
+CLI. Hai endpoint giới hạn lần lượt 6 và 60 request/phút/người. Endpoint cũ gửi
+một người vẫn giữ nguyên để tương thích. Quyền và trạng thái người nhận được
+kiểm tra lại ngay trước gửi; tác vụ sending quá 5 phút được chuyển unknown, không
+lặp lại lệnh gửi. Request queued sau 429 tiếp tục giữ thời điểm có thể thử lại.
+
+Frontend lưu toàn bộ UUID trước khi gửi yêu cầu batch, khóa danh sách sau xác
+nhận và có nút tiếp tục sau khi tải lại trang. Kết quả từng người hiện khi xử lý.
+Thư accepted/failed/cancelled/unknown không tự gửi lại. Khi toàn bộ lượt gửi đã
+có kết quả xác định, người dùng có thể chủ động bấm Tạo lượt gửi mới. Khi có
+unknown, cần đối chiếu Gmail trước; nút tạo lượt mới không được bật tự động.
+Phiên bản này chưa triển khai mẫu mail/soạn nội dung hoặc lịch gửi tự động.

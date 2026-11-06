@@ -4,7 +4,17 @@ namespace App\Services\Mail;
 
 class MailConfiguration
 {
+    public const DEFAULT_FROM_NAME = 'Kim Phục Sắc - Nội bộ';
+
     public function __construct(private readonly MailTransportRegistry $transports) {}
+
+    public function fromName(): string
+    {
+        $name = trim((string) config('kps_mail.from_name'));
+
+        // Honor custom branding, but also upgrade the previous deployed default.
+        return in_array($name, ['', 'Kim Phúc Sắc – KPS', 'Kim Phúc Sắc - KPS'], true) ? self::DEFAULT_FROM_NAME : $name;
+    }
 
     public function ready(): bool
     {

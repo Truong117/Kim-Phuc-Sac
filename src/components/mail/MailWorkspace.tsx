@@ -2,21 +2,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ComponentCard from "@/components/common/ComponentCard";
 import Button from "@/components/ui/button/Button";
-import Label from "@/components/form/Label";
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import { useAuth } from "@/hooks/useAuth";
-import { ApiServiceError } from "@/services/apiClient";
 import {
   connectGmail,
   disconnectGmail,
   getMailRecipients,
   getMailStatus,
-  sendMailTest,
   type MailRecipient,
   type MailStatus,
 } from "@/services/mailService";
 import MailHistory from "./MailHistory";
+import MailRecipientPicker from "./MailRecipientPicker";
+import MailTestDialog from "./MailTestDialog";
+import { useMailTestBatch } from "@/hooks/useMailTestBatch";
 
 export default function MailWorkspace() {
   const { t } = useTranslation();
@@ -24,8 +24,9 @@ export default function MailWorkspace() {
   const requestStorageKey = `kps:mail-test:${user?.organization?.id}:${user?.id}`;
   const [status, setStatus] = useState<MailStatus | null>(null);
   const [recipients, setRecipients] = useState<MailRecipient[]>([]);
-  const [recipientId, setRecipientId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [connectionBusy, setConnectionBusy] = useState(false);
+  const batch = useMailTestBatch(requestStorageKey);
+  const busy = connectionBusy || batch.busy;
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(() => {
     const result = new URLSearchParams(window.location.search).get(
@@ -37,48 +38,17 @@ export default function MailWorkspace() {
         ? "mailUi.oauthFailed"
         : "";
   });
-  // Keep the same idempotency key after a network error/ambiguous response.
-  const pending = useRef<Record<string, string> | null>(null);
-  function pendingRequests(): Record<string, string> {
-    if (!pending.current) {
-      try {
-        const stored: unknown = JSON.parse(
-          sessionStorage.getItem(requestStorageKey) || "{}",
-        );
-        pending.current =
-          stored && typeof stored === "object" && !Array.isArray(stored)
-            ? Object.fromEntries(
-                Object.entries(stored).filter(
-                  ([id, key]) =>
-                    /^\d+$/.test(id) &&
-                    typeof key === "string" &&
-                    /^[0-9a-f-]{36}$/i.test(key),
-                ),
-              )
-            : {};
-      } catch {
-        pending.current = {};
-      }
-    }
-    return pending.current;
-  }
-  function savePending() {
-    try {
-      sessionStorage.setItem(
-        requestStorageKey,
-        JSON.stringify(pending.current),
-      );
-    } catch {
-      // Retain the in-memory key if this browser disables session storage.
-    }
-  }
   const mounted = useRef(true);
   const sequence = useRef(0);
   const confirmation = useModal();
   const disconnectConfirmation = useModal();
-  const selection = recipients.find(
-    (recipient) => recipient.id === recipientId,
+  const selection = recipients.filter((recipient) =>
+    batch.selectedIds.includes(recipient.id),
   );
+  const validSelection =
+    selection.length > 0 &&
+    selection.length === batch.selectedIds.length &&
+    selection.every((recipient) => recipient.test_allowed);
   const load = useCallback(async (signal?: AbortSignal) => {
     const ticket = ++sequence.current;
     try {
@@ -111,9 +81,9 @@ export default function MailWorkspace() {
     };
   }, [load]);
 
-  async function action(kind: "connect" | "disconnect" | "test") {
+  async function action(kind: "connect" | "disconnect") {
     if (busy) return;
-    setBusy(true);
+    setConnectionBusy(true);
     setError("");
     setNotice("");
     try {
@@ -123,42 +93,24 @@ export default function MailWorkspace() {
         if (url.protocol !== "https:" || url.hostname !== "accounts.google.com")
           throw new Error();
         if (mounted.current) window.location.assign(url.href);
-      } else if (kind === "disconnect") {
+      } else {
         await disconnectGmail();
         if (!mounted.current) return;
         disconnectConfirmation.closeModal();
         setNotice("mailUi.disconnectedNotice");
         await load();
-      } else {
-        if (!selection?.test_allowed) return;
-        const requests = pendingRequests();
-        requests[recipientId] ||= crypto.randomUUID();
-        savePending();
-        const result = await sendMailTest(recipientId, requests[recipientId]);
-        if (!mounted.current) return;
-        if (!["queued", "sending", "unknown"].includes(result.data.status)) {
-          delete requests[recipientId];
-          savePending();
-        }
-        confirmation.closeModal();
-        setNotice(
-          result.data.status === "accepted"
-            ? "mailUi.acceptedNotice"
-            : "mailUi.checkHistory",
-        );
-        await load();
       }
-    } catch (cause) {
-      if (mounted.current)
-        setError(
-          cause instanceof ApiServiceError && cause.status === 422
-            ? "mailUi.recipientInvalid"
-            : kind === "test"
-              ? "mailUi.requestUncertain"
-              : "mailUi.actionError",
-        );
+    } catch {
+      if (mounted.current) setError("mailUi.actionError");
     } finally {
-      if (mounted.current) setBusy(false);
+      if (mounted.current) setConnectionBusy(false);
+    }
+  }
+  async function sendBatch() {
+    const recorded = await batch.send(confirmation.closeModal);
+    if (mounted.current) {
+      if (recorded) confirmation.closeModal();
+      await load();
     }
   }
 
@@ -174,6 +126,7 @@ export default function MailWorkspace() {
   const data = status.data;
   const ready = data.enabled && data.configured && data.schema_ready;
   const connected = data.status === "connected";
+  const fromName = data.from_name || t("mailUi.defaultFromName");
   return (
     <div className="space-y-5">
       <ComponentCard title={t("mailUi.title")} desc={t("mailUi.description")}>
@@ -181,6 +134,9 @@ export default function MailWorkspace() {
           <div>
             <p className="font-semibold break-all text-gray-900 dark:text-white">
               {data.email || data.expected_email}
+            </p>
+            <p className="mt-2 text-sm break-all text-gray-600 dark:text-gray-300">
+              {t("mailUi.fromName", { name: fromName })}
             </p>
             <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
               {t(`mailUi.connectionStates.${data.status}`, {
@@ -231,17 +187,17 @@ export default function MailWorkspace() {
             )}
           </p>
         )}
-        {error && (
+        {(error || batch.error) && (
           <p
             role="alert"
             className="text-sm text-error-600 dark:text-error-400"
           >
-            {t(error)}
+            {t(batch.error || error)}
           </p>
         )}
-        {notice && (
+        {(notice || batch.notice) && (
           <p role="status" className="text-sm text-gray-700 dark:text-gray-200">
-            {t(notice)}
+            {t(batch.notice || notice)}
           </p>
         )}
       </ComponentCard>
@@ -249,104 +205,78 @@ export default function MailWorkspace() {
         title={t("mailUi.testTitle")}
         desc={t("mailUi.testDescription")}
       >
-        <div>
-          <Label htmlFor="mail-test-recipient">{t("mailUi.recipient")}</Label>
-          <select
-            id="mail-test-recipient"
-            aria-invalid={error === "mailUi.recipientInvalid" || undefined}
-            value={recipientId}
-            onChange={(event) => setRecipientId(event.target.value)}
-            disabled={busy || !ready || !connected || !data.send_enabled}
-            className={`min-h-11 w-full rounded-lg border bg-white px-3 py-2 text-base text-gray-800 dark:bg-gray-900 dark:text-gray-200 ${error === "mailUi.recipientInvalid" ? "border-error-500 dark:border-error-400" : "border-gray-300 dark:border-gray-700"}`}
-          >
-            <option value="">{t("mailUi.selectRecipient")}</option>
-            {recipients.map((recipient) => (
-              <option
-                key={recipient.id}
-                value={recipient.id}
-                disabled={!recipient.test_allowed}
-              >
-                {recipient.name} — {recipient.email}
-                {!recipient.test_allowed ? ` (${t("mailUi.notAllowed")})` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+        <MailRecipientPicker
+          recipients={recipients}
+          selectedIds={batch.selectedIds}
+          onChange={batch.select}
+          disabled={
+            busy || batch.started || !ready || !connected || !data.send_enabled
+          }
+          invalid={batch.error === "mailUi.recipientInvalid"}
+        />
+        {batch.started && (
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            {t("mailUi.resumeHint")}
+          </p>
+        )}
         {!data.send_enabled && (
           <p className="text-sm text-gray-600 dark:text-gray-300">
             {t("mailUi.sendDisabled")}
           </p>
         )}
-        <div>
+        <div className="flex flex-wrap gap-3">
           <Button
             disabled={
               busy ||
               !ready ||
               !connected ||
               !data.send_enabled ||
-              !selection?.test_allowed
+              (!batch.started && !validSelection) ||
+              batch.selectedIds.length === 0
             }
-            onClick={confirmation.openModal}
-            className="!bg-kps-primary !text-white hover:!bg-kps-primary-hover"
+            onClick={() => {
+              if (batch.started) void sendBatch();
+              else confirmation.openModal();
+            }}
+            className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
           >
-            {t("mailUi.previewTest")}
+            {t(
+              batch.busy
+                ? "mailUi.sending"
+                : batch.started
+                  ? "mailUi.resumeBatch"
+                  : "mailUi.previewTest",
+            )}
           </Button>
-        </div>
-      </ComponentCard>
-      <MailHistory entries={data.history} />
-      <Modal
-        isOpen={confirmation.isOpen}
-        onClose={() => {
-          if (!busy) confirmation.closeModal();
-        }}
-        ariaLabelledBy="mail-test-heading"
-        className="max-w-xl p-6"
-      >
-        <div>
-          <h2
-            id="mail-test-heading"
-            className="text-lg font-semibold text-gray-900 dark:text-white"
-          >
-            {t("mailUi.confirmTitle")}
-          </h2>
-          <p className="mt-4 text-sm break-all text-gray-700 dark:text-gray-200">
-            {t("mailUi.confirmTo", {
-              name: selection?.name,
-              email: selection?.email,
-            })}
-          </p>
-          <p className="mt-3 text-sm text-gray-700 dark:text-gray-200">
-            {t("mailUi.testSubject")}
-          </p>
-          <p className="mt-3 text-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300">
-            {t("mailUi.testBody", { name: selection?.name })}
-          </p>
-          {error && (
-            <p
-              role="alert"
-              className="mt-3 text-sm text-error-600 dark:text-error-400"
-            >
-              {t(error)}
-            </p>
-          )}
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button
-              disabled={busy}
-              onClick={() => void action("test")}
-              className="!bg-kps-primary !text-white hover:!bg-kps-primary-hover"
-            >
-              {t(busy ? "mailUi.sending" : "mailUi.confirmSend")}
-            </Button>
+          {batch.canReset && (
             <Button
               variant="outline"
               disabled={busy}
-              onClick={confirmation.closeModal}
+              onClick={batch.reset}
+              className="max-w-full whitespace-normal"
             >
-              {t("mailUi.cancel")}
+              {t("mailUi.newBatch")}
             </Button>
-          </div>
+          )}
         </div>
-      </Modal>
+      </ComponentCard>
+      {batch.results.length > 0 && (
+        <MailHistory
+          entries={batch.results}
+          title={t("mailUi.batchResults")}
+          desc={t("mailUi.batchResultsHint")}
+        />
+      )}
+      <MailHistory entries={data.history} />
+      <MailTestDialog
+        isOpen={confirmation.isOpen}
+        onClose={confirmation.closeModal}
+        recipients={selection}
+        fromName={fromName}
+        busy={busy}
+        error={batch.error}
+        onSend={() => void sendBatch()}
+      />
       <Modal
         isOpen={disconnectConfirmation.isOpen}
         onClose={() => {

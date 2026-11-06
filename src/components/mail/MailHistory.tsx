@@ -4,14 +4,18 @@ import ComponentCard from "@/components/common/ComponentCard";
 
 export default function MailHistory({
   entries,
+  title,
+  desc,
 }: {
   entries: MailHistoryEntry[];
+  title?: string;
+  desc?: string;
 }) {
   const { t } = useTranslation();
   return (
     <ComponentCard
-      title={t("mailUi.historyTitle")}
-      desc={t("mailUi.historyDescription")}
+      title={title || t("mailUi.historyTitle")}
+      desc={desc || t("mailUi.historyDescription")}
     >
       {entries.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-gray-400">

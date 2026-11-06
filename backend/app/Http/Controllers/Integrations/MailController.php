@@ -43,6 +43,7 @@ class MailController extends Controller
             'send_enabled' => (bool) config('kps_mail.send_enabled'), 'expected_email' => config('kps_mail.gmail.expected_email'),
             'status' => ! $enabled ? 'disabled' : (! $schema ? 'setup_required' : $connectionStatus),
             'email' => $connection?->email, 'connected_at' => $connection?->connected_at?->toIso8601String(),
+            'from_name' => $this->configuration->fromName(),
             'history' => $history,
         ], 'actions' => ['can_configure' => $this->access->membership($request->user(), true) !== null]]);
     }
@@ -119,6 +120,36 @@ class MailController extends Controller
         return ['id' => $message->id, 'recipient_user_id' => (string) $message->recipient_user_id, 'created_by' => (string) $message->created_by,
             'recipient_email' => $message->payload['to'], 'kind' => $message->kind, 'status' => $message->status, 'error_code' => $message->error_code,
             'created_at' => $message->created_at->toIso8601String(), 'accepted_at' => $message->accepted_at?->toIso8601String()];
+    }
+
+    public function queueTests(Request $request): JsonResponse
+    {
+        $this->access->require($request->user());
+        $this->requireAvailable();
+        $input = $request->validate([
+            'recipients' => ['required', 'array', 'min:1', 'max:50'],
+            'recipients.*' => ['required', 'array:recipient_user_id,request_key'],
+            'recipients.*.recipient_user_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'recipients.*.request_key' => ['required', 'uuid', 'distinct'],
+            'to' => ['prohibited'], 'email' => ['prohibited'], 'cc' => ['prohibited'], 'bcc' => ['prohibited'],
+            'organization_id' => ['prohibited'], 'subject' => ['prohibited'], 'body' => ['prohibited'], 'provider' => ['prohibited'],
+        ]);
+        $messages = $this->outbox->queueTests($request->user(), $input['recipients']);
+
+        return response()->json(['data' => array_map(fn (MailMessage $message) => $this->messagePayload($message), $messages)], 202);
+    }
+
+    public function processTest(Request $request, string $id): JsonResponse
+    {
+        $member = $this->access->require($request->user());
+        $this->requireAvailable();
+        $message = MailMessage::query()->whereKey($id)->where('organization_id', $member->organization_id)
+            ->where('created_by', $request->user()->id)->where('kind', 'test')->firstOrFail();
+        MailMessage::query()->whereKey($message->id)->where('status', 'sending')->where('started_at', '<', now()->subMinutes(5))
+            ->update(['status' => 'unknown', 'error_code' => 'PROCESS_INTERRUPTED']);
+        $this->outbox->process($message->id);
+
+        return response()->json(['data' => $this->messagePayload($message->fresh())], 202);
     }
 
     private function schemaReady(): bool

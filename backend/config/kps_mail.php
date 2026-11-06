@@ -5,7 +5,7 @@ return [
     'enabled' => (bool) env('KPS_MAIL_ENABLED', false),
     'send_enabled' => (bool) env('KPS_MAIL_SEND_ENABLED', false),
     'transport' => env('KPS_MAIL_TRANSPORT', 'gmail_api'),
-    'from_name' => env('KPS_MAIL_FROM_NAME', 'Kim Phúc Sắc – KPS'),
+    'from_name' => env('KPS_MAIL_FROM_NAME', 'Kim Phục Sắc - Nội bộ'),
     'test_recipients' => array_values(array_filter(array_map('trim', explode(',', (string) env('KPS_MAIL_TEST_RECIPIENTS', ''))))),
     'gmail' => [
         'client_id' => env('KPS_GMAIL_CLIENT_ID'),
