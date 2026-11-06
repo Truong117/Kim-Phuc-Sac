@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  dailyMailFixture,
+  weeklyMailFixture,
+} from "../tests/fixtures/mail-ai.mjs";
 
 async function setup(
   page: Page,
@@ -6,6 +10,8 @@ async function setup(
     queueUncertain?: boolean;
     processUncertain?: boolean;
     invalid?: boolean;
+    aiDenied?: boolean;
+    staleAi?: boolean;
   } = {},
 ) {
   const history: Record<string, unknown>[] = [];
@@ -15,9 +21,76 @@ async function setup(
     body: string;
   }[] = [];
   const processed: string[] = [];
+  const aiReads: string[] = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.startsWith("/api/ai/")) {
+      expect(request.method()).toBe("GET");
+      aiReads.push(request.url());
+      if (options.aiDenied)
+        return route.fulfill({ status: 403, json: { message: "Forbidden" } });
+      if (path === "/api/ai/daily-documents") {
+        const params = new URL(request.url()).searchParams;
+        const pageNumber = Number(params.get("page") || 1);
+        const row = structuredClone(dailyMailFixture);
+        if (options.staleAi && aiReads.length > 1) row.source_changed = true;
+        if (pageNumber === 2) {
+          row.employee_name = "Nhân viên trang hai";
+          row.document.id = 102;
+        }
+        return route.fulfill({
+          json: {
+            data: {
+              enabled: true,
+              date: params.get("date"),
+              page: pageNumber,
+              last_page: 2,
+              total: 4,
+              reports: [
+                row,
+                {
+                  ...row,
+                  employee_name: "AI chưa hoàn tất",
+                  document: { ...row.document, id: 110, status: "running" },
+                },
+                {
+                  ...row,
+                  employee_name: "Dữ liệu đã đổi",
+                  source_changed: true,
+                  document: { ...row.document, id: 111 },
+                },
+              ],
+            },
+          },
+        });
+      }
+      if (path === "/api/ai/work-report-analyses/history")
+        return route.fulfill({
+          json: {
+            data: [
+              { ...weeklyMailFixture, result: null },
+              {
+                ...weeklyMailFixture,
+                id: 202,
+                period: { ...weeklyMailFixture.period, days: 1 },
+              },
+              { ...weeklyMailFixture, id: 203, status: "partial" },
+              { ...weeklyMailFixture, id: 204, source_changed: true },
+            ],
+          },
+        });
+      if (path === "/api/ai/work-report-analyses/201")
+        return route.fulfill({
+          json: {
+            data: {
+              ...weeklyMailFixture,
+              source_changed: options.staleAi || false,
+            },
+          },
+        });
+      throw new Error(`Unexpected AI read: ${path}`);
+    }
     if (path === "/api/auth/me")
       return route.fulfill({
         json: {
@@ -167,7 +240,213 @@ async function setup(
   await expect(
     page.getByRole("group", { name: "Nhân viên nhận mail", exact: true }),
   ).toBeEnabled();
-  return { submissions, processed, history };
+  return { submissions, processed, history, aiReads };
+}
+
+for (const [value, title] of [
+  ["weekly_plan", "Kế hoạch tuần"],
+  ["monthly_plan", "Kế hoạch tháng"],
+  ["issue", "Có vấn đề cần xử lý"],
+]) {
+  test(`preset ${value}: explicit replacement preserves recipients and remains editable without sending`, async ({
+    page,
+  }) => {
+    const api = await setup(page);
+    await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
+    await page
+      .getByLabel("Tiêu đề", { exact: true })
+      .fill("Nội dung đang soạn");
+    await page.getByLabel("Nội dung", { exact: true }).fill("Giữ lại nếu hủy");
+    const picker = page.getByRole("combobox", {
+      name: "Mẫu mail",
+      exact: true,
+    });
+    await expect(picker.getByRole("option")).toHaveCount(6);
+    await picker.selectOption(value);
+    await page
+      .getByRole("button", { name: "Xem trước mẫu", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toContainText(
+      "Áp dụng sẽ thay toàn bộ tiêu đề",
+    );
+    await expect(page.getByRole("dialog")).toContainText(
+      "Kim Phục Sắc - Nội bộ",
+    );
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Hủy", exact: true })
+      .click();
+    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+      "Giữ lại nếu hủy",
+    );
+    await page
+      .getByRole("button", { name: "Xem trước mẫu", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Dùng nội dung này", exact: true })
+      .click();
+    await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+      /^\[KPS\]/,
+    );
+    await expect(page.getByLabel("Nội dung", { exact: true })).not.toHaveValue(
+      "Giữ lại nếu hủy",
+    );
+    await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
+    await expect(
+      page.getByRole("checkbox", { name: /Nguyễn Văn An/ }),
+    ).toBeChecked();
+    await expect(picker.locator("option:checked")).toHaveText(title);
+    expect(api.aiReads).toHaveLength(0);
+    expect(api.submissions).toHaveLength(0);
+  });
+}
+
+test("daily AI template uses a completed employee report, refreshes the source and keeps evidence and uncertain figures", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  await page
+    .getByRole("button", { name: "Tải danh sách báo cáo AI", exact: true })
+    .click();
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await expect(source.getByRole("option")).toHaveCount(2);
+  await source.selectOption("101");
+  await page
+    .getByRole("button", { name: "Xem trước mẫu", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Đã bàn giao 3 mẫu được duyệt.",
+  );
+  await expect(page.getByRole("dialog")).toContainText(
+    "Doanh thu (đồng): Cần xác nhận",
+  );
+  await expect(page.getByRole("dialog")).not.toContainText("9000");
+  await page
+    .getByRole("button", { name: "Dùng nội dung này", exact: true })
+    .click();
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Báo cáo ngày 05/11/2026 - Nguyễn Văn An",
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Căn cứ báo cáo #12, đầu việc #4/,
+  );
+  expect(api.aiReads).toHaveLength(2);
+  expect(api.submissions).toHaveLength(0);
+  await page.getByRole("button", { name: "Trang sau", exact: true }).click();
+  await expect(
+    source.getByRole("option", { name: /Nhân viên trang hai/ }),
+  ).toBeAttached();
+  expect(new URL(api.aiReads.at(-1)!).searchParams.get("page")).toBe("2");
+});
+
+test("weekly AI template selects only complete seven-day runs and uses the saved summary and precise report link", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("weekly");
+  await page
+    .getByRole("button", { name: "Tải danh sách báo cáo AI", exact: true })
+    .click();
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await expect(source.getByRole("option")).toHaveCount(2);
+  await source.selectOption("201");
+  await page
+    .getByRole("button", { name: "Xem trước mẫu", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Chưa đủ dữ liệu để kết luận doanh thu.",
+  );
+  await expect(page.getByRole("dialog")).toContainText(
+    "Bản tổng hợp AI #201, phiên bản 2",
+  );
+  await page
+    .getByRole("button", { name: "Dùng nội dung này", exact: true })
+    .click();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /analysis=201&end=2026-11-05&days=7/,
+  );
+  expect(api.aiReads).toHaveLength(2);
+  expect(api.submissions).toHaveLength(0);
+});
+
+for (const failure of ["aiDenied", "staleAi"] as const) {
+  test(`${failure}: an unavailable AI source never replaces the existing draft`, async ({
+    page,
+  }) => {
+    const api = await setup(page, { [failure]: true });
+    await page.getByLabel("Tiêu đề", { exact: true }).fill("Giữ tiêu đề");
+    await page.getByLabel("Nội dung", { exact: true }).fill("Giữ nội dung");
+    await page
+      .getByRole("combobox", { name: "Mẫu mail", exact: true })
+      .selectOption("weekly");
+    await page
+      .getByRole("button", { name: "Tải danh sách báo cáo AI", exact: true })
+      .click();
+    if (failure === "staleAi") {
+      await page
+        .getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true })
+        .selectOption("201");
+      await page
+        .getByRole("button", { name: "Xem trước mẫu", exact: true })
+        .click();
+    }
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+      "Giữ tiêu đề",
+    );
+    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+      "Giữ nội dung",
+    );
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    expect(api.submissions).toHaveLength(0);
+  });
+}
+
+for (const dark of [false, true]) {
+  test(`320px ${dark ? "dark" : "light"}: template preview stays in the viewport and cancels without replacing the draft`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 844 });
+    await setup(page);
+    await page.evaluate(
+      (enabled) => document.documentElement.classList.toggle("dark", enabled),
+      dark,
+    );
+    await page
+      .getByLabel("Nội dung", { exact: true })
+      .fill("Bản đang soạn trên điện thoại");
+    await page
+      .getByRole("combobox", { name: "Mẫu mail", exact: true })
+      .selectOption("monthly_plan");
+    await page
+      .getByRole("button", { name: "Xem trước mẫu", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    const sizes = await page.evaluate(() => ({
+      page: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+      modal: document.querySelector('[role="dialog"]')!.scrollWidth,
+    }));
+    expect(sizes.page).toBeLessThanOrEqual(sizes.viewport);
+    expect(sizes.modal).toBeLessThanOrEqual(sizes.viewport);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+      "Bản đang soạn trên điện thoại",
+    );
+    await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
+  });
 }
 
 const subject = "Thông báo họp nội bộ";

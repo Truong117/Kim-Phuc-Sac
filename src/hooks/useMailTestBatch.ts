@@ -93,6 +93,14 @@ export function useMailBatch(storageKey: string, mode: "test" | "internal") {
       setValidationFields([]);
     }
   }
+  function replaceContent(content: { subject: string; body: string }) {
+    if (!running.current && !started) {
+      setBatch((current) => ({ ...current, ...content }));
+      setValidationFields([]);
+      setError("");
+      setNotice("");
+    }
+  }
   function reset() {
     if (!running.current && canReset) {
       persist(empty());
@@ -186,6 +194,7 @@ export function useMailBatch(storageKey: string, mode: "test" | "internal") {
     subject: batch.subject,
     body: batch.body,
     edit,
+    replaceContent,
     validationFields,
     select,
     results,

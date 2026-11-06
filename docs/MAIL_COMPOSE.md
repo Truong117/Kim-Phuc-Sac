@@ -43,7 +43,35 @@ khi toàn bộ lượt hiện tại đã accepted/failed/cancelled.
 
 Đóng phiên hoặc xóa dữ liệu trình duyệt có thể mất snapshot; cần đối chiếu
 Gmail/lịch sử trước khi soạn lại. Nội dung chưa bấm xác nhận chưa tự lưu nháp.
-Chưa có rich text, đính kèm, mẫu thư hoặc lịch gửi báo cáo tự động.
+Chưa có rich text, đính kèm hoặc lịch gửi báo cáo tự động. Các mẫu dựng sẵn
+được bổ sung bên dưới.
+
+## Mẫu mail dựng sẵn
+
+Có 5 mẫu: Báo cáo ngày, Báo cáo tuần, Kế hoạch tuần, Kế hoạch tháng, Có vấn đề
+cần xử lý. Các mẫu có sẵn trong mã, không cần migration hay env mới. Chưa có
+trang quản lý/lưu mẫu tùy chỉnh trong database.
+
+- Báo cáo ngày: chọn ngày bằng lịch KPS, chọn một nhân viên trong danh sách
+  báo cáo AI ngày đã hoàn tất. Danh sách phân trang theo API ngày hiện có.
+  Giữ nhóm công việc, nhận xét, đề xuất, căn cứ và số liệu còn cần xác nhận.
+- Báo cáo tuần: chọn bản AI 7 ngày trong tối đa 100 lượt gần nhất thuộc phạm
+  vi được phép xem. Lấy toàn bộ các mục trong phần tổng hợp chung của AI;
+  kèm liên kết mở đúng bản và kỳ để xem cả chi tiết từng nhân viên.
+- Kế hoạch tuần/tháng và vấn đề: khung có các mục cần điền, không tự điền mục
+  tiêu, thời hạn, chỉ tiêu hay dữ liệu giả. Người gửi chỉnh sửa trước khi gửi.
+
+Chỉ đọc API AI hiện có, dùng nguyên quyền và phạm vi dữ liệu của các API đó;
+không gọi tạo/retry/regenerate, không tốn thêm lượt AI. Tải lại nguồn ngay khi
+xem trước mẫu. Chặn bản đang chạy, partial/failed, nguồn đã thay đổi, bản ngày
+cần tạo lại hoặc bản tuần không còn tương thích/chưa xác minh được độ mới.
+Bản AI mô phỏng được đánh dấu rõ, không trình bày như AI thật.
+
+Mỗi lần áp dụng đều xem trước và xác nhận việc thay toàn bộ tiêu đề/nội dung;
+giữ nguyên người nhận. Hủy hoặc lỗi API/quyền/nguồn giữ nguyên nội dung đang
+soạn. Áp dụng chỉ điền vào trình soạn, vẫn phải xem trước và xác nhận riêng khi
+gửi. Nội dung quá dài được cảnh báo, không tự cắt. Mẫu bị khóa khi đã bắt đầu
+lượt gửi để giữ nguyên snapshot và mã chống gửi trùng.
 
 ## Kiểm thử staging
 
