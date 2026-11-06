@@ -1,6 +1,9 @@
 import type { TFunction } from "i18next";
 import type { DailyDocumentsPage } from "@/types/dailyDocument";
-import type { WorkReportAnalysis } from "@/types/workReportAnalysis";
+import type {
+  AnalysisClaim,
+  WorkReportAnalysis,
+} from "@/types/workReportAnalysis";
 import { formatDateOnly } from "./dateOnly";
 
 export const mailTemplateIds = [
@@ -53,6 +56,27 @@ const references = (
     .join("\n");
 const section = (title: string, lines: string[]) =>
   `${title}\n${lines.map((line) => `- ${line}`).join("\n")}`;
+
+function weeklyClaimText(claim: AnalysisClaim, t: TFunction) {
+  const details: string[] = [claim.text];
+  if (claim.priority)
+    details.push(t(`workReportAnalysis.reader.priority.${claim.priority}`));
+  for (const key of [
+    "rationale",
+    "impact",
+    "action",
+    "expected_outcome",
+    "verification",
+    "decision_needed",
+  ] as const) {
+    if (claim[key])
+      details.push(
+        `${t(`workReportAnalysis.reader.decision.${key}`)}: ${claim[key]}`,
+      );
+  }
+  details.push(references(claim.evidence, t));
+  return details.filter(Boolean).join("\n");
+}
 
 export function dailyMailTemplate(
   row: DailyMailSource,
@@ -168,9 +192,7 @@ export function weeklyMailTemplate(
       chunks.push(
         section(
           t(`workReportAnalysis.sections.${key}`),
-          claims.map(
-            (claim) => `${claim.text}\n${references(claim.evidence, t)}`,
-          ),
+          claims.map((claim) => weeklyClaimText(claim, t)),
         ),
       );
   }

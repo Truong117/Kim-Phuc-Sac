@@ -62,25 +62,25 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
   tiêu, thời hạn, chỉ tiêu hay dữ liệu giả. Người gửi chỉnh sửa trước khi gửi.
 
 Chỉ đọc API AI hiện có, dùng nguyên quyền và phạm vi dữ liệu của các API đó;
-không gọi tạo/retry/regenerate, không tốn thêm lượt AI. Tải lại nguồn ngay khi
-xem trước mẫu. Chặn bản đang chạy, partial/failed, nguồn đã thay đổi, bản ngày
+không gọi tạo/retry/regenerate, không tốn thêm lượt AI. Tự tải nguồn khi chọn mẫu, đổi ngày/trang hoặc chọn báo cáo AI. Chặn bản đang chạy, partial/failed, nguồn đã thay đổi, bản ngày
 cần tạo lại hoặc bản tuần không còn tương thích/chưa xác minh được độ mới.
 Bản AI mô phỏng được đánh dấu rõ, không trình bày như AI thật.
 
-Mỗi lần áp dụng đều xem trước và xác nhận việc thay toàn bộ tiêu đề/nội dung;
-giữ nguyên người nhận. Hủy hoặc lỗi API/quyền/nguồn giữ nguyên nội dung đang
-soạn. Áp dụng chỉ điền vào trình soạn, vẫn phải xem trước và xác nhận riêng khi
-gửi. Nội dung quá dài được cảnh báo, không tự cắt. Mẫu bị khóa khi đã bắt đầu
-lượt gửi để giữ nguyên snapshot và mã chống gửi trùng.
+Chọn mẫu tự điền tiêu đề/nội dung, giữ nguyên người nhận; không còn bước xem
+trước mẫu rồi xác nhận áp dụng. Mẫu báo cáo ngày tự đặt tiêu đề theo ngày và
+tự tải danh sách AI. Nếu chỉ có một nguồn hợp lệ, tự điền ngay; nếu có nhiều
+nguồn, người dùng chỉ cần chọn nguồn. Mẫu tuần tương tự, tiêu đề cập nhật theo
+kỳ của bản AI. Mẫu kế hoạch/vấn đề tự điền khung ngay khi chọn, vẫn cần điền
+các thông tin nghiệp vụ còn để trong dấu ngoặc vuông. Có thể chỉnh sửa sau khi
+nội dung tự điền; chỉ tự soạn mới cần nhập tiêu đề và nội dung từ đầu.
 
-## Kiểm thử staging
+Đổi ngày/trang/nguồn xóa nội dung AI cũ ngay để tránh gửi nhầm dưới tiêu đề mới.
+Khóa xem trước/gửi trong lúc tải, khi chưa chọn nguồn giữa nhiều nguồn hoặc khi
+nguồn bị thiếu/lỗi/không có quyền. Không yêu cầu nhập tay để bù cho AI chưa có;
+người dùng có thể chọn nguồn khác hoặc chuyển sang tự soạn. Hủy request cũ khi
+đổi mẫu/ngày; kết quả cũ không được ghi đè mẫu mới. Nút tải lại chỉ dùng để làm
+mới nguồn khi cần, không phải bước bắt buộc.
 
-1. Gửi một mail đến nhân viên không nằm trong danh sách thử, bằng tài khoản Trợ lý.
-2. Đối chiếu From/tiêu đề/nội dung trong Gmail và hộp thư người nhận; mỗi người
-   chỉ thấy địa chỉ của mình.
-3. Kiểm tra quay lại chỉnh sửa, reload một lượt đang xử lý, lỗi người nhận và
-   nội dung; trường lỗi đỏ, được cuộn tới và nhận focus.
-4. Kiểm tra mobile light/dark, trạng thái Đã gửi qua Gmail và phần giải thích.
-
-Test tự động giả lập toàn bộ API/Gmail, không gửi mail thật. Kết nối production
-đã có không cần cấp lại quyền OAuth vì vẫn dùng cùng scope và cấu hình.
+Vẫn xem trước và xác nhận riêng khi gửi. Nội dung quá dài được cảnh báo, không
+tự cắt. Mẫu bị khóa khi đã bắt đầu lượt gửi để giữ nguyên snapshot và mã chống
+gửi trùng. Không cần migration, biến môi trường hoặc quyền OAuth mới.
