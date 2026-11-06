@@ -6,6 +6,9 @@ use App\Http\Middleware\EnsureActiveKpsMembership;
 use App\Services\AI\DailyReportAiProvider;
 use App\Services\AI\FakeDailyReportProvider;
 use App\Services\AI\OpenAiDailyReportProvider;
+use App\Services\Mail\Contracts\MailOAuthProvider;
+use App\Services\Mail\Gmail\GmailOAuthProvider;
+use App\Services\Mail\MailTransportRegistry;
 use App\Services\WeeklyPlanning\Contracts\WeeklyPlanTaskExtractor;
 use App\Services\WeeklyPlanning\GoogleDocs\Contracts\ApprovedGoogleDriveFolderRegistry;
 use App\Services\WeeklyPlanning\GoogleDocs\Contracts\GoogleAuthorizedHttpClientFactory;
@@ -33,6 +36,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(MailOAuthProvider::class, GmailOAuthProvider::class);
+        $this->app->singleton(MailTransportRegistry::class);
         $this->app->bind(
             WeeklyPlanSuggestionGenerator::class,
             WeeklyPlanSuggestionService::class,

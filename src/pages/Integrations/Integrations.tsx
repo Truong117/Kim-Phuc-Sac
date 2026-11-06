@@ -1,5 +1,5 @@
 import { useIntegrations } from "@/hooks/useIntegrations";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import PageMeta from "@/components/common/PageMeta";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
@@ -9,6 +9,8 @@ import Input from "@/components/form/input/InputField";
 import { DocsIcon, PlugInIcon, PlusIcon } from "@/icons";
 import { useAuth } from "@/hooks/useAuth";
 import { useModal } from "@/hooks/useModal";
+import MailWorkspace from "@/components/mail/MailWorkspace";
+import { getMailCapabilities } from "@/services/mailService";
 import IntegrationTable from "@/components/integrations/IntegrationTable";
 import IntegrationDialog, {
   type DialogMode,
@@ -28,7 +30,31 @@ function IntegrationWorkspace() {
   const { t } = useTranslation();
   const { entries, owners, canManage, loading, error, reload, save, remove } =
     useIntegrations();
-  const [tab, setTab] = useState<IntegrationTab>("drive");
+  const [tab, setTab] = useState<IntegrationTab | "mail">(() =>
+    ["connected", "failed"].includes(
+      new URLSearchParams(window.location.search).get("mail_oauth") || "",
+    )
+      ? "mail"
+      : "drive",
+  );
+  const [canViewMail, setCanViewMail] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    void getMailCapabilities(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted)
+          setCanViewMail(result.can_view === true);
+      })
+      .catch(() => {
+        /* Mail capability failure must not break Drive/MXH. */
+      });
+    return () => controller.abort();
+  }, []);
+  const tabs = [
+    ["drive", DocsIcon],
+    ["social", PlugInIcon],
+    ...(canViewMail ? [["mail", PlugInIcon] as const] : []),
+  ] as const;
   const [query, setQuery] = useState("");
   const [platform, setPlatform] = useState("all");
   const [message, setMessage] = useState("");
@@ -70,9 +96,11 @@ function IntegrationWorkspace() {
             {t("integrationsUi.previewLabel")}
           </span>
         </div>
-        <div className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm leading-relaxed text-warning-800 dark:border-warning-500/20 dark:bg-warning-500/10 dark:text-warning-400">
-          {t("integrationsUi.previewNotice")}
-        </div>
+        {tab !== "mail" && (
+          <div className="rounded-xl border border-warning-200 bg-warning-50 px-4 py-3 text-sm leading-relaxed text-warning-800 dark:border-warning-500/20 dark:bg-warning-500/10 dark:text-warning-400">
+            {t("integrationsUi.previewNotice")}
+          </div>
+        )}
         {error && (
           <p
             role="alert"
@@ -94,12 +122,7 @@ function IntegrationWorkspace() {
           role="tablist"
           aria-label={t("integrationsUi.title")}
         >
-          {(
-            [
-              ["drive", DocsIcon],
-              ["social", PlugInIcon],
-            ] as const
-          ).map(([value, Icon], index) => (
+          {tabs.map(([value, Icon], index) => (
             <button
               key={value}
               type="button"
@@ -120,13 +143,16 @@ function IntegrationWorkspace() {
                 ) {
                   e.preventDefault();
                   const target =
-                    e.key === "Home"
-                      ? "drive"
-                      : e.key === "End"
-                        ? "social"
-                        : index === 0
-                          ? "social"
-                          : "drive";
+                    tabs[
+                      e.key === "Home"
+                        ? 0
+                        : e.key === "End"
+                          ? tabs.length - 1
+                          : (index +
+                              (e.key === "ArrowRight" ? 1 : -1) +
+                              tabs.length) %
+                            tabs.length
+                    ][0];
                   setTab(target);
                   setQuery("");
                   setPlatform("all");
@@ -136,10 +162,16 @@ function IntegrationWorkspace() {
               className={`flex items-center gap-2 border-b-2 px-5 py-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-kps-primary ${tab === value ? "border-kps-primary text-kps-primary" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
             >
               <Icon className="size-5" />
-              {t(`integrationsUi.tabs.${value}`)}
-              <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
-                {entries.filter((row) => row.kind === value).length}
-              </span>
+              {t(
+                value === "mail"
+                  ? "mailUi.tab"
+                  : `integrationsUi.tabs.${value}`,
+              )}
+              {value !== "mail" && (
+                <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                  {entries.filter((row) => row.kind === value).length}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -148,78 +180,88 @@ function IntegrationWorkspace() {
           id={`integration-panel-${tab}`}
           aria-labelledby={`integration-tab-${tab}`}
         >
-          <ComponentCard
-            title={t(`integrationsUi.${tab}Title`)}
-            desc={t(`integrationsUi.${tab}Description`)}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex w-full flex-wrap gap-3 sm:w-auto">
-                <div className="w-full sm:w-72">
-                  <Input
-                    aria-label={t("integrationsUi.search")}
-                    placeholder={t("integrationsUi.search")}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                </div>
-                {tab === "social" && (
-                  <select
-                    aria-label={t("integrationsUi.filter")}
-                    value={platform}
-                    onChange={(e) => setPlatform(e.target.value)}
-                    className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                  >
-                    <option value="all">
-                      {t("integrationsUi.allPlatforms")}
-                    </option>
-                    {platforms.map((p) => (
-                      <option key={p} value={p}>
-                        {t(`integrationsUi.platforms.${p}`)}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-              {canManage && !loading && (
-                <Button
-                  variant="outline"
-                  className="!bg-kps-primary !text-white !ring-0 hover:!bg-kps-primary-hover"
-                  startIcon={<PlusIcon className="size-5" />}
-                  onClick={() => open("add", blankEntry(tab))}
-                >
-                  {t(
-                    `integrationsUi.${tab === "drive" ? "addFolder" : "addChannel"}`,
-                  )}
-                </Button>
-              )}
-              <Button variant="outline" disabled={loading} onClick={reload}>
-                {t("integrationsUi.reload")}
-              </Button>
-            </div>
-            {loading ? (
-              <p
-                role="status"
-                className="text-sm text-gray-500 dark:text-gray-400"
-              >
-                {t("integrationsUi.loading")}
-              </p>
+          {tab === "mail" ? (
+            canViewMail ? (
+              <MailWorkspace />
             ) : (
-              !error && (
-                <IntegrationTable
-                  entries={filtered}
-                  kind={tab}
-                  onAction={open}
-                  canManage={canManage}
-                />
-              )
-            )}
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {t("integrationsUi.count", {
-                shown: filtered.length,
-                total: tabEntries.length,
-              })}
-            </p>
-          </ComponentCard>
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                {t("mailUi.unavailable")}
+              </p>
+            )
+          ) : (
+            <ComponentCard
+              title={t(`integrationsUi.${tab}Title`)}
+              desc={t(`integrationsUi.${tab}Description`)}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex w-full flex-wrap gap-3 sm:w-auto">
+                  <div className="w-full sm:w-72">
+                    <Input
+                      aria-label={t("integrationsUi.search")}
+                      placeholder={t("integrationsUi.search")}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                  </div>
+                  {tab === "social" && (
+                    <select
+                      aria-label={t("integrationsUi.filter")}
+                      value={platform}
+                      onChange={(e) => setPlatform(e.target.value)}
+                      className="h-11 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                    >
+                      <option value="all">
+                        {t("integrationsUi.allPlatforms")}
+                      </option>
+                      {platforms.map((p) => (
+                        <option key={p} value={p}>
+                          {t(`integrationsUi.platforms.${p}`)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {canManage && !loading && (
+                  <Button
+                    variant="outline"
+                    className="!bg-kps-primary !text-white !ring-0 hover:!bg-kps-primary-hover"
+                    startIcon={<PlusIcon className="size-5" />}
+                    onClick={() => open("add", blankEntry(tab))}
+                  >
+                    {t(
+                      `integrationsUi.${tab === "drive" ? "addFolder" : "addChannel"}`,
+                    )}
+                  </Button>
+                )}
+                <Button variant="outline" disabled={loading} onClick={reload}>
+                  {t("integrationsUi.reload")}
+                </Button>
+              </div>
+              {loading ? (
+                <p
+                  role="status"
+                  className="text-sm text-gray-500 dark:text-gray-400"
+                >
+                  {t("integrationsUi.loading")}
+                </p>
+              ) : (
+                !error && (
+                  <IntegrationTable
+                    entries={filtered}
+                    kind={tab}
+                    onAction={open}
+                    canManage={canManage}
+                  />
+                )
+              )}
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t("integrationsUi.count", {
+                  shown: filtered.length,
+                  total: tabEntries.length,
+                })}
+              </p>
+            </ComponentCard>
+          )}
         </section>
       </div>
       {modal.isOpen && dialog && (

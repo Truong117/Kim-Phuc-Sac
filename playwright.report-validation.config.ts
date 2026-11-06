@@ -9,6 +9,7 @@ export default defineConfig({
     "daily-document-reader-ui.spec.ts",
     "integrations-persistence-ui.spec.ts",
     "social-metrics-ui.spec.ts",
+    "mail-foundation-ui.spec.ts",
   ],
   workers: 1,
   timeout: 45_000,

@@ -8,6 +8,7 @@ use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\IntegrationController;
+use App\Http\Controllers\Integrations\MailController;
 use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
@@ -47,7 +48,18 @@ Route::prefix('auth')->group(function () {
         ->middleware('auth:sanctum');
 });
 
+// Google callback uses one-time server-side state, not a browser session cookie.
+Route::get('/integrations/mail/google/callback', [MailController::class, 'callback'])->middleware('throttle:20,1,mail-callback');
+
 Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () {
+    Route::prefix('integrations/mail')->group(function (): void {
+        Route::get('/capabilities', [MailController::class, 'capabilities']);
+        Route::get('/', [MailController::class, 'show']);
+        Route::get('/recipients', [MailController::class, 'recipients']);
+        Route::post('/connect', [MailController::class, 'connect'])->middleware('throttle:3,1,mail-connect');
+        Route::delete('/connection', [MailController::class, 'disconnect'])->middleware('throttle:3,1,mail-disconnect');
+        Route::post('/test', [MailController::class, 'sendTest'])->middleware('throttle:3,1,mail-test');
+    });
     Route::prefix('account')->group(function () {
         Route::patch('/profile', [AccountController::class, 'updateProfile']);
         Route::patch('/password', [AccountController::class, 'updatePassword'])
