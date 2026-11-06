@@ -59,10 +59,10 @@ jobs:
               ;;
           esac
 
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  frontend-checks:
+    name: Frontend checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -77,6 +77,7 @@ jobs:
           cache: npm
 
       - name: Install frontend dependencies
+        timeout-minutes: 3
         run: npm ci
 
       - name: Run frontend tests
@@ -90,11 +91,69 @@ jobs:
         env:
           VITE_API_BASE_URL: http://localhost:8000
 
-      - name: Install browser for report validation checks
-        run: npx playwright install --with-deps chromium
+  frontend-browser:
+    name: Frontend browser tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
-      - name: Verify daily and makeup report validation in browser
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        timeout-minutes: 3
+        run: npm ci
+
+      - name: Install browser system dependencies
+        timeout-minutes: 2
+        run: npx playwright install-deps chromium
+
+      - name: Install Chromium headless shell
+        timeout-minutes: 2
+        run: npx playwright install --only-shell chromium
+
+      - name: Run frontend browser tests
+        timeout-minutes: 6
         run: npx playwright test --config playwright.report-validation.config.ts
+
+      - name: Upload browser failure diagnostics
+        if: ${{ failure() }}
+        timeout-minutes: 1
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-browser-failure
+          path: test-results/report-validation/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Keep the required check name stable for existing branch protection rules.
+  frontend:
+    name: Frontend
+    needs: [frontend-checks, frontend-browser]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+
+    steps:
+      - name: Require both frontend jobs to succeed
+        env:
+          CHECKS_RESULT: ${{ needs.frontend-checks.result }}
+          BROWSER_RESULT: ${{ needs.frontend-browser.result }}
+        run: |
+          set -euo pipefail
+          echo "Frontend checks: $CHECKS_RESULT"
+          echo "Frontend browser tests: $BROWSER_RESULT"
+          if [[ "$CHECKS_RESULT" != "success" || "$BROWSER_RESULT" != "success" ]]; then
+            exit 1
+          fi
 
   backend:
     name: Backend

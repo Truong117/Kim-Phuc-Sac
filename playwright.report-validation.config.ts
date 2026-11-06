@@ -9,8 +9,11 @@ export default defineConfig({
     "daily-document-reader-ui.spec.ts",
     "integrations-persistence-ui.spec.ts",
     "social-metrics-ui.spec.ts",
+    "mail-foundation-ui.spec.ts",
   ],
   workers: 1,
+  // Leave one minute for failure diagnostics before the CI step times out.
+  globalTimeout: process.env.CI ? 5 * 60 * 1000 : undefined,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: "list",

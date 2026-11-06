@@ -1,13 +1,32 @@
 <?php
 
 use App\Jobs\SyncSocialMetrics;
+use App\Models\MailMessage;
 use App\Models\SocialConnection;
 use App\Services\AI\Daily\DailyDocumentDispatcher;
 use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\AI\WorkReportAnalysisWorker;
+use App\Services\Mail\MailConfiguration;
+use App\Services\Mail\MailOutbox;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+
+Artisan::command('kps-mail:process {--limit=10}', function (MailOutbox $outbox, MailConfiguration $configuration): int {
+    if (! config('kps_mail.enabled') || ! config('kps_mail.send_enabled') || ! $configuration->ready()) {
+        $this->info('Mail processing disabled or not configured.');
+
+        return 0;
+    }
+    $outbox->recoverInterrupted();
+    $ids = MailMessage::query()->where('status', 'queued')->where('available_at', '<=', now())->orderBy('created_at')->limit(max(1, min(50, (int) $this->option('limit'))))->pluck('id');
+    foreach ($ids as $id) {
+        $outbox->process($id);
+    }
+    $this->info('Processed requests: '.$ids->count());
+
+    return 0;
+})->purpose('Process a bounded mail outbox batch on any host; ambiguous sends require review');
 
 Artisan::command('work-report-ai:recover', function (WorkReportAnalysisWorker $worker): void {
     $this->info('Expired leases recovered: '.$worker->recover());
