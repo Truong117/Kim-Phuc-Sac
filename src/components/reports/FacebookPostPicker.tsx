@@ -155,6 +155,7 @@ export default function FacebookPostPicker({
 
   return createPortal(
     <Modal
+      aboveNavigation
       isOpen
       onClose={onClose}
       ariaLabelledBy={titleId}
