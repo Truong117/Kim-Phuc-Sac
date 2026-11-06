@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { MailHistoryEntry } from "@/services/mailService";
 import ComponentCard from "@/components/common/ComponentCard";
+import MailMessageStatus from "./MailMessageStatus";
 
 export default function MailHistory({
   entries,
@@ -41,11 +42,7 @@ export default function MailHistory({
                 </p>
               </div>
               <div className="text-end">
-                <span className="rounded-md bg-gray-100 px-2 py-1 text-gray-800 dark:bg-gray-800 dark:text-gray-200">
-                  {t(`mailUi.messageStates.${entry.status}`, {
-                    defaultValue: t("mailUi.messageStates.unknown"),
-                  })}
-                </span>
+                <MailMessageStatus status={entry.status} />
                 {entry.error_code && (
                   <p className="mt-2 text-xs text-error-600 dark:text-error-400">
                     {t(`mailUi.errors.${entry.error_code}`, {

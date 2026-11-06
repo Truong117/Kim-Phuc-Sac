@@ -12,6 +12,7 @@ export { ReactComponent as CloseIcon } from "./close.svg?react";
 export { ReactComponent as DocsIcon } from "./docs.svg?react";
 export { ReactComponent as EyeCloseIcon } from "./eye-close.svg?react";
 export { ReactComponent as EyeIcon } from "./eye.svg?react";
+export { ReactComponent as InfoCircleIcon } from "./info-circle.svg?react";
 export { ReactComponent as GridIcon } from "./grid.svg?react";
 export { ReactComponent as HorizontaLDots } from "./horizontal-dots.svg?react";
 export { ReactComponent as MultiUserIcon } from "./multi-user.svg?react";
