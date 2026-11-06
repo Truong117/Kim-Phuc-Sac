@@ -423,6 +423,10 @@ test.describe("sent tooltip on touch screens", () => {
       await expect(page.getByRole("tooltip")).toHaveText(
         "Chưa xác nhận đã nhận/đọc",
       );
+      const bounds = await page.getByRole("tooltip").boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth > innerWidth,

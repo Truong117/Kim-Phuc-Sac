@@ -41,7 +41,7 @@ export default function MailHistory({
                   }).format(new Date(entry.created_at))}
                 </p>
               </div>
-              <div className="text-end">
+              <div className="ms-auto max-w-full text-end">
                 <MailMessageStatus status={entry.status} />
                 {entry.error_code && (
                   <p className="mt-2 text-xs text-error-600 dark:text-error-400">
