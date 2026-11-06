@@ -120,6 +120,48 @@ class DailyWeeklyFlowTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_makeup_daily_revision_updates_only_affected_employee_under_the_new_weekly_contract(): void
+    {
+        $owner = $this->owner();
+        $other = $this->owner();
+        $one = $this->report($owner, '2026-11-01', 10);
+        $two = $this->report($other, '2026-11-02', 20);
+        $this->daily($owner, $one);
+        $this->daily($owner, $two);
+        $service = app(WorkReportAnalysisService::class);
+        $worker = app(WorkReportAnalysisWorker::class);
+        $finish = function ($run) use ($worker): void {
+            for ($round = 0; $round < 5; $round++) {
+                $pending = $run->units()->where('status', 'pending')->get();
+                if ($pending->isEmpty()) {
+                    break;
+                }
+                foreach ($pending as $unit) {
+                    $worker->process($unit->id);
+                }
+            }
+        };
+        $first = $service->request($owner, '2026-11-02', 7, null);
+        $finish($first);
+        $this->assertSame('completed', $first->refresh()->status);
+        $old = $first->units()->where('unit_key', 'like', 'employee:'.$owner->id.':%')->firstOrFail();
+        $makeup = $this->report($other, '2026-11-01', 30);
+        $this->assertSame([$makeup->id], $service->preview($owner, '2026-11-02', 7, null)['daily_coverage']['missing_report_ids']);
+        $this->daily($owner, $makeup);
+        $second = $service->request($owner, '2026-11-02', 7, null);
+        $reused = $second->units()->where('unit_key', 'like', 'employee:'.$owner->id.':%')->firstOrFail();
+        $this->assertSame($old->id, $reused->input['_reused_from_unit_id']);
+        $this->assertSame($old->result, $reused->result);
+        $changed = $second->units()->where('unit_key', 'like', 'employee:'.$other->id.':%')->firstOrFail();
+        $this->assertSame('pending', $changed->status);
+        $this->assertArrayNotHasKey('_reused_from_unit_id', $changed->input);
+        $finish($second);
+        $this->assertSame('completed', $second->refresh()->status);
+        $this->assertSame(3, $second->snapshot['daily_coverage']['total_reports']);
+        $this->assertSame(2, $first->refresh()->snapshot['daily_coverage']['total_reports']);
+        Http::assertNothingSent();
+    }
+
     public function test_missing_or_stale_day_blocks_weekly_generation_without_falling_back_to_raw_reports(): void
     {
         $owner = $this->owner();

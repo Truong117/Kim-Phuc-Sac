@@ -6,9 +6,9 @@ use RuntimeException;
 
 final class WorkReportAnalysisOutput
 {
-    public const VERSION = 'work-report-v2.5';
+    public const VERSION = 'work-report-v3.0';
 
-    public const SCHEMA_VERSION = 'work-report-v2.3';
+    public const SCHEMA_VERSION = 'work-report-v3.0';
 
     public const SECTIONS = ['overview', 'highlights', 'ongoing', 'attention', 'support', 'uncertainties', 'recommendations'];
 
@@ -18,15 +18,22 @@ final class WorkReportAnalysisOutput
     {
         return implode("\n", [
             'Bạn là trợ lý phân tích báo cáo công việc KPS. Viết tiếng Việt trung lập, có căn cứ.',
-            'Quy trình bắt buộc: hệ thống đã tổng hợp work_inventory từ toàn bộ đầu việc nguồn của mỗi phần nhân viên trước khi gọi AI. Đọc danh sách này và kết quả/diễn biến từng ngày trước, rồi mới nhận xét và đề xuất.',
+            'Quy trình bắt buộc: ở employee_review, nếu có daily_documents thì đọc nhóm công việc và dữ kiện đã chuẩn hóa trong các bản ngày; nếu không có thì đọc work_inventory. Tổng hợp việc đã làm, kết quả và diễn biến trước, rồi mới nhận xét và đề xuất.',
             'work_groups là danh sách tổng hợp theo nhóm công việc: title ngắn theo chủ đề, text nêu việc đã làm, diễn biến/kết quả và tồn đọng, evidence phủ mọi đầu việc đúng một lần. Gom các hoạt động liên quan khi có căn cứ; không chép từng gạch đầu dòng nhỏ. Nhóm chung để trình bày không có nghĩa cùng một nhiệm vụ hay được cộng số lượng.',
             'Giai đoạn employee_review: xuất work_groups trước rồi mới các nhận xét. Mỗi đầu việc nguồn phải thuộc đúng một nhóm, kể cả việc đang làm hoặc vướng mắc. Giai đoạn company_summary: work_groups để trống; danh sách nhóm của từng người đã được giữ riêng.',
             'Nếu daily_documents được cung cấp, đây là dữ kiện đã chuẩn hóa từng ngày, có document_id/source_hash và nhóm công việc kèm evidence. Đọc các bản này để tổng hợp tuần. Không trích xuất lại số lượng: quantity_observations để trống; hệ thống dùng các số liệu ngày đã kiểm tra. Không dùng nhận xét AI ngày làm bằng chứng độc lập.',
             'work_inventory gồm content và observations có ngày, trạng thái tự báo cáo, result, note cùng report_id/item_id gốc. Các dòng cùng content chỉ được xếp chung để đọc; không mặc định là cùng một nhiệm vụ kéo dài qua nhiều ngày.',
             'Không cộng dồn số lượng lặp lại qua các ngày nếu nguồn không xác nhận đó là các kết quả khác nhau. Giữ diễn biến và mâu thuẫn, không lấy trạng thái cuối để ghi đè các lần báo cáo khác.',
-            'Giai đoạn employee_review: dựa trên work_inventory của người đó để viết overview về nhóm công việc và kết quả trong kỳ; tiếp theo nêu điểm đáng chú ý, vướng mắc có căn cứ; cuối cùng mới đề xuất cụ thể. Không chỉ chép lại một vài câu báo cáo hoặc đưa lời khuyên chung chung.',
+            'Giai đoạn employee_review: dùng nguồn của đúng người đó để tạo work_groups; overview nêu kết luận/nhận xét có giá trị về kết quả và diễn biến, tránh kể lại các nhóm vừa tổng hợp. Tiếp theo nêu điểm đáng chú ý và vướng mắc có căn cứ; cuối cùng mới đề xuất cụ thể. Không chỉ chép lại một vài câu báo cáo hoặc đưa lời khuyên chung chung.',
+            'Đầu ra phục vụ đọc tập trung: work_groups trình bày từng nhóm công việc riêng, không gộp toàn bộ công việc thành một đoạn văn. Overview là kết luận ngắn có giá trị, không chép lại danh sách công việc.',
+            'company_summary: ưu tiên 3–5 kết luận nổi bật nếu có đủ căn cứ; nêu kết quả, điểm nghẽn, tác động và quyết định cần quản lý. Không bắt đủ số lượng, không lặp lại cùng một ý ở nhiều mục.',
+            'recommendations bắt buộc có text ngắn, evidence, priority (high hoặc normal), rationale (dữ kiện làm căn cứ), impact (ảnh hưởng đã biết; tác động tiềm tàng phải nói rõ là khả năng), action (hành động cụ thể), expected_outcome (kết quả mong đợi, không phải đã đạt), verification (cách kiểm chứng), decision_needed (quyết định cần quản lý, để chuỗi rỗng nếu không cần).',
+            'Chỉ xếp priority=high khi nguồn cho thấy trở ngại hoặc ảnh hưởng cần xử lý sớm; đây là thứ tự đề xuất, không phải chấm điểm nhân viên. Không tự tạo người phụ trách, cam kết hoặc hạn chót. Không điền các trường bằng lời khuyên chung chung.',
+            'Ví dụ: báo cáo nói chi phí mỗi tin nhắn vượt 100k, chưa có đơn hàng/doanh thu: đề xuất đối chiếu chi phí, khách hỏi phù hợp, đơn và doanh thu trong cùng khoảng quan sát trước khi quyết định ngân sách. Không kết luận hiệu quả hay nguyên nhân quảng cáo chỉ từ số nội dung đã đăng.',
+            'Chỉ đề xuất yêu cầu thêm số liệu khi nguồn có vấn đề hoặc quyết định cụ thể cần dữ liệu đó; không tự sinh danh sách thiếu KPI cho mọi công việc.',
             'Mỗi đề xuất cần nói rõ công việc liên quan, kết quả/vướng mắc làm căn cứ, và hành động hoặc quyết định quản lý hữu ích. Chỉ đề xuất khi nguồn thực sự cho thấy cần; nội dung rõ thì được để trống đề xuất.',
-            'Giai đoạn company_summary: parts chứa danh sách công việc đã tổng hợp và nhận xét theo từng nhân viên. Đọc work_inventory của từng người trước khi tổng hợp công ty; phân biệt dữ kiện từ danh sách với nhận xét/đề xuất AI và chỉ gộp liên phòng ban khi có căn cứ.',
+            'Khi summary_stage=consolidation, parts là các bản tổng hợp thành phần. Tổng hợp lại thành kết luận và thứ tự đề xuất chung, loại ý lặp; chỉ sử dụng trích đoạn nguồn đi kèm, không coi nhận xét của bước trước là sự thật mới. Không tự cộng số liệu giữa các thành phần hoặc tự tạo liên hệ nhân quả.',
+            'Giai đoạn company_summary: parts chứa danh sách công việc đã tổng hợp và nhận xét theo từng nhân viên. Đọc work_groups và work_totals của từng người (cùng work_inventory nếu có) trước khi tổng hợp công ty; phân biệt dữ kiện từ danh sách với nhận xét/đề xuất AI và chỉ gộp liên phòng ban khi có căn cứ.',
             'quantity_observations: ở giai đoạn employee_review, trích xuất các số lượng kết quả công việc được báo cáo rõ bằng chữ số, kèm metric, unit, quantity, basis, report_id, item_id và quote nguyên văn chứa số đó. Hệ thống sẽ tự cộng bằng phép tính, bạn không tự tạo số tổng.',
             'Dùng nhất quán metric như “Sản phẩm đã bán”, “Ảnh đã chỉnh sửa”, “Video đã dựng”; unit như “sản phẩm”, “ảnh”, “video”. Giữ tách các loại công việc, đơn vị, sản phẩm hoặc phạm vi không thể cộng chung. Không nhầm chỉ tiêu, kế hoạch, số tồn, số điện thoại hoặc ngày tháng với kết quả.',
             'basis=incremental chỉ khi số lượng là kết quả riêng của lần/ngày báo cáo; cumulative khi là lũy kế; unclear khi không rõ hoặc có thể nhắc lại kết quả cũ. Không coi số lũy kế là số tăng thêm. Mỗi số liệu chỉ trích xuất một lần. Không trích xuất số viết bằng chữ hoặc cách ghi số nhập nhằng.',
@@ -98,6 +105,7 @@ final class WorkReportAnalysisOutput
             'text' => ['type' => 'string'], 'evidence' => ['type' => 'array', 'items' => $ref],
         ], 'required' => ['text', 'evidence'], 'additionalProperties' => false];
         $properties = array_fill_keys(self::SECTIONS, ['type' => 'array', 'items' => $claim]);
+        $properties['recommendations'] = ['type' => 'array', 'items' => WorkReportDecision::schema($claim)];
         $observation = ['type' => 'object', 'properties' => [
             'metric' => ['type' => 'string'], 'unit' => ['type' => 'string'], 'quantity' => ['type' => 'number'],
             'basis' => ['type' => 'string', 'enum' => ['incremental', 'cumulative', 'unclear']],
@@ -108,9 +116,12 @@ final class WorkReportAnalysisOutput
         return ['type' => 'object', 'properties' => $properties, 'required' => array_keys($properties), 'additionalProperties' => false];
     }
 
-    public static function validate(array $result, array $reports): void
+    public static function validate(array $result, array $reports, bool $currentContract = false): void
     {
         if (array_diff(array_keys($result), [...self::SECTIONS, 'quantity_observations', 'work_totals', 'work_groups']) || array_diff(self::SECTIONS, array_keys($result))) {
+            throw new RuntimeException('AI_INVALID_SCHEMA');
+        }
+        if ($currentContract && (! array_key_exists('work_groups', $result) || ! array_key_exists('quantity_observations', $result))) {
             throw new RuntimeException('AI_INVALID_SCHEMA');
         }
         if (array_key_exists('work_groups', $result)) {
@@ -133,11 +144,14 @@ final class WorkReportAnalysisOutput
                 throw new RuntimeException('AI_INVALID_SCHEMA');
             }
             foreach ($result[$field] as $claim) {
-                if (! is_array($claim) || count($claim) !== 2 || ! is_string($claim['text'] ?? null)
+                if (! is_array($claim) || ($field !== 'recommendations' && count($claim) !== 2) || ! is_string($claim['text'] ?? null)
                     || trim($claim['text']) === '' || strlen($claim['text']) > 2000
                     || ! is_array($claim['evidence'] ?? null) || ! array_is_list($claim['evidence'])
                     || count($claim['evidence']) < 1 || count($claim['evidence']) > 12) {
                     throw new RuntimeException('AI_INVALID_SCHEMA');
+                }
+                if ($field === 'recommendations') {
+                    WorkReportDecision::validate($claim, $currentContract);
                 }
                 if (! collect(self::CLAIM_PREFIXES)->contains(fn ($prefix) => str_starts_with($claim['text'], $prefix))) {
                     throw new RuntimeException('AI_INVALID_SCHEMA');
@@ -195,7 +209,7 @@ final class WorkReportAnalysisOutput
                 }
                 if ($item['status'] === 'BLOCKED' && count($result['recommendations']) < 12) {
                     $claim['text'] = 'Đề xuất: Hỏi người báo cáo về nguyên nhân và hỗ trợ cần thiết cho đầu việc này.';
-                    $result['recommendations'][] = $claim;
+                    $result['recommendations'][] = WorkReportDecision::fake($claim);
                 }
             }
         }

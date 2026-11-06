@@ -80,7 +80,7 @@ class WorkReportAnalysisService
                 'captured_at' => $capture['captured_at'], 'status' => 'pending',
             ]);
             if ($run->wasRecentlyCreated) {
-                $this->initializeUnits($run, $inputs);
+                $this->initializeUnits($run, $inputs, $this->reusableInputs($viewer, $run, $inputs));
             }
 
             return $run;
@@ -101,12 +101,50 @@ class WorkReportAnalysisService
         }
         $run->units()->create(['unit_key' => 'summary', 'status' => 'waiting', 'input' => []]);
         DB::afterCommit(function () use ($run, $reused): void {
+            $this->dispatchPending($run);
             if ($reused !== []) {
                 app(WorkReportAnalysisWorker::class)->settle((int) $run->id);
-            } else {
-                $this->dispatchPending($run);
             }
         });
+    }
+
+    /** Reuse only exact, successfully validated inputs under the identical saved contract. */
+    private function reusableInputs(User $viewer, WorkReportAnalysis $run, array $inputs): array
+    {
+        $previous = WorkReportAnalysis::query()->where('organization_id', $run->organization_id)
+            ->where('scope_hash', $run->scope_hash)->where('end_date', $run->end_date->toDateString())
+            ->where('days', $run->days)->where('department_id', $run->department_id)
+            ->where('id', '<', $run->id)->whereIn('status', ['completed', 'partial'])->latest('id')->first();
+        if ($previous === null || WorkReportSnapshot::hash($previous->analysis_config) !== WorkReportSnapshot::hash($run->analysis_config)) {
+            return [];
+        }
+        try {
+            $previous = $this->show($viewer, (int) $previous->id);
+        } catch (NotFoundHttpException|ModelNotFoundException) {
+            return [];
+        }
+        $candidates = [];
+        foreach ($previous->units()->where('unit_key', 'like', 'employee:%')->where('status', 'completed')->get() as $unit) {
+            $input = $unit->input;
+            unset($input['_reused_from_unit_id']);
+            // Feedback belongs to the frozen input and must also match; never silently reuse a different review.
+            try {
+                WorkReportAnalysisOutput::validate($unit->result, $input['reports'], true);
+                WorkReportGroupedWork::validate($unit->result['work_groups'] ?? null, $input['reports']);
+                $candidates[WorkReportSnapshot::hash($input)] = $unit;
+            } catch (\RuntimeException) {
+                continue;
+            }
+        }
+        $reused = [];
+        foreach ($inputs as $index => $input) {
+            $candidate = $candidates[WorkReportSnapshot::hash($input)] ?? null;
+            if ($candidate !== null) {
+                $reused[$index] = $candidate;
+            }
+        }
+
+        return $reused;
     }
 
     public function activeUnits(WorkReportAnalysis $run, ?Collection $units = null): Collection
@@ -301,7 +339,7 @@ class WorkReportAnalysisService
             'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code])->values()->all(),
             'can_retry' => (bool) config('work_report_ai.enabled') && WorkReportAnalysisOutput::canExecute($run->analysis_config)
                 && $units->contains(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']
-                    && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids']))),
+                    && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids']) && ! ($u->input['_consolidate'] ?? false))),
             'usage' => [
                 'input_tokens' => $allUnits->contains(fn ($u) => $u->status !== 'completed' || $u->input_tokens === null) ? null : $allUnits->sum('input_tokens'),
                 'output_tokens' => $allUnits->contains(fn ($u) => $u->status !== 'completed' || $u->output_tokens === null) ? null : $allUnits->sum('output_tokens'),
@@ -342,7 +380,7 @@ class WorkReportAnalysisService
             }
             $active = $this->activeUnits($run, $run->units()->get());
             $retryable = $active->filter(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']
-                && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids'])));
+                && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids']) && ! ($u->input['_consolidate'] ?? false)));
             if (in_array($run->status, ['pending', 'running'], true) || $retryable->isEmpty()) {
                 return;
             }

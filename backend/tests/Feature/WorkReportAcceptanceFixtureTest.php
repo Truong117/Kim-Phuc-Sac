@@ -151,7 +151,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         foreach ($preview['plan']['matrix'] as $case) {
             $employees = $case['units'] - 1;
             $summaries = max(1, (int) ceil($employees / 2));
-            $expectedCalls += $employees + $summaries;
+            $expectedCalls += $employees + $summaries + ($summaries > 1 ? 1 : 0);
             $expectedStored += $employees + $summaries + ($summaries > 1 ? 1 : 0);
         }
         $this->assertSame($expectedCalls, $review['provider_units']);
@@ -163,7 +163,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         foreach (WorkReportAnalysis::all() as $run) {
             $this->assertSame('fake', $run->analysis_config['driver']);
             foreach ($run->units as $unit) {
-                $this->assertSame($unit->unit_key === 'summary' && isset($unit->input['_batch_ids']) ? 0 : 1, $unit->attempts);
+                $this->assertSame($unit->unit_key === 'summary' && isset($unit->input['_batch_ids']) && ! ($unit->input['_consolidate'] ?? false) ? 0 : 1, $unit->attempts);
             }
         }
         $this->fixture->fakeReview($this->batch, $this->end, $this->store, $preview['fingerprint']);

@@ -40,7 +40,16 @@ export interface WorkTotal {
     basis: "incremental" | "cumulative" | "unclear";
   }[];
 }
-export interface AnalysisClaim {
+export interface AnalysisDecision {
+  priority: "high" | "normal";
+  rationale: string;
+  impact: string;
+  action: string;
+  expected_outcome: string;
+  verification: string;
+  decision_needed: string;
+}
+export interface AnalysisClaim extends Partial<AnalysisDecision> {
   text: string;
   evidence: { report_id: number; item_id: number; quote: string }[];
 }
@@ -68,7 +77,10 @@ export interface AnalysisEmployee {
   work_totals?: WorkTotal[];
 }
 export interface DailyCoverage {
-  mode: string; ready_reports: number; total_reports: number; missing_report_ids: number[];
+  mode: string;
+  ready_reports: number;
+  total_reports: number;
+  missing_report_ids: number[];
 }
 export interface WorkReportAnalysis {
   daily_coverage?: DailyCoverage | null;
