@@ -71,13 +71,17 @@ abstract class ReportItemsRequest extends FormRequest
             'form_version' => ['sometimes', 'integer', Rule::in([3])],
             'next_day_plan' => (int) $this->input('form_version') === 3 ? ['required', 'string', 'max:5000'] : ['sometimes', 'nullable', 'string', 'max:5000'],
             'items' => ['present', 'array', $this->filled('next_day_plan') ? 'min:0' : 'min:1', 'max:50'],
-            'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links'],
+            'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links,facebook_selections'],
             'items.*.id' => $this->isMethod('POST') ? ['prohibited'] : ['sometimes', 'integer', 'min:1', 'distinct:strict'],
             'items.*.content' => ['required', 'string', 'max:5000'],
             'items.*.result' => [(int) $this->input('form_version') === 3 ? 'required_if:items.*.status,COMPLETED' : 'nullable', 'nullable', 'string', 'max:5000'],
             'items.*.status' => ['required', Rule::enum(WorkStatus::class)],
             'items.*.note' => ['nullable', 'string', 'max:5000'],
             'items.*.issue' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'items.*.facebook_selections' => ['sometimes', 'array', 'max:10'],
+            'items.*.facebook_selections.*' => ['required', 'array:source_url,selection_token'],
+            'items.*.facebook_selections.*.source_url' => ['required', 'string', 'max:2048'],
+            'items.*.facebook_selections.*.selection_token' => ['required', 'string', 'max:16384'],
             'items.*.evidence_links' => ['sometimes', 'array', 'max:10'],
             'items.*.evidence_links.*' => ['required', 'string', 'max:2048', 'url:http,https', function (string $attribute, mixed $value, \Closure $fail): void {
                 // Wildcard distinct compares links across all items; only this item's links must be unique.

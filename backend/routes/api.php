@@ -7,11 +7,15 @@ use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Integrations\IntegrationController;
+use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Reports\MakeupReportController;
 use App\Http\Controllers\Reports\ReportCommentController;
 use App\Http\Controllers\Reports\ReportController;
+use App\Http\Controllers\Reports\ReportFacebookPostsController;
+use App\Http\Controllers\Reports\ReportLinkCheckController;
 use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
 use App\Http\Controllers\Reports\TodayReportController;
@@ -53,9 +57,28 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
 
     Route::get('/navigation', NavigationController::class);
+
+    Route::prefix('integrations')->middleware('permission:integrations.view')->group(function (): void {
+        Route::get('/{id}/social', [SocialMetricsController::class, 'show'])->whereNumber('id')->middleware('permission:reports.view');
+        Route::post('/{id}/social/connect', [SocialMetricsController::class, 'connect'])->whereNumber('id')->middleware(['permission:integrations.manage', 'permission:reports.view', 'throttle:3,1']);
+        Route::delete('/{id}/social/connect', [SocialMetricsController::class, 'disconnect'])->whereNumber('id')->middleware('permission:integrations.manage');
+        Route::post('/{id}/social/sync', [SocialMetricsController::class, 'sync'])->whereNumber('id')->middleware(['permission:integrations.manage', 'permission:reports.view', 'throttle:2,1']);
+
+        Route::get('/', [IntegrationController::class, 'index']);
+        Route::get('/references', [IntegrationController::class, 'references']);
+        Route::get('/{id}', [IntegrationController::class, 'show'])->whereNumber('id');
+        Route::post('/', [IntegrationController::class, 'store'])->middleware(['permission:integrations.manage', 'throttle:30,1']);
+        Route::patch('/{id}', [IntegrationController::class, 'update'])->whereNumber('id')->middleware(['permission:integrations.manage', 'throttle:30,1']);
+        Route::delete('/{id}', [IntegrationController::class, 'destroy'])->whereNumber('id')->middleware(['permission:integrations.manage', 'throttle:30,1']);
+    });
+
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view');
 
+    Route::get('/reports/facebook-posts', ReportFacebookPostsController::class)
+        ->middleware(['report_participant', 'permission:reports.create', 'throttle:20,1,report-facebook-posts']);
+    Route::post('/reports/check-links', ReportLinkCheckController::class)
+        ->middleware(['report_participant', 'permission:reports.create', 'throttle:20,1,report-link-check']);
     Route::get('/reports/today', TodayReportController::class);
     Route::get('/reports/makeup', [MakeupReportController::class, 'options'])->middleware(['report_participant', 'permission:reports.create']);
     Route::get('/reports/makeup/state', [MakeupReportController::class, 'state'])->middleware(['report_participant', 'permission:reports.create']);

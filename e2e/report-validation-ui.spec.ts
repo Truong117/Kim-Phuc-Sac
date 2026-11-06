@@ -171,3 +171,228 @@ for (const makeup of [false, true]) {
     expect(api.count()).toBe(0);
   });
 }
+
+for (const makeup of [false, true]) {
+  const kind = makeup ? "makeup" : "daily";
+  test(`${kind}: share links are checked before save and warnings never block submission`, async ({
+    page,
+  }) => {
+    const api = await setup(page, makeup);
+    let status = "matched";
+    await page.route("**/api/reports/check-links", async (route) => {
+      const { urls } = route.request().postDataJSON();
+      await route.fulfill({
+        json: {
+          data: urls.map((url: string) => ({
+            url,
+            status,
+            page_name: "Kim Phục Sắc",
+          })),
+        },
+      });
+    });
+    await page.locator("#quick-draft-completed").fill("Đăng reel → Đã đăng");
+    const save = page.locator('form button[type="submit"]');
+    await save.click();
+    await page.locator("#next-day-plan").fill("Chuẩn bị bài ngày mai");
+    const evidence = page.locator('textarea[id^="evidence-"]');
+    const share = "https://www.facebook.com/share/r/1HCg7qFhTp/";
+    await evidence.fill(share);
+    const checks = page.locator("[data-evidence-link-checks]");
+    await expect(checks).toContainText("Đã đối chiếu với Page Kim Phục Sắc");
+    await expect(evidence).toHaveValue(share);
+    status = "unverified";
+    await evidence.fill("https://facebook.com/share/p/Unknown/");
+    await expect(checks).not.toContainText("Đã đối chiếu");
+    await expect(checks).toContainText("Chưa xác minh được");
+    await save.click();
+    expect(api.count()).toBe(1);
+    await expect(evidence).toHaveValue("https://facebook.com/share/p/Unknown/");
+    await expect(page.locator('textarea[id^="quick-result-"]')).toHaveValue(
+      "Đã đăng",
+    );
+  });
+}
+
+test("link checks handle rate limits and malformed input without losing the draft", async ({
+  page,
+}) => {
+  const api = await setup(page, false);
+  let checks = 0;
+  await page.route("**/api/reports/check-links", async (route) => {
+    checks++;
+    await route.fulfill({
+      status: 429,
+      json: { message: "raw-provider-secret" },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Hoàn thành");
+  const save = page.locator('form button[type="submit"]');
+  await save.click();
+  await page.locator("#next-day-plan").fill("Kế hoạch ngày mai");
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  await evidence.fill("https://drive.google.com/file/d/example/view");
+  await expect(page.locator("[data-evidence-link-checks]")).toHaveCount(0);
+  await evidence.fill("ftp://facebook.com/reel/555");
+  await expect(page.locator("[data-evidence-link-checks]")).toContainText(
+    "Đường dẫn không hợp lệ",
+  );
+  await save.click();
+  await expect(evidence).toHaveAttribute("aria-invalid", "true");
+  expect(api.count()).toBe(0);
+  expect(checks).toBe(0);
+  await evidence.fill("https://facebook.com/share/r/RateLimited");
+  await expect(page.locator("[data-evidence-link-checks]")).toContainText(
+    "Chờ khoảng một phút",
+  );
+  await expect(page.locator("body")).not.toContainText("raw-provider-secret");
+  await save.click();
+  expect(api.count()).toBe(1);
+});
+
+test("an old link response cannot mark the replacement link as matched", async ({
+  page,
+}) => {
+  await setup(page, false);
+  let releaseOld!: () => void;
+  const oldGate = new Promise<void>((resolve) => {
+    releaseOld = resolve;
+  });
+  await page.route("**/api/reports/check-links", async (route) => {
+    const { urls } = route.request().postDataJSON();
+    const old = urls[0].endsWith("/Old");
+    if (old) await oldGate;
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: old ? "matched" : "unverified",
+          page_name: "OLD PAGE",
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Hoàn thành");
+  await page.locator('form button[type="submit"]').click();
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  const request = page.waitForRequest("**/api/reports/check-links");
+  await evidence.fill("https://facebook.com/share/r/Old");
+  await request;
+  await evidence.fill("https://facebook.com/share/r/New");
+  releaseOld();
+  await expect(page.locator("[data-evidence-link-checks]")).toContainText(
+    "Chưa xác minh được",
+  );
+  await expect(page.locator("[data-evidence-link-checks]")).not.toContainText(
+    "OLD PAGE",
+  );
+});
+
+test("identified Facebook links distinguish connection errors from an unfinished identity check", async ({
+  page,
+}) => {
+  await setup(page, false);
+  let reason = "SOCIAL_RECONNECT_REQUIRED";
+  await page.route("**/api/reports/check-links", async (route) => {
+    const { urls } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: "identified",
+          reason_code: reason,
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Đã đăng");
+  await page.locator('form button[type="submit"]').click();
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  const share = "https://facebook.com/share/p/Example";
+  await evidence.fill(share);
+  const checks = page.locator("[data-evidence-link-checks]");
+  await expect(checks).toContainText("kết nối Page cần cấp quyền lại");
+  await expect(checks).not.toContainText("300 bài");
+  reason = "SOCIAL_CHECK_PENDING";
+  await checks.getByRole("button", { name: "Kiểm tra lại đường dẫn" }).click();
+  await expect(checks).toContainText("cần đối chiếu thêm mã bài");
+  await expect(checks).not.toContainText("cần cấp quyền lại");
+  await expect(evidence).toHaveValue(share);
+});
+
+test("pending Facebook checks continue automatically and stop when matched", async ({
+  page,
+}) => {
+  await setup(page, false);
+  let calls = 0;
+  await page.route("**/api/reports/check-links", async (route) => {
+    calls++;
+    const { urls } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: calls < 3 ? "identified" : "matched",
+          reason_code: calls < 3 ? "SOCIAL_CHECK_PENDING" : undefined,
+          page_name: "Kim Phục Sắc",
+          progress: {
+            catalogue_posts: 10,
+            checked_posts: calls * 3,
+            pending_posts: 10 - calls * 3,
+          },
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Đã đăng");
+  await page.locator('form button[type="submit"]').click();
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  await evidence.fill("https://facebook.com/share/p/Auto");
+  await expect(page.locator("[data-evidence-link-checks]")).toContainText(
+    "Đã đối chiếu với Page Kim Phục Sắc",
+  );
+  expect(calls).toBe(3);
+  await expect(evidence).toHaveValue("https://facebook.com/share/p/Auto");
+});
+
+test("pending Facebook checks stop after three requests and still allow report save", async ({
+  page,
+}) => {
+  const api = await setup(page, false);
+  let calls = 0;
+  await page.route("**/api/reports/check-links", async (route) => {
+    calls++;
+    const { urls } = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        data: urls.map((url: string) => ({
+          url,
+          status: "identified",
+          reason_code: "SOCIAL_CHECK_PENDING",
+          progress: {
+            catalogue_posts: 20,
+            checked_posts: calls,
+            pending_posts: 20 - calls,
+          },
+        })),
+      },
+    });
+  });
+  await page.locator("#quick-draft-completed").fill("Đăng bài → Đã đăng");
+  const save = page.locator('form button[type="submit"]');
+  await save.click();
+  await page.locator("#next-day-plan").fill("Kế hoạch ngày mai");
+  const evidence = page.locator('textarea[id^="evidence-"]');
+  await evidence.fill("https://facebook.com/share/p/Pending");
+  const checks = page.locator("[data-evidence-link-checks]");
+  await expect(checks).toContainText(
+    "Chưa hoàn tất xác minh tự động trong lượt này",
+  );
+  await expect(checks).toContainText("3/20");
+  expect(calls).toBe(3);
+  await page.waitForTimeout(3_000);
+  expect(calls).toBe(3);
+  await save.click();
+  expect(api.count()).toBe(1);
+  await expect(evidence).toHaveValue("https://facebook.com/share/p/Pending");
+});

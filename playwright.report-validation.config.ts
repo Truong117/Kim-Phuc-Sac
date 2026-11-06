@@ -5,7 +5,10 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: [
     "report-validation-ui.spec.ts",
+    "facebook-post-picker-ui.spec.ts",
     "daily-document-reader-ui.spec.ts",
+    "integrations-persistence-ui.spec.ts",
+    "social-metrics-ui.spec.ts",
   ],
   workers: 1,
   timeout: 45_000,

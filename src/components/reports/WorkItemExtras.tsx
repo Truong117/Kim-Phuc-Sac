@@ -1,3 +1,6 @@
+import FacebookEvidencePicker from "./FacebookEvidencePicker";
+import { parseEvidenceLinks } from "@/utils/reportEvidence";
+import EvidenceLinkChecks from "./EvidenceLinkChecks";
 import ReportFieldRow from "./ReportFieldRow";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
@@ -9,6 +12,7 @@ import type {
 import { useTranslation } from "react-i18next";
 
 type Props = {
+  reportDate?: string;
   item: WorkItemFormData;
   errors?: WorkItemValidationErrors;
   disabled?: boolean;
@@ -20,6 +24,7 @@ type Props = {
 };
 export default function WorkItemExtras({
   item,
+  reportDate,
   errors,
   disabled,
   onChange,
@@ -55,9 +60,30 @@ export default function WorkItemExtras({
           error={Boolean(errors?.evidenceLinks)}
           hint={errors?.evidenceLinks}
           onChange={(evidenceLinks) =>
-            onChange(item.clientId, { evidenceLinks })
+            onChange(item.clientId, {
+              evidenceLinks,
+              facebookSelections: (item.facebookSelections ?? []).filter(
+                (row) =>
+                  parseEvidenceLinks(evidenceLinks).includes(row.source_url),
+              ),
+            })
           }
           onBlur={() => onBlur?.(item.clientId, "evidenceLinks")}
+        />
+        <FacebookEvidencePicker
+          value={item.evidenceLinks ?? ""}
+          selections={item.facebookSelections ?? []}
+          reportDate={reportDate}
+          disabled={disabled}
+          onChange={(evidenceLinks, facebookSelections) =>
+            onChange(item.clientId, { evidenceLinks, facebookSelections })
+          }
+        />
+        <EvidenceLinkChecks
+          value={item.evidenceLinks ?? ""}
+          confirmedUrls={(item.facebookSelections ?? []).map(
+            (row) => row.source_url,
+          )}
         />
         <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
           {t("unverified")}

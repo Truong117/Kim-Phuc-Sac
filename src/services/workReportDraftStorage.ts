@@ -85,6 +85,20 @@ const isWorkItem = (value: unknown): value is WorkItemFormData => {
       (Number.isInteger(item.id) && Number(item.id) > 0)) &&
     (item.issue === undefined || isString(item.issue)) &&
     (item.evidenceLinks === undefined || isString(item.evidenceLinks)) &&
+    (item.facebookSelections === undefined ||
+      (Array.isArray(item.facebookSelections) &&
+        item.facebookSelections.length <= 10 &&
+        item.facebookSelections.every(
+          (row) =>
+            row &&
+            typeof row === "object" &&
+            isString(row.source_url) &&
+            isString(row.selection_token) &&
+            isString(row.post_url) &&
+            isString(row.page_name) &&
+            isString(row.external_id) &&
+            Number.isInteger(row.entry_id),
+        ))) &&
     isString(item.content) &&
     isString(item.result) &&
     isString(item.note) &&

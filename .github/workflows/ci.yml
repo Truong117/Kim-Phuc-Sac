@@ -140,7 +140,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist --no-progress
 
       - name: Check backend formatting
-        run: vendor/bin/pint --test
+        run: vendor/bin/pint --test -v
 
       - name: Run backend tests
         run: php artisan test

@@ -1,5 +1,7 @@
 <?php
 
+use App\Jobs\SyncSocialMetrics;
+use App\Models\SocialConnection;
 use App\Services\AI\Daily\DailyDocumentDispatcher;
 use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\AI\WorkReportAnalysisWorker;
@@ -50,3 +52,20 @@ Schedule::command('daily-report-ai:dispatch')->everyFiveMinutes()->withoutOverla
     ->when(fn () => (bool) config('daily_report_ai.enabled') && (bool) config('daily_report_ai.auto_dispatch'));
 Schedule::command('daily-report-ai:recover')->everyFiveMinutes()->withoutOverlapping()
     ->when(fn () => (bool) config('daily_report_ai.enabled'));
+
+Artisan::command('social-metrics:dispatch', function (): void {
+    if (! config('social_metrics.enabled')) {
+        $this->info('Social metrics disabled.');
+
+        return;
+    }
+    SocialConnection::query()->where('status', 'connected')->orderBy('id')->chunkById(100, function ($connections): void {
+        foreach ($connections as $connection) {
+            SyncSocialMetrics::dispatch((int) $connection->integration_entry_id);
+        }
+    });
+    $this->info('Social synchronization queued.');
+})->purpose('Queue bounded Facebook report-link discovery and metric snapshots');
+
+Schedule::command('social-metrics:dispatch')->hourly()->withoutOverlapping()
+    ->when(fn () => (bool) config('social_metrics.enabled') && (bool) config('social_metrics.auto_sync'));

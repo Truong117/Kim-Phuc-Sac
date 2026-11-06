@@ -1,0 +1,230 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import Button from "@/components/ui/button/Button";
+import { ApiServiceError, apiRequest } from "@/services/apiClient";
+import { isEvidenceUrl, parseEvidenceLinks } from "@/utils/reportEvidence";
+
+type Check = {
+  url: string;
+  status:
+    | "matched"
+    | "identified"
+    | "unverified"
+    | "pending"
+    | "unsupported"
+    | "invalid"
+    | "checking"
+    | "rate_limited";
+  page_name?: string;
+  reason_code?: string;
+  progress?: {
+    catalogue_posts: number;
+    checked_posts: number;
+    pending_posts: number;
+  };
+};
+
+const isPending = (row: Check) =>
+  row.status === "pending" ||
+  (row.status === "identified" && row.reason_code === "SOCIAL_CHECK_PENDING");
+
+const reasonMessages: Record<string, string> = {
+  SOCIAL_RECONNECT_REQUIRED: "evidenceCheck.connectionExpired",
+  SOCIAL_RATE_LIMITED: "evidenceCheck.rate_limited",
+  SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE: "evidenceCheck.pageUnavailable",
+  SOCIAL_PROVIDER_UNAVAILABLE: "evidenceCheck.pageUnavailable",
+  SOCIAL_NOT_CONFIGURED: "evidenceCheck.connectionUnavailable",
+  SOCIAL_PRINCIPAL_UNAVAILABLE: "evidenceCheck.connectionUnavailable",
+  SOCIAL_CONNECTION_UNAVAILABLE: "evidenceCheck.connectionUnavailable",
+  SOCIAL_CHECK_PENDING: "evidenceCheck.matchPending",
+  SOCIAL_CHECK_INCOMPLETE: "evidenceCheck.matchIncomplete",
+  SOCIAL_PUBLIC_RATE_LIMITED: "evidenceCheck.publicRateLimited",
+  SOCIAL_PUBLIC_ACCESS_REQUIRED: "evidenceCheck.publicAccessRequired",
+  SOCIAL_POST_ALIAS_UNAVAILABLE: "evidenceCheck.aliasUnavailable",
+};
+
+const isFacebook = (value: string) => {
+  try {
+    return /^(?:(?:www|m|web)\.)?(?:facebook\.com|fb\.com)$/.test(
+      new URL(value).hostname,
+    );
+  } catch {
+    return false;
+  }
+};
+
+export default function EvidenceLinkChecks({
+  value,
+  confirmedUrls = [],
+}: {
+  value: string;
+  confirmedUrls?: string[];
+}) {
+  const { t } = useTranslation();
+  const [retry, setRetry] = useState(0);
+  const [result, setResult] = useState<{ key: string; rows: Check[] } | null>(
+    null,
+  );
+  const sourceUrls = [...new Set(parseEvidenceLinks(value))];
+  const urls = sourceUrls
+    .filter((url) => isFacebook(url) && !confirmedUrls.includes(url))
+    .slice(0, 10);
+  const key = JSON.stringify(urls);
+  const initial: Check[] = urls.map((url) => ({
+    url,
+    status: !isEvidenceUrl(url)
+      ? "invalid"
+      : isFacebook(url)
+        ? "checking"
+        : "unsupported",
+  }));
+  const rows = result?.key === key ? result.rows : initial;
+
+  useEffect(() => {
+    const current: string[] = JSON.parse(key);
+    const candidates = current.filter(
+      (url) => isEvidenceUrl(url) && isFacebook(url),
+    );
+    if (!candidates.length) return;
+    let active = true;
+    let controller: AbortController | null = null;
+    let pauseTimer: number | undefined;
+    let releasePause: (() => void) | undefined;
+    const timer = window.setTimeout(async () => {
+      setResult({
+        key,
+        rows: current.map((url) => ({
+          url,
+          status: !isEvidenceUrl(url) ? "invalid" : "checking",
+        })),
+      });
+      // Continue only pending checks, at most three requests. Saving never waits for this loop.
+      for (let attempt = 0; active && attempt < 3; attempt++) {
+        controller = new AbortController();
+        const requestController = controller;
+        const timeout = window.setTimeout(
+          () => requestController.abort(),
+          15_000,
+        );
+        let checked: Check[];
+        try {
+          const response = await apiRequest<{ data: Check[] }>(
+            "/api/reports/check-links",
+            {
+              method: "POST",
+              body: JSON.stringify({ urls: candidates }),
+              signal: requestController.signal,
+            },
+          );
+          checked = Array.isArray(response.data) ? response.data : [];
+        } catch (error) {
+          checked = candidates.map((url) => ({
+            url,
+            status:
+              error instanceof ApiServiceError && error.status === 429
+                ? "rate_limited"
+                : "unverified",
+          }));
+        } finally {
+          window.clearTimeout(timeout);
+        }
+        if (!active) return;
+        const pending = checked.some(isPending);
+        if (pending && attempt === 2) {
+          checked = checked.map((row) =>
+            isPending(row)
+              ? {
+                  ...row,
+                  status: "identified",
+                  reason_code: "SOCIAL_CHECK_INCOMPLETE",
+                }
+              : row,
+          );
+        }
+        setResult({
+          key,
+          rows: current.map(
+            (url) =>
+              checked.find((row) => row.url === url) ?? {
+                url,
+                status: !isEvidenceUrl(url) ? "invalid" : "unverified",
+              },
+          ),
+        });
+        if (!pending || attempt === 2) return;
+        await new Promise<void>((resolve) => {
+          releasePause = resolve;
+          pauseTimer = window.setTimeout(resolve, 2_000);
+        });
+      }
+    }, 700);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      window.clearTimeout(pauseTimer);
+      releasePause?.();
+      controller?.abort();
+    };
+  }, [key, retry]);
+
+  if (!urls.length) return null;
+  const retryable = rows.some((row) =>
+    ["identified", "unverified", "pending", "rate_limited"].includes(
+      row.status,
+    ),
+  );
+  return (
+    <div className="mt-2 space-y-2 text-theme-xs" data-evidence-link-checks>
+      <ul className="space-y-1" aria-live="polite" aria-atomic="true">
+        {rows.map((row) => (
+          <li
+            key={row.url}
+            className={
+              row.status === "matched"
+                ? "text-success-700 dark:text-success-400"
+                : row.status === "invalid"
+                  ? "text-error-600 dark:text-error-400"
+                  : "text-gray-600 dark:text-gray-300"
+            }
+          >
+            {t("evidenceCheck.number", {
+              number: sourceUrls.indexOf(row.url) + 1,
+            })}{" "}
+            {t(
+              row.status === "identified" &&
+                row.reason_code &&
+                reasonMessages[row.reason_code]
+                ? reasonMessages[row.reason_code]
+                : `evidenceCheck.${["matched", "identified", "unverified", "pending", "unsupported", "invalid", "checking", "rate_limited"].includes(row.status) ? row.status : "unverified"}`,
+              { page: row.page_name ?? "" },
+            )}
+            {row.status === "identified" &&
+              row.progress &&
+              (row.progress.checked_posts > 0 ||
+                row.progress.pending_posts > 0) && (
+                <p className="mt-1 text-gray-500 dark:text-gray-400">
+                  {t("evidenceCheck.progress", {
+                    checked: row.progress.checked_posts,
+                    total: row.progress.catalogue_posts,
+                  })}
+                </p>
+              )}
+          </li>
+        ))}
+      </ul>
+      <p className="text-gray-500 dark:text-gray-400">
+        {t("evidenceCheck.advisory")}
+      </p>
+      {retryable && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          {t("evidenceCheck.retry")}
+        </Button>
+      )}
+    </div>
+  );
+}

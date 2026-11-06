@@ -17,6 +17,9 @@ export default function ReportWorkItemDetails({
     if (!/^#work-item-\d+$/.test(hash)) return;
     document.getElementById(hash.slice(1))?.scrollIntoView({ block: "center" });
   }, [hash, items]);
+  const { t: pickerT } = useTranslation("common", {
+    keyPrefix: "facebookPicker",
+  });
   const { t } = useTranslation("common", {
     keyPrefix: "reportDetail.items",
   });
@@ -96,6 +99,24 @@ export default function ReportWorkItemDetails({
                           {url}
                         </span>
                       )}
+                      {item.facebook_selections
+                        ?.filter((row) => row.source_url === url)
+                        .map((row) => (
+                          <p
+                            key={row.external_id}
+                            className="mt-1 text-theme-xs text-success-700 dark:text-success-400"
+                          >
+                            {pickerT("confirmed", { page: row.page_name })}{" "}
+                            <a
+                              href={row.post_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline"
+                            >
+                              {pickerT("open")}
+                            </a>
+                          </p>
+                        ))}
                     </div>
                   ))}
                   <p className="text-theme-xs text-gray-500 dark:text-gray-400">

@@ -22,6 +22,8 @@ elif '-r' in sys.argv:
     code = sys.argv[sys.argv.index('-r') + 1]
     if 'daily_report_ai.auto_dispatch' in code:
         print(os.environ.get('TEST_DAILY_AUTO', 'no'))
+    elif 'social_metrics.enabled' in code:
+        print(os.environ.get('TEST_SOCIAL_ENABLED', 'no'))
     elif 'daily_report_ai.enabled' in code:
         print(os.environ.get('TEST_DAILY_ENABLED', 'no'))
     else:
@@ -35,7 +37,13 @@ elif 'daily-report-ai:recover' in sys.argv:
 elif 'daily-report-ai:dispatch' in sys.argv:
     event('daily-dispatch')
 elif 'queue:work' in sys.argv:
-    prefix = 'daily-worker' if 'daily_report_ai' in sys.argv else 'worker'
+    prefix = ('social-worker' if 'social_metrics' in sys.argv else
+              'daily-worker' if 'daily_report_ai' in sys.argv else 'worker')
+    if prefix == 'social-worker':
+        required = ['--queue=social-metrics', '--timeout=300', '--tries=1',
+                    '--sleep=5', '--memory=96', '--max-time=3600']
+        if not all(argument in sys.argv for argument in required): sys.exit(99)
+        event('social-worker-queue-contract')
     if not (root / (prefix + '-crashed')).exists():
         (root / (prefix + '-crashed')).touch()
         event(prefix + '-crash')
@@ -54,7 +62,7 @@ else:
 
 
 class SupervisorTest(unittest.TestCase):
-    def run_service(self, mode='embedded', enabled='yes', daily_mode='off', daily_enabled='no', daily_auto='no'):
+    def run_service(self, mode='embedded', enabled='yes', daily_mode='off', daily_enabled='no', daily_auto='no', social_mode='off', social_enabled='no', social_delay='0'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -63,12 +71,17 @@ class SupervisorTest(unittest.TestCase):
             executable.write_text(CHILD)
             executable.chmod(0o755)
         script = Path(__file__).resolve().parents[2] / 'scripts/start-service.sh'
-        process = subprocess.Popen(['sh', str(script)], env={**os.environ,
+        environment = {**os.environ,
             'PATH': str(root) + os.pathsep + os.environ['PATH'], 'KPS_APP_DIR': str(root),
             'WORK_REPORT_AI_WORKER_MODE': mode, 'WORK_REPORT_AI_BOOT_DELAY_SECONDS': '0',
             'TEST_QUEUE_ENABLED': enabled, 'DAILY_REPORT_AI_WORKER_MODE': daily_mode,
             'DAILY_REPORT_AI_BOOT_DELAY_SECONDS': '0', 'TEST_DAILY_ENABLED': daily_enabled,
-            'TEST_DAILY_AUTO': daily_auto}, start_new_session=True,
+            'TEST_DAILY_AUTO': daily_auto, 'SOCIAL_METRICS_BOOT_DELAY_SECONDS': social_delay,
+            'TEST_SOCIAL_ENABLED': social_enabled}
+        environment.pop('SOCIAL_METRICS_WORKER_MODE', None)
+        if social_mode is not None:
+            environment['SOCIAL_METRICS_WORKER_MODE'] = social_mode
+        process = subprocess.Popen(['sh', str(script)], env=environment, start_new_session=True,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         def cleanup():
@@ -143,6 +156,59 @@ class SupervisorTest(unittest.TestCase):
                 process.terminate()
                 self.assertEqual(0, process.wait(timeout=5))
                 self.assertEqual(['web-start', 'web-stop'], self.events(root))
+
+
+    def test_social_manual_consumer_restarts_and_finishes_before_web_stops(self):
+        process, root = self.run_service(enabled='no', social_mode='embedded', social_enabled='yes')
+        self.await_event(root, 'social-worker-start')
+        self.assertNotIn('worker-start', self.events(root))
+        self.assertNotIn('daily-worker-start', self.events(root))
+        self.assertNotIn('daily-dispatch', self.events(root))
+        process.terminate()
+        self.assertEqual(0, process.wait(timeout=5))
+        events = self.events(root)
+        self.assertEqual(1, events.count('social-worker-crash'))
+        self.assertEqual(1, events.count('social-worker-start'))
+        self.assertIn('social-worker-queue-contract', events)
+        self.assertLess(events.index('social-worker-term'), events.index('social-worker-completed'))
+        self.assertLess(events.index('social-worker-completed'), events.index('web-stop'))
+
+    def test_social_default_off_external_or_disabled_never_launches_consumer(self):
+        for mode, enabled in [(None, 'yes'), ('off', 'yes'), ('external', 'yes'), ('embedded', 'no')]:
+            with self.subTest(mode=mode, enabled=enabled):
+                process, root = self.run_service(enabled='no', social_mode=mode, social_enabled=enabled)
+                self.await_event(root, 'web-start')
+                time.sleep(.2)
+                process.terminate()
+                self.assertEqual(0, process.wait(timeout=5))
+                self.assertEqual(['web-start', 'web-stop'], self.events(root))
+
+    def test_social_and_both_ai_consumers_restart_independently_and_drain(self):
+        process, root = self.run_service(daily_mode='embedded', daily_enabled='yes',
+                                         social_mode='embedded', social_enabled='yes')
+        for worker in ['worker', 'daily-worker', 'social-worker']:
+            self.await_event(root, worker + '-start')
+        process.terminate()
+        self.assertEqual(0, process.wait(timeout=5))
+        events = self.events(root)
+        for worker in ['worker', 'daily-worker', 'social-worker']:
+            self.assertEqual(1, events.count(worker + '-crash'))
+            self.assertEqual(1, events.count(worker + '-start'))
+            self.assertLess(events.index(worker + '-term'), events.index(worker + '-completed'))
+            self.assertLess(events.index(worker + '-completed'), events.index('web-stop'))
+
+    def test_social_boot_delay_can_be_interrupted_without_starting_a_consumer(self):
+        process, root = self.run_service(enabled='no', social_mode='embedded', social_enabled='yes', social_delay='30')
+        self.await_event(root, 'web-start')
+        time.sleep(.2)
+        process.terminate()
+        self.assertEqual(0, process.wait(timeout=5))
+        self.assertEqual(['web-start', 'web-stop'], self.events(root))
+
+    def test_invalid_social_mode_fails_startup(self):
+        process, root = self.run_service(enabled='no', social_mode='invalid', social_enabled='yes')
+        self.assertEqual(1, process.wait(timeout=5))
+        self.assertNotIn('social-worker-start', self.events(root))
 
 
 if __name__ == '__main__':

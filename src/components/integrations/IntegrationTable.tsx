@@ -10,12 +10,18 @@ import type { IntegrationEntry, IntegrationTab } from "./model";
 interface Props {
   entries: IntegrationEntry[];
   kind: IntegrationTab;
+  canManage: boolean;
   onAction: (
     action: "detail" | "edit" | "delete",
     entry: IntegrationEntry,
   ) => void;
 }
-export default function IntegrationTable({ entries, kind, onAction }: Props) {
+export default function IntegrationTable({
+  entries,
+  kind,
+  onAction,
+  canManage,
+}: Props) {
   const { t } = useTranslation();
   return (
     <div className="overflow-x-auto">
@@ -69,11 +75,6 @@ export default function IntegrationTable({ entries, kind, onAction }: Props) {
                     <div className="mt-1 max-w-64 truncate text-xs text-gray-500 dark:text-gray-400">
                       {entry.url}
                     </div>
-                    {entry.sample && (
-                      <span className="mt-1 inline-block text-xs text-gray-500 dark:text-gray-400">
-                        {t("integrationsUi.sample")}
-                      </span>
-                    )}
                   </div>
                 </div>
               </td>
@@ -85,7 +86,11 @@ export default function IntegrationTable({ entries, kind, onAction }: Props) {
                   className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${entry.enabled ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}
                 >
                   {t(
-                    `integrationsUi.${entry.enabled ? "unverified" : "paused"}`,
+                    entry.enabled &&
+                      entry.connection_status &&
+                      entry.connection_status !== "not_connected"
+                      ? `integrationsUi.social.status.${entry.connection_status}`
+                      : `integrationsUi.${entry.enabled ? "unverified" : "paused"}`,
                   )}
                 </span>
               </td>
@@ -97,18 +102,20 @@ export default function IntegrationTable({ entries, kind, onAction }: Props) {
                       ["edit", PencilIcon],
                       ["delete", TrashBinIcon],
                     ] as const
-                  ).map(([action, Icon]) => (
-                    <button
-                      key={action}
-                      type="button"
-                      onClick={() => onAction(action, entry)}
-                      aria-label={`${t(`integrationsUi.${action}`)}: ${entry.name}`}
-                      title={t(`integrationsUi.${action}`)}
-                      className={`rounded-lg p-2 focus-visible:outline-2 focus-visible:outline-kps-primary ${action === "delete" ? "text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10" : "text-gray-500 hover:bg-gray-100 hover:text-kps-primary dark:text-gray-400 dark:hover:bg-gray-800"}`}
-                    >
-                      <Icon className="size-5" />
-                    </button>
-                  ))}
+                  )
+                    .filter(([action]) => action === "detail" || canManage)
+                    .map(([action, Icon]) => (
+                      <button
+                        key={action}
+                        type="button"
+                        onClick={() => onAction(action, entry)}
+                        aria-label={`${t(`integrationsUi.${action}`)}: ${entry.name}`}
+                        title={t(`integrationsUi.${action}`)}
+                        className={`rounded-lg p-2 focus-visible:outline-2 focus-visible:outline-kps-primary ${action === "delete" ? "text-error-500 hover:bg-error-50 dark:hover:bg-error-500/10" : "text-gray-500 hover:bg-gray-100 hover:text-kps-primary dark:text-gray-400 dark:hover:bg-gray-800"}`}
+                      >
+                        <Icon className="size-5" />
+                      </button>
+                    ))}
                 </div>
               </td>
             </tr>

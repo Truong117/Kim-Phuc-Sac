@@ -24,3 +24,18 @@ export const hasValidEvidenceLinks = (value: string): boolean => {
     links.every(isEvidenceUrl)
   );
 };
+
+export const isFacebookEvidence = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      /^(?:(?:www|m|web)\.)?(?:facebook\.com|fb\.com)$/.test(url.hostname)
+    );
+  } catch {
+    return false;
+  }
+};
