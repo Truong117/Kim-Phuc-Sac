@@ -344,6 +344,12 @@ export default function KpsDatePicker({
         disabled={isTriggerDisabled}
         onClick={() => (isOpen ? closeCalendar() : openCalendar())}
         onKeyDown={(event) => {
+          if (event.key === "Escape" && isOpen) {
+            event.preventDefault();
+            event.stopPropagation();
+            closeCalendar();
+            return;
+          }
           if (event.key === "ArrowDown" && !isOpen) {
             event.preventDefault();
             openCalendar();
@@ -383,6 +389,7 @@ export default function KpsDatePicker({
           onKeyDown={(event) => {
             if (event.key === "Escape") {
               event.preventDefault();
+              event.stopPropagation();
               closeCalendar();
               triggerRef.current?.focus();
             }

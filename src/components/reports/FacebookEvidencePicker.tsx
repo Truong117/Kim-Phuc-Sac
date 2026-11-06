@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useModal } from "@/hooks/useModal";
 import Button from "@/components/ui/button/Button";
-import type { FacebookSelection } from "@/types/reports";
+import type { FacebookReportPage, FacebookSelection } from "@/types/reports";
 import { parseEvidenceLinks, isFacebookEvidence } from "@/utils/reportEvidence";
 import FacebookPostPicker from "./FacebookPostPicker";
 
 type Props = {
   value: string;
+  facebookPages?: FacebookReportPage[];
   selections: FacebookSelection[];
   reportDate?: string;
   disabled?: boolean;
@@ -15,6 +16,7 @@ type Props = {
 };
 export default function FacebookEvidencePicker({
   value,
+  facebookPages = [],
   selections,
   reportDate,
   disabled,
@@ -30,7 +32,14 @@ export default function FacebookEvidencePicker({
     openModal();
   };
   const confirm = (posts: FacebookSelection[]) => {
-    if (disabled || (source && !urls.includes(source))) return;
+    if (
+      disabled ||
+      (source && !urls.includes(source)) ||
+      !posts.every((post) =>
+        facebookPages.some((page) => page.id === post.entry_id),
+      )
+    )
+      return;
     const nextUrls = source
       ? urls
       : [...new Set([...urls, ...posts.map((post) => post.source_url)])];
@@ -42,6 +51,8 @@ export default function FacebookEvidencePicker({
     ]);
     closeModal();
   };
+  if (!facebookPages.length) return null;
+
   return (
     <div className="mt-2 space-y-2" data-facebook-evidence-picker>
       <Button

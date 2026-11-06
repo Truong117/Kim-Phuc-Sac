@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function setup(page: Page, makeup: boolean) {
+async function setup(
+  page: Page,
+  makeup: boolean,
+  assigned: boolean | "error" = true,
+) {
   let submissions = 0;
   let submitted: { items: { facebook_selections: unknown }[] } | null = null;
   let errors: Record<string, string[]> = {};
@@ -24,6 +28,9 @@ async function setup(page: Page, makeup: boolean) {
   };
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/reports/facebook-pages" && assigned === "error") {
+      return route.fulfill({ status: 503, json: { message: "Unavailable" } });
+    }
     if (
       route.request().method() === "POST" &&
       ["/api/reports", "/api/reports/makeup"].includes(path)
@@ -38,30 +45,32 @@ async function setup(page: Page, makeup: boolean) {
     const json =
       path === "/api/auth/me"
         ? user
-        : path === "/api/navigation"
-          ? { items: ["reports.new", "reports.history"] }
-          : path === "/api/reports/today" ||
-              path === "/api/reports/makeup/state"
-            ? { data: state }
-            : path === "/api/reports/makeup"
-              ? {
-                  data: {
-                    period_start: "2026-11-02",
-                    period_end: "2026-11-07",
-                    days: [
-                      {
-                        date: "2026-11-04",
-                        can_submit: true,
-                        deadline_at: "2099-11-07T23:59:59+07:00",
-                      },
-                    ],
-                  },
-                }
-              : {
-                  data: [],
-                  unread_count: 0,
-                  meta: { total: 0, current_page: 1, last_page: 1 },
-                };
+        : path === "/api/reports/facebook-pages"
+          ? { data: assigned ? [{ id: 1, name: "KPS Page" }] : [] }
+          : path === "/api/navigation"
+            ? { items: ["reports.new", "reports.history"] }
+            : path === "/api/reports/today" ||
+                path === "/api/reports/makeup/state"
+              ? { data: state }
+              : path === "/api/reports/makeup"
+                ? {
+                    data: {
+                      period_start: "2026-11-02",
+                      period_end: "2026-11-07",
+                      days: [
+                        {
+                          date: "2026-11-04",
+                          can_submit: true,
+                          deadline_at: "2099-11-07T23:59:59+07:00",
+                        },
+                      ],
+                    },
+                  }
+                : {
+                    data: [],
+                    unread_count: 0,
+                    meta: { total: 0, current_page: 1, last_page: 1 },
+                  };
     await route.fulfill({ json });
   });
   await page.goto(makeup ? "/reports/makeup/new" : "/reports/new");
@@ -272,6 +281,205 @@ test("mobile preview supports tap, pagination and focus return on cancel", async
     ),
   ).toBeTruthy();
 });
+
+for (const makeup of [false, true]) {
+  test(`${makeup ? "makeup" : "daily"}: unassigned employee has no Facebook picker and can still use ordinary evidence`, async ({
+    page,
+  }) => {
+    await setup(page, makeup, false);
+    let catalogueRequests = 0;
+    await page.route("**/api/reports/facebook-posts?**", async (route) => {
+      catalogueRequests++;
+      await route.fulfill({
+        json: { data: [], pages: [], entry_id: null, next_cursor: null },
+      });
+    });
+    await addWork(page);
+    const evidence = page.locator('textarea[id^="evidence-"]');
+    await evidence.fill("https://facebook.com/share/p/Test");
+    await expect(page.locator("[data-facebook-evidence-picker]")).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("button", { name: "Chọn bài từ Facebook", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Chọn bài tương ứng", exact: true }),
+    ).toHaveCount(0);
+    await evidence.fill("https://drive.google.com/file/d/evidence/view");
+    await expect(evidence).toHaveValue(
+      "https://drive.google.com/file/d/evidence/view",
+    );
+    await page
+      .getByRole("tab", { name: "Báo cáo chi tiết", exact: true })
+      .click();
+    await expect(page.locator("[data-facebook-evidence-picker]")).toHaveCount(
+      0,
+    );
+    await expect(evidence).toHaveValue(
+      "https://drive.google.com/file/d/evidence/view",
+    );
+    expect(catalogueRequests).toBe(0);
+  });
+}
+
+test("assignment lookup failure hides picker controls without blocking the report editor", async ({
+  page,
+}) => {
+  await setup(page, false, "error");
+  await addWork(page);
+  await expect(
+    page.getByRole("button", { name: "Chọn bài từ Facebook", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('textarea[id^="quick-result-"]')).toHaveValue(
+    "Đã đăng",
+  );
+});
+
+test.describe("Facebook picker calendar", () => {
+  test.use({ timezoneId: "America/Los_Angeles" });
+  test("shared calendar shows Vietnamese dates, constrains the range and preserves ISO API dates across time zones", async ({
+    page,
+  }) => {
+    await setup(page, false);
+    await mockPosts(page);
+    await addWork(page);
+    await page
+      .getByRole("button", { name: "Chọn bài từ Facebook", exact: true })
+      .click();
+    const picker = page.getByRole("dialog", {
+      name: "Chọn bài từ Facebook",
+      exact: true,
+    });
+    await expect(picker.getByRole("checkbox")).toHaveCount(2);
+    await expect(picker.locator('input[type="date"]')).toHaveCount(0);
+    const from = picker.getByRole("button", { name: /^Từ ngày:/ });
+    const to = picker.getByRole("button", { name: /^Đến ngày:/ });
+    await expect(from).toContainText("30/10/2026");
+    await expect(to).toContainText("05/11/2026");
+    await from.click();
+    const fromCalendar = picker.getByRole("dialog", {
+      name: "Từ ngày",
+      exact: true,
+    });
+    await fromCalendar
+      .getByRole("button", { name: "Tháng sau", exact: true })
+      .click();
+    await expect(
+      fromCalendar.locator('[data-calendar-date="2026-11-06"]'),
+    ).toBeDisabled();
+    await fromCalendar.locator('[data-calendar-date="2026-11-01"]').click();
+    await expect(from).toContainText("01/11/2026");
+    await to.click();
+    const toCalendar = picker.getByRole("dialog", {
+      name: "Đến ngày",
+      exact: true,
+    });
+    await expect(
+      toCalendar.getByRole("button", { name: "Tháng trước", exact: true }),
+    ).toBeDisabled();
+    await toCalendar.locator('[data-calendar-date="2026-11-04"]').click();
+    await expect(to).toContainText("04/11/2026");
+    const request = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return (
+        url.pathname === "/api/reports/facebook-posts" &&
+        url.searchParams.get("from_date") === "2026-11-01" &&
+        url.searchParams.get("to_date") === "2026-11-04"
+      );
+    });
+    await picker
+      .getByRole("button", { name: "Áp dụng bộ lọc", exact: true })
+      .click();
+    await request;
+    await from.click();
+    await fromCalendar
+      .locator('[data-calendar-date="2026-11-01"]')
+      .press("Escape");
+    await expect(fromCalendar).not.toBeVisible();
+    await expect(picker).toBeVisible();
+    await expect(from).toBeFocused();
+    await from.click();
+    await from.focus();
+    await from.press("Escape");
+    await expect(fromCalendar).not.toBeVisible();
+    await expect(picker).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(picker).not.toBeVisible();
+  });
+});
+
+for (const dark of [false, true]) {
+  test(`${dark ? "dark mobile" : "light desktop"}: picker text, checkbox and confirmation use the KPS palette`, async ({
+    page,
+  }) => {
+    if (dark) await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page, false);
+    await mockPosts(page);
+    await addWork(page);
+    if (dark)
+      await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await page
+      .getByRole("button", { name: "Chọn bài từ Facebook", exact: true })
+      .click();
+    const picker = page.getByRole("dialog", {
+      name: "Chọn bài từ Facebook",
+      exact: true,
+    });
+    await expect(picker.getByRole("checkbox")).toHaveCount(2);
+    const colors = await picker.evaluate((element, dark) => {
+      const probe = document.createElement("span");
+      element.append(probe);
+      const resolve = (color: string) => {
+        probe.style.color = color;
+        return getComputedStyle(probe).color;
+      };
+      const values = {
+        primary: resolve("var(--color-kps-primary)"),
+        muted: resolve(
+          "color-mix(in srgb, var(--color-kps-primary) 50%, white)",
+        ),
+        accent: resolve("var(--color-kps-primary-hover)"),
+        link: resolve(
+          dark
+            ? "color-mix(in srgb, var(--color-kps-primary) 75%, white)"
+            : "var(--color-kps-primary-hover)",
+        ),
+      };
+      probe.remove();
+      return values;
+    }, dark);
+    await expect(
+      picker.getByRole("button", { name: "Xác nhận chọn 0 bài", exact: true }),
+    ).toHaveCSS("background-color", colors.muted);
+    await picker
+      .getByRole("button", { name: "Xem trước: Bài mới nhất", exact: true })
+      .click();
+    await expect(
+      picker.getByRole("link", { name: "Mở trên Facebook", exact: true }),
+    ).toHaveCSS("color", colors.link);
+    const check = picker.getByRole("checkbox", {
+      name: "Chọn: Bài mới nhất",
+      exact: true,
+    });
+    await expect(check).toHaveCSS("accent-color", colors.accent);
+    await check.check();
+    await expect(
+      picker.getByRole("button", { name: "Xác nhận chọn 1 bài", exact: true }),
+    ).toHaveCSS("background-color", colors.primary);
+    await picker.getByRole("button", { name: /^Từ ngày:/ }).click();
+    await expect(
+      picker
+        .getByRole("dialog", { name: "Từ ngày", exact: true })
+        .locator('button[aria-pressed="true"]'),
+    ).toHaveCSS("background-color", colors.primary);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBeTruthy();
+  });
+}
 
 test.afterEach(async ({ page }, testInfo) => {
   if (testInfo.status !== testInfo.expectedStatus) {

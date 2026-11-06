@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import KpsDatePicker from "@/components/common/KpsDatePicker";
+import { addDaysToDateOnly, dateOnlyInTimeZone } from "@/utils/dateOnly";
 import { Modal } from "@/components/ui/modal";
 import Button from "@/components/ui/button/Button";
 import Input from "@/components/form/input/InputField";
@@ -39,18 +41,12 @@ export default function FacebookPostPicker({
 }: Props) {
   const { t } = useTranslation("common", { keyPrefix: "facebookPicker" });
   const titleId = useId();
-  const end =
-    reportDate ??
-    new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }).format(
-      new Date(),
-    );
-  const startDate = new Date(`${end}T00:00:00Z`);
-  startDate.setUTCDate(startDate.getUTCDate() - 6);
-  const [draft, setDraft] = useState({
-    from: startDate.toISOString().slice(0, 10),
+  const end = reportDate ?? dateOnlyInTimeZone();
+  const [draft, setDraft] = useState(() => ({
+    from: addDaysToDateOnly(end, -6),
     to: end,
     entry: "",
-  });
+  }));
   const [filter, setFilter] = useState(draft);
   const [keyword, setKeyword] = useState("");
   const [kind, setKind] = useState("all");
@@ -160,7 +156,7 @@ export default function FacebookPostPicker({
       onClose={onClose}
       ariaLabelledBy={titleId}
       showCloseButton={false}
-      className="mx-3 max-w-5xl p-4 sm:p-6"
+      className="kps-ai-theme mx-3 max-w-5xl p-4 sm:p-6"
     >
       <div className="flex max-h-[85dvh] flex-col text-gray-800 dark:text-gray-200">
         <h2 id={titleId} className="text-lg font-semibold">
@@ -195,24 +191,28 @@ export default function FacebookPostPicker({
             </div>
             <div>
               <Label htmlFor={`${titleId}-from`}>{t("from")}</Label>
-              <Input
+              <KpsDatePicker
                 id={`${titleId}-from`}
-                type="date"
                 value={draft.from}
-                onChange={(event) =>
-                  setDraft({ ...draft, from: event.target.value })
-                }
+                ariaLabel={t("from")}
+                placeholder={t("from")}
+                dialogLabel={t("from")}
+                maxDate={draft.to}
+                disabled={loading}
+                onChange={(from) => setDraft({ ...draft, from })}
               />
             </div>
             <div>
               <Label htmlFor={`${titleId}-to`}>{t("to")}</Label>
-              <Input
+              <KpsDatePicker
                 id={`${titleId}-to`}
-                type="date"
                 value={draft.to}
-                onChange={(event) =>
-                  setDraft({ ...draft, to: event.target.value })
-                }
+                ariaLabel={t("to")}
+                placeholder={t("to")}
+                dialogLabel={t("to")}
+                minDate={draft.from}
+                disabled={loading}
+                onChange={(to) => setDraft({ ...draft, to })}
               />
             </div>
           </div>
