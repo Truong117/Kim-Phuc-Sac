@@ -25,6 +25,7 @@ export interface MailStatus {
     status: string;
     email: string | null;
     connected_at: string | null;
+    from_name: string;
     history: MailHistoryEntry[];
   };
   actions: { can_configure: boolean };
@@ -60,3 +61,16 @@ export const sendMailTest = (recipientId: string, requestKey: string) =>
       request_key: requestKey,
     }),
   });
+
+export const queueMailTests = (
+  recipients: { recipient_user_id: number; request_key: string }[],
+) =>
+  apiRequest<{ data: MailHistoryEntry[] }>("/api/integrations/mail/tests", {
+    method: "POST",
+    body: JSON.stringify({ recipients }),
+  });
+export const processMailTest = (id: string) =>
+  apiRequest<{ data: MailHistoryEntry }>(
+    `/api/integrations/mail/tests/${encodeURIComponent(id)}/process`,
+    { method: "POST" },
+  );

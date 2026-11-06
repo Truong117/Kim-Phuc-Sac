@@ -41,8 +41,18 @@ class MailOutbox
                 'organization_id' => $membership->organization_id, 'connection_id' => $connection->id, 'created_by' => $actor->id,
                 'recipient_user_id' => $recipientId, 'request_key' => $requestKey, 'kind' => 'test', 'provider' => $connection->provider,
                 'connection_revision' => $connection->revision, 'status' => 'queued', 'available_at' => now(),
-                'payload' => ['to' => $recipient->email, 'subject' => '[KPS] Kiểm tra kết nối gửi mail', 'text' => 'Chào '.$recipient->name.",\n\nĐây là thư kiểm tra kết nối gửi mail từ hệ thống KPS.\n\nKim Phúc Sắc – KPS"],
+                'payload' => ['to' => $recipient->email, 'from_name' => $this->configuration->fromName(), 'subject' => '[KPS] Kiểm tra kết nối gửi mail', 'text' => 'Chào '.$recipient->name.",\n\nĐây là thư kiểm tra kết nối gửi mail từ hệ thống KPS.\n\n".$this->configuration->fromName()],
             ]);
+        });
+    }
+
+    /** @param list<array{recipient_user_id: int, request_key: string}> $requests */
+    public function queueTests(User $actor, array $requests): array
+    {
+        // Validate and record the whole selection before any provider calls.
+        // An invalid recipient rolls back all newly queued messages.
+        return DB::transaction(function () use ($actor, $requests): array {
+            return array_map(fn (array $request): MailMessage => $this->queueTest($actor, (int) $request['recipient_user_id'], $request['request_key']), $requests);
         });
     }
 
@@ -81,7 +91,7 @@ class MailOutbox
                 throw new MailDeliveryException('CONNECTION_CHANGED');
             }
             $transport = $this->transports->resolve($message->provider);
-            $receipt = $transport->send($connection, new OutboundMail($message->id, $connection->email, (string) config('kps_mail.from_name'), $payload['to'], $payload['subject'], $payload['text']));
+            $receipt = $transport->send($connection, new OutboundMail($message->id, $connection->email, $payload['from_name'] ?? $this->configuration->fromName(), $payload['to'], $payload['subject'], $payload['text']));
             $message->fill(['status' => 'accepted', 'provider_message_id' => $receipt, 'accepted_at' => now(), 'error_code' => null])->save();
         } catch (MailDeliveryException $e) {
             $retry = $e->outcome === 'retry' && $message->attempts < 3;
