@@ -37,7 +37,7 @@ class ReportFacebookPostsTest extends TestCase
         config(['social_metrics.enabled' => true, 'social_metrics.graph_version' => 'v27.0', 'social_metrics.views_metric' => null]);
         $this->seed(AuthorizationSeeder::class);
         $this->admin = $this->actor('ADMIN');
-        $this->staff = $this->actor('EMPLOYEE');
+        $this->staff = $this->actor('OFFICE_STAFF');
         $organization = DB::table('organizations')->where('code', 'KPS')->value('id');
         $this->entry = IntegrationEntry::query()->create(['organization_id' => $organization, 'kind' => 'social', 'platform' => 'facebook', 'name' => 'KPS', 'url' => 'https://facebook.com/kps', 'url_hash' => hash('sha256', 'kps'), 'responsible_user_id' => $this->admin->id, 'enabled' => true]);
         $this->connection = SocialConnection::query()->create(['organization_id' => $organization, 'integration_entry_id' => $this->entry->id, 'page_id' => '100', 'page_name' => 'KPS Page', 'access_token' => 'server-only-meta-secret', 'status' => 'connected', 'connected_by' => $this->admin->id, 'revision' => 1]);
@@ -133,7 +133,7 @@ class ReportFacebookPostsTest extends TestCase
         $bad['items'][0]['evidence_links'] = [$this->share.'changed'];
         $bad['items'][0]['facebook_selections'][0]['source_url'] = $this->share.'changed';
         $this->postJson('/api/reports', $bad)->assertUnprocessable();
-        $this->actingAs($this->actor('EMPLOYEE'))->postJson('/api/reports', $payload)->assertUnprocessable();
+        $this->actingAs($this->actor('OFFICE_STAFF'))->postJson('/api/reports', $payload)->assertUnprocessable();
         $this->actingAs($this->staff);
         $this->connection->update(['revision' => 2]);
         $this->postJson('/api/reports', $payload)->assertUnprocessable();
