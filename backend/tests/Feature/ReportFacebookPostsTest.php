@@ -151,6 +151,21 @@ class ReportFacebookPostsTest extends TestCase
         $this->actingAs($this->staff)->getJson('/api/reports/facebook-posts?from_date=2026-10-30&to_date=2026-11-05')->assertOk()->assertJsonCount(0, 'data');
     }
 
+    public function test_m30_is_additive_and_rollback_preserves_existing_evidence_and_report_content(): void
+    {
+        $payload = $this->payload($this->listing()['data'][1]);
+        $report = $this->postJson('/api/reports', $payload)->assertCreated()->json('data');
+        $migration = require database_path('migrations/2026_11_06_000000_add_facebook_selections_to_report_items.php');
+        $migration->down();
+        $before = DB::table('daily_report_items')->where('id', $report['items'][0]['id'])->first();
+        $this->assertSame([$this->share], json_decode($before->evidence_links, true));
+        $migration->up();
+        $after = DB::table('daily_report_items')->where('id', $before->id)->first();
+        $this->assertNull($after->facebook_selections);
+        $this->assertSame($before->content, $after->content);
+        $this->assertSame($before->evidence_links, $after->evidence_links);
+    }
+
     public function test_removing_choice_is_persisted_and_old_report_cannot_be_modified_after_lock(): void
     {
         $payload = $this->payload($this->listing()['data'][1]);

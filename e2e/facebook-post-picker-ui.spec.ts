@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function setup(page: Page, makeup: boolean) {
   let submissions = 0;
+  let submitted: { items: { facebook_selections: unknown }[] } | null = null;
   let errors: Record<string, string[]> = {};
   const user = {
     id: 10001,
@@ -28,6 +29,7 @@ async function setup(page: Page, makeup: boolean) {
       ["/api/reports", "/api/reports/makeup"].includes(path)
     ) {
       submissions++;
+      submitted = route.request().postDataJSON();
       return route.fulfill({
         status: 422,
         json: { message: "Dữ liệu chưa hợp lệ", errors },
@@ -66,6 +68,7 @@ async function setup(page: Page, makeup: boolean) {
   await expect(page.locator("#quick-draft-completed")).toBeVisible();
   return {
     count: () => submissions,
+    submitted: () => submitted,
     setErrors: (value: Record<string, string[]>) => {
       errors = value;
     },
@@ -114,7 +117,7 @@ async function addWork(page: Page) {
 test("daily picker previews separately, confirms multiple posts and submits only application proofs", async ({
   page,
 }) => {
-  await setup(page, false);
+  const api = await setup(page, false);
   await mockPosts(page);
   await addWork(page);
   const evidence = page.locator('textarea[id^="evidence-"]');
@@ -151,13 +154,15 @@ test("daily picker previews separately, confirms multiple posts and submits only
     "https://facebook.com/kps/posts/555\nhttps://facebook.com/kps/posts/777",
   );
   await expect(page.locator("[data-evidence-link-checks]")).toHaveCount(0);
-  const saved = page.waitForRequest(
-    (request) =>
-      request.method() === "POST" &&
-      new URL(request.url()).pathname === "/api/reports",
+  await expect(page.locator('textarea[id^="quick-result-"]')).toHaveValue(
+    "Đã đăng",
+  );
+  await expect(page.locator("#next-day-plan")).toHaveValue(
+    "Kế hoạch tiếp theo",
   );
   await page.locator('form button[type="submit"]').click();
-  const payload = (await saved).postDataJSON();
+  await expect.poll(api.count).toBe(1);
+  const payload = api.submitted()!;
   expect(payload.items[0].facebook_selections).toEqual([
     {
       source_url: "https://facebook.com/kps/posts/555",
@@ -229,7 +234,8 @@ test("makeup share choice keeps the original URL, selects one, stops checks and 
     name: "Khôi phục bản nháp",
     exact: true,
   });
-  if (await restore.isVisible()) await restore.click();
+  await expect(restore).toBeVisible();
+  await restore.click();
   await expect(page.locator("[data-facebook-evidence-picker]")).toContainText(
     "nhân viên xác nhận",
   );
@@ -265,4 +271,13 @@ test("mobile preview supports tap, pagination and focus return on cancel", async
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBeTruthy();
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    console.log(
+      "Report picker failure context:",
+      await page.locator("body").innerText(),
+    );
+  }
 });
