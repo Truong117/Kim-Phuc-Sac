@@ -30,6 +30,11 @@ export default function MailHistory({
               className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm"
             >
               <div className="min-w-0">
+                {entry.kind === "internal" && entry.subject && (
+                  <p className="font-medium break-all text-gray-900 dark:text-white">
+                    {entry.subject}
+                  </p>
+                )}
                 <p className="break-all text-gray-900 dark:text-white">
                   {entry.recipient_email}
                 </p>

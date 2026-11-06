@@ -17,32 +17,59 @@ class MailOutbox
 
     public function queueTest(User $actor, int $recipientId, string $requestKey): MailMessage
     {
+        return $this->queueMessage($actor, $recipientId, $requestKey, 'test');
+    }
+
+    /** @param list<array{recipient_user_id: int, request_key: string}> $requests */
+    public function queueMessages(User $actor, array $requests, string $subject, string $body): array
+    {
+        return DB::transaction(fn (): array => array_map(
+            fn (array $request): MailMessage => $this->queueMessage($actor, (int) $request['recipient_user_id'], $request['request_key'], 'internal', $subject, $body),
+            $requests,
+        ));
+    }
+
+    private function queueMessage(User $actor, int $recipientId, string $requestKey, string $kind, ?string $subject = null, ?string $body = null): MailMessage
+    {
         $membership = $this->access->require($actor);
         $this->configuration->requireReady();
         abort_unless(config('kps_mail.send_enabled'), 503, 'KPS_MAIL_SEND_DISABLED');
 
-        return DB::transaction(function () use ($actor, $recipientId, $requestKey, $membership): MailMessage {
+        return DB::transaction(function () use ($actor, $recipientId, $requestKey, $membership, $kind, $subject, $body): MailMessage {
             Organization::query()->whereKey($membership->organization_id)->lockForUpdate()->firstOrFail();
             $existing = MailMessage::query()->where('organization_id', $membership->organization_id)->where('request_key', $requestKey)->first();
             if ($existing !== null) {
-                abort_unless((int) $existing->created_by === (int) $actor->id && (int) $existing->recipient_user_id === $recipientId && $existing->kind === 'test', 409);
+                abort_unless((int) $existing->created_by === (int) $actor->id && (int) $existing->recipient_user_id === $recipientId && $existing->kind === $kind, 409);
+                if ($kind === 'internal') {
+                    abort_unless($existing->payload['subject'] === $subject && $existing->payload['text'] === $body, 409, 'MAIL_REQUEST_CONTENT_CHANGED');
+                }
 
                 return $existing;
             }
             $recipient = $this->recipient((int) $membership->organization_id, $recipientId);
-            if (! $this->allowedTestEmail($recipient->email)) {
+            if ($kind === 'test' && ! $this->allowedTestEmail($recipient->email)) {
                 throw ValidationException::withMessages(['recipient_user_id' => 'Nhân viên này chưa được cho phép nhận thư thử.']);
             }
             $connection = MailConnection::query()->where('organization_id', $membership->organization_id)->where('status', 'connected')->first();
             abort_unless($connection !== null && $connection->provider === config('kps_mail.transport')
                 && hash_equals($this->configuration->fingerprint(), (string) $connection->configuration_hash), 409, 'GMAIL_NOT_CONNECTED');
 
-            return MailMessage::query()->create([
+            $message = new MailMessage([
                 'organization_id' => $membership->organization_id, 'connection_id' => $connection->id, 'created_by' => $actor->id,
-                'recipient_user_id' => $recipientId, 'request_key' => $requestKey, 'kind' => 'test', 'provider' => $connection->provider,
+                'recipient_user_id' => $recipientId, 'request_key' => $requestKey, 'kind' => $kind, 'provider' => $connection->provider,
                 'connection_revision' => $connection->revision, 'status' => 'queued', 'available_at' => now(),
-                'payload' => ['to' => $recipient->email, 'from_name' => $this->configuration->fromName(), 'subject' => '[KPS] Kiểm tra kết nối gửi mail', 'text' => 'Chào '.$recipient->name.",\n\nĐây là thư kiểm tra kết nối gửi mail từ hệ thống KPS.\n\n".$this->configuration->fromName()],
+                'payload' => ['to' => $recipient->email, 'from_name' => $this->configuration->fromName(),
+                    'subject' => $kind === 'test' ? '[KPS] Kiểm tra kết nối gửi mail' : $subject,
+                    'text' => $kind === 'test' ? 'Chào '.$recipient->name.",\n\nĐây là thư kiểm tra kết nối gửi mail từ hệ thống KPS.\n\n".$this->configuration->fromName() : $body],
             ]);
+            // MySQL/TiDB TEXT stores at most 65,535 bytes. Encryption and JSON
+            // escaping can make a Unicode message much larger than its text.
+            if (strlen($message->getAttributes()['payload']) > 65535) {
+                throw ValidationException::withMessages(['body' => 'Nội dung thư quá lớn. Hãy rút ngắn nội dung rồi thử lại.']);
+            }
+            $message->save();
+
+            return $message;
         });
     }
 

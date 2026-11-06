@@ -1,5 +1,9 @@
 # Mail KPS — kết nối và gửi thử (đợt 1)
 
+Luồng soạn mail nội bộ chính thức đã được bổ sung ở đợt 2, xem
+[MAIL_COMPOSE.md](MAIL_COMPOSE.md). Danh sách thử trong tài liệu này chỉ áp dụng
+cho các endpoint `/test`, `/tests` và màn Gửi thử kết nối.
+
 ## Phạm vi và phân quyền
 
 Mail nằm trong Tích hợp, bên cạnh Drive và MXH. Chỉ OWNER, ADMIN,
