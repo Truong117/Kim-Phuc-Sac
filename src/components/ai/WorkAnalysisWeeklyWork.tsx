@@ -1,161 +1,78 @@
-import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
-import { formatDateOnly } from "@/utils/dateOnly";
-import type { GroupedWork, WeeklyWorkGroup, WorkTotal } from "@/types/workReportAnalysis";
-
-interface Props {
-  inventory: WeeklyWorkGroup[];
-  groups?: GroupedWork[];
-  totals: WorkTotal[];
-  partial: boolean;
-}
+import type { GroupedWork, WorkTotal } from "@/types/workReportAnalysis";
 
 export default function WorkAnalysisWeeklyWork({
-  inventory,
-  groups = [],
+  groups,
   totals,
   partial,
-}: Props) {
-  const { t } = useTranslation("common", {
-    keyPrefix: "workReportAnalysis.weeklyWork",
-  });
+}: {
+  groups: GroupedWork[];
+  totals: WorkTotal[];
+  partial: boolean;
+}) {
+  const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
+  const confirmed = totals.filter(
+    (total) =>
+      total.status === "confirmed" &&
+      total.total !== null &&
+      Number.isFinite(total.total) &&
+      total.total >= 0,
+  );
   return (
     <section className="space-y-4">
       <h3 className="font-semibold text-gray-900 dark:text-white">
-        {t("title")}
+        {t("reader.summary")}
       </h3>
-      <p className="text-xs leading-6 text-gray-600 dark:text-gray-400">
-        {t("basis")}
-      </p>
-      {groups.length > 0 && (
-        <ol className="space-y-3">
+      {groups.length > 0 ? (
+        <ul className="space-y-4">
           {groups.map((group, index) => (
-            <li key={index} className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-              <h4 className="font-medium text-gray-900 dark:text-white">{index + 1}. {group.title}</h4>
-              <p className="mt-2 text-sm leading-7 whitespace-pre-wrap text-gray-700 dark:text-gray-300">{group.text}</p>
-              <details className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-                <summary className="cursor-pointer">{t("groupSources", { count: group.evidence.length })}</summary>
-                <ul className="mt-2 space-y-2">
-                  {group.evidence.map((ref) => (
-                    <li key={`${ref.report_id}:${ref.item_id}`}>
-                      <Link to={`/reports/${ref.report_id}#work-item-${ref.item_id}`} className="text-brand-600 underline dark:text-brand-300">
-                        {t("source", { report: ref.report_id, item: ref.item_id })}
-                      </Link>
-                      <p className="mt-1 break-words whitespace-pre-wrap">{ref.quote}</p>
-                    </li>
-                  ))}
-                </ul>
-              </details>
+            <li key={index} className="flex gap-3">
+              <span
+                aria-hidden="true"
+                className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400 dark:bg-brand-300"
+              />
+              <div className="min-w-0 text-sm leading-7">
+                <h4 className="font-medium break-words text-gray-900 dark:text-white">
+                  {group.title}
+                </h4>
+                <p className="break-words whitespace-pre-wrap text-gray-600 dark:text-gray-300">
+                  {group.text}
+                </p>
+              </div>
             </li>
           ))}
-        </ol>
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {t("reader.noGroups")}
+        </p>
       )}
-      {totals.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-900 dark:text-white">
-            {t("totals")}
-          </h4>
-          {partial && (
-            <p className="text-xs text-warning-700 dark:text-warning-300">
-              {t("partialTotals")}
-            </p>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {totals.map((total) => (
-              <div
-                key={`${total.metric}:${total.unit}`}
-                className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900"
-              >
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                  {total.metric}
-                </p>
-                <p className="mt-2 text-xl font-semibold text-gray-900 dark:text-white">
-                  {total.total === null
-                    ? t("unconfirmed")
-                    : `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 6 }).format(total.total)} ${total.unit}`}
-                </p>
-                {total.total === null && (
-                  <p className="mt-2 text-xs leading-6 text-warning-700 dark:text-warning-300">
-                    {t("cumulative")}
-                  </p>
-                )}
-                <details className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-                  <summary className="cursor-pointer font-medium">
-                    {t("quantitySources")}
-                  </summary>
-                  <ul className="mt-2 space-y-2">
-                    {total.entries.map((entry, index) => (
-                      <li key={`${entry.report_id}:${entry.item_id}:${index}`}>
-                        <Link
-                          to={`/reports/${entry.report_id}#work-item-${entry.item_id}`}
-                          className="text-brand-600 underline dark:text-brand-300"
-                        >
-                          {t("source", {
-                            report: entry.report_id,
-                            item: entry.item_id,
-                          })}
-                        </Link>
-                        <p className="break-words whitespace-pre-wrap">
-                          {entry.quote}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              </div>
-            ))}
-          </div>
+      {confirmed.length > 0 && (
+        <div
+          aria-label={t("weeklyWork.totals")}
+          className="flex flex-wrap gap-2"
+        >
+          {confirmed.map((total, index) => (
+            <span
+              key={index}
+              className="rounded-lg bg-success-50 px-3 py-1.5 text-xs leading-6 text-success-800 dark:bg-success-950/40 dark:text-success-200"
+            >
+              {total.metric}:{" "}
+              <strong className="font-medium">
+                {new Intl.NumberFormat("vi-VN", {
+                  maximumFractionDigits: 6,
+                }).format(total.total!)}{" "}
+                {total.unit}
+              </strong>
+            </span>
+          ))}
         </div>
       )}
-      <details open={groups.length === 0}>
-        <summary className="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300">{t("sourceDetails")}</summary>
-      <ol className="mt-3 space-y-3">
-        {inventory.map((group, index) => (
-          <li
-            key={group.content}
-            className="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
-          >
-            <h4 className="text-sm leading-7 font-medium break-words whitespace-pre-wrap text-gray-900 dark:text-white">
-              {index + 1}. {group.content}
-            </h4>
-            <ul className="mt-3 space-y-3">
-              {group.observations.map((observation) => (
-                <li
-                  key={`${observation.report_id}:${observation.item_id}`}
-                  className="border-s-2 border-gray-200 ps-3 text-sm leading-6 text-gray-700 dark:border-gray-700 dark:text-gray-300"
-                >
-                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                    <time dateTime={observation.date}>
-                      {formatDateOnly(observation.date)}
-                    </time>{" "}
-                    · {t(`status.${observation.status}`)}
-                  </p>
-                  {observation.result && (
-                    <p className="mt-1 break-words whitespace-pre-wrap">
-                      {t("result")}: {observation.result}
-                    </p>
-                  )}
-                  {observation.note && (
-                    <p className="mt-1 break-words whitespace-pre-wrap">
-                      {t("note")}: {observation.note}
-                    </p>
-                  )}
-                  <Link
-                    to={`/reports/${observation.report_id}#work-item-${observation.item_id}`}
-                    className="text-xs text-brand-600 underline dark:text-brand-300"
-                  >
-                    {t("source", {
-                      report: observation.report_id,
-                      item: observation.item_id,
-                    })}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ol>
-      </details>
+      {partial && totals.length > 0 && (
+        <p className="text-xs leading-6 text-warning-700 dark:text-warning-300">
+          {t("weeklyWork.partialTotals")}
+        </p>
+      )}
     </section>
   );
 }

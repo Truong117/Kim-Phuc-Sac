@@ -2399,7 +2399,7 @@
     },
     "analysisTitle": "Kết quả phân tích",
     "tabs": {
-      "overview": "Tổng quan",
+      "overview": "Toàn công ty",
       "employees": "Theo nhân viên",
       "history": "Lịch sử phân tích",
       "sources": "Báo cáo nguồn"
@@ -2474,7 +2474,43 @@
       "sourceDetails": "Chi tiết công việc theo ngày"
     },
     "dailyCoverage": "Nguồn tổng hợp ngày: {ready}/{total} báo cáo hợp lệ.",
-    "dailyMissing": "Cần xử lý ngày thiếu/lỗi hoặc đã đổi nguồn trước khi tạo lượt mới."
+    "dailyMissing": "Cần xử lý ngày thiếu/lỗi hoặc đã đổi nguồn trước khi tạo lượt mới.",
+    "reader": {
+      "summary": "Tổng hợp từ báo cáo",
+      "conclusions": "Kết luận trong kỳ",
+      "attention": "Điểm nghẽn và ảnh hưởng",
+      "clarify": "Cần làm rõ",
+      "review": "Nhận xét",
+      "proposals": "Đề xuất hỗ trợ",
+      "noClarification": "Chưa ghi nhận nội dung cần làm rõ trong kết quả này.",
+      "noReview": "Chưa có nhận xét AI cho bản tổng hợp này.",
+      "noProposal": "Chưa có đề xuất hỗ trợ AI cho bản tổng hợp này.",
+      "noGroups": "Bản này chưa có tổng hợp theo nhóm công việc. Có thể đối chiếu báo cáo nguồn bên dưới.",
+      "proposalHint": "Đề xuất của AI để quản lý cân nhắc; chưa phải nhiệm vụ hoặc thời hạn đã giao.",
+      "quantityClarification": "Những số liệu sau chưa rõ phạm vi hoặc cách tính. Xem nguồn ở cuối để đối chiếu:",
+      "legacyProposal": "Bản cũ chưa lưu chi tiết căn cứ, hành động và cách kiểm chứng theo cấu trúc mới.",
+      "sources": "Nguồn báo cáo và đối chiếu",
+      "selectEmployee": "Chọn nhân viên",
+      "employeeList": "Danh sách nhân viên",
+      "employeeReport": "Báo cáo AI của {name}",
+      "pending": "Chưa có tổng hợp AI cho nhân viên này. Bạn có thể xem báo cáo nguồn ở cuối.",
+      "partial": "Kết quả hiện chỉ bao gồm những phần đã xử lý thành công.",
+      "priority": {
+        "high": "Ưu tiên cao",
+        "normal": "Đề xuất"
+      },
+      "decision": {
+        "rationale": "Căn cứ",
+        "impact": "Ảnh hưởng",
+        "action": "Hành động đề xuất",
+        "expected_outcome": "Kết quả mong đợi",
+        "verification": "Cách kiểm chứng",
+        "decision_needed": "Quyết định cần quản lý"
+      },
+      "filters": "Chọn kỳ và phạm vi",
+      "changeFilters": "Đổi kỳ / phòng ban",
+      "reuse": "Đã dùng lại {count} phần nhân viên không thay đổi."
+    }
   },
   "dailyDocuments": {
     "title": "Tổng hợp báo cáo ngày",

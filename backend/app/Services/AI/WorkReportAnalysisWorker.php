@@ -57,6 +57,11 @@ class WorkReportAnalysisWorker
                     'analysis_stage' => 'company_summary',
                     'review_feedback' => $run->revisionRecord?->review_feedback,
                     'missing_units' => $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->count()];
+                if ($unit->input['_consolidate'] ?? false) {
+                    $batches = $run->units()->whereIn('id', $unit->input['_batch_ids'])->where('status', 'completed')->get();
+                    $input['parts'] = $batches->pluck('result')->all();
+                    $input['summary_stage'] = 'consolidation';
+                }
                 // Summary uses only successful parts and their verbatim evidence, not failed source data.
                 $allowed = [];
                 foreach ($parts as $part) {
@@ -64,7 +69,7 @@ class WorkReportAnalysisWorker
                         $allowed[] = $report;
                     }
                 }
-                $unit->update(['input' => $input]);
+                $unit->update(['input' => [...$input, ...array_intersect_key($unit->input, array_flip(['_batch_ids', '_consolidate']))]]);
             } elseif (str_starts_with($unit->unit_key, 'summary:batch:')) {
                 $allowed = [];
                 $parts = $run->units()->where('unit_key', 'like', 'employee:%')
@@ -91,7 +96,7 @@ class WorkReportAnalysisWorker
             $this->reserveBudget($run, $summaryUnit);
             WorkReportAnalysis::query()->whereKey($run->id)->whereIn('status', ['pending', 'running'])->update(['status' => 'running']);
             $response = $this->provider->analyze($run, $unit, $input);
-            WorkReportAnalysisOutput::validate($response['result'], $allowed);
+            WorkReportAnalysisOutput::validate($response['result'], $allowed, true);
             if ($summaryUnit && ($response['result']['work_groups'] ?? []) !== []) {
                 throw new \RuntimeException('AI_INVALID_SCHEMA');
             }
@@ -199,7 +204,7 @@ class WorkReportAnalysisWorker
             }
             $summary = $units->firstWhere('unit_key', 'summary');
             if ($summary->status === 'waiting') {
-                if (($run->analysis_config['summary_strategy'] ?? null) === 'batched-v1') {
+                if (in_array($run->analysis_config['summary_strategy'] ?? null, ['batched-v1', 'batched-v2'], true)) {
                     try {
                         $plans = (new WorkReportSummaryBatches)->plan(
                             $this->summaryParts($run, $leaves->where('status', 'completed')),
@@ -208,7 +213,8 @@ class WorkReportAnalysisWorker
                             WorkReportExecutionPolicy::summaryInputLimit($run->analysis_config),
                             max(1, (int) $run->analysis_config['summary_parts_per_batch']),
                         );
-                        if (count($plans) > (int) $run->analysis_config['max_units']) {
+                        $plannedUnits = $leaves->count() + 1 + (count($plans) > 1 ? count($plans) : 0);
+                        if ($plannedUnits > (int) $run->analysis_config['max_units']) {
                             throw new AiGatewayException('AI_REDUCE_SCOPE', 'Too many summary batches.');
                         }
                         if (count($plans) > 1) {
@@ -228,6 +234,16 @@ class WorkReportAnalysisWorker
                                 return;
                             }
                             $done = $batches->where('status', 'completed');
+                            if (($run->analysis_config['summary_strategy'] ?? null) === 'batched-v2'
+                                && $done->count() === $batches->count() && $done->isNotEmpty()) {
+                                // One final review can identify links and priorities across batch boundaries.
+                                // Full evidence remains intact; the normal input/budget guards apply again.
+                                $summary->update(['status' => 'pending', 'result' => null, 'error_code' => null,
+                                    'input' => ['_batch_ids' => $ids, '_consolidate' => true]]);
+                                DB::afterCommit(fn () => $this->analyses->dispatchPending($run));
+
+                                return;
+                            }
                             $summary->update(['status' => $done->isEmpty() ? 'failed' : 'completed',
                                 'result' => $done->isEmpty() ? null : (new WorkReportSummaryBatches)->merge($done->pluck('result')->all()),
                                 'error_code' => $done->isEmpty() ? 'AI_NO_VALID_PARTS' : null,

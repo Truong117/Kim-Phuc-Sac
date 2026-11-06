@@ -24,7 +24,7 @@ import type {
 } from "@/types/workReportAnalysis";
 
 type Tab = "overview" | "employees" | "history" | "sources";
-const tabs: Tab[] = ["employees", "overview", "history", "sources"];
+const tabs: Tab[] = ["overview", "employees", "history", "sources"];
 const time = (value: string) =>
   new Intl.DateTimeFormat("vi-VN", {
     timeZone: "Asia/Ho_Chi_Minh",
@@ -44,14 +44,14 @@ export default function WorkReportInsights() {
         <Link
           to="/ai/insights?view=daily"
           aria-current={daily ? "page" : undefined}
-          className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
+          className={`rounded-lg border px-4 py-2 transition-colors focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none ${daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
         >
           {t("dayMode")}
         </Link>
         <Link
           to="/ai/insights"
           aria-current={!daily ? "page" : undefined}
-          className={`rounded-lg border px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${!daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
+          className={`rounded-lg border px-4 py-2 transition-colors focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none ${!daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
         >
           {t("periodMode")}
         </Link>
@@ -70,11 +70,12 @@ export default function WorkReportInsights() {
 function PeriodWorkReportInsights() {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>("employees");
+  const [tab, setTab] = useState<Tab>("overview");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<number>();
   const today = dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh");
   const filters: AnalysisFilters = {
     end_date: params.get("end") ?? addDaysToDateOnly(today, -1),
-    days: Number(params.get("days") ?? 1),
+    days: Number(params.get("days") ?? 7),
     department_id: params.get("department")
       ? Number(params.get("department"))
       : null,
@@ -94,7 +95,7 @@ function PeriodWorkReportInsights() {
         ? { department: String(selected.department_id) }
         : {}),
     });
-    setTab("employees");
+    setTab("overview");
   };
   const updateFilters = (patch: Partial<AnalysisFilters>) => {
     state.clear();
@@ -132,60 +133,81 @@ function PeriodWorkReportInsights() {
       <PageMeta title={t("metaTitle")} description={t("description")} />
       <PageBreadCrumb pageTitle={t("title")} />
       <div className="space-y-5">
-        <ComponentCard title={t("title")} desc={t("description")}>
-          <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
-            {t("reportBasis")}
-          </p>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <div>
-              <Label htmlFor="analysis-period">{t("period")}</Label>
-              <Select
-                id="analysis-period"
-                value={String(filters.days)}
-                options={[1, 7, 30].map((days) => ({
-                  value: String(days),
-                  label: t("periodDays", { days }),
-                }))}
-                onChange={(value) => updateFilters({ days: Number(value) })}
-                disabled={busy}
-              />
+        <ComponentCard title={t("reader.filters")} compact>
+          <details open={!run}>
+            <summary className="cursor-pointer text-sm leading-7 text-gray-700 dark:text-gray-300">
+              {t("range", {
+                start: formatDateOnly(
+                  addDaysToDateOnly(filters.end_date, 1 - filters.days),
+                ),
+                end: formatDateOnly(filters.end_date),
+              })}{" "}
+              ·{" "}
+              {filters.department_id
+                ? t("departmentId", { id: filters.department_id })
+                : t("allDepartments")}
+              <span className="ms-3 text-brand-600 dark:text-brand-300">
+                {t("reader.changeFilters")}
+              </span>
+            </summary>
+            <div className="mt-4 space-y-4">
+              <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
+                {t("reportBasis")}
+              </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <Label htmlFor="analysis-period">{t("period")}</Label>
+                  <Select
+                    id="analysis-period"
+                    value={String(filters.days)}
+                    options={[1, 7, 30].map((days) => ({
+                      value: String(days),
+                      label: t("periodDays", { days }),
+                    }))}
+                    onChange={(value) => updateFilters({ days: Number(value) })}
+                    disabled={busy}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="analysis-end">{t("endDate")}</Label>
+                  <KpsDatePicker
+                    id="analysis-end"
+                    value={filters.end_date}
+                    onChange={(end_date) => updateFilters({ end_date })}
+                    ariaLabel={t("endDate")}
+                    placeholder={t("endDate")}
+                    maxDate={today}
+                    minDate={addDaysToDateOnly(
+                      today,
+                      -(preview?.max_days_back ?? 365) + filters.days - 1,
+                    )}
+                    disabled={busy}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="analysis-department">{t("department")}</Label>
+                  <Select
+                    id="analysis-department"
+                    value={
+                      filters.department_id ? String(filters.department_id) : ""
+                    }
+                    placeholder={t("allDepartments")}
+                    allowClear
+                    options={(preview?.departments ?? []).map((department) => ({
+                      value: String(department.id),
+                      label: department.name,
+                    }))}
+                    onChange={(value) =>
+                      updateFilters({
+                        department_id: value ? Number(value) : null,
+                      })
+                    }
+                    disabled={busy}
+                  />
+                </div>
+              </div>
             </div>
-            <div>
-              <Label htmlFor="analysis-end">{t("endDate")}</Label>
-              <KpsDatePicker
-                id="analysis-end"
-                value={filters.end_date}
-                onChange={(end_date) => updateFilters({ end_date })}
-                ariaLabel={t("endDate")}
-                placeholder={t("endDate")}
-                maxDate={today}
-                minDate={addDaysToDateOnly(
-                  today,
-                  -(preview?.max_days_back ?? 365) + filters.days - 1,
-                )}
-                disabled={busy}
-              />
-            </div>
-            <div>
-              <Label htmlFor="analysis-department">{t("department")}</Label>
-              <Select
-                id="analysis-department"
-                value={
-                  filters.department_id ? String(filters.department_id) : ""
-                }
-                placeholder={t("allDepartments")}
-                allowClear
-                options={(preview?.departments ?? []).map((department) => ({
-                  value: String(department.id),
-                  label: department.name,
-                }))}
-                onChange={(value) =>
-                  updateFilters({ department_id: value ? Number(value) : null })
-                }
-                disabled={busy}
-              />
-            </div>
-          </div>
+          </details>
           <div className="mt-4 flex flex-wrap items-center gap-3">
             {isHistory ? (
               <Button onClick={() => updateFilters({})} disabled={busy}>
@@ -232,9 +254,20 @@ function PeriodWorkReportInsights() {
           </div>
           <WorkAnalysisRegenerate run={run} onSelect={selectRun} />
           {(run?.daily_coverage ?? preview?.daily_coverage) && (
-            <p role="status" className="text-sm text-gray-600 dark:text-gray-400">
-              {t("dailyCoverage", { ready: (run?.daily_coverage ?? preview?.daily_coverage)?.ready_reports, total: (run?.daily_coverage ?? preview?.daily_coverage)?.total_reports })}
-              {Boolean((run?.daily_coverage ?? preview?.daily_coverage)?.missing_report_ids.length) && <> {t("dailyMissing")}</>}
+            <p
+              role="status"
+              className="text-sm text-gray-600 dark:text-gray-400"
+            >
+              {t("dailyCoverage", {
+                ready: (run?.daily_coverage ?? preview?.daily_coverage)
+                  ?.ready_reports,
+                total: (run?.daily_coverage ?? preview?.daily_coverage)
+                  ?.total_reports,
+              })}
+              {Boolean(
+                (run?.daily_coverage ?? preview?.daily_coverage)
+                  ?.missing_report_ids.length,
+              ) && <> {t("dailyMissing")}</>}
             </p>
           )}
           {preview?.latest_attempt && !isHistory && (
@@ -332,6 +365,11 @@ function PeriodWorkReportInsights() {
                             }).format(run.usage.cost_microusd / 1_000_000),
                     })}
                   </p>
+                  {Boolean(run.reused_employee_units) && (
+                    <p>
+                      {t("reader.reuse", { count: run.reused_employee_units })}
+                    </p>
+                  )}
                   {run.source_changed && (
                     <p className="text-warning-700 dark:text-warning-300">
                       {t("changed")}
@@ -371,7 +409,7 @@ function PeriodWorkReportInsights() {
                 <h2 className="text-sm font-medium text-gray-800 dark:text-gray-200">
                   {t("statsTitle")}
                 </h2>
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                <div className="flex flex-wrap gap-x-6 gap-y-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
                   {(
                     [
                       "reports",
@@ -383,9 +421,9 @@ function PeriodWorkReportInsights() {
                   ).map((key) => (
                     <div
                       key={key}
-                      className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+                      className="flex flex-wrap items-baseline gap-2"
                     >
-                      <p className="text-title-sm font-semibold text-gray-900 dark:text-white">
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">
                         {counts[key]}
                       </p>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -460,7 +498,13 @@ function PeriodWorkReportInsights() {
                 </p>
               ))}
             {tab === "employees" && (
-              <WorkAnalysisEmployees employees={employees} sources={sources} />
+              <WorkAnalysisEmployees
+                employees={employees}
+                frozen={Boolean(run)}
+                sources={sources}
+                selectedEmployeeId={selectedEmployeeId}
+                onSelect={setSelectedEmployeeId}
+              />
             )}
             {tab === "history" && <WorkAnalysisHistory onSelect={selectRun} />}
             {tab === "sources" && (

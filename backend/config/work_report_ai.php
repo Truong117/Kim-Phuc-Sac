@@ -11,7 +11,7 @@ return [
     'max_snapshot_bytes' => (int) env('WORK_REPORT_AI_MAX_SNAPSHOT_BYTES', 1_000_000),
     'unit_input_bytes' => (int) env('WORK_REPORT_AI_UNIT_INPUT_BYTES', 24000),
     'use_daily_documents' => (bool) env('WORK_REPORT_AI_USE_DAILY_DOCUMENTS', false),
-    'summary_strategy' => 'batched-v1',
+    'summary_strategy' => 'batched-v2',
     'work_inventory_version' => 'source-inventory-v1',
     'summary_input_bytes' => (int) env('WORK_REPORT_AI_SUMMARY_INPUT_BYTES', 50000),
     'summary_parts_per_batch' => (int) env('WORK_REPORT_AI_SUMMARY_PARTS_PER_BATCH', 2),

@@ -101,6 +101,54 @@ class WorkReportAnalysisTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_makeup_update_reuses_only_unchanged_employee_inputs_and_rebuilds_company_summary(): void
+    {
+        $owner = $this->member('OWNER');
+        $changed = $this->member('OFFICE_STAFF');
+        $unchanged = $this->member('OFFICE_STAFF');
+        $this->report($changed, '2026-10-28');
+        $this->report($unchanged, '2026-10-29');
+        $first = WorkReportAnalysis::findOrFail($this->createRun($owner, 7));
+        $this->assertSame('completed', $first->status);
+        $old = $first->units()->where('unit_key', 'like', 'employee:'.$unchanged->id.':%')->firstOrFail();
+        $frozen = $first->snapshot;
+        $makeup = $this->report($changed, '2026-10-30', 'Đã bổ sung báo cáo bù');
+        DB::table('daily_reports')->where('id', $makeup)->update(['is_makeup' => true]);
+        Queue::fake();
+        $second = WorkReportAnalysis::findOrFail($this->createRun($owner, 7));
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame($second->id, $this->createRun($owner, 7));
+        $new = $second->units()->where('unit_key', 'like', 'employee:'.$unchanged->id.':%')->firstOrFail();
+        $this->assertSame($old->id, $new->input['_reused_from_unit_id']);
+        $this->assertSame($old->result, $new->result);
+        $this->assertSame(0, $new->attempts);
+        $this->assertSame(0, $new->cost_microusd);
+        $this->assertSame(1, $second->units()->where('status', 'pending')->count());
+        Queue::assertPushed(GenerateWorkReportAnalysis::class, 1);
+        $worker = app(WorkReportAnalysisWorker::class);
+        foreach ($second->units()->where('status', 'pending')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        $worker->process($second->units()->where('unit_key', 'summary')->firstOrFail()->id);
+        $this->assertSame('completed', $second->refresh()->status);
+        $this->assertSame($frozen, $first->refresh()->snapshot);
+        $this->getJson('/api/ai/work-report-analyses/'.$second->id)->assertOk()->assertJsonPath('data.reused_employee_units', 1);
+        $this->assertStringContainsString('Đã bổ sung báo cáo bù', json_encode($second->result, JSON_UNESCAPED_UNICODE));
+    }
+
+    public function test_config_change_never_reuses_employee_results(): void
+    {
+        $owner = $this->member('OWNER');
+        $this->report($this->member('OFFICE_STAFF'));
+        $this->createRun($owner);
+        config(['work_report_ai.employee_output_tokens' => 7000]);
+        Queue::fake();
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $unit = $run->units()->where('unit_key', 'like', 'employee:%')->firstOrFail();
+        $this->assertSame('pending', $unit->status);
+        $this->assertArrayNotHasKey('_reused_from_unit_id', $unit->input);
+    }
+
     public function test_denies_all_endpoints_without_both_permissions_and_tenant_membership(): void
     {
         $staff = $this->member('OFFICE_STAFF');
@@ -352,6 +400,33 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertSame(2, WorkReportAnalysisUnit::query()->where('status', 'completed')->count());
     }
 
+    public function test_single_company_summary_fits_the_exact_unit_limit_without_counting_an_unused_batch(): void
+    {
+        $owner = $this->member('OWNER');
+        foreach (range(1, 2) as $index) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Công việc '.$index);
+        }
+        config(['work_report_ai.max_units' => 3]);
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $this->assertSame('completed', $run->status);
+        $this->assertSame(3, $run->units()->count());
+        $this->assertSame(0, $run->units()->where('unit_key', 'like', 'summary:batch:%')->count());
+    }
+
+    public function test_multi_batch_plan_respects_total_unit_limit_before_allocating_batches(): void
+    {
+        $owner = $this->member('OWNER');
+        foreach (range(1, 3) as $index) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Công việc '.$index);
+        }
+        config(['work_report_ai.max_units' => 5]);
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $this->assertSame('partial', $run->status);
+        $this->assertSame(3, $run->units()->where('status', 'completed')->count());
+        $this->assertSame(0, $run->units()->where('unit_key', 'like', 'summary:batch:%')->count());
+        $this->assertSame('AI_REDUCE_SCOPE', $run->units()->where('unit_key', 'summary')->firstOrFail()->error_code);
+    }
+
     public function test_large_summary_is_batched_and_only_failed_batch_is_retried(): void
     {
         Queue::fake();
@@ -377,13 +452,49 @@ class WorkReportAnalysisTest extends TestCase
         $before = $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson();
         $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted();
         $worker->process($batches[1]->id);
+        $worker->process($run->units()->where('unit_key', 'summary')->firstOrFail()->id);
         $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
             ->assertJsonPath('data.status', 'completed')->assertJsonCount(0, 'data.errors');
         $this->assertSame(1, $batches[0]->refresh()->attempts);
         $this->assertSame(2, $batches[1]->refresh()->attempts);
         $this->assertSame($before, $run->units()->where('unit_key', 'like', 'employee:%')->get()->toJson());
         $this->assertNotNull($run->refresh()->result);
-        $this->assertSame(0, $run->units()->where('unit_key', 'summary')->firstOrFail()->attempts);
+        $final = $run->units()->where('unit_key', 'summary')->firstOrFail();
+        $this->assertSame(1, $final->attempts);
+        $this->assertSame('consolidation', $final->input['summary_stage']);
+        $this->assertCount(2, $final->input['parts']);
+    }
+
+    public function test_final_summary_failure_preserves_employee_and_batch_results_and_retries_only_final_review(): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        foreach (range(1, 3) as $index) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Công việc '.$index);
+        }
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $worker = app(WorkReportAnalysisWorker::class);
+        foreach ($run->units()->where('unit_key', 'like', 'employee:%')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        foreach ($run->units()->where('unit_key', 'like', 'summary:batch:%')->get() as $unit) {
+            $worker->process($unit->id);
+        }
+        $before = $run->units()->where('unit_key', '!=', 'summary')->get()->toJson();
+        $final = $run->units()->where('unit_key', 'summary')->firstOrFail();
+        $provider = \Mockery::mock(WorkReportAnalysisProvider::class);
+        $provider->shouldReceive('analyze')->once()->andThrow(new AiGatewayException('AI_TIMEOUT', 'test'));
+        $this->app->instance(WorkReportAnalysisProvider::class, $provider);
+        app(WorkReportAnalysisWorker::class)->process($final->id);
+        $this->assertSame('partial', $run->refresh()->status);
+        $this->actingAs($owner, 'web')->getJson('/api/ai/work-report-analyses/'.$run->id)->assertOk()
+            ->assertJsonPath('data.can_retry', true);
+        $this->postJson('/api/ai/work-report-analyses/'.$run->id.'/retry')->assertAccepted();
+        $this->app->instance(WorkReportAnalysisProvider::class, new WorkReportAnalysisProvider);
+        app(WorkReportAnalysisWorker::class)->process($final->id);
+        $this->assertSame('completed', $run->refresh()->status);
+        $this->assertSame(2, $final->refresh()->attempts);
+        $this->assertSame($before, $run->units()->where('unit_key', '!=', 'summary')->get()->toJson());
     }
 
     public function test_employee_retry_replans_summary_without_dispatching_obsolete_failed_batches(): void
@@ -414,6 +525,7 @@ class WorkReportAnalysisTest extends TestCase
         foreach ($active->where('status', 'pending') as $unit) {
             $worker->process($unit->id);
         }
+        $worker->process($run->units()->where('unit_key', 'summary')->firstOrFail()->id);
         $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
             ->assertJsonPath('data.status', 'completed')->assertJsonCount(0, 'data.errors');
         $this->assertSame(1, $old[1]->refresh()->attempts);
