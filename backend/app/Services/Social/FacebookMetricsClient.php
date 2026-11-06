@@ -2,6 +2,7 @@
 
 namespace App\Services\Social;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Throwable;
@@ -77,8 +78,8 @@ class FacebookMetricsClient
         $data = $this->get($token, $page.'/published_posts', array_filter([
             'fields' => 'id,permalink_url,from,message,created_time,full_picture,attachments{media_type}',
             'limit' => 25,
-            'since' => \Carbon\CarbonImmutable::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay()->timestamp,
-            'until' => \Carbon\CarbonImmutable::parse($to, 'Asia/Ho_Chi_Minh')->addDay()->startOfDay()->timestamp,
+            'since' => CarbonImmutable::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay()->timestamp,
+            'until' => CarbonImmutable::parse($to, 'Asia/Ho_Chi_Minh')->addDay()->startOfDay()->timestamp,
             'after' => $after,
         ], fn ($value) => $value !== null));
         $posts = array_values(array_filter($data['data'] ?? [], fn ($post) => is_array($post)

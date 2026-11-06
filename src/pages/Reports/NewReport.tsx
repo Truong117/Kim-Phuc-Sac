@@ -1019,6 +1019,7 @@ export default function NewReport({
                     aria-labelledby="detailed-report-tab"
                   >
                     <WorkItemList
+                      disabled={isSaveFlowActive}
                       reportDate={today.business_date}
                       planSection={
                         <ReportNextDayPlan

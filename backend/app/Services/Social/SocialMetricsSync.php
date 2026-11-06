@@ -65,6 +65,7 @@ class SocialMetricsSync
                             if ((int) $selection['entry_id'] === (int) $connection->integration_entry_id && $selection['page_id'] === $connection->page_id) {
                                 $links[] = ['item' => $item->id, 'hash' => hash('sha256', FacebookReference::url($link)), 'keys' => [], 'selection' => $selection];
                             }
+
                             continue;
                         }
                         $resolved = $this->resolver->resolve($link, $resolutionBudget, $resolutionDeadline);

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\Social\ReportFacebookPosts;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class ReportFacebookPostsController extends Controller
@@ -19,8 +21,8 @@ class ReportFacebookPostsController extends Controller
             'cursor' => ['sometimes', 'string', 'max:16384'],
             'source_url' => ['sometimes', 'string', 'max:2048'],
         ]);
-        if (\Carbon\CarbonImmutable::parse($input['from_date'])->diffInDays(\Carbon\CarbonImmutable::parse($input['to_date'])) > 366) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['to_date' => 'Chọn khoảng ngày tối đa một năm.']);
+        if (CarbonImmutable::parse($input['from_date'])->diffInDays(CarbonImmutable::parse($input['to_date'])) > 366) {
+            throw ValidationException::withMessages(['to_date' => 'Chọn khoảng ngày tối đa một năm.']);
         }
         try {
             return response()->json($posts->listing($request->user(), $input))->header('Cache-Control', 'no-store');

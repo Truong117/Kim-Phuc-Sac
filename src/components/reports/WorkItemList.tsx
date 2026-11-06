@@ -13,6 +13,7 @@ import WorkItemForm from "./WorkItemForm";
 
 interface WorkItemListProps {
   reportDate?: string;
+  disabled?: boolean;
   planSection?: ReactNode;
   items: WorkItemFormData[];
   errors: Record<string, WorkItemValidationErrors>;
@@ -28,6 +29,7 @@ interface WorkItemListProps {
 export default function WorkItemList({
   items,
   reportDate,
+  disabled,
   planSection,
   errors,
   onItemChange,
@@ -63,6 +65,7 @@ export default function WorkItemList({
               .map((item) => (
                 <WorkItemForm
                   reportDate={reportDate}
+                  disabled={disabled}
                   key={item.clientId}
                   index={items.indexOf(item)}
                   item={item}
