@@ -400,6 +400,33 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertSame(2, WorkReportAnalysisUnit::query()->where('status', 'completed')->count());
     }
 
+    public function test_single_company_summary_fits_the_exact_unit_limit_without_counting_an_unused_batch(): void
+    {
+        $owner = $this->member('OWNER');
+        foreach (range(1, 2) as $index) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Công việc '.$index);
+        }
+        config(['work_report_ai.max_units' => 3]);
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $this->assertSame('completed', $run->status);
+        $this->assertSame(3, $run->units()->count());
+        $this->assertSame(0, $run->units()->where('unit_key', 'like', 'summary:batch:%')->count());
+    }
+
+    public function test_multi_batch_plan_respects_total_unit_limit_before_allocating_batches(): void
+    {
+        $owner = $this->member('OWNER');
+        foreach (range(1, 3) as $index) {
+            $this->report($this->member('OFFICE_STAFF'), content: 'Công việc '.$index);
+        }
+        config(['work_report_ai.max_units' => 5]);
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $this->assertSame('partial', $run->status);
+        $this->assertSame(3, $run->units()->where('status', 'completed')->count());
+        $this->assertSame(0, $run->units()->where('unit_key', 'like', 'summary:batch:%')->count());
+        $this->assertSame('AI_REDUCE_SCOPE', $run->units()->where('unit_key', 'summary')->firstOrFail()->error_code);
+    }
+
     public function test_large_summary_is_batched_and_only_failed_batch_is_retried(): void
     {
         Queue::fake();

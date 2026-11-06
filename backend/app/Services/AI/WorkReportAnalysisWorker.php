@@ -213,7 +213,8 @@ class WorkReportAnalysisWorker
                             WorkReportExecutionPolicy::summaryInputLimit($run->analysis_config),
                             max(1, (int) $run->analysis_config['summary_parts_per_batch']),
                         );
-                        if (count($plans) + $leaves->count() + 1 > (int) $run->analysis_config['max_units']) {
+                        $plannedUnits = $leaves->count() + 1 + (count($plans) > 1 ? count($plans) : 0);
+                        if ($plannedUnits > (int) $run->analysis_config['max_units']) {
                             throw new AiGatewayException('AI_REDUCE_SCOPE', 'Too many summary batches.');
                         }
                         if (count($plans) > 1) {
