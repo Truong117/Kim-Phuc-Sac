@@ -2918,5 +2918,67 @@
     "resumeHint": "Lượt gửi đã được lưu và nội dung đã khóa. Tiếp tục để cập nhật kết quả; thư đã gửi hoặc chưa xác định kết quả sẽ không tự gửi lại.",
     "acceptedNotice": "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
     "newMessage": "Soạn mail mới"
+  },
+  "mailTemplates": {
+    "label": "Mẫu mail",
+    "choose": "Tự soạn hoặc chọn một mẫu",
+    "names": {
+      "daily": "Báo cáo ngày",
+      "weekly": "Báo cáo tuần",
+      "weekly_plan": "Kế hoạch tuần",
+      "monthly_plan": "Kế hoạch tháng",
+      "issue": "Có vấn đề cần xử lý"
+    },
+    "date": "Ngày báo cáo AI",
+    "source": "Báo cáo AI nguồn",
+    "chooseSource": "Chọn báo cáo AI đã hoàn tất",
+    "load": "Tải danh sách báo cáo AI",
+    "loading": "Đang tải báo cáo AI…",
+    "dailyHint": "Chọn ngày và báo cáo AI của nhân viên. Chỉ dùng bản đã hoàn tất, còn khớp dữ liệu gốc. Thao tác này không tạo lượt AI mới.",
+    "weeklyHint": "Chọn một trong tối đa 100 bản AI gần nhất. Mẫu lấy phần tổng hợp chung của bản 7 ngày và kèm liên kết xem toàn bộ báo cáo, gồm chi tiết từng nhân viên.",
+    "previous": "Trang trước",
+    "next": "Trang sau",
+    "page": "Trang {page}/{total}",
+    "empty": "Không có báo cáo AI đã hoàn tất và còn khớp dữ liệu ở lựa chọn này. Hãy tạo hoặc cập nhật báo cáo trong Phân tích AI, hoặc xem trang khác.",
+    "accessError": "Bạn không có quyền đọc báo cáo AI này hoặc báo cáo không còn truy cập được. Nội dung đang soạn được giữ nguyên.",
+    "sourceError": "Không lấy được báo cáo AI còn hợp lệ. Hãy tải lại danh sách; không dùng bản đang xử lý, bị lỗi hoặc đã thay đổi dữ liệu nguồn.",
+    "preview": "Xem trước mẫu",
+    "confirmTitle": "Áp dụng mẫu mail",
+    "overwriteHint": "Áp dụng sẽ thay toàn bộ tiêu đề và nội dung đang soạn, giữ nguyên người nhận. Bạn vẫn có thể chỉnh sửa và phải xác nhận riêng khi gửi.",
+    "apply": "Dùng nội dung này",
+    "tooLong": "Báo cáo dài hơn giới hạn gửi mail. Sau khi áp dụng, hãy rút ngắn nội dung trước khi gửi; hệ thống không tự cắt báo cáo.",
+    "mock": "AI mô phỏng",
+    "mockWarning": "LƯU Ý: Đây là kết quả AI mô phỏng, không phải phân tích từ mô hình AI thật.",
+    "department": "Phòng ban #{id}",
+    "savedScope": "Phạm vi đã lưu trong bản AI",
+    "greeting": "Kính gửi anh/chị,",
+    "dailySubject": "[KPS] Báo cáo ngày {date} - {name}",
+    "dailyHeading": "BÁO CÁO NGÀY {date}\nNhân viên: {name}",
+    "weeklySubject": "[KPS] Báo cáo tuần {start} - {end}",
+    "weeklyHeading": "BÁO CÁO TỔNG HỢP TUẦN {start} - {end}",
+    "dailySource": "Nguồn: Báo cáo AI ngày #{id}, từ báo cáo công việc #{report}.",
+    "weeklySource": "Nguồn: Bản tổng hợp AI #{id}, phiên bản {revision}.",
+    "fullReport": "Xem báo cáo đầy đủ trong KPS:",
+    "reviewHint": "Nội dung tổng hợp và nhận xét lấy từ kết quả AI đã lưu; cần rà soát trước khi sử dụng. Liên kết chi tiết yêu cầu quyền xem tương ứng trong KPS.",
+    "reference": "  Căn cứ báo cáo #{report}, đầu việc #{item}: “{quote}”",
+    "work": "CÔNG VIỆC ĐƯỢC AI TỔNG HỢP",
+    "totals": "SỐ LIỆU TRONG KẾT QUẢ AI",
+    "needsConfirmation": "Cần xác nhận, chưa có tổng số đáng tin cậy",
+    "comments": "NHẬN XÉT CỦA AI",
+    "recommendations": "ĐỀ XUẤT CỦA AI",
+    "presets": {
+      "weekly_plan": {
+        "subject": "[KPS] Kế hoạch tuần [từ ngày - đến ngày]",
+        "body": "Kính gửi anh/chị,\n\nKẾ HOẠCH TUẦN [từ ngày - đến ngày]\n\n1. Mục tiêu trong tuần\n[Điền mục tiêu và kết quả cần đạt]\n\n2. Công việc dự kiến\n[Công việc - Người phụ trách - Thời hạn - Kết quả cần bàn giao]\n\n3. Phối hợp và nguồn lực\n[Điền nhu cầu phối hợp, tài liệu hoặc nguồn lực]\n\n4. Rủi ro và hỗ trợ cần thiết\n[Điền rủi ro và người cần hỗ trợ]\n\n{fromName}"
+      },
+      "monthly_plan": {
+        "subject": "[KPS] Kế hoạch tháng [tháng/năm]",
+        "body": "Kính gửi anh/chị,\n\nKẾ HOẠCH THÁNG [tháng/năm]\n\n1. Mục tiêu và chỉ tiêu\n[Điền mục tiêu, chỉ tiêu và cách đo]\n\n2. Công việc trọng tâm\n[Công việc - Người phụ trách - Mốc hoàn thành]\n\n3. Tiến độ theo từng tuần\n[Điền các mốc tuần 1, 2, 3, 4 và tuần bổ sung nếu có]\n\n4. Nguồn lực và ngân sách\n[Điền nhu cầu và nội dung cần phê duyệt]\n\n5. Rủi ro và phương án xử lý\n[Điền nội dung]\n\n{fromName}"
+      },
+      "issue": {
+        "subject": "[KPS] Cần xử lý: [tên vấn đề]",
+        "body": "Kính gửi anh/chị,\n\nVẤN ĐỀ CẦN XỬ LÝ\n\n1. Tình huống và thời điểm phát sinh\n[Điền mô tả và mốc thời gian]\n\n2. Mức độ ưu tiên và ảnh hưởng\n[Điền phạm vi ảnh hưởng, công việc đang bị chặn]\n\n3. Các bước đã xử lý\n[Điền thao tác đã thực hiện và kết quả]\n\n4. Đề xuất và nội dung cần quyết định\n[Điền phương án, người cần phối hợp hoặc phê duyệt]\n\n5. Thời hạn cần phản hồi\n[Điền ngày, giờ]\n\n6. Minh chứng\n[Điền liên kết hoặc thông tin đối chiếu]\n\n{fromName}"
+      }
+    }
   }
 }

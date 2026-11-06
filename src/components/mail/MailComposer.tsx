@@ -10,6 +10,7 @@ import { useMailBatch } from "@/hooks/useMailTestBatch";
 import type { MailRecipient } from "@/services/mailService";
 import MailHistory from "./MailHistory";
 import MailRecipientPicker from "./MailRecipientPicker";
+import MailTemplatePicker from "./MailTemplatePicker";
 
 interface Props {
   storageKey: string;
@@ -34,16 +35,18 @@ export default function MailComposer({
   const batch = useMailBatch(storageKey, "internal");
   const [confirming, setConfirming] = useState(false);
   const [invalid, setInvalid] = useState<string[]>([]);
+  const [templateBusy, setTemplateBusy] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const mounted = useRef(true);
   const selection = recipients.filter((recipient) =>
     batch.selectedIds.includes(recipient.id),
   );
-  const locked = disabled || batch.busy || batch.started;
+  const baseLocked = disabled || batch.busy || batch.started;
+  const locked = baseLocked || templateBusy;
   useEffect(() => {
-    onBusyChange(batch.busy);
+    onBusyChange(batch.busy || templateBusy);
     return () => onBusyChange(false);
-  }, [batch.busy, onBusyChange]);
+  }, [batch.busy, templateBusy, onBusyChange]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -122,6 +125,17 @@ export default function MailComposer({
         title={t("mailCompose.title")}
         desc={t("mailCompose.description")}
       >
+        {!batch.started && (
+          <MailTemplatePicker
+            fromName={fromName}
+            disabled={baseLocked}
+            onBusyChange={setTemplateBusy}
+            onApply={(content) => {
+              batch.replaceContent(content);
+              setInvalid([]);
+            }}
+          />
+        )}
         <MailRecipientPicker
           mode="internal"
           recipients={recipients}
@@ -204,7 +218,7 @@ export default function MailComposer({
         )}
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={disabled || batch.busy}
+            disabled={disabled || batch.busy || templateBusy}
             onClick={() => (batch.started ? void send() : preview())}
             className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
           >
