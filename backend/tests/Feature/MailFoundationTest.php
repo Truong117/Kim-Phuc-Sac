@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -177,11 +179,12 @@ class MailFoundationTest extends TestCase
         config(['kps_mail.from_name' => 'Different later configuration']);
         Http::fake(['https://gmail.googleapis.com/*' => Http::response(['id' => 'provider-id'])]);
         $this->postJson('/api/integrations/mail/tests/'.$id.'/process')->assertAccepted()->assertJsonPath('data.status', 'accepted');
-        Http::assertSent(function ($request): bool {
+        $expectedFrom = (new Email)->from(new Address('kimphucsac@gmail.com', 'Kim Phục Sắc - Nội bộ'))->getHeaders()->get('From')->toString();
+        Http::assertSent(function ($request) use ($expectedFrom): bool {
             $raw = base64_decode(strtr($request['raw'], '-_', '+/'));
-            $headers = mb_decode_mimeheader(explode("\r\n\r\n", $raw)[0]);
+            $headers = explode("\r\n\r\n", $raw)[0];
 
-            return str_contains($headers, 'Kim Phục Sắc - Nội bộ') && ! str_contains($headers, 'Different later configuration');
+            return str_contains($headers, $expectedFrom) && ! str_contains($headers, 'Different later configuration');
         });
     }
 
