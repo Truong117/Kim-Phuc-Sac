@@ -90,6 +90,7 @@ const mapReportItems = (report: DailyReport): WorkItemFormData[] =>
     id: item.id,
     issue: item.issue ?? "",
     evidenceLinks: (item.evidence_links ?? []).join("\n"),
+    facebookSelections: item.facebook_selections ?? [],
     content: item.content,
     result: item.result,
     status: item.status,
@@ -568,6 +569,16 @@ export default function NewReport({
         ...(item.id ? { id: item.id } : {}),
         issue: item.issue?.trim() || null,
         evidence_links: parseEvidenceLinks(item.evidenceLinks ?? ""),
+        facebook_selections: (item.facebookSelections ?? [])
+          .filter((selection) =>
+            parseEvidenceLinks(item.evidenceLinks ?? "").includes(
+              selection.source_url,
+            ),
+          )
+          .map(({ source_url, selection_token }) => ({
+            source_url,
+            selection_token,
+          })),
         content: item.content.trim(),
         result: item.result.trim(),
         status: item.status as WorkStatus,
@@ -967,6 +978,7 @@ export default function NewReport({
                     aria-labelledby="quick-report-tab"
                   >
                     <QuickReportEditor
+                      reportDate={today.business_date}
                       planSection={
                         <ReportNextDayPlan
                           referenceDate={makeupDate}
@@ -1007,6 +1019,7 @@ export default function NewReport({
                     aria-labelledby="detailed-report-tab"
                   >
                     <WorkItemList
+                      reportDate={today.business_date}
                       planSection={
                         <ReportNextDayPlan
                           referenceDate={makeupDate}

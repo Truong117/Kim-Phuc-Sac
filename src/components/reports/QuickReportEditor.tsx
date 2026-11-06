@@ -27,6 +27,7 @@ import { cn } from "@/utils";
 import { useTranslation } from "react-i18next";
 
 interface QuickReportEditorProps {
+  reportDate?: string;
   planSection?: ReactNode;
   items: WorkItemFormData[];
   drafts: QuickReportDrafts;
@@ -46,6 +47,7 @@ interface QuickReportEditorProps {
 
 export default function QuickReportEditor({
   items,
+  reportDate,
   planSection,
   drafts,
   errors,
@@ -257,6 +259,7 @@ export default function QuickReportEditor({
                       </ReportFieldRow>
                       <div className="mt-3">
                         <WorkItemExtras
+                          reportDate={reportDate}
                           item={item}
                           errors={errors[item.clientId]}
                           disabled={disabled}

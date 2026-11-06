@@ -44,6 +44,7 @@ class DailyReportResource extends JsonResource
                 'note' => $item->note,
                 'issue' => $item->issue ?? '',
                 'evidence_links' => $item->evidence_links ?? [],
+                'facebook_selections' => app(\App\Services\Social\ReportFacebookPosts::class)->present($request->user(), $item->facebook_selections ?? [], (bool) $this->getAttribute('can_edit')),
                 'sort_order' => $item->sort_order,
             ])->values(),
             'comments' => ReportCommentResource::collection($this->whenLoaded('comments')),

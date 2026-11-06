@@ -1,3 +1,21 @@
+export type FacebookSelection = {
+  source_url: string;
+  selection_token: string;
+  entry_id: number;
+  external_id: string;
+  post_url: string;
+  page_name: string;
+  selected_by?: number;
+  selected_at?: string;
+};
+
+export type FacebookPostCandidate = FacebookSelection & {
+  message: string;
+  created_time: string;
+  picture: string | null;
+  type: "post" | "video" | "reel";
+};
+
 export type WorkStatus = "COMPLETED" | "IN_PROGRESS" | "BLOCKED";
 
 export type ReportOverallStatus = WorkStatus;
@@ -15,6 +33,7 @@ export type ReportWorkItem = {
   sort_order: number;
   issue?: string;
   evidence_links?: string[];
+  facebook_selections?: FacebookSelection[];
 };
 
 export type ReportComment = {
@@ -105,6 +124,10 @@ export type WorkItemInput = {
   id?: number;
   issue?: string | null;
   evidence_links?: string[];
+  facebook_selections?: Pick<
+    FacebookSelection,
+    "source_url" | "selection_token"
+  >[];
   content: string;
   result?: string | null;
   status: WorkStatus;
@@ -122,6 +145,7 @@ export type WorkItemFormData = {
   id?: number;
   issue?: string;
   evidenceLinks?: string;
+  facebookSelections?: FacebookSelection[];
   content: string;
   result: string;
   status: WorkStatus | "";

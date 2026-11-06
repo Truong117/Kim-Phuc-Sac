@@ -15,6 +15,7 @@ class DailyReportItem extends Model
         'note',
         'issue',
         'evidence_links',
+        'facebook_selections',
         'sort_order',
     ];
 
@@ -24,6 +25,7 @@ class DailyReportItem extends Model
             'status' => WorkStatus::class,
             'sort_order' => 'integer',
             'evidence_links' => 'array',
+            'facebook_selections' => 'array',
         ];
     }
 
