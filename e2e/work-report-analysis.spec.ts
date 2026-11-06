@@ -62,18 +62,24 @@ test("work-report analysis: create, employees, source item, shared history, relo
   const item = source.item_ids[0];
 
   await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
-  const person = page
-    .locator("details")
-    .filter({ has: page.locator("summary", { hasText: "Employee A" }) });
+  await page
+    .getByRole("navigation", { name: "Danh sách nhân viên", exact: true })
+    .getByRole("button", { name: /Employee A/ })
+    .click();
+  const person = page.getByRole("region", {
+    name: "Báo cáo AI của Employee A",
+    exact: true,
+  });
   await expect(
-    person.getByRole("heading", { name: "1. Công việc đã báo cáo trong kỳ" }),
+    person.getByRole("heading", { name: "Tổng hợp từ báo cáo", exact: true }),
+  ).toBeVisible();
+  await expect(
+    person.getByRole("heading", { name: "Nhận xét", exact: true }),
   ).toBeVisible();
   await expect(
     person.getByText(/Ghi nhận từ nguồn: E2E/).first(),
   ).toBeVisible();
-  await expect(
-    person.getByText(/Định dạng nhận xét mới phân biệt/),
-  ).toBeVisible();
+  await person.getByText("Nguồn báo cáo và đối chiếu", { exact: true }).click();
   await person
     .getByRole("link", { name: new RegExp(`Đầu việc #${item}$`) })
     .first()
@@ -104,6 +110,11 @@ test("work-report analysis: create, employees, source item, shared history, relo
     [7, 2],
     [30, 3],
   ]) {
+    const filters = page
+      .locator("details")
+      .filter({ has: page.locator("#analysis-period") });
+    if ((await filters.getAttribute("open")) === null)
+      await filters.locator("summary").click();
     await page.locator("#analysis-period").selectOption(String(days));
     await expect(
       page.getByRole("button", { name: "Tạo / mở phân tích", exact: true }),

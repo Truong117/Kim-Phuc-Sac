@@ -16,6 +16,7 @@ import {
 import MailHistory from "./MailHistory";
 import MailRecipientPicker from "./MailRecipientPicker";
 import MailTestDialog from "./MailTestDialog";
+import MailComposer from "./MailComposer";
 import { useMailTestBatch } from "@/hooks/useMailTestBatch";
 
 export default function MailWorkspace() {
@@ -25,8 +26,18 @@ export default function MailWorkspace() {
   const [status, setStatus] = useState<MailStatus | null>(null);
   const [recipients, setRecipients] = useState<MailRecipient[]>([]);
   const [connectionBusy, setConnectionBusy] = useState(false);
+  const [composeBusy, setComposeBusy] = useState(false);
+  const [mode, setMode] = useState<"internal" | "test">(() => {
+    try {
+      return sessionStorage.getItem(`${requestStorageKey}:mode`) === "test"
+        ? "test"
+        : "internal";
+    } catch {
+      return "internal";
+    }
+  });
   const batch = useMailTestBatch(requestStorageKey);
-  const busy = connectionBusy || batch.busy;
+  const busy = connectionBusy || batch.busy || composeBusy;
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(() => {
     const result = new URLSearchParams(window.location.search).get(
@@ -201,66 +212,120 @@ export default function MailWorkspace() {
           </p>
         )}
       </ComponentCard>
-      <ComponentCard
-        title={t("mailUi.testTitle")}
-        desc={t("mailUi.testDescription")}
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={t("mailCompose.modeLabel")}
       >
-        <MailRecipientPicker
-          recipients={recipients}
-          selectedIds={batch.selectedIds}
-          onChange={batch.select}
-          disabled={
-            busy || batch.started || !ready || !connected || !data.send_enabled
-          }
-          invalid={batch.error === "mailUi.recipientInvalid"}
-        />
-        {batch.started && (
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {t("mailUi.resumeHint")}
-          </p>
-        )}
-        {!data.send_enabled && (
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {t("mailUi.sendDisabled")}
-          </p>
-        )}
-        <div className="flex flex-wrap gap-3">
-          <Button
-            disabled={
-              busy ||
-              !ready ||
-              !connected ||
-              !data.send_enabled ||
-              (!batch.started && !validSelection) ||
-              batch.selectedIds.length === 0
-            }
+        {(["internal", "test"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className={`min-h-11 rounded-lg px-4 py-3 text-sm font-semibold disabled:opacity-50 ${mode === value ? "bg-kps-primary text-white hover:bg-kps-primary-hover dark:bg-kps-primary dark:text-white" : "bg-white text-gray-700 ring-1 ring-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"}`}
+            disabled={busy}
+            aria-pressed={mode === value}
             onClick={() => {
-              if (batch.started) void sendBatch();
-              else confirmation.openModal();
+              setMode(value);
+              try {
+                sessionStorage.setItem(`${requestStorageKey}:mode`, value);
+              } catch {
+                /* Mode still changes in memory. */
+              }
             }}
-            className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
           >
             {t(
-              batch.busy
-                ? "mailUi.sending"
-                : batch.started
-                  ? "mailUi.resumeBatch"
-                  : "mailUi.previewTest",
+              value === "internal"
+                ? "mailCompose.mode"
+                : "mailCompose.testMode",
             )}
-          </Button>
-          {batch.canReset && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={batch.reset}
-              className="max-w-full whitespace-normal"
-            >
-              {t("mailUi.newBatch")}
-            </Button>
+          </button>
+        ))}
+      </div>
+      {mode === "internal" && (
+        <MailComposer
+          key={`${user?.organization?.id}:${user?.id}`}
+          storageKey={`kps:mail-compose:${user?.organization?.id}:${user?.id}`}
+          recipients={recipients}
+          fromName={fromName}
+          fromEmail={data.email || data.expected_email}
+          disabled={
+            connectionBusy || !ready || !connected || !data.send_enabled
+          }
+          onBusyChange={setComposeBusy}
+          onComplete={load}
+        />
+      )}
+      {mode === "internal" && !data.send_enabled && (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {t("mailUi.sendDisabled")}
+        </p>
+      )}
+      {mode === "test" && (
+        <ComponentCard
+          title={t("mailUi.testTitle")}
+          desc={t("mailUi.testDescription")}
+        >
+          <MailRecipientPicker
+            recipients={recipients}
+            selectedIds={batch.selectedIds}
+            onChange={batch.select}
+            disabled={
+              busy ||
+              batch.started ||
+              !ready ||
+              !connected ||
+              !data.send_enabled
+            }
+            invalid={batch.error === "mailUi.recipientInvalid"}
+          />
+          {batch.started && (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {t("mailUi.resumeHint")}
+            </p>
           )}
-        </div>
-      </ComponentCard>
-      {batch.results.length > 0 && (
+          {!data.send_enabled && (
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {t("mailUi.sendDisabled")}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              disabled={
+                busy ||
+                !ready ||
+                !connected ||
+                !data.send_enabled ||
+                (!batch.started && !validSelection) ||
+                batch.selectedIds.length === 0
+              }
+              onClick={() => {
+                if (batch.started) void sendBatch();
+                else confirmation.openModal();
+              }}
+              className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
+            >
+              {t(
+                batch.busy
+                  ? "mailUi.sending"
+                  : batch.started
+                    ? "mailUi.resumeBatch"
+                    : "mailUi.previewTest",
+              )}
+            </Button>
+            {batch.canReset && (
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={batch.reset}
+                className="max-w-full whitespace-normal"
+              >
+                {t("mailUi.newBatch")}
+              </Button>
+            )}
+          </div>
+        </ComponentCard>
+      )}
+      {mode === "test" && batch.results.length > 0 && (
         <MailHistory
           entries={batch.results}
           title={t("mailUi.batchResults")}
@@ -268,15 +333,17 @@ export default function MailWorkspace() {
         />
       )}
       <MailHistory entries={data.history} />
-      <MailTestDialog
-        isOpen={confirmation.isOpen}
-        onClose={confirmation.closeModal}
-        recipients={selection}
-        fromName={fromName}
-        busy={busy}
-        error={batch.error}
-        onSend={() => void sendBatch()}
-      />
+      {mode === "test" && (
+        <MailTestDialog
+          isOpen={confirmation.isOpen}
+          onClose={confirmation.closeModal}
+          recipients={selection}
+          fromName={fromName}
+          busy={busy}
+          error={batch.error}
+          onSend={() => void sendBatch()}
+        />
+      )}
       <Modal
         isOpen={disconnectConfirmation.isOpen}
         onClose={() => {

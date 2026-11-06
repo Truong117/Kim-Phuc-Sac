@@ -61,6 +61,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/test', [MailController::class, 'sendTest'])->middleware('throttle:3,1,mail-test');
         Route::post('/tests', [MailController::class, 'queueTests'])->middleware('throttle:6,1,mail-test-batch');
         Route::post('/tests/{id}/process', [MailController::class, 'processTest'])->whereUuid('id')->middleware('throttle:60,1,mail-test-process');
+        Route::post('/messages', [MailController::class, 'queueMessages'])->middleware('throttle:6,1,mail-compose-batch');
+        Route::post('/messages/{id}/process', [MailController::class, 'processMessage'])->whereUuid('id')->middleware('throttle:60,1,mail-compose-process');
     });
     Route::prefix('account')->group(function () {
         Route::patch('/profile', [AccountController::class, 'updateProfile']);

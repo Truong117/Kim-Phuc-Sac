@@ -56,6 +56,7 @@ class MailController extends Controller
             ->with(['user:id,name,email', 'department:id,name'])->get()->filter(fn ($member) => $member->user !== null)->unique('user_id')->sortBy('user.name')->values()->map(fn ($member) => [
                 'id' => (string) $member->user_id, 'name' => $member->user->name, 'email' => $member->user->email, 'department' => $member->department?->name,
                 'test_allowed' => filter_var($member->user->email, FILTER_VALIDATE_EMAIL) !== false && $this->outbox->allowedTestEmail($member->user->email),
+                'send_allowed' => filter_var($member->user->email, FILTER_VALIDATE_EMAIL) !== false,
             ])]);
     }
 
@@ -118,7 +119,7 @@ class MailController extends Controller
     private function messagePayload(MailMessage $message): array
     {
         return ['id' => $message->id, 'recipient_user_id' => (string) $message->recipient_user_id, 'created_by' => (string) $message->created_by,
-            'recipient_email' => $message->payload['to'], 'kind' => $message->kind, 'status' => $message->status, 'error_code' => $message->error_code,
+            'recipient_email' => $message->payload['to'], 'subject' => $message->payload['subject'], 'kind' => $message->kind, 'status' => $message->status, 'error_code' => $message->error_code,
             'created_at' => $message->created_at->toIso8601String(), 'accepted_at' => $message->accepted_at?->toIso8601String()];
     }
 
@@ -141,10 +142,40 @@ class MailController extends Controller
 
     public function processTest(Request $request, string $id): JsonResponse
     {
+        return $this->processOwnedMessage($request, $id, 'test');
+    }
+
+    public function queueMessages(Request $request): JsonResponse
+    {
+        $this->access->require($request->user());
+        $this->requireAvailable();
+        $input = $request->validate([
+            'recipients' => ['required', 'array', 'min:1', 'max:50'],
+            'recipients.*' => ['required', 'array:recipient_user_id,request_key'],
+            'recipients.*.recipient_user_id' => ['required', 'integer', 'min:1', 'distinct'],
+            'recipients.*.request_key' => ['required', 'uuid', 'distinct'],
+            'subject' => ['required', 'string', 'max:200', 'not_regex:/[\x00-\x1F\x7F]/u'],
+            'body' => ['required', 'string', 'max:10000', 'not_regex:/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u'],
+            'to' => ['prohibited'], 'email' => ['prohibited'], 'cc' => ['prohibited'], 'bcc' => ['prohibited'],
+            'organization_id' => ['prohibited'], 'provider' => ['prohibited'], 'from' => ['prohibited'],
+            'html' => ['prohibited'], 'attachments' => ['prohibited'], 'kind' => ['prohibited'],
+        ]);
+        $messages = $this->outbox->queueMessages($request->user(), $input['recipients'], $input['subject'], $input['body']);
+
+        return response()->json(['data' => array_map(fn (MailMessage $message) => $this->messagePayload($message), $messages)], 202);
+    }
+
+    public function processMessage(Request $request, string $id): JsonResponse
+    {
+        return $this->processOwnedMessage($request, $id, 'internal');
+    }
+
+    private function processOwnedMessage(Request $request, string $id, string $kind): JsonResponse
+    {
         $member = $this->access->require($request->user());
         $this->requireAvailable();
         $message = MailMessage::query()->whereKey($id)->where('organization_id', $member->organization_id)
-            ->where('created_by', $request->user()->id)->where('kind', 'test')->firstOrFail();
+            ->where('created_by', $request->user()->id)->where('kind', $kind)->firstOrFail();
         MailMessage::query()->whereKey($message->id)->where('status', 'sending')->where('started_at', '<', now()->subMinutes(5))
             ->update(['status' => 'unknown', 'error_code' => 'PROCESS_INTERRUPTED']);
         $this->outbox->process($message->id);
