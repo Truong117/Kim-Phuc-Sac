@@ -151,6 +151,7 @@ export default function MailComposer({
             disabled={locked}
             required
             error={isInvalid("subject")}
+            aria-invalid={isInvalid("subject") || undefined}
             hint={
               isInvalid("subject") ? t("mailCompose.subjectError") : undefined
             }
