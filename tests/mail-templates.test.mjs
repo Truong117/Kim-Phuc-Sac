@@ -313,6 +313,10 @@ test("legacy prefixes are removed only at the start; qualifiers, internal wordin
     ),
     "Xác nhận duyệt cuối; chưa ghi nhận nghiệm thu.",
   );
+  assert.equal(
+    presentation.reportText("Chưa đủ thông tin: doanh số cả tuần"),
+    "Chưa đủ thông tin: doanh số cả tuần",
+  );
   assert.deepEqual(claim, before);
 });
 

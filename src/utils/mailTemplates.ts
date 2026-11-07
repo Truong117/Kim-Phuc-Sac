@@ -173,7 +173,10 @@ function analysisMailTemplate(
   if (run.is_mock) chunks.push(t("mailTemplates.mockWarning"));
   for (const { key, claims } of reportSections(run.result!)) {
     const lines = claims.map((claim) => {
-      const text = reportClaimText(claim, run.source_reports);
+      const text =
+        key === "decisions"
+          ? reportText(claim.text)
+          : reportClaimText(claim, run.source_reports);
       return claim.priority === "high"
         ? `${t("workReportAnalysis.reader.priority.high")}: ${text}`
         : text;

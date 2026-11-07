@@ -7,7 +7,7 @@ import type {
 // Presentation only: retain the saved text and evidence unchanged for audit/retry.
 export function reportText(text: string): string {
   return text.replace(
-    /^\s*(?:(?:Ghi nhận từ nguồn|Nhận xét có căn cứ|Chưa đủ thông tin|Đề xuất)\s*:\s*)+/u,
+    /^\s*(?:(?:Ghi nhận từ nguồn|Nhận xét có căn cứ|Đề xuất)\s*:\s*)+/u,
     "",
   );
 }

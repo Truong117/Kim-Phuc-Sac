@@ -431,7 +431,7 @@ for (const days of [1, 7] as const) {
     await expect(
       page
         .locator("summary")
-        .filter({ hasText: "Nhân viên A — Xác nhận phiên bản được duyệt" }),
+        .filter({ hasText: "Xác nhận phiên bản được duyệt" }),
     ).toBeVisible();
     await expect(
       page.getByText(

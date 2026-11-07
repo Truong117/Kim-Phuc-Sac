@@ -164,9 +164,7 @@ export default function WorkAnalysisResult({
                         {t(`reader.priority.${claim.priority}`)}
                       </span>
                     )}
-                    {employee
-                      ? reportText(claim.text)
-                      : reportClaimText(claim, sources)}
+                    {reportText(claim.text)}
                   </summary>
                   <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
                     {(
