@@ -6,6 +6,7 @@ use App\Enums\DataScope;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\ReportParticipationService;
+use App\Services\Social\Analytics\FacebookAnalyticsAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -55,6 +56,10 @@ class NavigationController extends Controller
             if ($isAllowed) {
                 $items[] = $navigationKey;
             }
+        }
+
+        if (app(FacebookAnalyticsAccess::class)->visible($user)) {
+            $items[] = 'social.analytics';
         }
 
         return response()->json(['items' => $items]);

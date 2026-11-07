@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SyncFacebookAnalytics;
 use App\Jobs\SyncSocialMetrics;
 use App\Models\MailMessage;
 use App\Models\SocialConnection;
@@ -81,6 +82,9 @@ Artisan::command('social-metrics:dispatch', function (): void {
     SocialConnection::query()->where('status', 'connected')->orderBy('id')->chunkById(100, function ($connections): void {
         foreach ($connections as $connection) {
             SyncSocialMetrics::dispatch((int) $connection->integration_entry_id);
+            if (config('facebook_analytics.enabled') && $connection->connected_by !== null) {
+                SyncFacebookAnalytics::dispatch((int) $connection->integration_entry_id, (int) $connection->connected_by);
+            }
         }
     });
     $this->info('Social synchronization queued.');

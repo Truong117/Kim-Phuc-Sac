@@ -12,6 +12,7 @@ export const navigationKeys = [
   "ai.assistant",
   "employees",
   "integrations",
+  "social.analytics",
   "settings",
 ] as const;
 
