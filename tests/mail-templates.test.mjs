@@ -6,9 +6,8 @@ import ts from "typescript";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const moduleUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString("base64")}`;
-const { dailyMailFixture, weeklyMailFixture } = await import(
-  moduleUrl(await read("tests/fixtures/mail-ai.ts"))
-);
+const { dailyMailFixture, weeklyMailFixture, dailySummaryFixture } =
+  await import(moduleUrl(await read("tests/fixtures/mail-ai.ts")));
 const dateUrl = moduleUrl(await read("src/utils/dateOnly.ts"));
 const templates = await import(
   moduleUrl(
@@ -60,11 +59,11 @@ test("daily template preserves AI groups, evidence, comments, recommendations an
     "Bàn giao 3 mẫu",
     "Thiết kế: 3 mẫu",
     "Doanh thu (đồng): Cần xác nhận",
-    "AI ngày #101",
-    "báo cáo công việc #12",
+    "Nguyễn Văn An · 05/11/2026 — Thiết kế catalogue",
+    "Báo cáo AI ngày của Nguyễn Văn An, ngày 05/11/2026",
   ])
     assert.ok(mail.body.includes(text), text);
-  assert.doesNotMatch(mail.body, /9000/);
+  assert.doesNotMatch(mail.body, /9000|#\d+/);
   assert.match(
     mail.body,
     /https:\/\/internal.example.test\/ai\/insights\?view=daily&date=2026-11-05&page=2/,
@@ -85,7 +84,12 @@ test("weekly template includes every shared AI section and evidence plus a link 
   for (const claims of Object.values(source.result))
     for (const claim of claims) assert.ok(mail.body.includes(claim.text));
   assert.match(mail.body, /Bàn giao 3 mẫu/);
-  assert.match(mail.body, /Bản tổng hợp AI #201, phiên bản 2/);
+  assert.match(
+    mail.body,
+    /Bản AI tổng hợp tuần cho kỳ 30\/10\/2026 – 05\/11\/2026/,
+  );
+  assert.match(mail.body, /Nguyễn Văn An · 05\/11\/2026 — Thiết kế catalogue/);
+  assert.doesNotMatch(mail.body, /#\d+/);
   assert.match(mail.body, /analysis=201&end=2026-11-05&days=7&department=9/);
 });
 
@@ -170,4 +174,118 @@ test("weekly mail preserves the structured decision fields introduced by the foc
     if (!["evidence", "priority"].includes(key))
       assert.ok(mail.body.includes(value));
   assert.match(mail.body, /Ưu tiên cao/);
+});
+
+test("the daily aggregate template uses every shared AI section from a one-day analysis and links to that saved run", () => {
+  const mail = templates.dailySummaryMailTemplate(
+    dailySummaryFixture,
+    "2026-11-05",
+    "KPS",
+    "https://example.test",
+    t,
+  );
+  assert.equal(mail.subject, "[KPS] Báo cáo tổng hợp ngày 05/11/2026");
+  assert.match(mail.body, /BÁO CÁO TỔNG HỢP NGÀY 05\/11\/2026/);
+  assert.match(mail.body, /Bản AI tổng hợp chung ngày 05\/11\/2026/);
+  assert.match(mail.body, /Nguyễn Văn An · 05\/11\/2026 — Thiết kế catalogue/);
+  assert.doesNotMatch(mail.body, /#\d+/);
+  assert.match(mail.body, /analysis=301&end=2026-11-05&days=1/);
+  for (const claims of Object.values(dailySummaryFixture.result))
+    for (const claim of claims) assert.ok(mail.body.includes(claim.text));
+  assert.doesNotMatch(mail.body, /BÁO CÁO TỔNG HỢP TUẦN/);
+});
+
+test("daily aggregates reject another date, a multi-day period, a department-only filter or an incomplete/stale analysis", () => {
+  for (const override of [
+    { status: "partial" },
+    { status: "running" },
+    { source_changed: true },
+    { source_changed: null },
+    { requires_new_run: true },
+    { result: null },
+    { department_id: 9 },
+    { period: { ...dailySummaryFixture.period, days: 7 } },
+    { period: { ...dailySummaryFixture.period, start_date: "2026-11-04" } },
+  ]) {
+    assert.throws(() =>
+      templates.dailySummaryMailTemplate(
+        { ...dailySummaryFixture, ...override },
+        "2026-11-05",
+        "KPS",
+        "https://example.test",
+        t,
+      ),
+    );
+  }
+  assert.throws(() =>
+    templates.dailySummaryMailTemplate(
+      dailySummaryFixture,
+      "2026-11-04",
+      "KPS",
+      "https://example.test",
+      t,
+    ),
+  );
+});
+
+test("aggregate evidence identifies each employee and task by report and item, with honest fallbacks for incomplete sources", () => {
+  const source = structuredClone(weeklyMailFixture);
+  source.source_reports.push({
+    id: 25,
+    employee_id: 3,
+    employee_name: "Phương Anh",
+    date: "2026-11-04",
+    item_ids: [4],
+  });
+  source.employees.push({
+    employee_id: 3,
+    name: "Phương Anh",
+    work_inventory: [
+      {
+        content: "Chăm sóc khách hàng",
+        observations: [{ report_id: 25, item_id: 4, date: "2026-11-04" }],
+      },
+    ],
+  });
+  source.result.overview[0].evidence.push(
+    { report_id: 25, item_id: 4, quote: "Đã tư vấn khách" },
+    { report_id: 25, item_id: 99, quote: "Chờ phản hồi" },
+    { report_id: 999, item_id: 4, quote: "Chưa xác minh người làm" },
+  );
+  // An observation under another employee must never misattribute the task.
+  source.employees[0].work_inventory[0].observations.push({
+    report_id: 25,
+    item_id: 99,
+    date: "2026-11-04",
+  });
+  for (const kind of ["daily", "weekly"]) {
+    const run =
+      kind === "daily"
+        ? { ...source, period: dailySummaryFixture.period }
+        : source;
+    const mail =
+      kind === "daily"
+        ? templates.dailySummaryMailTemplate(
+            run,
+            "2026-11-05",
+            "KPS",
+            "https://example.test",
+            t,
+          )
+        : templates.weeklyMailTemplate(run, "KPS", "https://example.test", t);
+    assert.match(
+      mail.body,
+      /Nguyễn Văn An · 05\/11\/2026 — Thiết kế catalogue\n    Ghi nhận: “Bàn giao 3 mẫu”/,
+    );
+    assert.match(
+      mail.body,
+      /Phương Anh · 04\/11\/2026 — Chăm sóc khách hàng\n    Ghi nhận: “Đã tư vấn khách”/,
+    );
+    assert.match(mail.body, /Phương Anh · 04\/11\/2026 — “Chờ phản hồi”/);
+    assert.match(
+      mail.body,
+      /Chưa đủ thông tin người phụ trách trong nguồn: “Chưa xác minh người làm”/,
+    );
+    assert.doesNotMatch(mail.body, /#\d+/);
+  }
 });
