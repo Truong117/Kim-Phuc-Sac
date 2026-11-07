@@ -6,9 +6,9 @@ use RuntimeException;
 
 final class WorkReportAnalysisOutput
 {
-    public const VERSION = 'work-report-v3.1';
+    public const VERSION = 'work-report-v3.2';
 
-    public const SCHEMA_VERSION = 'work-report-v3.0';
+    public const SCHEMA_VERSION = 'work-report-v3.2';
 
     public const SECTIONS = ['overview', 'highlights', 'ongoing', 'attention', 'support', 'uncertainties', 'recommendations'];
 
@@ -33,7 +33,7 @@ final class WorkReportAnalysisOutput
             'Mỗi đề xuất cần nói rõ công việc liên quan, kết quả/vướng mắc làm căn cứ, và hành động hoặc quyết định quản lý hữu ích. Chỉ đề xuất khi nguồn thực sự cho thấy cần; nội dung rõ thì được để trống đề xuất.',
             'Khi summary_stage=consolidation, parts là các bản tổng hợp thành phần. Tổng hợp lại thành kết luận và thứ tự đề xuất chung, loại ý lặp; chỉ sử dụng trích đoạn nguồn đi kèm, không coi nhận xét của bước trước là sự thật mới. Không tự cộng số liệu giữa các thành phần hoặc tự tạo liên hệ nhân quả.',
             'Giai đoạn company_summary: parts chứa danh sách công việc đã tổng hợp và nhận xét theo từng nhân viên. Đọc work_groups và work_totals của từng người (cùng work_inventory nếu có) trước khi tổng hợp công ty; phân biệt dữ kiện từ danh sách với nhận xét/đề xuất AI và chỉ gộp liên phòng ban khi có căn cứ.',
-            'quantity_observations: ở giai đoạn employee_review, trích xuất các số lượng kết quả công việc được báo cáo rõ bằng chữ số, kèm metric, unit, quantity, basis, report_id, item_id và quote nguyên văn chứa số đó. Hệ thống sẽ tự cộng bằng phép tính, bạn không tự tạo số tổng.',
+            'quantity_observations: ở giai đoạn employee_review, trích xuất các số lượng kết quả công việc được báo cáo rõ bằng chữ số, kèm metric, unit, quantity, basis, report_id, item_id và field chứa số đó (content/result/note); không tự viết quote. Hệ thống sẽ tự cộng bằng phép tính, bạn không tự tạo số tổng.',
             'Dùng nhất quán metric như “Sản phẩm đã bán”, “Ảnh đã chỉnh sửa”, “Video đã dựng”; unit như “sản phẩm”, “ảnh”, “video”. Giữ tách các loại công việc, đơn vị, sản phẩm hoặc phạm vi không thể cộng chung. Không nhầm chỉ tiêu, kế hoạch, số tồn, số điện thoại hoặc ngày tháng với kết quả.',
             'basis=incremental chỉ khi số lượng là kết quả riêng của lần/ngày báo cáo; cumulative khi là lũy kế; unclear khi không rõ hoặc có thể nhắc lại kết quả cũ. Không coi số lũy kế là số tăng thêm. Mỗi số liệu chỉ trích xuất một lần. Không trích xuất số viết bằng chữ hoặc cách ghi số nhập nhằng.',
             'Trước hết xuất quantity_observations để xác định số liệu và phạm vi có thể cộng, sau đó mới viết overview và các nhận xét/đề xuất dựa trên danh sách công việc và các số liệu đó.',
@@ -69,7 +69,7 @@ final class WorkReportAnalysisOutput
             'Không mở đầu text bằng nhãn “Ghi nhận từ nguồn:”, “Nhận xét có căn cứ:”, “Chưa đủ thông tin:” hoặc “Đề xuất:”. Viết câu trực tiếp, tự nhiên; recommendations bắt đầu bằng hành động/quyết định cụ thể, không lặp lại tiêu đề mục.',
             'Chỉ ghi giới hạn ngay cạnh thông tin cần thận trọng: ví dụ đã có bản trình duyệt nhưng chưa xác nhận phê duyệt cuối; không chèn một lời nhắc về nguồn sau mọi câu. Phân biệt hoạt động, đầu ra, hiệu quả; số liệu từng ngày không tự trở thành tổng tuần.',
             'Phân biệt bước tiếp theo nhân viên tự ghi với hành động AI gợi ý bằng cách đặt đúng phần: ongoing cho việc đang tiếp tục, recommendations cho việc quản lý cân nhắc. Đề xuất không phải nhiệm vụ, cam kết hoặc thời hạn đã được giao; không tự gán người hay deadline.',
-            'Mỗi nhận định phải có evidence: report_id, item_id đúng nguồn và quote nguyên văn không rỗng từ content/result/note của chính đầu việc đó.',
+            'Mỗi nhận định phải có evidence: report_id, item_id đúng nguồn và field (content/result/note) không rỗng của chính đầu việc đó. Không tự chép hoặc viết quote; backend tự lấy nguyên văn từ nguồn đã chốt. Khi đầu vào đã có evidence kèm field và quote, chọn đúng field được cung cấp; không dùng text tổng hợp hay nhận xét AI làm nguồn.',
             'Chỉ tổng hợp các phần hợp lệ được cung cấp; không coi phần thiếu/lỗi là đã phân tích. Không lặp lại bí mật hoặc dữ liệu đã che.',
             'Tham chiếu hợp lệ không bảo đảm kết luận đúng; diễn đạt thận trọng, phân biệt dữ kiện và đề xuất.',
         ]);
@@ -98,8 +98,8 @@ final class WorkReportAnalysisOutput
     public static function schema(): array
     {
         $ref = ['type' => 'object', 'properties' => [
-            'report_id' => ['type' => 'integer'], 'item_id' => ['type' => 'integer'], 'quote' => ['type' => 'string'],
-        ], 'required' => ['report_id', 'item_id', 'quote'], 'additionalProperties' => false];
+            'report_id' => ['type' => 'integer'], 'item_id' => ['type' => 'integer'], 'field' => ['type' => 'string', 'enum' => ['content', 'result', 'note']],
+        ], 'required' => ['report_id', 'item_id', 'field'], 'additionalProperties' => false];
         $claim = ['type' => 'object', 'properties' => [
             'text' => ['type' => 'string'], 'evidence' => ['type' => 'array', 'items' => $ref],
         ], 'required' => ['text', 'evidence'], 'additionalProperties' => false];
@@ -108,9 +108,11 @@ final class WorkReportAnalysisOutput
         $observation = ['type' => 'object', 'properties' => [
             'metric' => ['type' => 'string'], 'unit' => ['type' => 'string'], 'quantity' => ['type' => 'number'],
             'basis' => ['type' => 'string', 'enum' => ['incremental', 'cumulative', 'unclear']],
-            'report_id' => ['type' => 'integer'], 'item_id' => ['type' => 'integer'], 'quote' => ['type' => 'string'],
-        ], 'required' => ['metric', 'unit', 'quantity', 'basis', 'report_id', 'item_id', 'quote'], 'additionalProperties' => false];
-        $properties = ['work_groups' => WorkReportGroupedWork::schema(), 'quantity_observations' => ['type' => 'array', 'items' => $observation], ...$properties];
+            'report_id' => ['type' => 'integer'], 'item_id' => ['type' => 'integer'], 'field' => ['type' => 'string', 'enum' => ['content', 'result', 'note']],
+        ], 'required' => ['metric', 'unit', 'quantity', 'basis', 'report_id', 'item_id', 'field'], 'additionalProperties' => false];
+        $groups = WorkReportGroupedWork::schema();
+        $groups['items']['properties']['evidence']['items'] = $ref;
+        $properties = ['work_groups' => $groups, 'quantity_observations' => ['type' => 'array', 'items' => $observation], ...$properties];
 
         return ['type' => 'object', 'properties' => $properties, 'required' => array_keys($properties), 'additionalProperties' => false];
     }

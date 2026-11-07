@@ -40,6 +40,7 @@ class WorkReportAnalysisWorker
         }
         $unit = WorkReportAnalysisUnit::query()->findOrFail($unitId);
         $response = null;
+        $stage = 'prepare';
         try {
             if (! config('work_report_ai.enabled')) {
                 throw new AiGatewayException('AI_FEATURE_DISABLED', 'Feature disabled.');
@@ -87,6 +88,7 @@ class WorkReportAnalysisWorker
                 unset($input['reports']);
                 unset($input['_reused_from_unit_id']);
             }
+            $input = WorkReportEvidence::prepare($input, $allowed);
             $summaryUnit = str_starts_with($unit->unit_key, 'summary');
             $limit = $summaryUnit ? WorkReportExecutionPolicy::summaryInputLimit($run->analysis_config)
                 : (int) $run->analysis_config['unit_input_bytes'];
@@ -95,19 +97,25 @@ class WorkReportAnalysisWorker
             }
             $this->reserveBudget($run, $summaryUnit);
             WorkReportAnalysis::query()->whereKey($run->id)->whereIn('status', ['pending', 'running'])->update(['status' => 'running']);
+            $stage = 'provider';
             $response = $this->provider->analyze($run, $unit, $input);
+            $stage = 'bind_evidence';
+            $response['result'] = WorkReportEvidence::bind($response['result'], $allowed, $input);
+            $stage = 'validate_output';
             WorkReportAnalysisOutput::validate($response['result'], $allowed, true);
             if ($summaryUnit && ($response['result']['work_groups'] ?? []) !== []) {
                 throw new \RuntimeException('AI_INVALID_SCHEMA');
             }
             if (! $summaryUnit) {
+                $stage = 'validate_inventory';
                 WorkReportGroupedWork::validate($response['result']['work_groups'] ?? null, $allowed);
             }
-            if (! $summaryUnit && isset($input['daily_documents']) && ($response['result']['quantity_observations'] ?? []) !== []) {
-                throw new \RuntimeException('AI_INVALID_EVIDENCE');
+            if (($summaryUnit || isset($input['daily_documents'])) && ($response['result']['quantity_observations'] ?? []) !== []) {
+                throw new WorkReportEvidenceException('quantity_not_allowed_at_stage', 'quantity_observations');
             }
+            $stage = 'validate_quantities';
             $quantities = $summaryUnit ? [] : WorkReportWorkTotals::normalize(isset($input['daily_documents'])
-                ? array_merge(...array_column($input['daily_documents'], 'observations'))
+                ? array_merge(...array_column($unit->input['daily_documents'], 'observations'))
                 : ($response['result']['quantity_observations'] ?? []), $allowed);
             $response['result']['quantity_observations'] = $quantities;
             $response['result']['work_totals'] = WorkReportWorkTotals::totals($quantities);
@@ -127,15 +135,18 @@ class WorkReportAnalysisWorker
                 }
             });
         } catch (Throwable $exception) {
-            if (($response['usage_record_id'] ?? null) !== null) {
-                (new OpenAiGateway)->rejectCompletedResult($response['usage_record_id'], 'AI_INVALID_EVIDENCE');
-            }
             $code = $exception instanceof AiGatewayException ? $exception->errorCode
                 : (in_array($exception->getMessage(), ['AI_INVALID_SCHEMA', 'AI_INVALID_EVIDENCE', 'AI_INCOMPLETE_INVENTORY'], true) ? $exception->getMessage() : 'AI_UNIT_FAILED');
+            if (($response['usage_record_id'] ?? null) !== null) {
+                (new OpenAiGateway)->rejectCompletedResult($response['usage_record_id'], $code);
+            }
             WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')->where('lease_token', $token)
                 ->update(['status' => 'failed', 'error_code' => $code, 'leased_until' => null]);
             // No report/provider payload or exception message enters application logs.
-            Log::warning('Work report AI unit failed', ['analysis_id' => $run->id, 'unit_id' => $unit->id, 'error_code' => $code]);
+            Log::warning('Work report AI unit failed', ['analysis_id' => $run->id, 'unit_id' => $unit->id, 'error_code' => $code,
+                'validation_stage' => $stage,
+                ...($exception instanceof WorkReportEvidenceException ? ['evidence_reason' => $exception->reason, 'evidence_location' => $exception->location] : []),
+            ]);
         }
         $this->settle((int) $run->id);
     }
@@ -182,14 +193,14 @@ class WorkReportAnalysisWorker
             $totals = isset($seen[$id]) ? [] : WorkReportWorkTotals::totals($quantities[$id]);
             $seen[$id] = true;
 
-            return ['id' => (int) $unit->id, 'result' => [
+            return ['id' => (int) $unit->id, 'result' => WorkReportEvidence::prepare([
                 ...array_intersect_key($unit->result, array_flip(WorkReportAnalysisOutput::SECTIONS)),
                 'employee_id' => $id, 'employee_name' => $people[$id] ?? null,
                 'employee_complete' => ! in_array($id, $failed, true),
                 'work_groups' => $unit->result['work_groups'] ?? [],
                 'work_inventory' => isset($unit->input['daily_documents']) ? [] : WorkReportWeeklyWork::build($unit->input['reports']),
                 'work_totals' => array_map(fn ($t) => array_diff_key($t, ['entries' => true]), $totals),
-            ]];
+            ], $unit->input['reports'])];
         })->values()->all();
     }
 

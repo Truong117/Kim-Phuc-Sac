@@ -12,12 +12,14 @@ use App\Services\AI\WorkReportAnalysisOutput;
 use App\Services\AI\WorkReportAnalysisProvider;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportAnalysisWorker;
+use App\Services\AI\WorkReportEvidence;
 use App\Services\AI\WorkReportSnapshot;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
@@ -232,8 +234,9 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertStringNotContainsString('Cần hỗ trợ', DB::table('work_report_analyses')->where('id', $id)->value('snapshot'));
     }
 
-    public function test_invalid_reference_or_quote_rejected_and_other_employee_result_preserved(): void
+    public function test_invalid_reference_is_diagnosed_and_retry_preserves_completed_employee_result(): void
     {
+        Log::spy();
         $owner = $this->member('OWNER');
         $this->report($this->member('OFFICE_STAFF'));
         $this->report($this->member('OFFICE_STAFF'));
@@ -242,7 +245,7 @@ class WorkReportAnalysisTest extends TestCase
             public function analyze(WorkReportAnalysis $run, WorkReportAnalysisUnit $unit, array $input): array
             {
                 $response = parent::analyze($run, $unit, $input);
-                if ($unit->unit_key !== 'summary' && $unit->id % 2 === 1) {
+                if ($unit->unit_key !== 'summary' && $unit->id % 2 === 1 && $unit->attempts === 1) {
                     $response['result']['attention'][0]['evidence'][0]['report_id'] = 999999;
                 }
 
@@ -252,7 +255,18 @@ class WorkReportAnalysisTest extends TestCase
         $id = $this->createRun($owner);
         $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->assertJsonPath('data.status', 'partial')
             ->assertJsonPath('data.errors.0.code', 'AI_INVALID_EVIDENCE');
-        $this->assertSame(1, WorkReportAnalysisUnit::query()->where('unit_key', 'like', 'employee:%')->where('status', 'completed')->count());
+        $successful = WorkReportAnalysisUnit::query()->where('unit_key', 'like', 'employee:%')->where('status', 'completed')->get();
+        $this->assertCount(1, $successful);
+        $before = $successful->first()->result;
+        Log::shouldHaveReceived('warning')->with('Work report AI unit failed', \Mockery::on(fn ($context) => $context['error_code'] === 'AI_INVALID_EVIDENCE' && $context['validation_stage'] === 'bind_evidence'
+            && $context['evidence_reason'] === 'source_item_not_allowed'
+            && $context['evidence_location'] === 'attention.0.evidence.0'
+            && array_diff(array_keys($context), ['analysis_id', 'unit_id', 'error_code', 'validation_stage', 'evidence_reason', 'evidence_location']) === []
+        ))->once();
+        $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted()->assertJsonPath('data.status', 'completed');
+        $this->assertSame($before, $successful->first()->refresh()->result);
+        $this->assertSame(1, $successful->first()->attempts);
+        $this->assertSame([1, 2], WorkReportAnalysisUnit::query()->where('unit_key', 'like', 'employee:%')->orderBy('attempts')->pluck('attempts')->all());
     }
 
     public function test_timeout_is_not_automatically_retried_and_explicit_retry_skips_completed_parts(): void
@@ -595,7 +609,7 @@ class WorkReportAnalysisTest extends TestCase
             }
 
             return Http::response(['status' => 'completed', 'usage' => ['input_tokens' => 100, 'output_tokens' => 100],
-                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode($result, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]]]]]);
+                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode(WorkReportEvidence::references($result, $input), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]]]]]);
         }]);
         $id = $this->createRun($owner, 7);
         $payload = $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()->assertJsonPath('data.status', 'completed')->json('data');
