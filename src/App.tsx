@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router";
 import AuthorizationRoute from "./components/auth/AuthorizationRoute";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -32,6 +33,10 @@ import WeeklyPlanWizardStructure from "./pages/WeeklyPlans/WeeklyPlanWizardStruc
 import WeeklyPlanWizardSubmit from "./pages/WeeklyPlans/WeeklyPlanWizardSubmit";
 import WeeklyPlanWizardWork from "./pages/WeeklyPlans/WeeklyPlanWizardWork";
 import { createWeeklyPlanV3NavigationWindow } from "./utils/weeklyPlanV3NavigationSafety";
+
+const FacebookAnalytics = lazy(
+  () => import("./pages/SocialAnalytics/FacebookAnalytics"),
+);
 
 const navigationWindow = createWeeklyPlanV3NavigationWindow(window);
 
@@ -151,6 +156,20 @@ export default function App() {
                 element={<AuthorizationRoute navigationKey="integrations" />}
               >
                 <Route path="/integrations" element={<Integrations />} />
+              </Route>
+              <Route
+                element={
+                  <AuthorizationRoute navigationKey="social.analytics" />
+                }
+              >
+                <Route
+                  path="/social-analytics/facebook"
+                  element={
+                    <Suspense fallback={null}>
+                      <FacebookAnalytics />
+                    </Suspense>
+                  }
+                />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="settings" />}>
                 <Route

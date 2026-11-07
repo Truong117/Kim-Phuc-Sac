@@ -7,6 +7,7 @@ use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Integrations\FacebookAnalyticsController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\MailController;
 use App\Http\Controllers\Integrations\SocialMetricsController;
@@ -76,6 +77,13 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
 
     Route::get('/navigation', NavigationController::class);
+    Route::prefix('social-analytics/facebook')->group(function (): void {
+        Route::get('/pages', [FacebookAnalyticsController::class, 'pages'])->middleware('throttle:60,1,fb-analytics-pages');
+        Route::get('/{id}', [FacebookAnalyticsController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-read');
+        Route::post('/{id}/sync', [FacebookAnalyticsController::class, 'sync'])->whereNumber('id')->middleware('throttle:2,1,fb-analytics-sync');
+        Route::patch('/{id}/posts/{post}/topic', [FacebookAnalyticsController::class, 'topic'])->whereNumber(['id', 'post'])->middleware('throttle:30,1,fb-analytics-topic');
+        Route::post('/{id}/analyses', [FacebookAnalyticsController::class, 'analyze'])->whereNumber('id')->middleware('throttle:2,1,fb-analytics-ai');
+    });
 
     Route::prefix('integrations')->middleware('permission:integrations.view')->group(function (): void {
         Route::get('/{id}/social', [SocialMetricsController::class, 'show'])->whereNumber('id')->middleware('permission:reports.view');
