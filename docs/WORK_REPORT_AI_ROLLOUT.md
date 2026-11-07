@@ -1,5 +1,11 @@
 # Phân tích báo cáo công việc V2 — bàn giao và phát hành
 
+> Cập nhật hiện hành: prompt `work-report-v3.1` giữ bằng chứng bắt buộc nhưng
+> bỏ yêu cầu tiền tố phân loại ở đầu câu. Báo cáo được trình bày theo bốn phần
+> nghiệp vụ; xem `WEEKLY_AI_FOCUSED_READER.md`. Các nhãn mô tả bên dưới là
+> quy chuẩn lịch sử, không còn bắt buộc với đầu ra mới.
+
+
 **Dữ liệu nghiệm thu staging:** xem [gói M23/M24 + fixture](WORK_REPORT_AI_STAGING_ACCEPTANCE.md). Gói bổ sung 6 nhân viên giả/2 phòng ban + reviewer, 18 báo cáo/22 items trong 30 ngày, đáp án tham chiếu, dry-run chỉ đọc, manifest ký và cleanup có phạm vi. Chỉ trình phê duyệt chung với deploy staging/M23/M24; chưa nạp staging hoặc gọi AI trả phí. Không seed/reset database, không tạo kế hoạch tuần giả.
 
 ## Phạm vi và kiến trúc

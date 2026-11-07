@@ -415,7 +415,7 @@ test("multiple daily reports require only the source choice, which immediately f
     /Trần Thị Bình/,
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-    /Trần Thị Bình · .* — Thiết kế catalogue/,
+    /Hoàn thành thiết kế: Đã bàn giao 3 mẫu được duyệt/,
   );
   expect(api.aiReads).toHaveLength(2);
   expect(api.submissions).toHaveLength(0);
@@ -486,9 +486,12 @@ test("weekly template loads the only eligible run and automatically fills its pe
     "[KPS] Báo cáo tổng hợp tuần 30/10/2026 - 05/11/2026",
   );
   expect(api.submissions[0].body).toContain(
-    "Nguyễn Văn An · 05/11/2026 — Thiết kế catalogue",
+    "Nguyễn Văn An — Các nhóm đã hoàn thành",
   );
-  expect(api.submissions[0].body).toContain("Ghi nhận: “Bàn giao 3 mẫu”");
+  expect(api.submissions[0].body).not.toContain("Ghi nhận:");
+  expect(api.submissions[0].body).toContain(
+    "4. Việc cần xem xét và quyết định",
+  );
   expect(api.submissions[0].body).not.toMatch(/#\d+/);
 });
 
@@ -651,9 +654,12 @@ test("daily aggregate is available above employee reports and fills a genuine on
     "[KPS] Báo cáo tổng hợp ngày 05/11/2026",
   );
   expect(api.submissions[0].body).toContain(
-    "Nguyễn Văn An · 05/11/2026 — Thiết kế catalogue",
+    "Nguyễn Văn An — Các nhóm đã hoàn thành",
   );
-  expect(api.submissions[0].body).toContain("Ghi nhận: “Bàn giao 3 mẫu”");
+  expect(api.submissions[0].body).not.toContain("Ghi nhận:");
+  expect(api.submissions[0].body).toContain(
+    "4. Việc cần xem xét và quyết định",
+  );
   expect(api.submissions[0].body).not.toMatch(/#\d+/);
 });
 

@@ -1,5 +1,11 @@
 # Bộ ví dụ nghiệm thu mức độ được nguồn hỗ trợ
 
+> Cập nhật hiện hành: prompt `work-report-v3.1` giữ bằng chứng bắt buộc nhưng
+> bỏ yêu cầu tiền tố phân loại ở đầu câu. Báo cáo được trình bày theo bốn phần
+> nghiệp vụ; xem `WEEKLY_AI_FOCUSED_READER.md`. Các nhãn mô tả bên dưới là
+> quy chuẩn lịch sử, không còn bắt buộc với đầu ra mới.
+
+
 Bộ dữ liệu staging để thực hành các tiêu chí: [WORK_REPORT_AI_STAGING_ACCEPTANCE.md](WORK_REPORT_AI_STAGING_ACCEPTANCE.md). Corpus `wra76-acceptance-v1` có 18 báo cáo/22 items, mỗi case mang đáp án `allowed/questions/reject`, cả người không có nguồn và injection. Dry-run công khai ghi ngày/phòng ban/đếm kỳ 1/7/30; fake kiểm tra cả 9 view/33 units, không chứng minh model thật. Chỉ nạp sau phê duyệt chung gói staging/M23/M24/fixture; pilot AI thật có đề xuất số call và ngân sách riêng trong gói, không tự mở rộng.
 
 ## Bổ sung nghiệm thu tạo lại — prompt v2.3

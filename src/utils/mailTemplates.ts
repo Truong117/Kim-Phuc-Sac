@@ -1,9 +1,11 @@
 import type { TFunction } from "i18next";
 import type { DailyDocumentsPage } from "@/types/dailyDocument";
-import type {
-  AnalysisClaim,
-  WorkReportAnalysis,
-} from "@/types/workReportAnalysis";
+import type { WorkReportAnalysis } from "@/types/workReportAnalysis";
+import {
+  reportText,
+  reportClaimText,
+  reportSections,
+} from "./reportPresentation";
 import { formatDateOnly } from "./dateOnly";
 
 export const mailTemplateIds = [
@@ -50,90 +52,8 @@ export function staticMailTemplate(
   };
 }
 
-type Evidence = AnalysisClaim["evidence"][number];
-interface ReferenceSource {
-  name: string;
-  date: string;
-  work?: string;
-}
-type ReferenceLookup = (entry: Evidence) => ReferenceSource | undefined;
-
-function analysisReferenceLookup(run: WorkReportAnalysis): ReferenceLookup {
-  const reports = new Map(
-    run.source_reports.map((source) => [source.id, source]),
-  );
-  const work = new Map<string, string>();
-  for (const employee of run.employees) {
-    for (const group of employee.work_inventory ?? []) {
-      for (const observation of group.observations) {
-        const source = reports.get(observation.report_id);
-        if (
-          source?.employee_id === employee.employee_id &&
-          source.item_ids.includes(observation.item_id)
-        )
-          work.set(`${source.id}:${observation.item_id}`, group.content);
-      }
-    }
-  }
-  return (entry) => {
-    const source = reports.get(entry.report_id);
-    return source
-      ? {
-          name: source.employee_name,
-          date: source.date,
-          work: work.get(`${entry.report_id}:${entry.item_id}`),
-        }
-      : undefined;
-  };
-}
-
-const references = (items: Evidence[], lookup: ReferenceLookup, t: TFunction) =>
-  items
-    .map((entry) => {
-      const source = lookup(entry);
-      if (!source?.name)
-        return t("mailTemplates.referenceUnknown", { quote: entry.quote });
-      const values = {
-        name: source.name,
-        date: formatDateOnly(source.date),
-        work: source.work,
-        quote: entry.quote,
-      };
-      return t(
-        source.work && source.work.trim() !== entry.quote.trim()
-          ? "mailTemplates.referenceWork"
-          : "mailTemplates.reference",
-        values,
-      );
-    })
-    .join("\n");
 const section = (title: string, lines: string[]) =>
   `${title}\n${lines.map((line) => `- ${line}`).join("\n")}`;
-
-function analysisClaimText(
-  claim: AnalysisClaim,
-  lookup: ReferenceLookup,
-  t: TFunction,
-) {
-  const details: string[] = [claim.text];
-  if (claim.priority)
-    details.push(t(`workReportAnalysis.reader.priority.${claim.priority}`));
-  for (const key of [
-    "rationale",
-    "impact",
-    "action",
-    "expected_outcome",
-    "verification",
-    "decision_needed",
-  ] as const) {
-    if (claim[key])
-      details.push(
-        `${t(`workReportAnalysis.reader.decision.${key}`)}: ${claim[key]}`,
-      );
-  }
-  details.push(references(claim.evidence, lookup, t));
-  return details.filter(Boolean).join("\n");
-}
 
 export function dailyMailTemplate(
   row: DailyMailSource,
@@ -146,16 +66,6 @@ export function dailyMailTemplate(
   const document = row.document!;
   const result = document.result!;
   const date = formatDateOnly(document.source.date);
-  const lookup: ReferenceLookup = (entry) =>
-    entry.report_id === document.report_id
-      ? {
-          name: row.employee_name,
-          date: document.source.date,
-          work: document.source.items.find(
-            (item) => item.item_id === entry.item_id,
-          )?.content,
-        }
-      : undefined;
   const chunks = [
     t("mailTemplates.greeting"),
     t("mailTemplates.dailyHeading", { date, name: row.employee_name }),
@@ -166,8 +76,7 @@ export function dailyMailTemplate(
       section(
         t("mailTemplates.work"),
         result.work_groups.map(
-          (group) =>
-            `${group.title}: ${group.text}\n${references(group.evidence, lookup, t)}`,
+          (group) => `${reportText(group.title)}: ${reportText(group.text)}`,
         ),
       ),
     );
@@ -189,20 +98,14 @@ export function dailyMailTemplate(
     chunks.push(
       section(
         t("mailTemplates.comments"),
-        result.comments.map(
-          (entry) =>
-            `${entry.text}\n${references([{ report_id: document.report_id, item_id: entry.item_id, quote: entry.quote }], lookup, t)}`,
-        ),
+        result.comments.map((entry) => reportText(entry.text)),
       ),
     );
   if (result.recommendations.length)
     chunks.push(
       section(
         t("mailTemplates.recommendations"),
-        result.recommendations.map(
-          (entry) =>
-            `${entry.text}\n${references([{ report_id: document.report_id, item_id: entry.item_id, quote: entry.quote }], lookup, t)}`,
-        ),
+        result.recommendations.map((entry) => reportText(entry.text)),
       ),
     );
   const url = new URL("/ai/insights", origin);
@@ -258,7 +161,6 @@ function analysisMailTemplate(
 ): MailTemplateContent {
   const start = formatDateOnly(run.period.start_date),
     end = formatDateOnly(run.period.end_date);
-  const lookup = analysisReferenceLookup(run);
   const chunks = [
     t("mailTemplates.greeting"),
     t(`mailTemplates.${kind}Heading`, { start, end, date: end }),
@@ -269,23 +171,30 @@ function analysisMailTemplate(
     }),
   ];
   if (run.is_mock) chunks.push(t("mailTemplates.mockWarning"));
-  for (const key of [
-    "overview",
-    "highlights",
-    "ongoing",
-    "attention",
-    "support",
-    "uncertainties",
-    "recommendations",
-  ] as const) {
-    const claims = run.result![key];
-    if (claims.length)
-      chunks.push(
-        section(
-          t(`workReportAnalysis.sections.${key}`),
-          claims.map((claim) => analysisClaimText(claim, lookup, t)),
+  for (const { key, claims } of reportSections(run.result!)) {
+    const lines = claims.map((claim) => {
+      const text =
+        key === "decisions"
+          ? reportText(claim.text)
+          : reportClaimText(claim, run.source_reports);
+      return claim.priority === "high"
+        ? `${t("workReportAnalysis.reader.priority.high")}: ${text}`
+        : text;
+    });
+    if (key === "obstacles")
+      lines.push(
+        ...run.result!.uncertainties.map(
+          (claim) =>
+            `${t("workReportAnalysis.reader.clarify")}: ${reportClaimText(claim, run.source_reports)}`,
         ),
       );
+    const hint =
+      key === "decisions" && lines.length
+        ? `${t("workReportAnalysis.reader.proposalHint")}\n`
+        : "";
+    chunks.push(
+      `${t(`workReportAnalysis.form.${key}`)}\n${hint}${lines.length ? lines.map((line) => `- ${line}`).join("\n") : t(`workReportAnalysis.form.empty.${key}`)}`,
+    );
   }
   const url = new URL("/ai/insights", origin);
   url.search = new URLSearchParams({

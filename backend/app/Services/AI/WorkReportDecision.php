@@ -28,8 +28,7 @@ final class WorkReportDecision
             return;
         }
         if (array_diff(array_keys($claim), $fields) || array_diff($fields, array_keys($claim))
-            || ! in_array($claim['priority'] ?? null, ['high', 'normal'], true)
-            || ! str_starts_with($claim['text'] ?? '', 'Đề xuất: ')) {
+            || ! in_array($claim['priority'] ?? null, ['high', 'normal'], true)) {
             throw new RuntimeException('AI_INVALID_SCHEMA');
         }
         foreach (self::FIELDS as $field) {
