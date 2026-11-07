@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function setup(
   page: Page,
-  options: { empty?: boolean; delayed?: boolean } = {},
+  options: { empty?: boolean; delayed?: boolean; syncCycle?: boolean } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
   const requests: string[] = [];
@@ -48,6 +48,7 @@ async function setup(
   ];
   let analysis = false;
   let sync = false;
+  let syncReads = 0;
   await page.route("**/api/**", async (route) => {
     const req = route.request(),
       url = new URL(req.url()),
@@ -113,6 +114,8 @@ async function setup(
         requests.push("DELAY_RELEASED");
       }
       const isSecond = path.endsWith("/2");
+      if (options.syncCycle && sync) syncReads++;
+      const cycleDone = syncReads >= 2;
       return route.fulfill({
         json: {
           data: {
@@ -125,18 +128,33 @@ async function setup(
             can_manage: true,
             ai_enabled: true,
             sync: {
-              status: "idle",
+              status:
+                options.syncCycle && sync && !cycleDone ? "queued" : "idle",
               interrupted: false,
               sampled_at: sync
                 ? "2026-11-07T03:00:00Z"
                 : "2026-11-06T03:00:00Z",
               catalogued_at: "2026-11-06T03:00:00Z",
-              catalogue_complete: false,
+              catalogue_complete: !!(options.syncCycle && sync),
               catalogue_from: "2026-08-10",
               catalogue_to: "2026-11-07",
               error_code: null,
               pending_samples: 1,
               catalogue_posts: 2,
+              progress:
+                options.syncCycle && sync
+                  ? {
+                      phase: cycleDone ? "completed" : "samples",
+                      catalogue_posts: 12,
+                      ready_posts: cycleDone ? 12 : 10,
+                      pending_posts: cycleDone ? 0 : 2,
+                      batches_completed: cycleDone ? 2 : 1,
+                      from_date: "2026-08-10",
+                      to_date: "2026-11-07",
+                      started_at: "2026-11-07T03:00:00Z",
+                      finished_at: cycleDone ? "2026-11-07T03:00:20Z" : null,
+                    }
+                  : null,
             },
             summary: {
               published: 2,
@@ -200,7 +218,7 @@ test("Facebook analytics uses real API state, shared calendar, filters, post evi
 }) => {
   const requests = await setup(page);
   await expect(
-    page.getByText("Danh mục đang được tải từng phần.", { exact: false }),
+    page.getByText("Danh mục thu thập 90 ngày chưa tải hết.", { exact: false }),
   ).toBeVisible();
   await expect(page.locator('input[type="date"]')).toHaveCount(0);
   await page.getByRole("button", { name: "28 ngày", exact: true }).click();
@@ -388,4 +406,48 @@ test("analytics stays within the app shell on desktop, tablet and phone across a
   await expect(
     page.getByRole("link", { name: "Phân tích MXH", exact: true }),
   ).toBeVisible();
+});
+
+test("one sync request follows progress until completion and distinguishes the selected week from the 90-day catalogue", async ({
+  page,
+}) => {
+  const requests = await setup(page, { syncCycle: true });
+  await expect(
+    page.getByText("Kỳ đang chọn: 2 bài đăng đã tải", { exact: false }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Đồng bộ Page", exact: true }).click();
+  await expect(
+    page.getByText("Đã có mẫu 10/12 bài đã tải; còn 2 bài chờ lấy mẫu.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Phạm vi thu thập: 10/08/2026–07/11/2026 (90 ngày)", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Đang đồng bộ…", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByText("Đã hoàn tất đợt thu thập 90 ngày", { exact: true }),
+  ).toBeVisible({ timeout: 15000 });
+  await page
+    .locator("summary")
+    .filter({ hasText: "Đã hoàn tất đợt thu thập 90 ngày" })
+    .click();
+  await expect(
+    page.getByRole("progressbar", {
+      name: "Tiến độ lấy mẫu danh mục Facebook",
+    }),
+  ).toHaveAttribute("aria-valuenow", "12");
+  await expect(
+    page.getByRole("button", { name: "Đồng bộ Page", exact: true }),
+  ).toBeEnabled();
+  await expect(
+    page.getByText("Đã xếp hàng đồng bộ.", { exact: false }),
+  ).toHaveCount(0);
+  expect(
+    requests.filter((r) => r.startsWith("POST ") && r.endsWith("/sync")),
+  ).toHaveLength(1);
 });

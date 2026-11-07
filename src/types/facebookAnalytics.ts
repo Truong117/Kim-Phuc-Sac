@@ -67,6 +67,17 @@ export interface FacebookAnalyticsData {
     error_code: string | null;
     pending_samples: number;
     catalogue_posts: number;
+    progress: {
+      phase: "catalogue" | "samples" | "completed" | "failed";
+      catalogue_posts: number;
+      ready_posts: number;
+      pending_posts: number;
+      batches_completed: number;
+      from_date: string;
+      to_date: string;
+      started_at: string;
+      finished_at: string | null;
+    } | null;
   };
   summary: {
     published: number;

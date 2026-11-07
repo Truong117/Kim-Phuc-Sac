@@ -6,6 +6,7 @@ return [
     'lookback_days' => 90,
     'pages_per_job' => 2,
     'samples_per_job' => 10,
+    'max_batches' => 600,
     'max_posts' => 5000,
     'max_ai_posts' => 30,
 ];

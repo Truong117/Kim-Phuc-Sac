@@ -1,6 +1,5 @@
 <?php
 
-use App\Jobs\SyncFacebookAnalytics;
 use App\Jobs\SyncSocialMetrics;
 use App\Models\MailMessage;
 use App\Models\SocialConnection;
@@ -9,6 +8,7 @@ use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\Mail\MailConfiguration;
 use App\Services\Mail\MailOutbox;
+use App\Services\Social\Analytics\FacebookAnalyticsSync;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -83,7 +83,7 @@ Artisan::command('social-metrics:dispatch', function (): void {
         foreach ($connections as $connection) {
             SyncSocialMetrics::dispatch((int) $connection->integration_entry_id);
             if (config('facebook_analytics.enabled') && $connection->connected_by !== null) {
-                SyncFacebookAnalytics::dispatch((int) $connection->integration_entry_id, (int) $connection->connected_by);
+                app(FacebookAnalyticsSync::class)->enqueue((int) $connection->integration_entry_id, (int) $connection->connected_by);
             }
         }
     });

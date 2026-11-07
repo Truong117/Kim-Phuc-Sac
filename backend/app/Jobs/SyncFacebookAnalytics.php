@@ -14,7 +14,9 @@ class SyncFacebookAnalytics implements ShouldQueue
 
     public int $timeout = 270;
 
-    public function __construct(public readonly int $entryId, public readonly int $requestedBy)
+    public bool $failOnTimeout = true;
+
+    public function __construct(public readonly int $entryId, public readonly int $requestedBy, public readonly ?string $runId = null, public readonly int $batchNumber = 1)
     {
         $this->onConnection('social_metrics');
         $this->onQueue('social-metrics');
@@ -22,6 +24,11 @@ class SyncFacebookAnalytics implements ShouldQueue
 
     public function handle(FacebookAnalyticsSync $sync): void
     {
-        $sync->run($this->entryId, $this->requestedBy);
+        $sync->run($this->entryId, $this->requestedBy, $this->runId ?? null, $this->batchNumber ?? 1);
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        app(FacebookAnalyticsSync::class)->fail($this->entryId, $this->runId ?? null, $this->batchNumber ?? 1);
     }
 }

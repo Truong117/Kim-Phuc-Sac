@@ -18,6 +18,7 @@ use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
@@ -140,6 +141,7 @@ class FacebookAnalyticsTest extends TestCase
 
     public function test_sync_ingests_page_posts_without_reports_and_resumes_provider_cursor_and_deduplicates_hours(): void
     {
+        Queue::fake();
         $seen = [];
         Http::fake(function ($request) use (&$seen) {
             $path = parse_url($request->url(), PHP_URL_PATH);
@@ -159,7 +161,8 @@ class FacebookAnalyticsTest extends TestCase
         $this->assertDatabaseCount('facebook_analytics_samples', 1);
         $raw = DB::table('facebook_analytics_states')->value('cursor');
         $this->assertStringNotContainsString('cursor-2', $raw);
-        app(FacebookAnalyticsSync::class)->run($this->entry->id, $this->owner->id);
+        $job = Queue::pushed(SyncFacebookAnalytics::class)->last();
+        $job->handle(app(FacebookAnalyticsSync::class));
         $this->assertSame('cursor-2', $seen[2]);
         $this->assertDatabaseCount('facebook_analytics_samples', 1);
         Http::assertSent(fn ($r) => str_contains($r->url(), 'graph.facebook.com'));
@@ -301,5 +304,158 @@ class FacebookAnalyticsTest extends TestCase
         $this->actingAs($this->owner)->getJson($this->url())->assertOk()->assertJsonPath('data.sync.interrupted', true);
         $this->postJson('/api/social-analytics/facebook/'.$this->entry->id.'/sync')->assertAccepted();
         Queue::assertPushed(SyncFacebookAnalytics::class, 1);
+    }
+
+    private function fakeCatalogue(int $count = 12, bool $limited = false): void
+    {
+        Http::fake(function ($request) use ($count, $limited) {
+            if (str_contains($request->url(), 'published_posts')) {
+                return Http::response(['data' => array_map(fn ($id) => ['id' => '100_'.$id, 'permalink_url' => 'https://facebook.com/kps/posts/'.$id, 'created_time' => '2026-11-05T03:00:00Z'], range(1, $count))]);
+            }
+
+            return $limited ? Http::response(['error' => ['code' => 4]], 429) : Http::response(['summary' => ['total_count' => 5]]);
+        });
+    }
+
+    public function test_one_click_drains_all_samples_across_hours_without_rediscovering_or_repeating_old_batches(): void
+    {
+        Queue::fake();
+        $this->fakeCatalogue();
+        $sync = app(FacebookAnalyticsSync::class);
+        $this->assertTrue($sync->enqueue($this->entry->id, $this->owner->id));
+        $first = Queue::pushed(SyncFacebookAnalytics::class)->last();
+        $first->handle($sync);
+        $this->assertDatabaseCount('facebook_analytics_samples', 10);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'queued', 'catalogue_complete' => true]);
+        $this->assertFalse($sync->enqueue($this->entry->id, $this->owner->id));
+        $first->failed(null); // A delayed failure callback must not cancel the next batch.
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'queued']);
+        $this->travel(65)->minutes();
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        $this->assertDatabaseCount('facebook_analytics_samples', 12);
+        $state = FacebookAnalyticsState::query()->firstOrFail();
+        $this->assertSame('idle', $state->status);
+        $this->assertSame('completed', $state->counts['phase']);
+        $this->assertSame(12, $state->counts['ready_posts']);
+        $this->assertSame(0, $state->counts['pending_posts']);
+        $this->assertSame(2, $state->counts['batches_completed']);
+        $this->assertNotNull($state->counts['finished_at']);
+        Queue::assertPushed(SyncFacebookAnalytics::class, 2);
+        $first->handle($sync);
+        $first->failed(null);
+        Http::assertSentCount(25); // One catalogue call and two metrics per post.
+        $this->actingAs($this->owner)->getJson($this->url())->assertOk()->assertJsonPath('data.sync.progress.phase', 'completed')
+            ->assertJsonPath('data.sync.progress.ready_posts', 12)->assertDontSee($first->runId)->assertDontSee('test-only-private-meta-token');
+    }
+
+    public function test_catalogue_continuations_follow_the_cursor_and_stop_on_the_last_page(): void
+    {
+        Queue::fake();
+        config(['facebook_analytics.pages_per_job' => 1]);
+        $seen = [];
+        Http::fake(function ($request) use (&$seen) {
+            if (str_contains($request->url(), 'published_posts')) {
+                parse_str(parse_url($request->url(), PHP_URL_QUERY), $query);
+                $seen[] = $query['after'] ?? null;
+                $n = count($seen);
+
+                return Http::response(['data' => [['id' => '100_'.$n, 'permalink_url' => 'https://facebook.com/kps/posts/'.$n, 'created_time' => '2026-11-05T03:00:00Z']],
+                    ...($n < 3 ? ['paging' => ['next' => 'https://evil.example/not-followed', 'cursors' => ['after' => 'next-'.$n]]] : [])]);
+            }
+
+            return Http::response(['summary' => ['total_count' => 5]]);
+        });
+        $sync = app(FacebookAnalyticsSync::class);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        for ($i = 0; $i < 3; $i++) {
+            Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        }
+        $this->assertSame([null, 'next-1', 'next-2'], $seen);
+        Queue::assertPushed(SyncFacebookAnalytics::class, 3);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'idle', 'catalogue_complete' => true]);
+        $this->assertDatabaseCount('facebook_analytics_samples', 3);
+    }
+
+    public function test_provider_failure_stops_the_cycle_and_is_visible_in_the_api_and_safe_log(): void
+    {
+        Queue::fake();
+        Log::spy();
+        $this->fakeCatalogue(12, true);
+        $sync = app(FacebookAnalyticsSync::class);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        Queue::assertPushed(SyncFacebookAnalytics::class, 1);
+        $this->assertDatabaseCount('facebook_analytics_posts', 12);
+        $this->assertDatabaseCount('facebook_analytics_samples', 0);
+        $this->actingAs($this->owner)->getJson($this->url())->assertOk()->assertJsonPath('data.sync.status', 'failed')
+            ->assertJsonPath('data.sync.error_code', 'SOCIAL_RATE_LIMITED')->assertJsonPath('data.sync.progress.phase', 'failed');
+        Log::shouldHaveReceived('log')->withArgs(fn ($level, $message, $context) => $level === 'warning' && $message === 'facebook_analytics.sync'
+            && $context['event'] === 'failed' && $context['error_code'] === 'SOCIAL_RATE_LIMITED' && ! str_contains(json_encode($context), 'test-only-private-meta-token'))->once();
+    }
+
+    public function test_stale_cycle_jobs_and_failure_callbacks_cannot_overwrite_an_explicit_replacement(): void
+    {
+        Queue::fake();
+        $sync = app(FacebookAnalyticsSync::class);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        $old = Queue::pushed(SyncFacebookAnalytics::class)->last();
+        $this->travel(7)->minutes();
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        $new = Queue::pushed(SyncFacebookAnalytics::class)->last();
+        $this->assertNotSame($old->runId, $new->runId);
+        $old->handle($sync);
+        $old->failed(null);
+        Http::assertNothingSent();
+        $this->assertSame($new->runId, FacebookAnalyticsState::query()->firstOrFail()->counts['run_id']);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'queued']);
+    }
+
+    public function test_new_token_revision_between_batches_stops_before_any_more_provider_calls(): void
+    {
+        Queue::fake();
+        $this->fakeCatalogue();
+        $sync = app(FacebookAnalyticsSync::class);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        Http::assertSentCount(21);
+        $this->connection->update(['revision' => 2, 'access_token' => 'replacement-private-token']);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        Http::assertSentCount(21);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'failed', 'error_code' => 'FACEBOOK_ANALYTICS_ACCESS_CHANGED']);
+        $this->assertDatabaseCount('facebook_analytics_samples', 10);
+        $this->assertSame('connected', $this->connection->fresh()->status);
+        Queue::assertPushed(SyncFacebookAnalytics::class, 2);
+    }
+
+    public function test_batch_ceiling_stops_and_explicit_retry_keeps_the_samples_already_saved(): void
+    {
+        Queue::fake();
+        config(['facebook_analytics.max_batches' => 1]);
+        $this->fakeCatalogue();
+        $sync = app(FacebookAnalyticsSync::class);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        Queue::assertPushed(SyncFacebookAnalytics::class, 1);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'failed', 'error_code' => 'FACEBOOK_ANALYTICS_SYNC_LIMIT']);
+        $this->assertDatabaseCount('facebook_analytics_samples', 10);
+        config(['facebook_analytics.max_batches' => 600]);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'idle', 'error_code' => null]);
+        $this->assertDatabaseCount('facebook_analytics_samples', 12);
+    }
+
+    public function test_legacy_queued_payload_can_start_but_cannot_take_over_a_new_cycle(): void
+    {
+        Queue::fake();
+        Http::fake(['*' => Http::response(['data' => []])]);
+        FacebookAnalyticsState::query()->create(['social_connection_id' => $this->connection->id, 'status' => 'queued']);
+        $job = new SyncFacebookAnalytics($this->entry->id, $this->owner->id);
+        $job->handle(app(FacebookAnalyticsSync::class));
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'idle', 'catalogue_complete' => true]);
+        $this->assertTrue(app(FacebookAnalyticsSync::class)->enqueue($this->entry->id, $this->owner->id));
+        $job->handle(app(FacebookAnalyticsSync::class));
+        Http::assertSentCount(1);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'queued']);
     }
 }

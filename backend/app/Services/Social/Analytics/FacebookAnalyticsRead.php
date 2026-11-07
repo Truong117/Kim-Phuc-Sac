@@ -70,7 +70,13 @@ class FacebookAnalyticsRead
             'sync' => ['status' => $state?->status ?? 'idle', 'interrupted' => ($state?->status === 'running' && ! $state->leased_until?->isFuture()) || ($state?->status === 'queued' && $state->updated_at->lt(now()->subMinutes(6))),
                 'sampled_at' => $state?->sampled_at?->toIso8601String(), 'catalogued_at' => $state?->catalogued_at?->toIso8601String(),
                 'catalogue_complete' => $state?->catalogue_complete ?? false, 'catalogue_from' => $state?->from_date, 'catalogue_to' => $state?->to_date,
-                'error_code' => $state?->error_code, 'pending_samples' => $pending, 'catalogue_posts' => count($rows)],
+                'error_code' => $state?->error_code, 'pending_samples' => $pending, 'catalogue_posts' => count($rows),
+                'progress' => isset($state?->counts['run_id']) ? [
+                    'phase' => $state->counts['phase'], 'catalogue_posts' => (int) $state->counts['catalogue_posts'],
+                    'ready_posts' => (int) $state->counts['ready_posts'], 'pending_posts' => (int) $state->counts['pending_posts'],
+                    'batches_completed' => (int) $state->counts['batches_completed'], 'from_date' => $state->counts['from_date'], 'to_date' => $state->counts['to_date'],
+                    'started_at' => $state->counts['started_at'], 'finished_at' => $state->counts['finished_at'],
+                ] : null],
             'summary' => ['published' => count($published), 'previous_published' => $covers ? count($previousPublished) : null,
                 'observed_posts' => count(array_filter($rows, fn ($r) => $r['sample_count'] > 0)), 'growth' => $totals],
             'posts' => array_map(function ($row) {

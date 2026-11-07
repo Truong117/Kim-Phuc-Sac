@@ -20,7 +20,11 @@ import {
   syncFacebookAnalytics,
 } from "@/services/facebookAnalyticsService";
 import type { FacebookTopic } from "@/types/facebookAnalytics";
-import { addDaysToDateOnly, dateOnlyInTimeZone } from "@/utils/dateOnly";
+import {
+  addDaysToDateOnly,
+  dateOnlyInTimeZone,
+  formatDateOnly,
+} from "@/utils/dateOnly";
 import { observationDate } from "@/utils/facebookAnalytics";
 
 export default function FacebookAnalytics() {
@@ -47,6 +51,7 @@ function Workspace() {
     key: string;
     text: string;
     error?: boolean;
+    kind?: "sync" | "ai" | "topic";
   } | null>(null);
   const action = useRef<AbortController | null>(null);
   const api = useFacebookAnalytics(pageId, period.from, period.to);
@@ -89,6 +94,7 @@ function Workspace() {
       if (!controller.signal.aborted && api.current.current === key) {
         setMessage({
           key,
+          kind,
           text: t(
             kind === "sync"
               ? "syncQueued"
@@ -307,7 +313,12 @@ function Workspace() {
                 role={message.error ? "alert" : "status"}
                 className={`rounded-lg p-3 text-sm ${message.error ? "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200"}`}
               >
-                {message.text}
+                {message.kind === "sync" && data?.sync.error_code
+                  ? t("syncFailed")
+                  : message.kind === "sync" &&
+                      data?.sync.progress?.phase === "completed"
+                    ? t("syncComplete")
+                    : message.text}
               </p>
             )}
             {api.error ? (
@@ -352,9 +363,8 @@ function Workspace() {
                   <div className="space-y-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                     <p>
                       {t("coverage", {
-                        catalogue: data.sync.catalogue_posts,
+                        published: data.summary.published,
                         observed: data.summary.observed_posts,
-                        pending: data.sync.pending_samples,
                       })}
                     </p>
                     {!data.sync.catalogue_complete && (
@@ -373,6 +383,60 @@ function Workspace() {
                       </p>
                     )}
                     <p>{t("dataPolicy")}</p>
+                    {data.sync.progress && (
+                      <details
+                        open={!!waiting}
+                        className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800"
+                      >
+                        <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-200">
+                          <span>
+                            {t(`syncPhases.${data.sync.progress.phase}`)}
+                          </span>
+                          <span className="ms-2 text-kps-primary dark:text-brand-300">
+                            {data.sync.progress.ready_posts}/
+                            {data.sync.progress.catalogue_posts}
+                          </span>
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          <p>
+                            {t("syncScope", {
+                              from: formatDateOnly(
+                                data.sync.progress.from_date,
+                              ),
+                              to: formatDateOnly(data.sync.progress.to_date),
+                            })}
+                          </p>
+                          <p role="status">
+                            {t("syncProgress", {
+                              ready: data.sync.progress.ready_posts,
+                              total: data.sync.progress.catalogue_posts,
+                              pending: data.sync.progress.pending_posts,
+                              batches: data.sync.progress.batches_completed,
+                            })}
+                          </p>
+                          {data.sync.catalogue_complete &&
+                            data.sync.progress.catalogue_posts > 0 && (
+                              <div
+                                role="progressbar"
+                                aria-label={t("syncProgressLabel")}
+                                aria-valuemin={0}
+                                aria-valuemax={
+                                  data.sync.progress.catalogue_posts
+                                }
+                                aria-valuenow={data.sync.progress.ready_posts}
+                                className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                              >
+                                <div
+                                  className="h-full rounded-full bg-kps-primary"
+                                  style={{
+                                    width: `${Math.min(100, (data.sync.progress.ready_posts / data.sync.progress.catalogue_posts) * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                            )}
+                        </div>
+                      </details>
+                    )}
                   </div>
                 </div>
                 <div
