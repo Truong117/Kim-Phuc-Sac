@@ -12,7 +12,7 @@ class WorkReportAnalysisProvider
         $settings = $run->analysis_config;
         WorkReportAnalysisOutput::assertExecutable($settings);
         if ($settings['driver'] === 'fake') {
-            return ['result' => WorkReportAnalysisOutput::fake($input), 'usage_record_id' => null,
+            return ['result' => WorkReportEvidence::references(WorkReportAnalysisOutput::fake($input), $input), 'usage_record_id' => null,
                 'input_tokens' => null, 'output_tokens' => null, 'cost_microusd' => null];
         }
         if ($settings['driver'] !== 'openai') {
@@ -28,7 +28,7 @@ class WorkReportAnalysisProvider
             feature: 'work_report_analysis', idempotencyKey: 'work-analysis:'.$run->id.':'.$unit->unit_key
                 .(($unit->input['_consolidate'] ?? false) ? ':'.substr(WorkReportSnapshot::hash($input), 0, 32) : ''),
             instructions: WorkReportAnalysisOutput::instructions(), input: $input,
-            schemaName: 'kps_work_report_analysis_v3', schema: WorkReportAnalysisOutput::schema(),
+            schemaName: 'kps_work_report_analysis_v3_2', schema: WorkReportAnalysisOutput::schema(),
             maxOutputTokens: $tokens,
         ));
 
