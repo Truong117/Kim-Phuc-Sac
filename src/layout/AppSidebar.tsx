@@ -105,6 +105,12 @@ const navGroups: NavGroup[] = [
     labelKey: "aiCenter",
     items: [
       {
+        navigationKey: "social.analytics",
+        nameKey: "socialAnalytics",
+        icon: <GridIcon fontSize={24} />,
+        path: "/social-analytics/facebook",
+      },
+      {
         navigationKey: "ai.dashboard",
         nameKey: "aiDashboard",
         icon: <GridIcon fontSize={24} />,

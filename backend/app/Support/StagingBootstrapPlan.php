@@ -43,6 +43,7 @@ final class StagingBootstrapPlan
         '2026_11_05_010000_create_social_tracking_tables',
         '2026_11_06_000000_add_facebook_selections_to_report_items',
         '2026_11_06_010000_create_mail_foundation_tables',
+        '2026_11_07_000000_create_facebook_analytics_tables',
     ];
 
     /** @var list<string> */

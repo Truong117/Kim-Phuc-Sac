@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
 use App\Services\AI\WorkReportAnalysisOutput;
+use App\Services\AI\WorkReportEvidence;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +49,7 @@ class WorkReportAnalysisGatewayTest extends TestCase
 
             return Http::response([
                 'status' => 'completed', 'usage' => ['input_tokens' => 100, 'output_tokens' => 100],
-                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode(WorkReportAnalysisOutput::fake($input), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]]]],
+                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => json_encode(WorkReportEvidence::references(WorkReportAnalysisOutput::fake($input), $input), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)]]]],
             ]);
         }]);
         $response = $this->actingAs($owner, 'web')->postJson('/api/ai/work-report-analyses', ['end_date' => $date, 'days' => 1])

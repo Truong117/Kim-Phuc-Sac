@@ -1,3 +1,5 @@
+import { Link } from "react-router";
+import { useAuthorization } from "@/hooks/useAuthorization";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { apiRequest, ApiServiceError } from "@/services/apiClient";
@@ -77,6 +79,7 @@ export default function SocialMetricsPanel({
 }) {
   const { t } = useTranslation();
   const [data, setData] = useState<SocialData | null>(null);
+  const { canNavigate } = useAuthorization();
   const [days, setDays] = useState("7");
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -159,6 +162,14 @@ export default function SocialMetricsPanel({
       : `${delta && value > 0 ? "+" : ""}${value.toLocaleString("vi-VN")}`;
   return (
     <section className="space-y-4 border-t border-gray-200 pt-5 dark:border-gray-700">
+      {canNavigate("social.analytics") && (
+        <Link
+          to={`/social-analytics/facebook?page=${entryId}`}
+          className="inline-block text-sm text-kps-primary underline dark:text-brand-300"
+        >
+          {t("facebookAnalytics.openDashboard")}
+        </Link>
+      )}
       <h3 className="font-semibold text-gray-800 dark:text-gray-100">
         {t("integrationsUi.social.title")}
       </h3>
@@ -378,7 +389,7 @@ export default function SocialMetricsPanel({
                       (key) => (
                         <td
                           key={key}
-                          className="whitespace-nowrap p-2 text-gray-700 dark:text-gray-200"
+                          className="p-2 whitespace-nowrap text-gray-700 dark:text-gray-200"
                         >
                           <p>{count(post.current[key])}</p>
                           <p className="mt-1 text-gray-500 dark:text-gray-400">

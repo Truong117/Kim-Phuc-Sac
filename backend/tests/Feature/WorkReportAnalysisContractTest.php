@@ -79,6 +79,7 @@ class WorkReportAnalysisContractTest extends TestCase
     public static function contractChanges(): array
     {
         return [
+            'previous production field-copy contract' => [['prompt_version' => 'work-report-v3.1', 'schema_version' => 'work-report-v3.0']],
             'previous prompt version' => [['prompt_version' => 'work-report-v2.1']],
             'different instructions without a version bump' => [['instructions_hash' => hash('sha256', 'Earlier instructions')]],
             'previous schema version' => [['schema_version' => 'work-report-v2.0']],
