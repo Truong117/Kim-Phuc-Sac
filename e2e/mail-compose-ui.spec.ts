@@ -1,3 +1,4 @@
+import mailLayout from "../tests/fixtures/mail-layout";
 import { expect, test, type Page } from "@playwright/test";
 import {
   dailyMailFixture,
@@ -11,6 +12,7 @@ async function setup(
     queueUncertain?: boolean;
     processUncertain?: boolean;
     invalid?: boolean;
+    previewFailure?: boolean;
     aiDenied?: boolean;
     staleAi?: boolean;
     emptyAi?: boolean;
@@ -25,6 +27,7 @@ async function setup(
     recipients: { recipient_user_id: number; request_key: string }[];
     subject: string;
     body: string;
+    layout: string;
   }[] = [];
   const processed: string[] = [];
   const aiReads: string[] = [];
@@ -200,10 +203,32 @@ async function setup(
           ],
         },
       });
+    if (path === "/api/integrations/mail/messages/preview") {
+      const input = request.postDataJSON();
+      expect(input.layout).toBe("readable_v1");
+      if (options.previewFailure)
+        return route.fulfill({ status: 503, json: { code: "UNAVAILABLE" } });
+      const escaped = String(input.body)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+      return route.fulfill({
+        json: {
+          data: {
+            layout: "readable_v1",
+            html:
+              input.body === mailLayout.text
+                ? mailLayout.html
+                : `<html><body><p>${escaped}</p></body></html>`,
+          },
+        },
+      });
+    }
     if (path === "/api/integrations/mail/messages") {
       const input = request.postDataJSON();
       expect(Object.keys(input).sort()).toEqual([
         "body",
+        "layout",
         "recipients",
         "subject",
       ]);
@@ -942,3 +967,66 @@ for (const dark of [false, true]) {
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 }
+
+for (const width of [320, 1280]) {
+  test(`mail layout preview at ${width}px uses actual server HTML with readable headings, lists and safe width`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const api = await setup(page);
+    await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
+    await page
+      .getByLabel("Tiêu đề", { exact: true })
+      .fill("[KPS] Báo cáo tổng hợp tuần");
+    await page.getByLabel("Nội dung", { exact: true }).fill(mailLayout.text);
+    await page
+      .getByRole("button", { name: "Xem trước mail", exact: true })
+      .click();
+    const frame = page.frameLocator('iframe[title="Bố cục thư thực nhận"]');
+    await expect(frame.getByRole("heading", { level: 1 })).toContainText(
+      "BÁO CÁO TỔNG HỢP TUẦN",
+    );
+    await expect(frame.getByRole("heading", { level: 2 })).toHaveCount(4);
+    await expect(frame.locator("strong").first()).toHaveText("Tuyển dụng");
+    await expect(frame.locator("li")).toHaveCount(5);
+    expect(
+      await frame
+        .locator("body")
+        .evaluate((body) => body.scrollWidth <= innerWidth),
+    ).toBe(true);
+    await expect(
+      page.locator('iframe[title="Bố cục thư thực nhận"]'),
+    ).toHaveAttribute("sandbox", "");
+    expect(api.submissions).toHaveLength(0);
+    await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+    await expect(
+      page.getByText(
+        "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    expect(api.submissions[0].body).toBe(mailLayout.text);
+    expect(api.submissions[0].layout).toBe("readable_v1");
+  });
+}
+
+test("a failed layout preview keeps the editor available and cannot queue or send a message", async ({
+  page,
+}) => {
+  const api = await setup(page, { previewFailure: true });
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
+  await page.getByLabel("Tiêu đề", { exact: true }).fill("Thông báo");
+  await page.getByLabel("Nội dung", { exact: true }).fill("Nội dung gửi thử");
+  await page
+    .getByRole("button", { name: "Xem trước mail", exact: true })
+    .click();
+  await expect(
+    page.getByText("Không tải được bản xem trước. Hãy thử lại trước khi gửi.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
+  expect(api.submissions).toHaveLength(0);
+  expect(api.processed).toHaveLength(0);
+});

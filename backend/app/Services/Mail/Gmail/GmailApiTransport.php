@@ -29,6 +29,9 @@ class GmailApiTransport implements MailTransport
     {
         $token = $this->tokens->accessToken($connection);
         $mime = (new Email)->from(new Address($mail->fromEmail, $mail->fromName))->to($mail->toEmail)->subject($mail->subject)->text($mail->text);
+        if ($mail->html !== null) {
+            $mime->html($mail->html);
+        }
         $mime->getHeaders()->addIdHeader('Message-ID', $mail->id.'@kps.internal');
         try {
             // Never attach an automatic HTTP retry to a send: Gmail has no
