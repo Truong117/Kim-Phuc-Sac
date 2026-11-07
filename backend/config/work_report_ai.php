@@ -15,7 +15,7 @@ return [
     'work_inventory_version' => 'source-inventory-v1',
     'summary_input_bytes' => (int) env('WORK_REPORT_AI_SUMMARY_INPUT_BYTES', 50000),
     'summary_parts_per_batch' => (int) env('WORK_REPORT_AI_SUMMARY_PARTS_PER_BATCH', 2),
-    'employee_output_tokens' => (int) env('WORK_REPORT_AI_EMPLOYEE_OUTPUT_TOKENS', 6000),
+    'employee_output_tokens' => (int) env('WORK_REPORT_AI_EMPLOYEE_OUTPUT_TOKENS', 16000),
     'summary_output_tokens' => (int) env('WORK_REPORT_AI_SUMMARY_OUTPUT_TOKENS', 16000),
     'max_units' => (int) env('WORK_REPORT_AI_MAX_UNITS', 200),
     'unit_attempts' => (int) env('WORK_REPORT_AI_UNIT_ATTEMPTS', 2),

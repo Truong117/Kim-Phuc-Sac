@@ -208,8 +208,10 @@ class OpenAiGateway
                 throw new AiGatewayException('AI_REFUSED', 'OpenAI refused the request.');
             }
             if ($response->json('status') !== 'completed') {
-                $this->fail($record, 'AI_INCOMPLETE', $durationMs, $reservationVersion, $providerAttempts, $inputTokens, $outputTokens, true);
-                throw new AiGatewayException('AI_INCOMPLETE', 'OpenAI response was incomplete.', true);
+                $code = $request->feature === 'work_report_analysis' && $response->json('incomplete_details.reason') === 'max_output_tokens'
+                    ? 'AI_OUTPUT_TRUNCATED' : 'AI_INCOMPLETE';
+                $this->fail($record, $code, $durationMs, $reservationVersion, $providerAttempts, $inputTokens, $outputTokens, true);
+                throw new AiGatewayException($code, 'OpenAI response was incomplete.', $code === 'AI_INCOMPLETE');
             }
 
             $outputText = $this->outputText($response);

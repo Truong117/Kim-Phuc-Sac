@@ -45,7 +45,7 @@ class WorkReportAnalysisGatewayTest extends TestCase
             $this->assertTrue($request['text']['format']['strict']);
             $this->assertStringContainsString('Không chấm điểm', $request['instructions']);
             $this->assertArrayNotHasKey('email', $input);
-            $this->assertSame(isset($input['parts']) ? 16000 : 6000, $request['max_output_tokens']);
+            $this->assertSame(16000, $request['max_output_tokens']);
 
             return Http::response([
                 'status' => 'completed', 'usage' => ['input_tokens' => 100, 'output_tokens' => 100],

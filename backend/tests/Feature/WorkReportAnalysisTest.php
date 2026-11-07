@@ -138,12 +138,12 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertStringContainsString('Đã bổ sung báo cáo bù', json_encode($second->result, JSON_UNESCAPED_UNICODE));
     }
 
-    public function test_config_change_never_reuses_employee_results(): void
+    public function test_model_change_never_reuses_employee_results(): void
     {
         $owner = $this->member('OWNER');
         $this->report($this->member('OFFICE_STAFF'));
         $this->createRun($owner);
-        config(['work_report_ai.employee_output_tokens' => 7000]);
+        config(['work_report_ai.gateway.model' => 'different-model']);
         Queue::fake();
         $run = WorkReportAnalysis::findOrFail($this->createRun($owner));
         $unit = $run->units()->where('unit_key', 'like', 'employee:%')->firstOrFail();
@@ -267,6 +267,69 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertSame($before, $successful->first()->refresh()->result);
         $this->assertSame(1, $successful->first()->attempts);
         $this->assertSame([1, 2], WorkReportAnalysisUnit::query()->where('unit_key', 'like', 'employee:%')->orderBy('attempts')->pluck('attempts')->all());
+    }
+
+    public function test_output_truncation_is_explained_with_the_saved_cap_and_does_not_repeat_the_same_request(): void
+    {
+        config(['work_report_ai.employee_output_tokens' => 6000]);
+        $owner = $this->member('OWNER');
+        $this->report($this->member('OFFICE_STAFF'));
+        $this->app->bind(WorkReportAnalysisProvider::class, fn () => new class extends WorkReportAnalysisProvider
+        {
+            public function analyze(WorkReportAnalysis $run, WorkReportAnalysisUnit $unit, array $input): array
+            {
+                throw new AiGatewayException('AI_OUTPUT_TRUNCATED', 'Do not save partial output.');
+            }
+        });
+        $id = $this->createRun($owner);
+        $this->getJson('/api/ai/work-report-analyses/'.$id)->assertOk()
+            ->assertJsonPath('data.errors.0.code', 'AI_OUTPUT_TRUNCATED')
+            ->assertJsonPath('data.errors.0.max_output_tokens', 6000)->assertJsonPath('data.can_retry', false);
+        $before = WorkReportAnalysis::findOrFail($id)->units()->get()->toJson();
+        $this->postJson('/api/ai/work-report-analyses/'.$id.'/retry')->assertAccepted();
+        $this->assertSame($before, WorkReportAnalysis::findOrFail($id)->units()->get()->toJson());
+    }
+
+    public function test_higher_output_cap_uses_a_new_run_reuses_only_verified_success_and_keeps_old_limits(): void
+    {
+        config(['work_report_ai.employee_output_tokens' => 6000]);
+        $owner = $this->member('OWNER');
+        $this->report($this->member('OFFICE_STAFF'));
+        $this->report($this->member('OFFICE_STAFF'));
+        $this->app->bind(WorkReportAnalysisProvider::class, fn () => new class extends WorkReportAnalysisProvider
+        {
+            public function analyze(WorkReportAnalysis $run, WorkReportAnalysisUnit $unit, array $input): array
+            {
+                if (str_starts_with($unit->unit_key, 'employee:') && $unit->id % 2 === 1) {
+                    // Represents the production error saved before distinct truncation codes existed.
+                    throw new AiGatewayException('AI_INCOMPLETE', 'Incomplete output.');
+                }
+
+                return parent::analyze($run, $unit, $input);
+            }
+        });
+        $old = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $this->assertSame('partial', $old->status);
+        $successful = $old->units()->where('unit_key', 'like', 'employee:%')->where('status', 'completed')->firstOrFail();
+        $before = $old->units()->get()->toJson();
+        config(['work_report_ai.employee_output_tokens' => 9000]);
+        $this->getJson('/api/ai/work-report-analyses/'.$old->id)->assertOk()->assertJsonPath('data.can_retry', false)
+            ->assertJsonPath('data.errors.0.max_output_tokens', 6000)->assertJsonPath('data.config_changed', true);
+        $this->postJson('/api/ai/work-report-analyses/'.$old->id.'/retry')->assertAccepted();
+        $this->assertSame($before, $old->units()->get()->toJson());
+        $this->app->instance(WorkReportAnalysisProvider::class, new WorkReportAnalysisProvider);
+        $new = WorkReportAnalysis::findOrFail($this->createRun($owner));
+        $this->assertNotSame($old->id, $new->id);
+        $this->assertSame('completed', $new->status);
+        $this->assertSame(9000, $new->analysis_config['employee_output_tokens']);
+        $this->assertSame(6000, $old->refresh()->analysis_config['employee_output_tokens']);
+        $reused = $new->units()->where('unit_key', $successful->unit_key)->firstOrFail();
+        $this->assertSame($successful->id, $reused->input['_reused_from_unit_id']);
+        $this->assertSame($successful->result, $reused->result);
+        $this->assertSame(0, $reused->attempts);
+        $this->assertSame(0, $reused->cost_microusd);
+        $this->assertSame($before, $old->units()->get()->toJson());
+        Http::assertNothingSent();
     }
 
     public function test_timeout_is_not_automatically_retried_and_explicit_retry_skips_completed_parts(): void

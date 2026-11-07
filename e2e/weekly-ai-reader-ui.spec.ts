@@ -94,6 +94,7 @@ function employee(id: number, name: string): AnalysisEmployee {
 function sampleRun(
   options: {
     partial?: boolean;
+    truncated?: boolean;
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
@@ -101,7 +102,7 @@ function sampleRun(
   } = {},
 ): WorkReportAnalysis {
   const employees = [employee(7, "Nhân viên A"), employee(8, "Nhân viên B")];
-  if (options.partial)
+  if (options.partial || options.truncated)
     employees[1] = {
       ...employees[1],
       status: "failed",
@@ -170,10 +171,12 @@ function sampleRun(
         item_ids: [711, 712],
       },
     ],
-    errors: options.partial
+    errors: options.truncated
+      ? [{ unit_key: "employee:8:1", code: "AI_OUTPUT_TRUNCATED", max_output_tokens: 6000 }]
+      : options.partial
       ? [{ unit_key: "employee:8:1", code: "AI_INVALID_EVIDENCE" }]
       : [],
-    can_retry: Boolean(options.partial),
+    can_retry: Boolean(options.partial) && !options.truncated,
     can_regenerate: false,
     created_at: "2026-11-02T00:00:00Z",
     requested_by_name: "Người kiểm tra",
@@ -185,6 +188,7 @@ async function setup(
   page: Page,
   options: {
     partial?: boolean;
+    truncated?: boolean;
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
@@ -463,3 +467,14 @@ for (const days of [1, 7] as const) {
     expect(posts).toEqual([]);
   });
 }
+
+
+test("output truncation shows the saved limit without a misleading permission error or paid retry", async ({ page }) => {
+  const posts = await setup(page, { partial: true, truncated: true });
+  await expect(page.getByText(/AI đã chạm giới hạn đầu ra 6000 token/)).toBeVisible();
+  await expect(page.getByText(/Kiểm tra quyền, cấu hình và nhật ký trạng thái/)).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Thử lại phần lỗi (có thể phát sinh phí)", exact: true })).not.toBeVisible();
+  await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
+  await expect(employeePanel(page, "Nhân viên A").getByRole("heading", { name: "Tổng hợp từ báo cáo", exact: true })).toBeVisible();
+  expect(posts).toEqual([]);
+});
