@@ -3,13 +3,11 @@
 namespace App\Http\Controllers\Integrations;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\SyncFacebookAnalytics;
-use App\Models\FacebookAnalyticsState;
-use App\Models\IntegrationEntry;
 use App\Models\SocialConnection;
 use App\Services\Social\Analytics\FacebookAnalyticsAccess;
 use App\Services\Social\Analytics\FacebookAnalyticsAi;
 use App\Services\Social\Analytics\FacebookAnalyticsRead;
+use App\Services\Social\Analytics\FacebookAnalyticsSync;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -61,20 +59,7 @@ class FacebookAnalyticsController extends Controller
         $entry = $this->access->entry($request->user(), $id);
         $connection = $this->access->connection($entry);
         abort_unless($connection->status === 'connected' && $this->access->principalAvailable($connection), 422, 'Cần kết nối Page hợp lệ trước khi đồng bộ.');
-        $queue = DB::transaction(function () use ($connection): bool {
-            IntegrationEntry::query()->whereKey($connection->integration_entry_id)->lockForUpdate()->firstOrFail();
-            $state = FacebookAnalyticsState::query()->firstOrCreate(['social_connection_id' => $connection->id]);
-            $state = FacebookAnalyticsState::query()->whereKey($state->id)->lockForUpdate()->firstOrFail();
-            if ($state->leased_until?->isFuture() || ($state->status === 'queued' && $state->updated_at->gt(now()->subMinutes(6)))) {
-                return false;
-            }
-            $state->update(['status' => 'queued', 'error_code' => null]);
-
-            return true;
-        });
-        if ($queue) {
-            SyncFacebookAnalytics::dispatch($id, $request->user()->id);
-        }
+        app(FacebookAnalyticsSync::class)->enqueue($id, $request->user()->id);
 
         return response()->json(['message' => 'Đã xếp hàng đồng bộ danh mục và số liệu Page.'], 202);
     }

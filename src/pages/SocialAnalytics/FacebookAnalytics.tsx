@@ -20,7 +20,11 @@ import {
   syncFacebookAnalytics,
 } from "@/services/facebookAnalyticsService";
 import type { FacebookTopic } from "@/types/facebookAnalytics";
-import { addDaysToDateOnly, dateOnlyInTimeZone } from "@/utils/dateOnly";
+import {
+  addDaysToDateOnly,
+  dateOnlyInTimeZone,
+  formatDateOnly,
+} from "@/utils/dateOnly";
 import { observationDate } from "@/utils/facebookAnalytics";
 
 export default function FacebookAnalytics() {
@@ -47,6 +51,7 @@ function Workspace() {
     key: string;
     text: string;
     error?: boolean;
+    kind?: "sync" | "ai" | "topic";
   } | null>(null);
   const action = useRef<AbortController | null>(null);
   const api = useFacebookAnalytics(pageId, period.from, period.to);
@@ -89,6 +94,7 @@ function Workspace() {
       if (!controller.signal.aborted && api.current.current === key) {
         setMessage({
           key,
+          kind,
           text: t(
             kind === "sync"
               ? "syncQueued"
@@ -115,15 +121,16 @@ function Workspace() {
   return (
     <>
       <PageMeta title={t("metaTitle")} description={t("subtitle")} />
-      <PageBreadCrumb pageTitle={t("title")} />
-      <div className="min-w-0 space-y-5 kps-ai-theme">
+      <div className="min-w-0 space-y-4 kps-ai-theme">
         <div>
           <p className="text-xs font-semibold tracking-widest text-kps-primary">
             {t("eyebrow")}
           </p>
-          <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-            {t("title")}
-          </h1>
+          <PageBreadCrumb
+            pageTitle={t("title")}
+            headingLevel={1}
+            className="mt-2 mb-2"
+          />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             {t("subtitle")}
           </p>
@@ -160,100 +167,121 @@ function Workspace() {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-5 dark:border-gray-800 dark:bg-white/3">
-              <label className="block text-xs text-gray-500 dark:text-gray-400">
-                <span>{t("page")}</span>
-                <select
-                  value={api.selected?.id ?? ""}
-                  onChange={(e) => {
-                    setPageId(Number(e.target.value));
-                    modal.closeModal();
-                  }}
-                  className="mt-2 h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                >
-                  {api.pages.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
+            <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
+              <div className="grid min-w-0 items-end gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <label className="block min-w-0 text-xs text-gray-500 sm:col-span-2 xl:col-span-1 dark:text-gray-400">
+                  <span>{t("page")}</span>
+                  <select
+                    value={api.selected?.id ?? ""}
+                    onChange={(e) => {
+                      setPageId(Number(e.target.value));
+                      modal.closeModal();
+                    }}
+                    className="mt-2 h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    {api.pages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="min-w-0 space-y-2">
+                  <label
+                    htmlFor="facebook-analytics-from"
+                    className="block text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {t("from")}
+                  </label>
+                  <KpsDatePicker
+                    id="facebook-analytics-from"
+                    value={draft.from}
+                    onChange={(from) => setDraft({ ...draft, from })}
+                    ariaLabel={t("from")}
+                    placeholder={t("from")}
+                    dialogLabel={t("from")}
+                    minDate={addDaysToDateOnly(draft.to, -89)}
+                    maxDate={draft.to}
+                  />
+                </div>
+                <div className="min-w-0 space-y-2">
+                  <label
+                    htmlFor="facebook-analytics-to"
+                    className="block text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {t("to")}
+                  </label>
+                  <KpsDatePicker
+                    id="facebook-analytics-to"
+                    value={draft.to}
+                    onChange={(to) => setDraft({ ...draft, to })}
+                    ariaLabel={t("to")}
+                    placeholder={t("to")}
+                    dialogLabel={t("to")}
+                    minDate={draft.from}
+                    maxDate={today}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[7, 28].map((days) => (
+                    <Button
+                      key={days}
+                      size="sm"
+                      className="h-11 whitespace-nowrap"
+                      variant={
+                        period.from === addDaysToDateOnly(today, 1 - days) &&
+                        period.to === today
+                          ? "primary"
+                          : "outline"
+                      }
+                      onClick={() => {
+                        const p = {
+                          from: addDaysToDateOnly(today, 1 - days),
+                          to: today,
+                        };
+                        setDraft(p);
+                        setPeriod(p);
+                      }}
+                    >
+                      {t("days", { count: days })}
+                    </Button>
                   ))}
-                </select>
-              </label>
-              <div className="flex items-end gap-2">
-                {[7, 28].map((days) => (
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
-                    key={days}
                     size="sm"
-                    variant={
-                      period.from === addDaysToDateOnly(today, 1 - days) &&
-                      period.to === today
-                        ? "primary"
-                        : "outline"
-                    }
+                    className="h-11 whitespace-nowrap"
+                    variant="outline"
                     onClick={() => {
-                      const p = {
-                        from: addDaysToDateOnly(today, 1 - days),
-                        to: today,
-                      };
-                      setDraft(p);
-                      setPeriod(p);
+                      if (draft.to > addDaysToDateOnly(draft.from, 89)) {
+                        setMessage({
+                          key: api.key,
+                          text: t("dateLimit"),
+                          error: true,
+                        });
+                        return;
+                      }
+                      setPeriod(draft);
                     }}
                   >
-                    {t("days", { count: days })}
+                    {t("apply")}
                   </Button>
-                ))}
+                  <Button
+                    size="sm"
+                    className="h-11 whitespace-nowrap"
+                    variant="outline"
+                    onClick={api.refresh}
+                    disabled={api.loading}
+                  >
+                    {t("reload")}
+                  </Button>
+                </div>
               </div>
-              <div>
-                <KpsDatePicker
-                  value={draft.from}
-                  onChange={(from) => setDraft({ ...draft, from })}
-                  ariaLabel={t("from")}
-                  placeholder={t("from")}
-                  dialogLabel={t("from")}
-                  minDate={addDaysToDateOnly(draft.to, -89)}
-                  maxDate={draft.to}
-                />
-              </div>
-              <div>
-                <KpsDatePicker
-                  value={draft.to}
-                  onChange={(to) => setDraft({ ...draft, to })}
-                  ariaLabel={t("to")}
-                  placeholder={t("to")}
-                  dialogLabel={t("to")}
-                  minDate={draft.from}
-                  maxDate={today}
-                />
-              </div>
-              <div className="flex items-end gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (draft.to > addDaysToDateOnly(draft.from, 89)) {
-                      setMessage({
-                        key: api.key,
-                        text: t("dateLimit"),
-                        error: true,
-                      });
-                      return;
-                    }
-                    setPeriod(draft);
-                  }}
-                >
-                  {t("apply")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={api.refresh}
-                  disabled={api.loading}
-                >
-                  {t("reload")}
-                </Button>
-              </div>
-            </div>
+            </section>
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
-              <span>
+              <span className="min-w-0 break-words">
                 {t("owner", {
                   name: api.selected?.responsible_name ?? t("notAssigned"),
                 })}
@@ -266,6 +294,7 @@ function Workspace() {
                 </span>
                 <Button
                   size="sm"
+                  className="h-11 shrink-0 whitespace-nowrap"
                   onClick={() => void mutate("sync")}
                   disabled={
                     actionBusy ||
@@ -284,7 +313,12 @@ function Workspace() {
                 role={message.error ? "alert" : "status"}
                 className={`rounded-lg p-3 text-sm ${message.error ? "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200"}`}
               >
-                {message.text}
+                {message.kind === "sync" && data?.sync.error_code
+                  ? t("syncFailed")
+                  : message.kind === "sync" &&
+                      data?.sync.progress?.phase === "completed"
+                    ? t("syncComplete")
+                    : message.text}
               </p>
             )}
             {api.error ? (
@@ -329,9 +363,8 @@ function Workspace() {
                   <div className="space-y-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                     <p>
                       {t("coverage", {
-                        catalogue: data.sync.catalogue_posts,
+                        published: data.summary.published,
                         observed: data.summary.observed_posts,
-                        pending: data.sync.pending_samples,
                       })}
                     </p>
                     {!data.sync.catalogue_complete && (
@@ -350,6 +383,60 @@ function Workspace() {
                       </p>
                     )}
                     <p>{t("dataPolicy")}</p>
+                    {data.sync.progress && (
+                      <details
+                        open={!!waiting}
+                        className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800"
+                      >
+                        <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-200">
+                          <span>
+                            {t(`syncPhases.${data.sync.progress.phase}`)}
+                          </span>
+                          <span className="ms-2 text-kps-primary dark:text-brand-300">
+                            {data.sync.progress.ready_posts}/
+                            {data.sync.progress.catalogue_posts}
+                          </span>
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          <p>
+                            {t("syncScope", {
+                              from: formatDateOnly(
+                                data.sync.progress.from_date,
+                              ),
+                              to: formatDateOnly(data.sync.progress.to_date),
+                            })}
+                          </p>
+                          <p role="status">
+                            {t("syncProgress", {
+                              ready: data.sync.progress.ready_posts,
+                              total: data.sync.progress.catalogue_posts,
+                              pending: data.sync.progress.pending_posts,
+                              batches: data.sync.progress.batches_completed,
+                            })}
+                          </p>
+                          {data.sync.catalogue_complete &&
+                            data.sync.progress.catalogue_posts > 0 && (
+                              <div
+                                role="progressbar"
+                                aria-label={t("syncProgressLabel")}
+                                aria-valuemin={0}
+                                aria-valuemax={
+                                  data.sync.progress.catalogue_posts
+                                }
+                                aria-valuenow={data.sync.progress.ready_posts}
+                                className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
+                              >
+                                <div
+                                  className="h-full rounded-full bg-kps-primary"
+                                  style={{
+                                    width: `${Math.min(100, (data.sync.progress.ready_posts / data.sync.progress.catalogue_posts) * 100)}%`,
+                                  }}
+                                />
+                              </div>
+                            )}
+                        </div>
+                      </details>
+                    )}
                   </div>
                 </div>
                 <div

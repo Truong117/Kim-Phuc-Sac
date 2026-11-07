@@ -82,7 +82,9 @@ export function useFacebookAnalytics(
         const aiBusy =
           ["queued", "running"].includes(result.data.analysis?.status ?? "") &&
           !result.data.analysis?.interrupted;
-        if ((busy || aiBusy) && polls++ < 60)
+        // Sync consists of many bounded jobs. Keep observing the active cycle;
+        // the server marks abandoned jobs interrupted after their lease expires.
+        if (busy || (aiBusy && polls++ < 60))
           timer = setTimeout(() => void fetchData(), 5000);
       } catch {
         if (active) {
