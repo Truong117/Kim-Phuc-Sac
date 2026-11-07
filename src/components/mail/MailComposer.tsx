@@ -332,11 +332,6 @@ export default function MailComposer({
             {t(batch.error)}
           </p>
         )}
-        {batch.notice && (
-          <p role="status" className="text-sm text-gray-700 dark:text-gray-200">
-            {t(batch.notice)}
-          </p>
-        )}
         <div className="flex flex-wrap gap-3">
           <Button
             disabled={
@@ -371,6 +366,14 @@ export default function MailComposer({
       </ComponentCard>
       {batch.results.length > 0 && (
         <div className="space-y-3">
+          {batch.notice && (
+            <p
+              role="status"
+              className="text-sm text-gray-700 dark:text-gray-200"
+            >
+              {t(batch.notice)}
+            </p>
+          )}
           <MailHistory
             entries={batch.results}
             title={t("mailUi.batchResults")}

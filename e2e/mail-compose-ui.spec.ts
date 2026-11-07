@@ -1267,14 +1267,12 @@ test("storage failure blocks queueing before any request and keeps the editable 
     };
   });
   await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "Chưa lưu được bản nháp",
-  );
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Chưa lưu được bản nháp" }),
+  ).toBeVisible();
   expect(api.submissions).toHaveLength(0);
   expect(api.processed).toHaveLength(0);
-  await page
-    .getByRole("button", { name: "Quay lại chỉnh sửa", exact: true })
-    .click();
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(body);
   await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
 });

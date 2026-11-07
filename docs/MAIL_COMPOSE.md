@@ -34,17 +34,46 @@ mã hóa phải vừa cột TEXT hiện có (65.535 byte); nếu vượt thì tr
 không cắt thư. Văn bản nhiều Unicode có thể đạt giới hạn kích thước trước
 10.000 ký tự. Nội dung người gửi vẫn là văn bản thuần. Thư mới gửi multipart/alternative gồm text/plain nguyên bản và text/html do server tạo, không nhận HTML từ client.
 
-Frontend lưu snapshot nội dung/người nhận/UUID trong session storage theo người
-dùng và tổ chức trước khi tạo batch, sau đó khóa nội dung và danh sách. Reload
-hoặc mất mạng tiếp tục cùng lượt. UUID cũ không thể dùng cho nội dung, người
-nhận, người gửi hoặc loại thư khác. Thư accepted/failed/cancelled/unknown không
-tự gửi lại. Thư sending quá 5 phút chuyển unknown khi cập nhật. Chỉ mở lượt mới
-khi toàn bộ lượt hiện tại đã accepted/failed/cancelled.
+## Bản nháp và lượt gửi độc lập
 
-Đóng phiên hoặc xóa dữ liệu trình duyệt có thể mất snapshot; cần đối chiếu
-Gmail/lịch sử trước khi soạn lại. Nội dung chưa bấm xác nhận chưa tự lưu nháp.
-Chưa có rich text, đính kèm hoặc lịch gửi báo cáo tự động. Các mẫu dựng sẵn
-được bổ sung bên dưới.
+Mở Mail sẽ khôi phục bản nháp chưa gửi hoặc mở trình soạn trống. Bản nháp tự
+lưu ngay trong session storage, theo người dùng/tổ chức: người nhận, mẫu,
+ngày/nguồn AI, tiêu đề và nội dung đã biên tập. Khôi phục không tự tải AI hay
+thay nội dung đã chỉnh; dùng nút tải lại nguồn khi cần cập nhật. Bỏ bản nháp
+hoặc thay bằng nội dung thư cũ cần xác nhận nếu đang có nội dung chưa gửi.
+
+Trước khi tạo batch, frontend lưu riêng snapshot bất biến gồm nội dung/người
+nhận/UUID, đồng thời tách khỏi bản nháp. Reload không gọi queue/process.
+Hệ thống chỉ đọc trạng thái lượt cũ ở nền: lượt đã accepted/failed/cancelled
+được bỏ khỏi danh sách cần theo dõi, lịch sử máy chủ vẫn giữ nguyên. Lượt còn
+chờ, đang gửi, chưa rõ hoặc chưa xác nhận đã tạo xuất hiện trong banner
+**Xem lượt gửi**, không khóa bản nháp mới. Lỗi đọc giữ nguyên mọi UUID.
+
+- `POST /api/integrations/mail/messages/status`: nhận 1–50 `request_keys`
+  UUID khác nhau; trả trạng thái và các key chưa tìm thấy trong phạm vi người
+  tạo/tổ chức/loại internal. Giới hạn 60 request/phút, không cache, không tạo
+  thư, không gọi Gmail, không cập nhật database. Sending quá 5 phút được trình
+  bày là unknown/PROCESS_INTERRUPTED; trạng thái lưu chỉ thay đổi qua xử lý
+  outbox hiện có.
+- **Cập nhật trạng thái** chỉ dùng API đọc trên. **Tiếp tục gửi** cần xác nhận
+  riêng, đọc lại trạng thái rồi chỉ tạo thư thiếu với UUID cũ hoặc xử lý thư
+  queued. Không process accepted/failed/cancelled/sending/unknown. Thư chưa rõ
+  cần đối chiếu Gmail, không tự gửi lại.
+- `GET /api/integrations/mail/messages/{uuid}/content`: trả tiêu đề/văn bản
+  của thư internal do chính người dùng tạo trong tổ chức, không cache. Người
+  khác, tổ chức khác và thư test không được đọc. **Dùng lại nội dung** tạo bản
+  nháp mới, xóa người nhận; phải chọn lại người nhận, xem trước và xác nhận.
+  UUID mới chỉ sinh khi xác nhận một lượt gửi mới.
+
+Nếu queue trả 422 nguyên tử, khôi phục bản nháp để sửa và không giữ lượt
+chưa được tạo. Nếu mất phản hồi, giữ snapshot riêng để kiểm tra/tiếp tục đúng
+UUID. Không gửi khi không lưu được UUID trước request đầu tiên. Chuyển dữ liệu
+session cũ sang cấu trúc mới giữ nguyên key; snapshot lỗi không bị ghi đè.
+
+Sau gửi, hiện kết quả từng người cùng **Soạn mail mới** và **Xem lịch sử**;
+trình soạn tự mở lại mà không cần hoàn tất lượt cũ. Đóng phiên hoặc xóa dữ liệu
+trình duyệt có thể mất bản nháp/snapshot; đối chiếu Gmail/lịch sử trước khi
+soạn lại. Chưa có rich text, đính kèm hoặc lịch gửi báo cáo tự động.
 
 ## Mẫu mail dựng sẵn
 
@@ -109,8 +138,8 @@ người dùng có thể chọn nguồn khác hoặc chuyển sang tự soạn. 
 mới nguồn khi cần, không phải bước bắt buộc.
 
 Vẫn xem trước và xác nhận riêng khi gửi. Nội dung quá dài được cảnh báo, không
-tự cắt. Mẫu bị khóa khi đã bắt đầu lượt gửi để giữ nguyên snapshot và mã chống
-gửi trùng. Không cần migration, biến môi trường hoặc quyền OAuth mới.
+tự cắt. Mẫu và nội dung đã xác nhận được giữ trong snapshot lượt gửi riêng;
+không khóa mẫu của bản nháp tiếp theo. Không cần migration, biến môi trường hoặc quyền OAuth mới.
 
 
 ## Bố cục thư thực nhận
