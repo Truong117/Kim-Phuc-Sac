@@ -415,7 +415,7 @@ test("multiple daily reports require only the source choice, which immediately f
     /Trần Thị Bình/,
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-    /Nguyễn Văn An · .* — Thiết kế catalogue/,
+    /Trần Thị Bình · .* — Thiết kế catalogue/,
   );
   expect(api.aiReads).toHaveLength(2);
   expect(api.submissions).toHaveLength(0);
