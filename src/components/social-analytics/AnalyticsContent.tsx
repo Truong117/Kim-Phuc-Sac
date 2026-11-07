@@ -93,7 +93,7 @@ export default function AnalyticsContent({ data, onPost }: Props) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const selectClass =
-    "h-11 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200";
+    "h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200";
   return (
     <div className="space-y-4">
       <div className="grid gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-5 dark:border-gray-800 dark:bg-white/3">
@@ -186,7 +186,7 @@ export default function AnalyticsContent({ data, onPost }: Props) {
                 setSort(e.target.value);
                 setPage(1);
               }}
-              className={selectClass}
+              className={`${selectClass} sm:w-auto`}
             >
               {["date", "growth", "likes"].map((k) => (
                 <option key={k} value={k}>

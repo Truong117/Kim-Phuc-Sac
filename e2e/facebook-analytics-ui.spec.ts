@@ -316,3 +316,76 @@ test("changing pages cannot display a delayed response from the previous page", 
     page.getByRole("button", { name: /Routine tối giản/ }),
   ).toHaveCount(0);
 });
+
+test("analytics layout keeps one title, translated sidebar and aligned date controls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await setup(page);
+  await expect(
+    page.getByRole("heading", { name: "Phân tích Facebook", exact: true }),
+  ).toHaveCount(1);
+  const navLink = page.locator('aside a[href="/social-analytics/facebook"]');
+  await expect(navLink).toHaveText("Phân tích MXH");
+  await expect(navLink).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByText("sidebar.items.socialAnalytics", { exact: true }),
+  ).toHaveCount(0);
+  const from = page.getByRole("button", { name: /^Từ ngày:/ });
+  const to = page.getByRole("button", { name: /^Đến ngày:/ });
+  const selector = page.getByRole("combobox", { name: "Page đang phân tích" });
+  for (const control of [from, to]) await expect(control).toBeVisible();
+  const boxes = await Promise.all(
+    [selector, from, to].map((control) => control.boundingBox()),
+  );
+  expect(boxes.every(Boolean)).toBeTruthy();
+  expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
+  expect(Math.abs(boxes[1]!.y - boxes[2]!.y)).toBeLessThan(2);
+  await expect(page.getByText("Từ ngày", { exact: true })).toBeVisible();
+  await expect(page.getByText("Đến ngày", { exact: true })).toBeVisible();
+  await from.click();
+  await expect(
+    page.getByRole("dialog", { name: "Từ ngày", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  const toggle = page.getByRole("button", {
+    name: "Đóng hoặc mở thanh điều hướng",
+  });
+  await toggle.click();
+  await expect(navLink).toHaveAttribute("title", "Phân tích MXH");
+  await toggle.click();
+  await expect(navLink).toHaveText("Phân tích MXH");
+});
+
+test("analytics stays within the app shell on desktop, tablet and phone across all tabs", async ({
+  page,
+}) => {
+  await setup(page);
+  for (const width of [1440, 1280, 1024, 768, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const name of ["Tổng quan", "Nội dung", "Nhận xét AI"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      await expect
+        .poll(
+          async () =>
+            page.evaluate(() => ({
+              document:
+                document.documentElement.scrollWidth <= window.innerWidth,
+              main:
+                document.querySelector("main")!.getBoundingClientRect().right <=
+                window.innerWidth + 1,
+            })),
+          {
+            message: `${name} at ${width}px must not push the app outside the viewport`,
+          },
+        )
+        .toEqual({ document: true, main: true });
+    }
+  }
+  await page
+    .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Phân tích MXH", exact: true }),
+  ).toBeVisible();
+});

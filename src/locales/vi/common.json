@@ -24,11 +24,11 @@
       "aiDashboard": "Phân tích điều hành",
       "aiInsights": "Phân tích AI",
       "aiAssistant": "Trợ lý AI",
+      "socialAnalytics": "Phân tích MXH",
       "employees": "Nhân viên",
       "integrations": "Tích hợp",
       "settings": "Cài đặt"
-    },
-    "socialAnalytics": "Phân tích MXH"
+    }
   },
   "modules": {
     "newReport": "Báo cáo công việc",

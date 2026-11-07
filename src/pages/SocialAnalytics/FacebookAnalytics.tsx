@@ -115,15 +115,16 @@ function Workspace() {
   return (
     <>
       <PageMeta title={t("metaTitle")} description={t("subtitle")} />
-      <PageBreadCrumb pageTitle={t("title")} />
-      <div className="min-w-0 space-y-5 kps-ai-theme">
+      <div className="min-w-0 space-y-4 kps-ai-theme">
         <div>
           <p className="text-xs font-semibold tracking-widest text-kps-primary">
             {t("eyebrow")}
           </p>
-          <h1 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-            {t("title")}
-          </h1>
+          <PageBreadCrumb
+            pageTitle={t("title")}
+            headingLevel={1}
+            className="mt-2 mb-2"
+          />
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
             {t("subtitle")}
           </p>
@@ -160,100 +161,121 @@ function Workspace() {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2 xl:grid-cols-5 dark:border-gray-800 dark:bg-white/3">
-              <label className="block text-xs text-gray-500 dark:text-gray-400">
-                <span>{t("page")}</span>
-                <select
-                  value={api.selected?.id ?? ""}
-                  onChange={(e) => {
-                    setPageId(Number(e.target.value));
-                    modal.closeModal();
-                  }}
-                  className="mt-2 h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                >
-                  {api.pages.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
+            <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
+              <div className="grid min-w-0 items-end gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <label className="block min-w-0 text-xs text-gray-500 sm:col-span-2 xl:col-span-1 dark:text-gray-400">
+                  <span>{t("page")}</span>
+                  <select
+                    value={api.selected?.id ?? ""}
+                    onChange={(e) => {
+                      setPageId(Number(e.target.value));
+                      modal.closeModal();
+                    }}
+                    className="mt-2 h-11 w-full min-w-0 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                  >
+                    {api.pages.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="min-w-0 space-y-2">
+                  <label
+                    htmlFor="facebook-analytics-from"
+                    className="block text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {t("from")}
+                  </label>
+                  <KpsDatePicker
+                    id="facebook-analytics-from"
+                    value={draft.from}
+                    onChange={(from) => setDraft({ ...draft, from })}
+                    ariaLabel={t("from")}
+                    placeholder={t("from")}
+                    dialogLabel={t("from")}
+                    minDate={addDaysToDateOnly(draft.to, -89)}
+                    maxDate={draft.to}
+                  />
+                </div>
+                <div className="min-w-0 space-y-2">
+                  <label
+                    htmlFor="facebook-analytics-to"
+                    className="block text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {t("to")}
+                  </label>
+                  <KpsDatePicker
+                    id="facebook-analytics-to"
+                    value={draft.to}
+                    onChange={(to) => setDraft({ ...draft, to })}
+                    ariaLabel={t("to")}
+                    placeholder={t("to")}
+                    dialogLabel={t("to")}
+                    minDate={draft.from}
+                    maxDate={today}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  {[7, 28].map((days) => (
+                    <Button
+                      key={days}
+                      size="sm"
+                      className="h-11 whitespace-nowrap"
+                      variant={
+                        period.from === addDaysToDateOnly(today, 1 - days) &&
+                        period.to === today
+                          ? "primary"
+                          : "outline"
+                      }
+                      onClick={() => {
+                        const p = {
+                          from: addDaysToDateOnly(today, 1 - days),
+                          to: today,
+                        };
+                        setDraft(p);
+                        setPeriod(p);
+                      }}
+                    >
+                      {t("days", { count: days })}
+                    </Button>
                   ))}
-                </select>
-              </label>
-              <div className="flex items-end gap-2">
-                {[7, 28].map((days) => (
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
-                    key={days}
                     size="sm"
-                    variant={
-                      period.from === addDaysToDateOnly(today, 1 - days) &&
-                      period.to === today
-                        ? "primary"
-                        : "outline"
-                    }
+                    className="h-11 whitespace-nowrap"
+                    variant="outline"
                     onClick={() => {
-                      const p = {
-                        from: addDaysToDateOnly(today, 1 - days),
-                        to: today,
-                      };
-                      setDraft(p);
-                      setPeriod(p);
+                      if (draft.to > addDaysToDateOnly(draft.from, 89)) {
+                        setMessage({
+                          key: api.key,
+                          text: t("dateLimit"),
+                          error: true,
+                        });
+                        return;
+                      }
+                      setPeriod(draft);
                     }}
                   >
-                    {t("days", { count: days })}
+                    {t("apply")}
                   </Button>
-                ))}
+                  <Button
+                    size="sm"
+                    className="h-11 whitespace-nowrap"
+                    variant="outline"
+                    onClick={api.refresh}
+                    disabled={api.loading}
+                  >
+                    {t("reload")}
+                  </Button>
+                </div>
               </div>
-              <div>
-                <KpsDatePicker
-                  value={draft.from}
-                  onChange={(from) => setDraft({ ...draft, from })}
-                  ariaLabel={t("from")}
-                  placeholder={t("from")}
-                  dialogLabel={t("from")}
-                  minDate={addDaysToDateOnly(draft.to, -89)}
-                  maxDate={draft.to}
-                />
-              </div>
-              <div>
-                <KpsDatePicker
-                  value={draft.to}
-                  onChange={(to) => setDraft({ ...draft, to })}
-                  ariaLabel={t("to")}
-                  placeholder={t("to")}
-                  dialogLabel={t("to")}
-                  minDate={draft.from}
-                  maxDate={today}
-                />
-              </div>
-              <div className="flex items-end gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (draft.to > addDaysToDateOnly(draft.from, 89)) {
-                      setMessage({
-                        key: api.key,
-                        text: t("dateLimit"),
-                        error: true,
-                      });
-                      return;
-                    }
-                    setPeriod(draft);
-                  }}
-                >
-                  {t("apply")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={api.refresh}
-                  disabled={api.loading}
-                >
-                  {t("reload")}
-                </Button>
-              </div>
-            </div>
+            </section>
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
-              <span>
+              <span className="min-w-0 break-words">
                 {t("owner", {
                   name: api.selected?.responsible_name ?? t("notAssigned"),
                 })}
@@ -266,6 +288,7 @@ function Workspace() {
                 </span>
                 <Button
                   size="sm"
+                  className="h-11 shrink-0 whitespace-nowrap"
                   onClick={() => void mutate("sync")}
                   disabled={
                     actionBusy ||

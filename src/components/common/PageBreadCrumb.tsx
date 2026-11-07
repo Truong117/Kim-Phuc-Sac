@@ -1,21 +1,34 @@
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/utils";
 
 interface BreadcrumbProps {
   pageTitle: string;
+  headingLevel?: 1 | 2;
+  className?: string;
 }
 
-const PageBreadcrumb: React.FC<BreadcrumbProps> = ({ pageTitle }) => {
+const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
+  pageTitle,
+  headingLevel = 2,
+  className,
+}) => {
   const { t } = useTranslation();
+  const Heading = headingLevel === 1 ? "h1" : "h2";
 
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <h2
+    <div
+      className={cn(
+        "mb-6 flex flex-wrap items-center justify-between gap-3",
+        className,
+      )}
+    >
+      <Heading
         className="text-xl font-bold text-gray-800 dark:text-white/90"
         x-text="pageName"
       >
         {pageTitle}
-      </h2>
+      </Heading>
       <nav>
         <ol className="flex items-center gap-1.5">
           <li>
