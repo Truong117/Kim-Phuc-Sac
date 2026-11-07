@@ -10,6 +10,8 @@ async function setup(
   page: Page,
   options: {
     queueUncertain?: boolean;
+    queueMissing?: boolean;
+    statusFailure?: boolean;
     processUncertain?: boolean;
     invalid?: boolean;
     previewFailure?: boolean;
@@ -31,6 +33,9 @@ async function setup(
   }[] = [];
   const processed: string[] = [];
   const aiReads: string[] = [];
+  const statusReads: string[][] = [];
+  const contentReads: string[] = [];
+  const contents = new Map<string, { subject: string; body: string }>();
   let summaryDate = "2026-11-05";
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -224,6 +229,32 @@ async function setup(
         },
       });
     }
+    if (path === "/api/integrations/mail/messages/status") {
+      const keys: string[] = request.postDataJSON().request_keys;
+      statusReads.push(keys);
+      if (options.statusFailure)
+        return route.fulfill({ status: 503, json: { message: "Unavailable" } });
+      const data = history
+        .filter((entry) => keys.includes(String(entry.id)))
+        .map((entry) => ({ ...entry, request_key: entry.id }));
+      return route.fulfill({
+        json: {
+          data,
+          missing_request_keys: keys.filter(
+            (key) => !data.some((entry) => entry.request_key === key),
+          ),
+        },
+      });
+    }
+    if (/^\/api\/integrations\/mail\/messages\/[^/]+\/content$/.test(path)) {
+      const id = path.split("/").at(-2)!;
+      contentReads.push(id);
+      const content = contents.get(id);
+      return route.fulfill({
+        status: content ? 200 : 404,
+        json: content ? { data: content } : { message: "Not found" },
+      });
+    }
     if (path === "/api/integrations/mail/messages") {
       const input = request.postDataJSON();
       expect(Object.keys(input).sort()).toEqual([
@@ -238,6 +269,8 @@ async function setup(
           status: 422,
           json: { errors: { subject: ["Invalid subject"] } },
         });
+      if (options.queueMissing && submissions.length === 1)
+        return route.abort("failed");
       const data = input.recipients.map(
         (recipient: { recipient_user_id: number; request_key: string }) => {
           expect(Object.keys(recipient).sort()).toEqual([
@@ -263,6 +296,10 @@ async function setup(
               created_at: "2026-11-06T04:00:00Z",
               accepted_at: null,
             };
+            contents.set(recipient.request_key, {
+              subject: input.subject,
+              body: input.body,
+            });
             history.push(entry);
           }
           return entry;
@@ -327,7 +364,14 @@ async function setup(
   await expect(
     page.getByRole("group", { name: "Nhân viên nhận mail", exact: true }),
   ).toBeEnabled();
-  return { submissions, processed, history, aiReads };
+  return {
+    submissions,
+    processed,
+    history,
+    aiReads,
+    statusReads,
+    contentReads,
+  };
 }
 
 for (const [value, title] of [
@@ -851,44 +895,65 @@ test("assistant composes a private multi-recipient message without the test allo
   expect(api.submissions[0].body).toBe(body);
   expect(api.submissions[0].recipients).toHaveLength(2);
   expect(api.processed).toHaveLength(2);
-  await expect(page.getByLabel("Tiêu đề", { exact: true })).toBeDisabled();
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toBeEnabled();
   await page
     .getByRole("button", { name: "Soạn mail mới", exact: true })
     .click();
   await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue("");
 });
 
-for (const failure of ["queueUncertain", "processUncertain"] as const) {
-  test(`${failure}: reload preserves frozen content and request keys and resumes only pending recipients`, async ({
+for (const failure of [
+  "queueUncertain",
+  "processUncertain",
+  "queueMissing",
+] as const) {
+  test(`${failure}: old run is read without sending, while a new draft remains independent`, async ({
     page,
   }) => {
     const api = await setup(page, { [failure]: true });
     await compose(page);
     await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
     await expect(page.getByText(/Chưa xác nhận được kết quả/)).toBeVisible();
+    const processedBefore = [...api.processed];
     await page.reload();
     await page.getByRole("tab", { name: "Mail", exact: true }).click();
-    await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
-      subject,
-    );
-    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-      body,
-    );
-    await expect(page.getByLabel("Nội dung", { exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
     await page
-      .getByRole("button", {
-        name: "Tiếp tục / cập nhật lượt gửi",
-        exact: true,
-      })
+      .getByLabel("Tiêu đề", { exact: true })
+      .fill("Bản nháp mới độc lập");
+    await page
+      .getByRole("button", { name: "Xem lượt gửi", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toContainText(subject);
+    await expect.poll(() => api.statusReads.length).toBeGreaterThan(0);
+    expect(api.submissions).toHaveLength(1);
+    expect(api.processed).toEqual(processedBefore);
+    await page
+      .getByRole("button", { name: "Cập nhật trạng thái", exact: true })
       .click();
     await expect(
-      page.getByText(
-        "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
-        { exact: true },
-      ),
-    ).toBeVisible();
-    expect(api.submissions).toHaveLength(2);
-    expect(api.submissions[1]).toEqual(api.submissions[0]);
+      page.getByRole("button", { name: "Tiếp tục gửi", exact: true }),
+    ).toBeEnabled();
+    expect(api.submissions).toHaveLength(1);
+    expect(api.processed).toEqual(processedBefore);
+    await page
+      .getByRole("button", { name: "Tiếp tục gửi", exact: true })
+      .click();
+    expect(api.processed).toEqual(processedBefore);
+    await page
+      .getByRole("button", { name: "Xác nhận tiếp tục gửi", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toContainText(
+      "Lượt gửi đã kết thúc",
+    );
+    await page.getByRole("button", { name: "Đóng", exact: true }).click();
+    await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+      "Bản nháp mới độc lập",
+    );
+    expect(api.submissions).toHaveLength(failure === "queueMissing" ? 2 : 1);
+    if (failure === "queueMissing")
+      expect(api.submissions[1]).toEqual(api.submissions[0]);
     expect(
       api.processed.filter(
         (id) => id === api.submissions[0].recipients[0].request_key,
@@ -896,6 +961,163 @@ for (const failure of ["queueUncertain", "processUncertain"] as const) {
     ).toHaveLength(1);
   });
 }
+
+test("unsent template draft restores recipients and manual edits without refetching AI or sending", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("weekly");
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Kết quả trong kỳ/,
+  );
+  await page
+    .getByLabel("Nội dung", { exact: true })
+    .fill("Bản đã biên tập của tôi");
+  const reads = api.aiReads.length;
+  await page.reload();
+  await page.getByRole("tab", { name: "Mail", exact: true }).click();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    "Bản đã biên tập của tôi",
+  );
+  await expect(
+    page.getByRole("checkbox", { name: /Nguyễn Văn An/ }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("combobox", { name: "Mẫu mail", exact: true }),
+  ).toHaveValue("weekly");
+  await expect(
+    page.getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true }),
+  ).toHaveValue("201");
+  expect(api.aiReads).toHaveLength(reads);
+  expect(api.submissions).toHaveLength(0);
+  await page.getByRole("button", { name: "Bỏ bản nháp", exact: true }).click();
+  await page.getByRole("button", { name: "Giữ bản nháp", exact: true }).click();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    "Bản đã biên tập của tôi",
+  );
+});
+
+test("completed legacy batch opens a fresh composer without queueing; reuse creates an editable draft with new keys", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await compose(page);
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  const first = api.submissions[0];
+  await page.evaluate((batch) => {
+    sessionStorage.removeItem("kps:mail-compose:1:1:v2");
+    sessionStorage.setItem(
+      "kps:mail-compose:1:1",
+      JSON.stringify({
+        ...batch,
+        selectedIds: batch.recipients.map((entry) =>
+          String(entry.recipient_user_id),
+        ),
+        keys: Object.fromEntries(
+          batch.recipients.map((entry) => [
+            entry.recipient_user_id,
+            entry.request_key,
+          ]),
+        ),
+      }),
+    );
+  }, first);
+  await page.reload();
+  await page.getByRole("tab", { name: "Mail", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Xem lượt gửi", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue("");
+  expect(api.submissions).toHaveLength(1);
+  expect(api.processed).toHaveLength(2);
+  await page
+    .getByLabel("Nội dung", { exact: true })
+    .fill("Nội dung mới cần giữ");
+  await page
+    .getByRole("button", { name: "Dùng lại nội dung", exact: true })
+    .first()
+    .click();
+  await page.getByRole("button", { name: "Giữ bản nháp", exact: true }).click();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    "Nội dung mới cần giữ",
+  );
+  await page
+    .getByRole("button", { name: "Dùng lại nội dung", exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole("button", { name: "Thay bản nháp", exact: true })
+    .click();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(body);
+  await expect(
+    page.getByRole("checkbox", { name: /Nguyễn Văn An/ }),
+  ).not.toBeChecked();
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toBeEnabled();
+  expect(api.submissions).toHaveLength(1);
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
+  await page
+    .getByRole("button", { name: "Xem trước mail", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect.poll(() => api.submissions.length).toBe(2);
+  expect(first.recipients.map((entry) => entry.request_key)).not.toContain(
+    api.submissions[1].recipients[0].request_key,
+  );
+});
+
+test("unknown and sending statuses never resume automatically; read failure preserves keys and leaves the composer usable", async ({
+  page,
+}) => {
+  const api = await setup(page, { queueUncertain: true });
+  await compose(page);
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect(page.getByText(/Chưa xác nhận được kết quả/)).toBeVisible();
+  api.history[0].status = "unknown";
+  api.history[1].status = "sending";
+  await page.reload();
+  await page.getByRole("tab", { name: "Mail", exact: true }).click();
+  await page.getByRole("button", { name: "Xem lượt gửi", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Hệ thống không gửi lại",
+  );
+  await expect(
+    page.getByRole("button", { name: "Tiếp tục gửi", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Cập nhật trạng thái", exact: true })
+    .click();
+  expect(api.submissions).toHaveLength(1);
+  expect(api.processed).toHaveLength(0);
+  await page.getByRole("button", { name: "Đóng", exact: true }).click();
+  await page.route("**/api/integrations/mail/messages/status", (route) =>
+    route.fulfill({ status: 503, json: { message: "Unavailable" } }),
+  );
+  await page.reload();
+  await page.getByRole("tab", { name: "Mail", exact: true }).click();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Xem lượt gửi", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Chưa đọc được trạng thái",
+  );
+  expect(api.processed).toHaveLength(0);
+  const keys = await page.evaluate(
+    () =>
+      JSON.parse(sessionStorage.getItem("kps:mail-compose:1:1:v2")!).runs[0]
+        .keys,
+  );
+  expect(Object.values(keys)).toEqual(
+    api.submissions[0].recipients.map((entry) => entry.request_key),
+  );
+});
 
 test("invalid fields focus in form order and atomic server validation restores editable content", async ({
   page,
@@ -1029,4 +1251,28 @@ test("a failed layout preview keeps the editor available and cannot queue or sen
   await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
   expect(api.submissions).toHaveLength(0);
   expect(api.processed).toHaveLength(0);
+});
+
+test("storage failure blocks queueing before any request and keeps the editable draft", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await compose(page);
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "kps:mail-compose:1:1:v2")
+        throw new DOMException("Full", "QuotaExceededError");
+      return original.call(this, key, value);
+    };
+  });
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Chưa lưu được bản nháp" }),
+  ).toBeVisible();
+  expect(api.submissions).toHaveLength(0);
+  expect(api.processed).toHaveLength(0);
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(body);
+  await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
 });

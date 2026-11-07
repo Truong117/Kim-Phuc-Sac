@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import type { MailHistoryEntry } from "@/services/mailService";
+import Button from "@/components/ui/button/Button";
 import ComponentCard from "@/components/common/ComponentCard";
 import MailMessageStatus from "./MailMessageStatus";
 
@@ -7,10 +8,16 @@ export default function MailHistory({
   entries,
   title,
   desc,
+  actorId,
+  onReuse,
+  reuseDisabled,
 }: {
   entries: MailHistoryEntry[];
   title?: string;
   desc?: string;
+  actorId?: string;
+  onReuse?: (id: string) => void;
+  reuseDisabled?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -48,6 +55,19 @@ export default function MailHistory({
               </div>
               <div className="ms-auto max-w-full text-end">
                 <MailMessageStatus status={entry.status} />
+                {onReuse &&
+                  entry.kind === "internal" &&
+                  entry.created_by === actorId && (
+                    <div className="mt-2">
+                      <Button
+                        variant="outline"
+                        disabled={reuseDisabled}
+                        onClick={() => onReuse(entry.id)}
+                      >
+                        {t("mailFlow.reuse")}
+                      </Button>
+                    </div>
+                  )}
                 {entry.error_code && (
                   <p className="mt-2 text-xs text-error-600 dark:text-error-400">
                     {t(`mailUi.errors.${entry.error_code}`, {

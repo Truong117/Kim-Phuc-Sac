@@ -246,6 +246,8 @@ export default function MailWorkspace() {
           key={`${user?.organization?.id}:${user?.id}`}
           storageKey={`kps:mail-compose:${user?.organization?.id}:${user?.id}`}
           recipients={recipients}
+          history={data.history}
+          actorId={String(user?.id)}
           fromName={fromName}
           fromEmail={data.email || data.expected_email}
           disabled={
@@ -332,7 +334,7 @@ export default function MailWorkspace() {
           desc={t("mailUi.batchResultsHint")}
         />
       )}
-      <MailHistory entries={data.history} />
+      {mode === "test" && <MailHistory entries={data.history} />}
       {mode === "test" && (
         <MailTestDialog
           isOpen={confirmation.isOpen}

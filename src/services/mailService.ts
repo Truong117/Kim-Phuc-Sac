@@ -111,3 +111,18 @@ export const processMailMessage = (id: string) =>
     `/api/integrations/mail/messages/${encodeURIComponent(id)}/process`,
     { method: "POST" },
   );
+
+export const readMailStatuses = (requestKeys: string[], signal?: AbortSignal) =>
+  apiRequest<{
+    data: (MailHistoryEntry & { request_key: string })[];
+    missing_request_keys: string[];
+  }>("/api/integrations/mail/messages/status", {
+    method: "POST",
+    signal,
+    body: JSON.stringify({ request_keys: requestKeys }),
+  });
+export const readMailContent = (id: string, signal?: AbortSignal) =>
+  apiRequest<{ data: { subject: string; body: string } }>(
+    `/api/integrations/mail/messages/${encodeURIComponent(id)}/content`,
+    { signal },
+  );
