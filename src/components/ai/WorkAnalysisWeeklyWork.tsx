@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
 import type { GroupedWork, WorkTotal } from "@/types/workReportAnalysis";
 
+import { reportText } from "@/utils/reportPresentation";
+
 export default function WorkAnalysisWeeklyWork({
   groups,
   totals,
@@ -36,7 +38,7 @@ export default function WorkAnalysisWeeklyWork({
                   {group.title}
                 </h4>
                 <p className="break-words whitespace-pre-wrap text-gray-600 dark:text-gray-300">
-                  {group.text}
+                  {reportText(group.text)}
                 </p>
               </div>
             </li>

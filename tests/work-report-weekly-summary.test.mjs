@@ -29,7 +29,7 @@ const render = (employees) => renderToStaticMarkup(React.createElement(MemoryRou
 
 test("weekly inventory is visible before AI completes and preserves both dates, results, statuses and links", () => {
   const html = render([person]);
-  for (const text of ["Nguồn báo cáo và đối chiếu", "Bán 10 sản phẩm", "Bán 30 sản phẩm", "26/10/2026", "28/10/2026", "Đã giao khách"]) {
+  for (const text of ["Xem căn cứ", "Bán 10 sản phẩm", "Bán 30 sản phẩm", "26/10/2026", "28/10/2026", "Đã giao khách"]) {
     assert.ok(html.includes(text), text);
   }
   assert.doesNotMatch(html, /<details[^>]*open/);
@@ -61,8 +61,8 @@ test("thematic weekly groups precede totals and assessment; source detail remain
   const html = render([{ ...person, status: "completed", result,
     work_groups: [{ title: "Kinh doanh trong tuần", text: "Đã bán sản phẩm và bàn giao cho khách", evidence: [{ report_id: 1, item_id: 11, quote: "Bán hàng" }, { report_id: 2, item_id: 22, quote: "Bán hàng" }] }],
   }]);
-  assert.ok(html.indexOf("Kinh doanh trong tuần") < html.indexOf("Nhận xét có căn cứ"));
-  assert.ok(html.includes("Nguồn báo cáo và đối chiếu"));
+  assert.ok(html.indexOf("Kinh doanh trong tuần") < html.indexOf("Kết quả cần đối chiếu"));
+  assert.ok(html.includes("Xem căn cứ"));
   assert.doesNotMatch(html, /<details[^>]*open/);
   assert.ok(html.includes("Chi tiết công việc theo ngày"));
   assert.ok(html.includes("Bán 30 sản phẩm"));
@@ -85,7 +85,7 @@ test("structured proposals show action, expected outcome and verification withou
   const show = value => renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Result, { result: value, sources: [] })));
   const html = show(result);
   for (const text of ["Ưu tiên cao", "Căn cứ", "Hành động đề xuất", "Kết quả mong đợi", "Cách kiểm chứng"]) assert.ok(html.includes(text), text);
-  assert.ok(html.indexOf("Đề xuất: Đối chiếu kết quả") < html.indexOf("Nguồn báo cáo và đối chiếu"));
+  assert.ok(html.indexOf("Đối chiếu kết quả") < html.indexOf("Xem căn cứ"));
   assert.doesNotMatch(html, /<details[^>]*open/);
   const legacy = show({ ...empty, recommendations: [{ text: "Đề xuất: Nội dung cũ", evidence }] });
   assert.ok(legacy.includes("Nội dung cũ"));
@@ -103,4 +103,29 @@ test("only confirmed finite nonnegative numeric totals enter the work summary", 
   assert.ok(html.includes("40 sản phẩm"));
   for (const text of ["-5 sản phẩm", "90 sản phẩm", "Infinity sản phẩm"]) assert.ok(!html.includes(text));
   for (const text of ["Cần làm rõ", "Số âm", "Vô hạn", "Chưa rõ", "Chưa duyệt cách tính"]) assert.ok(html.includes(text));
+});
+
+
+test("company form separates results, ongoing work, obstacles and decisions while keeping legacy evidence collapsed", async () => {
+  const Result = (await vite.ssrLoadModule("/src/components/ai/WorkAnalysisResult.tsx")).default;
+  const empty = Object.fromEntries(["overview", "highlights", "ongoing", "attention", "support", "uncertainties", "recommendations"].map(key => [key, []]));
+  const evidence = [{ report_id: 1, item_id: 11, quote: "Bán 10 sản phẩm" }];
+  const result = { ...empty,
+    overview: [{ text: "Nhận xét có căn cứ: Đã có bản trình duyệt, chưa xác nhận duyệt cuối.", evidence }],
+    ongoing: [{ text: "Ghi nhận từ nguồn: Tiếp tục hoàn thiện catalogue.", evidence }],
+    support: [{ text: "Ghi nhận từ nguồn: Đang chờ báo giá lại.", evidence }],
+    recommendations: [{ text: "Đề xuất: Đề xuất: Xác nhận kết quả duyệt.", evidence, priority: "normal" }],
+  };
+  const before = structuredClone(result);
+  const html = renderToStaticMarkup(React.createElement(MemoryRouter, null, React.createElement(Result, { result, sources: [{ id: 1, employee_name: "Phương Anh", item_ids: [11] }] })));
+  const headings = ["1. Kết quả trong kỳ", "2. Công việc đang tiếp tục", "3. Vướng mắc cần theo dõi", "4. Việc cần xem xét và quyết định"];
+  for (let i = 0; i < headings.length; i++) {
+    assert.ok(html.includes(headings[i]));
+    if (i) assert.ok(html.indexOf(headings[i-1]) < html.indexOf(headings[i]));
+  }
+  assert.ok(html.includes("Phương Anh — Đã có bản trình duyệt, chưa xác nhận duyệt cuối."));
+  assert.doesNotMatch(html, /Nhận xét có căn cứ:|Ghi nhận từ nguồn:|Đề xuất:|<details[^>]*open/);
+  assert.ok(html.includes("Bán 10 sản phẩm"));
+  assert.ok(html.indexOf("Bán 10 sản phẩm") > html.indexOf("Xem căn cứ"));
+  assert.deepEqual(result, before);
 });

@@ -92,7 +92,13 @@ function employee(id: number, name: string): AnalysisEmployee {
   };
 }
 function sampleRun(
-  options: { partial?: boolean; changed?: boolean; legacy?: boolean } = {},
+  options: {
+    partial?: boolean;
+    changed?: boolean;
+    legacy?: boolean;
+    readable?: boolean;
+    days?: 1 | 7;
+  } = {},
 ): WorkReportAnalysis {
   const employees = [employee(7, "Nhân viên A"), employee(8, "Nhân viên B")];
   if (options.partial)
@@ -109,9 +115,9 @@ function sampleRun(
     id: 41,
     status: options.partial ? "partial" : "completed",
     period: {
-      start_date: "2026-10-26",
+      start_date: options.days === 1 ? "2026-11-01" : "2026-10-26",
       end_date: "2026-11-01",
-      days: 7,
+      days: options.days ?? 7,
       timezone: "Asia/Ho_Chi_Minh",
     },
     department_id: null,
@@ -132,7 +138,27 @@ function sampleRun(
       blocked: 0,
     },
     progress: { finished: 3, total: 3 },
-    result: result(options.legacy),
+    result: options.readable
+      ? {
+          ...result(),
+          ongoing: [
+            {
+              text: "Ghi nhận từ nguồn: Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối.",
+              evidence,
+            },
+          ],
+          support: [
+            { text: "Ghi nhận từ nguồn: Đang chờ báo giá lại.", evidence },
+          ],
+          recommendations: [
+            {
+              ...result().recommendations[0],
+              priority: "normal",
+              text: "Đề xuất: Đề xuất: Xác nhận phiên bản được duyệt",
+            },
+          ],
+        }
+      : result(options.legacy),
     employees,
     source_reports: [
       {
@@ -157,7 +183,13 @@ function sampleRun(
 }
 async function setup(
   page: Page,
-  options: { partial?: boolean; changed?: boolean; legacy?: boolean } = {},
+  options: {
+    partial?: boolean;
+    changed?: boolean;
+    legacy?: boolean;
+    readable?: boolean;
+    days?: 1 | 7;
+  } = {},
 ) {
   let run = sampleRun(options);
   const posts: { path: string; body: unknown }[] = [];
@@ -217,9 +249,9 @@ async function setup(
             };
     await route.fulfill({ json });
   });
-  await page.goto("/ai/insights?end=2026-11-01&days=7");
+  await page.goto(`/ai/insights?end=2026-11-01&days=${options.days ?? 7}`);
   await expect(
-    page.getByRole("heading", { name: "Kết luận trong kỳ", exact: true }),
+    page.getByRole("heading", { name: "1. Kết quả trong kỳ", exact: true }),
   ).toBeVisible();
   return posts;
 }
@@ -238,7 +270,7 @@ test("company first, structured decisions and source footer; employee selection 
   ).not.toBeVisible();
   await page
     .locator("summary")
-    .filter({ hasText: "Đề xuất: Đối chiếu kết quả chiến dịch" })
+    .filter({ hasText: "Đối chiếu kết quả chiến dịch" })
     .click();
   await expect(
     page.getByText("Có căn cứ quyết định ngân sách", { exact: true }),
@@ -264,7 +296,7 @@ test("company first, structured decisions and source footer; employee selection 
   await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
   const panel = employeePanel(page, "Nhân viên B");
   await expect(panel).toBeVisible();
-  await panel.getByText("Nguồn báo cáo và đối chiếu", { exact: true }).click();
+  await panel.getByText("Xem căn cứ", { exact: true }).click();
   await panel
     .getByText("Chi tiết công việc theo ngày", { exact: true })
     .click();
@@ -361,7 +393,7 @@ test("older result remains readable without fabricated decision fields or automa
   const posts = await setup(page, { legacy: true });
   await page
     .locator("summary")
-    .filter({ hasText: "Đề xuất: Đối chiếu kết quả chiến dịch" })
+    .filter({ hasText: "Đối chiếu kết quả chiến dịch" })
     .click();
   await expect(page.getByText(/Bản cũ chưa lưu chi tiết/)).toBeVisible();
   await expect(page.getByText("Cách kiểm chứng", { exact: true })).toHaveCount(
@@ -373,3 +405,61 @@ test("older result remains readable without fabricated decision fields or automa
   ).toBeVisible();
   expect(posts).toEqual([]);
 });
+
+for (const days of [1, 7] as const) {
+  test(`${days}-day company report uses the approved form, plain decisions and expandable source evidence`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const posts = await setup(page, { readable: true, days });
+    const headings = [
+      "1. Kết quả trong kỳ",
+      "2. Công việc đang tiếp tục",
+      "3. Vướng mắc cần theo dõi",
+      "4. Việc cần xem xét và quyết định",
+    ];
+    for (const name of headings)
+      await expect(
+        page.getByRole("heading", { name, exact: true }),
+      ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Nhân viên A — Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator("summary")
+        .filter({ hasText: "Xác nhận phiên bản được duyệt" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        /Nhận xét có căn cứ:|Ghi nhận từ nguồn:|Đề xuất: Đề xuất:/,
+      ),
+    ).not.toBeVisible();
+    const sources = page
+      .locator("footer")
+      .filter({ has: page.getByText("Xem căn cứ", { exact: true }) });
+    await expect(
+      sources.getByRole("link", { name: /Nhân viên A.*Báo cáo #71/ }),
+    ).not.toBeVisible();
+    await page.getByText("Xem căn cứ", { exact: true }).click();
+    await expect(
+      page.getByRole("link", { name: /Nhân viên A.*Báo cáo #71/ }),
+    ).toBeVisible();
+    await page
+      .locator("summary")
+      .filter({ hasText: "Xác nhận phiên bản được duyệt" })
+      .click();
+    await expect(
+      page.getByText("Có căn cứ quyết định ngân sách", { exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(posts).toEqual([]);
+  });
+}
