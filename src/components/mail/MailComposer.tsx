@@ -36,6 +36,7 @@ export default function MailComposer({
   const [confirming, setConfirming] = useState(false);
   const [invalid, setInvalid] = useState<string[]>([]);
   const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateReady, setTemplateReady] = useState(true);
   const root = useRef<HTMLDivElement>(null);
   const mounted = useRef(true);
   const selection = recipients.filter((recipient) =>
@@ -77,6 +78,7 @@ export default function MailComposer({
         (field === "recipients" && key === "recipient_user_id"),
     );
   function preview() {
+    if (templateBusy || !templateReady) return;
     const errors = [];
     if (
       !selection.length ||
@@ -112,7 +114,7 @@ export default function MailComposer({
     } else setConfirming(true);
   }
   async function send() {
-    if (disabled) return;
+    if (disabled || templateBusy || !templateReady) return;
     await batch.send(() => setConfirming(false));
     if (mounted.current) {
       setConfirming(false);
@@ -130,6 +132,7 @@ export default function MailComposer({
             fromName={fromName}
             disabled={baseLocked}
             onBusyChange={setTemplateBusy}
+            onReadyChange={setTemplateReady}
             onApply={(content) => {
               batch.replaceContent(content);
               setInvalid([]);
@@ -218,7 +221,7 @@ export default function MailComposer({
         )}
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={disabled || batch.busy || templateBusy}
+            disabled={disabled || batch.busy || templateBusy || !templateReady}
             onClick={() => (batch.started ? void send() : preview())}
             className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
           >

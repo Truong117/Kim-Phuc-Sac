@@ -4,7 +4,6 @@ import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Label from "@/components/form/Label";
 import Select from "@/components/form/Select";
 import Button from "@/components/ui/button/Button";
-import { Modal } from "@/components/ui/modal";
 import { ApiServiceError } from "@/services/apiClient";
 import { listDailyDocuments } from "@/services/dailyDocumentService";
 import {
@@ -32,12 +31,14 @@ interface Props {
   disabled: boolean;
   onApply: (content: MailTemplateContent) => void;
   onBusyChange: (busy: boolean) => void;
+  onReadyChange: (ready: boolean) => void;
 }
 export default function MailTemplatePicker({
   fromName,
   disabled,
   onApply,
   onBusyChange,
+  onReadyChange,
 }: Props) {
   const { t } = useTranslation();
   const [kind, setKind] = useState<MailTemplateId | "">("");
@@ -53,7 +54,7 @@ export default function MailTemplatePicker({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
-  const [candidate, setCandidate] = useState<MailTemplateContent | null>(null);
+  const [tooLong, setTooLong] = useState(false);
   const request = useRef<AbortController | null>(null);
   const mounted = useRef(true);
   const ai = kind === "daily" || kind === "weekly";
@@ -68,9 +69,15 @@ export default function MailTemplatePicker({
     if (disabled) request.current?.abort();
   }, [disabled]);
   useEffect(() => {
-    onBusyChange(loading || candidate !== null);
+    onBusyChange(loading);
     return () => onBusyChange(false);
-  }, [loading, candidate, onBusyChange]);
+  }, [loading, onBusyChange]);
+
+  function apply(content: MailTemplateContent) {
+    onApply(content);
+    setTooLong(Array.from(content.body).length > 10000);
+    onReadyChange(true);
+  }
   function clear() {
     request.current?.abort();
     request.current = null;
@@ -79,18 +86,97 @@ export default function MailTemplatePicker({
     setError("");
     setLoaded(false);
     setLoading(false);
-    setCandidate(null);
+    setTooLong(false);
   }
-  async function run(action: (signal: AbortSignal) => Promise<void>) {
+  async function loadAI(
+    nextKind: "daily" | "weekly",
+    nextDate: string,
+    nextPage: number,
+    sourceId = "",
+  ) {
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
+    const signal = controller.signal;
     setLoading(true);
     setError("");
+    setTooLong(false);
+    setSelected(sourceId);
+    setPage(nextPage);
+    onReadyChange(false);
+    // A new date/source must never retain the previous report's body.
+    onApply({
+      subject:
+        nextKind === "daily"
+          ? t("mailTemplates.dailyDateSubject", {
+              date: formatDateOnly(nextDate),
+            })
+          : t("mailTemplates.weeklyDefaultSubject"),
+      body: "",
+    });
+    if (!sourceId) {
+      setChoices([]);
+      setLoaded(false);
+    }
     try {
-      await action(controller.signal);
+      if (nextKind === "daily") {
+        const fresh = await listDailyDocuments(nextDate, nextPage, signal);
+        if (signal.aborted) return;
+        const rows = fresh.reports.filter(
+          (row) =>
+            dailyMailReady(row) && row.document!.source.date === nextDate,
+        );
+        setLastPage(fresh.last_page);
+        setChoices(
+          rows.map((row) => ({
+            value: String(row.document!.id),
+            label: `${row.employee_name} · ${formatDateOnly(row.document!.source.date)} · #${row.document!.id}${row.document!.mode === "fake" ? ` · ${t("mailTemplates.mock")}` : ""}`,
+          })),
+        );
+        const row = sourceId
+          ? rows.find((entry) => String(entry.document!.id) === sourceId)
+          : rows.length === 1
+            ? rows[0]
+            : undefined;
+        if (sourceId && !row) throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
+        if (row) {
+          setSelected(String(row.document!.id));
+          apply(
+            dailyMailTemplate(
+              row,
+              fromName,
+              window.location.origin,
+              t,
+              nextPage,
+            ),
+          );
+        }
+      } else {
+        let id = sourceId;
+        if (!id) {
+          const history = await getWorkAnalysisHistory(signal);
+          if (signal.aborted) return;
+          const runs = history.filter(weeklyMailReady);
+          setChoices(
+            runs.map((entry) => ({
+              value: String(entry.id),
+              label: `#${entry.id} · ${formatDateOnly(entry.period.start_date)} – ${formatDateOnly(entry.period.end_date)} · ${entry.department_id ? t("mailTemplates.department", { id: entry.department_id }) : t("mailTemplates.savedScope")}${entry.is_mock ? ` · ${t("mailTemplates.mock")}` : ""}`,
+            })),
+          );
+          if (runs.length === 1) id = String(runs[0].id);
+        }
+        if (id) {
+          const fresh = await getWorkAnalysis(Number(id), signal);
+          if (signal.aborted) return;
+          if (String(fresh.id) !== id)
+            throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
+          setSelected(id);
+          apply(weeklyMailTemplate(fresh, fromName, window.location.origin, t));
+        }
+      }
+      if (!signal.aborted) setLoaded(true);
     } catch (cause) {
-      if (!controller.signal.aborted && mounted.current)
+      if (!signal.aborted && mounted.current)
         setError(
           cause instanceof ApiServiceError &&
             [401, 403, 404].includes(cause.status)
@@ -101,70 +187,22 @@ export default function MailTemplatePicker({
       if (mounted.current && request.current === controller) setLoading(false);
     }
   }
-  async function loadSources(nextPage = page) {
-    setPage(nextPage);
-    setSelected("");
-    setChoices([]);
-    setLoaded(false);
-    await run(async (signal) => {
-      if (kind === "daily") {
-        const result = await listDailyDocuments(date, nextPage, signal);
-        if (signal.aborted) return;
-        setLastPage(result.last_page);
-        setChoices(
-          result.reports.filter(dailyMailReady).map((row) => ({
-            value: String(row.document!.id),
-            label: `${row.employee_name} · ${formatDateOnly(row.document!.source.date)} · #${row.document!.id}${row.document!.mode === "fake" ? ` · ${t("mailTemplates.mock")}` : ""}`,
-          })),
-        );
-      } else {
-        const runs = await getWorkAnalysisHistory(signal);
-        if (signal.aborted) return;
-        setChoices(
-          runs.filter(weeklyMailReady).map((entry) => ({
-            value: String(entry.id),
-            label: `#${entry.id} · ${formatDateOnly(entry.period.start_date)} – ${formatDateOnly(entry.period.end_date)} · ${entry.department_id ? t("mailTemplates.department", { id: entry.department_id }) : t("mailTemplates.savedScope")}${entry.is_mock ? ` · ${t("mailTemplates.mock")}` : ""}`,
-          })),
-        );
-      }
-      setLoaded(true);
-    });
-  }
-  async function previewTemplate() {
-    if (!kind || disabled) return;
-    if (kind !== "daily" && kind !== "weekly") {
-      setCandidate(staticMailTemplate(kind, fromName, t));
-      return;
-    }
-    await run(async (signal) => {
-      let content: MailTemplateContent;
-      if (kind === "daily") {
-        // Refresh the authorized listing before using a previously selected result.
-        const fresh = await listDailyDocuments(date, page, signal);
-        const row = fresh.reports.find(
-          (entry) => String(entry.document?.id) === selected,
-        );
-        if (signal.aborted) return;
-        if (!row) throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
-        content = dailyMailTemplate(
-          row,
+  function chooseTemplate(value: string) {
+    if (disabled) return;
+    clear();
+    setKind(value as MailTemplateId | "");
+    setPage(1);
+    setLastPage(1);
+    if (value === "daily" || value === "weekly") void loadAI(value, date, 1);
+    else if (value)
+      apply(
+        staticMailTemplate(
+          value as Exclude<MailTemplateId, "daily" | "weekly">,
           fromName,
-          window.location.origin,
           t,
-          page,
-        );
-      } else {
-        const fresh = await getWorkAnalysis(Number(selected), signal);
-        if (signal.aborted) return;
-        content = weeklyMailTemplate(
-          fresh,
-          fromName,
-          window.location.origin,
-          t,
-        );
-      }
-      if (!signal.aborted) setCandidate(content);
-    });
+        ),
+      );
+    else onReadyChange(true);
   }
   return (
     <div className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
@@ -174,18 +212,18 @@ export default function MailTemplatePicker({
         value={kind}
         placeholder={t("mailTemplates.choose")}
         allowClear
-        disabled={disabled || loading}
+        disabled={disabled}
         options={mailTemplateIds.map((value) => ({
           value,
           label: t(`mailTemplates.names.${value}`),
         }))}
-        onChange={(value) => {
-          clear();
-          setKind(value as MailTemplateId | "");
-          setPage(1);
-          setLastPage(1);
-        }}
+        onChange={chooseTemplate}
       />
+      {kind && (
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          {t("mailTemplates.autoHint")}
+        </p>
+      )}
       {ai && (
         <>
           <p className="text-sm text-gray-600 dark:text-gray-300">
@@ -200,12 +238,12 @@ export default function MailTemplatePicker({
               value={date}
               ariaLabel={t("mailTemplates.date")}
               placeholder={t("mailTemplates.date")}
-              disabled={disabled || loading}
+              disabled={disabled}
               onChange={(value) => {
                 clear();
                 setDate(value);
-                setPage(1);
                 setLastPage(1);
+                void loadAI("daily", value, 1);
               }}
             />
           )}
@@ -213,9 +251,11 @@ export default function MailTemplatePicker({
             <Button
               variant="outline"
               disabled={disabled || loading}
-              onClick={() => void loadSources()}
+              onClick={() =>
+                void loadAI(kind as "daily" | "weekly", date, page)
+              }
             >
-              {t(loading ? "mailTemplates.loading" : "mailTemplates.load")}
+              {t(loading ? "mailTemplates.loading" : "mailTemplates.reload")}
             </Button>
             {kind === "daily" && (
               <>
@@ -224,7 +264,7 @@ export default function MailTemplatePicker({
                   disabled={disabled || loading || page <= 1}
                   onClick={() => {
                     clear();
-                    void loadSources(page - 1);
+                    void loadAI("daily", date, page - 1);
                   }}
                 >
                   {t("mailTemplates.previous")}
@@ -237,7 +277,7 @@ export default function MailTemplatePicker({
                   disabled={disabled || loading || page >= lastPage}
                   onClick={() => {
                     clear();
-                    void loadSources(page + 1);
+                    void loadAI("daily", date, page + 1);
                   }}
                 >
                   {t("mailTemplates.next")}
@@ -254,14 +294,32 @@ export default function MailTemplatePicker({
             options={choices}
             placeholder={t("mailTemplates.chooseSource")}
             disabled={disabled || loading || !choices.length}
-            onChange={setSelected}
+            onChange={(id) =>
+              void loadAI(kind as "daily" | "weekly", date, page, id)
+            }
           />
-          {loaded && choices.length === 0 && (
+          {loading && (
+            <p
+              role="status"
+              className="text-sm text-gray-600 dark:text-gray-300"
+            >
+              {t("mailTemplates.loading")}
+            </p>
+          )}
+          {loaded && !loading && choices.length === 0 && (
             <p
               role="status"
               className="text-sm text-gray-600 dark:text-gray-300"
             >
               {t("mailTemplates.empty")}
+            </p>
+          )}
+          {loaded && !loading && choices.length > 1 && !selected && (
+            <p
+              role="status"
+              className="text-sm text-gray-600 dark:text-gray-300"
+            >
+              {t("mailTemplates.chooseSourceHint")}
             </p>
           )}
         </>
@@ -271,62 +329,14 @@ export default function MailTemplatePicker({
           {t(error)}
         </p>
       )}
-      <Button
-        variant="outline"
-        disabled={disabled || loading || !kind || (ai && !selected)}
-        onClick={() => void previewTemplate()}
-      >
-        {t("mailTemplates.preview")}
-      </Button>
-      <Modal
-        isOpen={candidate !== null && !disabled}
-        onClose={() => setCandidate(null)}
-        ariaLabelledBy="mail-template-heading"
-        className="max-w-2xl p-4 sm:p-6"
-      >
-        {candidate && (
-          <div className="min-w-0 space-y-4">
-            <h2
-              id="mail-template-heading"
-              className="pe-10 text-lg font-semibold text-gray-900 dark:text-white"
-            >
-              {t("mailTemplates.confirmTitle")}
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              {t("mailTemplates.overwriteHint")}
-            </p>
-            <div className="max-h-[55vh] space-y-3 overflow-y-auto text-sm text-gray-800 dark:text-gray-200">
-              <p className="font-semibold break-all">{candidate.subject}</p>
-              <p className="break-words whitespace-pre-wrap">
-                {candidate.body}
-              </p>
-            </div>
-            {Array.from(candidate.body).length > 10000 && (
-              <p
-                role="alert"
-                className="text-sm text-warning-700 dark:text-warning-400"
-              >
-                {t("mailTemplates.tooLong")}
-              </p>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                disabled={disabled}
-                className="!bg-kps-primary !text-white hover:!bg-kps-primary-hover"
-                onClick={() => {
-                  onApply(candidate);
-                  setCandidate(null);
-                }}
-              >
-                {t("mailTemplates.apply")}
-              </Button>
-              <Button variant="outline" onClick={() => setCandidate(null)}>
-                {t("mailUi.cancel")}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {tooLong && (
+        <p
+          role="alert"
+          className="text-sm text-warning-700 dark:text-warning-400"
+        >
+          {t("mailTemplates.tooLong")}
+        </p>
+      )}
     </div>
   );
 }

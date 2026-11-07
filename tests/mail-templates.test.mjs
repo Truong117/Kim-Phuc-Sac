@@ -147,3 +147,27 @@ test("mock results are explicitly labeled and long AI text is never silently tru
   assert.ok(mail.body.includes(text));
   assert.ok(mail.body.length > 10000);
 });
+
+test("weekly mail preserves the structured decision fields introduced by the focused AI reader", () => {
+  const source = structuredClone(weeklyMailFixture);
+  source.result.recommendations[0] = {
+    ...source.result.recommendations[0],
+    priority: "high",
+    rationale: "Chờ phản hồi ba ngày",
+    impact: "Chặn lịch ra mắt",
+    action: "Xác nhận người phê duyệt",
+    expected_outcome: "Có quyết định rõ ràng",
+    verification: "Đối chiếu biên bản",
+    decision_needed: "Chọn phương án triển khai",
+  };
+  const mail = templates.weeklyMailTemplate(
+    source,
+    "KPS",
+    "https://example.test",
+    t,
+  );
+  for (const [key, value] of Object.entries(source.result.recommendations[0]))
+    if (!["evidence", "priority"].includes(key))
+      assert.ok(mail.body.includes(value));
+  assert.match(mail.body, /Ưu tiên cao/);
+});

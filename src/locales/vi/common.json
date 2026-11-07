@@ -2932,20 +2932,15 @@
     "date": "Ngày báo cáo AI",
     "source": "Báo cáo AI nguồn",
     "chooseSource": "Chọn báo cáo AI đã hoàn tất",
-    "load": "Tải danh sách báo cáo AI",
     "loading": "Đang tải báo cáo AI…",
-    "dailyHint": "Chọn ngày và báo cáo AI của nhân viên. Chỉ dùng bản đã hoàn tất, còn khớp dữ liệu gốc. Thao tác này không tạo lượt AI mới.",
-    "weeklyHint": "Chọn một trong tối đa 100 bản AI gần nhất. Mẫu lấy phần tổng hợp chung của bản 7 ngày và kèm liên kết xem toàn bộ báo cáo, gồm chi tiết từng nhân viên.",
+    "dailyHint": "Chọn ngày: tiêu đề đổi theo ngày và danh sách báo cáo AI tự tải. Nếu chỉ có một báo cáo phù hợp, nội dung tự điền; nếu có nhiều, chọn nhân viên cần lấy báo cáo.",
+    "weeklyHint": "Danh sách AI 7 ngày tự tải. Chọn bản tổng hợp cần gửi; hệ thống tự điền tiêu đề theo kỳ và nội dung tổng hợp chung, kèm liên kết báo cáo đầy đủ.",
     "previous": "Trang trước",
     "next": "Trang sau",
     "page": "Trang {page}/{total}",
-    "empty": "Không có báo cáo AI đã hoàn tất và còn khớp dữ liệu ở lựa chọn này. Hãy tạo hoặc cập nhật báo cáo trong Phân tích AI, hoặc xem trang khác.",
-    "accessError": "Bạn không có quyền đọc báo cáo AI này hoặc báo cáo không còn truy cập được. Nội dung đang soạn được giữ nguyên.",
-    "sourceError": "Không lấy được báo cáo AI còn hợp lệ. Hãy tải lại danh sách; không dùng bản đang xử lý, bị lỗi hoặc đã thay đổi dữ liệu nguồn.",
-    "preview": "Xem trước mẫu",
-    "confirmTitle": "Áp dụng mẫu mail",
-    "overwriteHint": "Áp dụng sẽ thay toàn bộ tiêu đề và nội dung đang soạn, giữ nguyên người nhận. Bạn vẫn có thể chỉnh sửa và phải xác nhận riêng khi gửi.",
-    "apply": "Dùng nội dung này",
+    "empty": "Chưa có báo cáo AI đã hoàn tất và còn khớp dữ liệu cho lựa chọn này. Chọn ngày/trang khác hoặc chuyển sang tự soạn; chưa thể gửi từ mẫu này.",
+    "accessError": "Không có quyền đọc báo cáo AI này hoặc báo cáo không còn truy cập được. Chọn nguồn khác hoặc chuyển sang tự soạn; chưa thể gửi từ mẫu này.",
+    "sourceError": "Không lấy được báo cáo AI còn hợp lệ. Hãy tải lại hoặc chọn nguồn khác; chưa thể gửi từ mẫu này.",
     "tooLong": "Báo cáo dài hơn giới hạn gửi mail. Sau khi áp dụng, hãy rút ngắn nội dung trước khi gửi; hệ thống không tự cắt báo cáo.",
     "mock": "AI mô phỏng",
     "mockWarning": "LƯU Ý: Đây là kết quả AI mô phỏng, không phải phân tích từ mô hình AI thật.",
@@ -2979,6 +2974,11 @@
         "subject": "[KPS] Cần xử lý: [tên vấn đề]",
         "body": "Kính gửi anh/chị,\n\nVẤN ĐỀ CẦN XỬ LÝ\n\n1. Tình huống và thời điểm phát sinh\n[Điền mô tả và mốc thời gian]\n\n2. Mức độ ưu tiên và ảnh hưởng\n[Điền phạm vi ảnh hưởng, công việc đang bị chặn]\n\n3. Các bước đã xử lý\n[Điền thao tác đã thực hiện và kết quả]\n\n4. Đề xuất và nội dung cần quyết định\n[Điền phương án, người cần phối hợp hoặc phê duyệt]\n\n5. Thời hạn cần phản hồi\n[Điền ngày, giờ]\n\n6. Minh chứng\n[Điền liên kết hoặc thông tin đối chiếu]\n\n{fromName}"
       }
-    }
+    },
+    "dailyDateSubject": "[KPS] Báo cáo ngày {date}",
+    "weeklyDefaultSubject": "[KPS] Báo cáo tuần",
+    "autoHint": "Tiêu đề và nội dung tự điền theo mẫu. Bạn có thể chỉnh sửa nếu cần, rồi xem trước và xác nhận gửi.",
+    "reload": "Tải lại báo cáo AI",
+    "chooseSourceHint": "Có nhiều báo cáo phù hợp. Chọn một báo cáo AI để hệ thống tự điền nội dung."
   }
 }
