@@ -50,23 +50,71 @@ export function staticMailTemplate(
   };
 }
 
-const references = (
-  items: { report_id: number; item_id: number; quote: string }[],
-  t: TFunction,
-) =>
+type Evidence = AnalysisClaim["evidence"][number];
+interface ReferenceSource {
+  name: string;
+  date: string;
+  work?: string;
+}
+type ReferenceLookup = (entry: Evidence) => ReferenceSource | undefined;
+
+function analysisReferenceLookup(run: WorkReportAnalysis): ReferenceLookup {
+  const reports = new Map(
+    run.source_reports.map((source) => [source.id, source]),
+  );
+  const work = new Map<string, string>();
+  for (const employee of run.employees) {
+    for (const group of employee.work_inventory ?? []) {
+      for (const observation of group.observations) {
+        const source = reports.get(observation.report_id);
+        if (
+          source?.employee_id === employee.employee_id &&
+          source.item_ids.includes(observation.item_id)
+        )
+          work.set(`${source.id}:${observation.item_id}`, group.content);
+      }
+    }
+  }
+  return (entry) => {
+    const source = reports.get(entry.report_id);
+    return source
+      ? {
+          name: source.employee_name,
+          date: source.date,
+          work: work.get(`${entry.report_id}:${entry.item_id}`),
+        }
+      : undefined;
+  };
+}
+
+const references = (items: Evidence[], lookup: ReferenceLookup, t: TFunction) =>
   items
-    .map((entry) =>
-      t("mailTemplates.reference", {
-        report: entry.report_id,
-        item: entry.item_id,
+    .map((entry) => {
+      const source = lookup(entry);
+      if (!source?.name)
+        return t("mailTemplates.referenceUnknown", { quote: entry.quote });
+      const values = {
+        name: source.name,
+        date: formatDateOnly(source.date),
+        work: source.work,
         quote: entry.quote,
-      }),
-    )
+      };
+      return t(
+        source.work && source.work.trim() !== entry.quote.trim()
+          ? "mailTemplates.referenceWork"
+          : "mailTemplates.reference",
+        values,
+      );
+    })
     .join("\n");
 const section = (title: string, lines: string[]) =>
   `${title}\n${lines.map((line) => `- ${line}`).join("\n")}`;
 
-function weeklyClaimText(claim: AnalysisClaim, t: TFunction) {
+function analysisClaimText(
+  claim: AnalysisClaim,
+  lookup: ReferenceLookup,
+  t: TFunction,
+) {
   const details: string[] = [claim.text];
   if (claim.priority)
     details.push(t(`workReportAnalysis.reader.priority.${claim.priority}`));
@@ -83,7 +131,7 @@ function weeklyClaimText(claim: AnalysisClaim, t: TFunction) {
         `${t(`workReportAnalysis.reader.decision.${key}`)}: ${claim[key]}`,
       );
   }
-  details.push(references(claim.evidence, t));
+  details.push(references(claim.evidence, lookup, t));
   return details.filter(Boolean).join("\n");
 }
 
@@ -98,6 +146,16 @@ export function dailyMailTemplate(
   const document = row.document!;
   const result = document.result!;
   const date = formatDateOnly(document.source.date);
+  const lookup: ReferenceLookup = (entry) =>
+    entry.report_id === document.report_id
+      ? {
+          name: row.employee_name,
+          date: document.source.date,
+          work: document.source.items.find(
+            (item) => item.item_id === entry.item_id,
+          )?.content,
+        }
+      : undefined;
   const chunks = [
     t("mailTemplates.greeting"),
     t("mailTemplates.dailyHeading", { date, name: row.employee_name }),
@@ -109,7 +167,7 @@ export function dailyMailTemplate(
         t("mailTemplates.work"),
         result.work_groups.map(
           (group) =>
-            `${group.title}: ${group.text}\n${references(group.evidence, t)}`,
+            `${group.title}: ${group.text}\n${references(group.evidence, lookup, t)}`,
         ),
       ),
     );
@@ -133,7 +191,7 @@ export function dailyMailTemplate(
         t("mailTemplates.comments"),
         result.comments.map(
           (entry) =>
-            `${entry.text}\n${references([{ report_id: document.report_id, item_id: entry.item_id, quote: entry.quote }], t)}`,
+            `${entry.text}\n${references([{ report_id: document.report_id, item_id: entry.item_id, quote: entry.quote }], lookup, t)}`,
         ),
       ),
     );
@@ -143,7 +201,7 @@ export function dailyMailTemplate(
         t("mailTemplates.recommendations"),
         result.recommendations.map(
           (entry) =>
-            `${entry.text}\n${references([{ report_id: document.report_id, item_id: entry.item_id, quote: entry.quote }], t)}`,
+            `${entry.text}\n${references([{ report_id: document.report_id, item_id: entry.item_id, quote: entry.quote }], lookup, t)}`,
         ),
       ),
     );
@@ -155,8 +213,8 @@ export function dailyMailTemplate(
   }).toString();
   chunks.push(
     t("mailTemplates.dailySource", {
-      id: document.id,
-      report: document.report_id,
+      name: row.employee_name,
+      date,
     }),
     `${t("mailTemplates.fullReport")} ${url.href}`,
     t("mailTemplates.reviewHint"),
@@ -200,12 +258,14 @@ function analysisMailTemplate(
 ): MailTemplateContent {
   const start = formatDateOnly(run.period.start_date),
     end = formatDateOnly(run.period.end_date);
+  const lookup = analysisReferenceLookup(run);
   const chunks = [
     t("mailTemplates.greeting"),
     t(`mailTemplates.${kind}Heading`, { start, end, date: end }),
     t(`mailTemplates.${kind}Source`, {
-      id: run.id,
-      revision: run.revision.number,
+      start,
+      end,
+      date: end,
     }),
   ];
   if (run.is_mock) chunks.push(t("mailTemplates.mockWarning"));
@@ -223,7 +283,7 @@ function analysisMailTemplate(
       chunks.push(
         section(
           t(`workReportAnalysis.sections.${key}`),
-          claims.map((claim) => weeklyClaimText(claim, t)),
+          claims.map((claim) => analysisClaimText(claim, lookup, t)),
         ),
       );
   }

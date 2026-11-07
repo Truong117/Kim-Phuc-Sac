@@ -74,6 +74,13 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
 - Kế hoạch tuần/tháng và vấn đề: khung có các mục cần điền, không tự điền mục
   tiêu, thời hạn, chỉ tiêu hay dữ liệu giả. Người gửi chỉnh sửa trước khi gửi.
 
+Trong nội dung mail ngày/tuần, căn cứ ghi tên nhân viên, ngày và tên công việc
+lấy từ nguồn báo cáo đã lưu, kèm trích dẫn gốc; không hiển thị mã báo cáo/đầu
+việc. Ghép đúng cả báo cáo và đầu việc để tránh nhầm người khi mã đầu việc
+trùng nhau. Nếu thiếu tên công việc, giữ tên/ngày và trích dẫn; nếu thiếu nguồn
+định danh, ghi rõ chưa đủ thông tin người phụ trách. Liên kết vẫn mở đúng bản
+AI đầy đủ để đối chiếu.
+
 Chỉ đọc API AI hiện có, dùng nguyên quyền và phạm vi dữ liệu của các API đó;
 không gọi tạo/retry/regenerate, không tốn thêm lượt AI. Tự tải nguồn khi chọn mẫu, đổi ngày/trang hoặc chọn báo cáo AI. Chặn bản đang chạy, partial/failed, nguồn đã thay đổi, bản ngày
 cần tạo lại hoặc bản tuần không còn tương thích/chưa xác minh được độ mới.

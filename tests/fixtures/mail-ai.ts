@@ -1,15 +1,38 @@
+const sourceItems = [
+  {
+    item_id: 4,
+    content: "Thiết kế catalogue",
+    status: "COMPLETED",
+    result: "Bàn giao 3 mẫu",
+    note: "",
+    issue: "",
+    evidence_links: [],
+    evidence_status: "unverified",
+  },
+];
+
 export const dailyMailFixture = {
   report_id: 12,
   employee_name: "Nguyễn Văn An",
   source_changed: false,
-  source: { report_id: 12, employee_id: 2, date: "2026-11-05", items: [] },
+  source: {
+    report_id: 12,
+    employee_id: 2,
+    date: "2026-11-05",
+    items: sourceItems,
+  },
   document: {
     id: 101,
     report_id: 12,
     status: "completed",
     requires_new_document: false,
     mode: "openai",
-    source: { report_id: 12, employee_id: 2, date: "2026-11-05", items: [] },
+    source: {
+      report_id: 12,
+      employee_id: 2,
+      date: "2026-11-05",
+      items: sourceItems,
+    },
     result: {
       work_groups: [
         {
@@ -61,6 +84,37 @@ export const weeklyMailFixture = {
   requires_new_run: false,
   is_mock: false,
   revision: { number: 2, root_id: 200, parent_id: 200 },
+  source_reports: [
+    {
+      id: 12,
+      employee_id: 2,
+      employee_name: "Nguyễn Văn An",
+      department_name: "Thiết kế",
+      date: "2026-11-05",
+      item_ids: [4],
+    },
+  ],
+  employees: [
+    {
+      employee_id: 2,
+      name: "Nguyễn Văn An",
+      work_inventory: [
+        {
+          content: "Thiết kế catalogue",
+          observations: [
+            {
+              report_id: 12,
+              item_id: 4,
+              date: "2026-11-05",
+              status: "COMPLETED",
+              result: "Bàn giao 3 mẫu",
+              note: null,
+            },
+          ],
+        },
+      ],
+    },
+  ],
   result: {
     overview: [
       {

@@ -135,6 +135,9 @@ async function setup(
                 start_date: summaryDate,
                 end_date: summaryDate,
               },
+              source_reports: dailySummaryFixture.source_reports.map(
+                (source) => ({ ...source, date: summaryDate }),
+              ),
               source_changed: options.staleDailySummary || false,
             },
           },
@@ -412,7 +415,7 @@ test("multiple daily reports require only the source choice, which immediately f
     /Trần Thị Bình/,
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-    /Căn cứ báo cáo #12, đầu việc #4/,
+    /Nguyễn Văn An · .* — Thiết kế catalogue/,
   );
   expect(api.aiReads).toHaveLength(2);
   expect(api.submissions).toHaveLength(0);
@@ -482,6 +485,11 @@ test("weekly template loads the only eligible run and automatically fills its pe
   expect(api.submissions[0].subject).toBe(
     "[KPS] Báo cáo tổng hợp tuần 30/10/2026 - 05/11/2026",
   );
+  expect(api.submissions[0].body).toContain(
+    "Nguyễn Văn An · 05/11/2026 — Thiết kế catalogue",
+  );
+  expect(api.submissions[0].body).toContain("Ghi nhận: “Bàn giao 3 mẫu”");
+  expect(api.submissions[0].body).not.toMatch(/#\d+/);
 });
 
 for (const failure of ["aiDenied", "staleAi", "emptyAi"] as const) {
@@ -612,7 +620,7 @@ test("daily aggregate is available above employee reports and fills a genuine on
     "[KPS] Báo cáo tổng hợp ngày 05/11/2026",
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-    /Bản AI tổng hợp ngày #301/,
+    /Bản AI tổng hợp chung ngày/,
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
     /analysis=301&end=2026-11-05&days=1/,
@@ -642,6 +650,11 @@ test("daily aggregate is available above employee reports and fills a genuine on
   expect(api.submissions[0].subject).toBe(
     "[KPS] Báo cáo tổng hợp ngày 05/11/2026",
   );
+  expect(api.submissions[0].body).toContain(
+    "Nguyễn Văn An · 05/11/2026 — Thiết kế catalogue",
+  );
+  expect(api.submissions[0].body).toContain("Ghi nhận: “Bàn giao 3 mẫu”");
+  expect(api.submissions[0].body).not.toMatch(/#\d+/);
 });
 
 test("a missing daily aggregate explains how to create it and permits returning to an employee report", async ({
@@ -717,7 +730,7 @@ test("changing the date retains aggregate mode and never falls back to a differe
   await expect(source).toBeEnabled();
   await source.selectOption("daily-summary");
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-    /Bản AI tổng hợp ngày #301/,
+    /Bản AI tổng hợp chung ngày/,
   );
   await page
     .getByRole("button", { name: "Ngày báo cáo AI: 05/11/2026", exact: true })
@@ -749,7 +762,7 @@ test("the shared daily aggregate remains selectable when no employee AI document
   await expect(source).toBeEnabled();
   await source.selectOption("daily-summary");
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-    /Bản AI tổng hợp ngày #301/,
+    /Bản AI tổng hợp chung ngày/,
   );
   await expect(
     page.getByRole("button", { name: "Xem trước mail", exact: true }),
