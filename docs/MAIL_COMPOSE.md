@@ -55,6 +55,17 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
 - Báo cáo ngày: chọn ngày bằng lịch KPS, chọn một nhân viên trong danh sách
   báo cáo AI ngày đã hoàn tất. Danh sách phân trang theo API ngày hiện có.
   Giữ nhóm công việc, nhận xét, đề xuất, căn cứ và số liệu còn cần xác nhận.
+  Đầu danh sách có **Tổng hợp ngày (AI)**: lấy bản `work-report-analyses` kỳ
+  1 ngày, đúng cả ngày bắt đầu/kết thúc, không áp dụng bộ lọc phòng ban và trong
+  phạm vi hiện được cấp quyền xem. Dùng bản hoàn tất mới nhất còn khớp nguồn,
+  đọc lại bản đó trước khi tự điền. Nội dung gồm đầy đủ phần tổng hợp chung,
+  căn cứ, nhận định/giới hạn và các trường đề xuất có cấu trúc; liên kết mở đúng
+  bản AI với `days=1`. Báo cáo tổng hợp và báo cáo từng nhân viên là hai lựa
+  chọn độc lập; không ghép các nhận xét cá nhân để giả thành kết luận AI chung.
+  Nếu thiếu bản tổng hợp hợp lệ, chặn gửi, giải thích cách tạo/cập nhật và có
+  liên kết mở Phân tích AI đúng ngày/kỳ 1 ngày. Không tự tạo lượt AI hay gọi API
+  tạo/retry. Đổi ngày hoặc tải lại khi đang chọn tổng hợp sẽ giữ chế độ tổng
+  hợp; không tự dùng bản cũ hoặc chuyển sang cá nhân. Không cần migration/env.
 - Báo cáo tuần: chọn bản AI 7 ngày trong tối đa 100 lượt gần nhất thuộc phạm
   vi được phép xem. Lấy toàn bộ các mục trong phần tổng hợp chung của AI;
   kèm liên kết mở đúng bản và kỳ để xem cả chi tiết từng nhân viên.

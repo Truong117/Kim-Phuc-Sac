@@ -6,9 +6,8 @@ import ts from "typescript";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const moduleUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString("base64")}`;
-const { dailyMailFixture, weeklyMailFixture } = await import(
-  moduleUrl(await read("tests/fixtures/mail-ai.ts"))
-);
+const { dailyMailFixture, weeklyMailFixture, dailySummaryFixture } =
+  await import(moduleUrl(await read("tests/fixtures/mail-ai.ts")));
 const dateUrl = moduleUrl(await read("src/utils/dateOnly.ts"));
 const templates = await import(
   moduleUrl(
@@ -170,4 +169,54 @@ test("weekly mail preserves the structured decision fields introduced by the foc
     if (!["evidence", "priority"].includes(key))
       assert.ok(mail.body.includes(value));
   assert.match(mail.body, /Ưu tiên cao/);
+});
+
+test("the daily aggregate template uses every shared AI section from a one-day analysis and links to that saved run", () => {
+  const mail = templates.dailySummaryMailTemplate(
+    dailySummaryFixture,
+    "2026-11-05",
+    "KPS",
+    "https://example.test",
+    t,
+  );
+  assert.equal(mail.subject, "[KPS] Báo cáo tổng hợp ngày 05/11/2026");
+  assert.match(mail.body, /BÁO CÁO TỔNG HỢP NGÀY 05\/11\/2026/);
+  assert.match(mail.body, /Bản AI tổng hợp ngày #301/);
+  assert.match(mail.body, /analysis=301&end=2026-11-05&days=1/);
+  for (const claims of Object.values(dailySummaryFixture.result))
+    for (const claim of claims) assert.ok(mail.body.includes(claim.text));
+  assert.doesNotMatch(mail.body, /BÁO CÁO TỔNG HỢP TUẦN/);
+});
+
+test("daily aggregates reject another date, a multi-day period, a department-only filter or an incomplete/stale analysis", () => {
+  for (const override of [
+    { status: "partial" },
+    { status: "running" },
+    { source_changed: true },
+    { source_changed: null },
+    { requires_new_run: true },
+    { result: null },
+    { department_id: 9 },
+    { period: { ...dailySummaryFixture.period, days: 7 } },
+    { period: { ...dailySummaryFixture.period, start_date: "2026-11-04" } },
+  ]) {
+    assert.throws(() =>
+      templates.dailySummaryMailTemplate(
+        { ...dailySummaryFixture, ...override },
+        "2026-11-05",
+        "KPS",
+        "https://example.test",
+        t,
+      ),
+    );
+  }
+  assert.throws(() =>
+    templates.dailySummaryMailTemplate(
+      dailySummaryFixture,
+      "2026-11-04",
+      "KPS",
+      "https://example.test",
+      t,
+    ),
+  );
 });

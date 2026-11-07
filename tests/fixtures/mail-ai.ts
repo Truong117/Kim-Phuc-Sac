@@ -78,3 +78,15 @@ export const weeklyMailFixture = {
     recommendations: [{ text: "Chốt lịch trước thứ Sáu.", evidence: [] }],
   },
 };
+
+export const dailySummaryFixture = {
+  ...weeklyMailFixture,
+  id: 301,
+  period: {
+    ...weeklyMailFixture.period,
+    start_date: "2026-11-05",
+    end_date: "2026-11-05",
+    days: 1,
+  },
+  revision: { number: 1, root_id: 301, parent_id: null },
+};

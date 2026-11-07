@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
-import { dailyMailFixture, weeklyMailFixture } from "../tests/fixtures/mail-ai";
+import {
+  dailyMailFixture,
+  weeklyMailFixture,
+  dailySummaryFixture,
+} from "../tests/fixtures/mail-ai";
 
 async function setup(
   page: Page,
@@ -11,6 +15,9 @@ async function setup(
     staleAi?: boolean;
     emptyAi?: boolean;
     manyDaily?: boolean;
+    dailySummary?: boolean;
+    dailySummaryDate?: string;
+    staleDailySummary?: boolean;
   } = {},
 ) {
   const history: Record<string, unknown>[] = [];
@@ -21,6 +28,7 @@ async function setup(
   }[] = [];
   const processed: string[] = [];
   const aiReads: string[] = [];
+  let summaryDate = "2026-11-05";
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -32,6 +40,7 @@ async function setup(
       if (path === "/api/ai/daily-documents") {
         const params = new URL(request.url()).searchParams;
         const pageNumber = Number(params.get("page") || 1);
+        summaryDate = options.dailySummaryDate || params.get("date")!;
         const row = structuredClone(dailyMailFixture);
         row.source.date = params.get("date")!;
         row.document.source.date = params.get("date")!;
@@ -80,18 +89,54 @@ async function setup(
       if (path === "/api/ai/work-report-analyses/history")
         return route.fulfill({
           json: {
-            data: options.emptyAi
-              ? []
-              : [
-                  { ...weeklyMailFixture, result: null },
-                  {
-                    ...weeklyMailFixture,
-                    id: 202,
-                    period: { ...weeklyMailFixture.period, days: 1 },
-                  },
-                  { ...weeklyMailFixture, id: 203, status: "partial" },
-                  { ...weeklyMailFixture, id: 204, source_changed: true },
-                ],
+            data:
+              options.emptyAi && !options.dailySummary
+                ? []
+                : [
+                    ...(options.dailySummary
+                      ? [
+                          {
+                            ...dailySummaryFixture,
+                            period: {
+                              ...dailySummaryFixture.period,
+                              start_date: summaryDate,
+                              end_date: summaryDate,
+                            },
+                          },
+                          {
+                            ...dailySummaryFixture,
+                            id: 300,
+                            period: {
+                              ...dailySummaryFixture.period,
+                              start_date: summaryDate,
+                              end_date: summaryDate,
+                            },
+                          },
+                        ]
+                      : []),
+                    { ...weeklyMailFixture, result: null },
+                    {
+                      ...weeklyMailFixture,
+                      id: 202,
+                      period: { ...weeklyMailFixture.period, days: 1 },
+                    },
+                    { ...weeklyMailFixture, id: 203, status: "partial" },
+                    { ...weeklyMailFixture, id: 204, source_changed: true },
+                  ],
+          },
+        });
+      if (path === "/api/ai/work-report-analyses/301")
+        return route.fulfill({
+          json: {
+            data: {
+              ...dailySummaryFixture,
+              period: {
+                ...dailySummaryFixture.period,
+                start_date: summaryDate,
+                end_date: summaryDate,
+              },
+              source_changed: options.staleDailySummary || false,
+            },
           },
         });
       if (path === "/api/ai/work-report-analyses/201")
@@ -358,7 +403,7 @@ test("multiple daily reports require only the source choice, which immediately f
     name: "Báo cáo AI nguồn",
     exact: true,
   });
-  await expect(source.getByRole("option")).toHaveCount(3);
+  await expect(source.getByRole("option")).toHaveCount(4);
   await expect(
     page.getByRole("button", { name: "Xem trước mail", exact: true }),
   ).toBeDisabled();
@@ -525,6 +570,172 @@ for (const dark of [false, true]) {
     );
   });
 }
+
+test("daily aggregate is available above employee reports and fills a genuine one-day AI summary for sending", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-11-06T03:00:00Z"));
+  const api = await setup(page, { dailySummary: true, manyDaily: true });
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await expect(source.getByRole("option").nth(1)).toHaveText(
+    "Tổng hợp ngày (AI)",
+  );
+  await source.selectOption("daily-summary");
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Báo cáo tổng hợp ngày 05/11/2026",
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Bản AI tổng hợp ngày #301/,
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /analysis=301&end=2026-11-05&days=1/,
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Chưa đủ dữ liệu để kết luận doanh thu/,
+  );
+  await expect(
+    page.getByRole("button", { name: "Trang sau", exact: true }),
+  ).toHaveCount(0);
+  expect(api.aiReads.some((url) => url.endsWith("/301"))).toBe(true);
+  expect(api.aiReads.some((url) => url.endsWith("/300"))).toBe(false);
+  expect(api.submissions).toHaveLength(0);
+  await page
+    .getByRole("button", { name: "Xem trước mail", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "BÁO CÁO TỔNG HỢP NGÀY 05/11/2026",
+  );
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(api.submissions[0].subject).toBe(
+    "[KPS] Báo cáo tổng hợp ngày 05/11/2026",
+  );
+});
+
+test("a missing daily aggregate explains how to create it and permits returning to an employee report", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-11-06T03:00:00Z"));
+  const api = await setup(page);
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Nhân viên: Nguyễn Văn An/,
+  );
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await source.selectOption("daily-summary");
+  await expect(page.getByRole("alert")).toContainText(
+    "chưa có bản AI tổng hợp chung",
+  );
+  await expect(page.getByRole("alert")).toContainText("kỳ 1 ngày");
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "Xem trước mail", exact: true }),
+  ).toBeDisabled();
+  await source.selectOption("101");
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Nhân viên: Nguyễn Văn An/,
+  );
+  expect(api.submissions).toHaveLength(0);
+});
+
+test("an aggregate with changed sources cannot replace the draft or be sent", async ({
+  page,
+}) => {
+  const api = await setup(page, {
+    dailySummary: true,
+    staleDailySummary: true,
+  });
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await expect(source).toBeEnabled();
+  await source.selectOption("daily-summary");
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "Xem trước mail", exact: true }),
+  ).toBeDisabled();
+  expect(api.submissions).toHaveLength(0);
+});
+
+test("changing the date retains aggregate mode and never falls back to a different day or employee", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-11-06T03:00:00Z"));
+  const api = await setup(page, {
+    dailySummary: true,
+    dailySummaryDate: "2026-11-05",
+  });
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await expect(source).toBeEnabled();
+  await source.selectOption("daily-summary");
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Bản AI tổng hợp ngày #301/,
+  );
+  await page
+    .getByRole("button", { name: "Ngày báo cáo AI: 05/11/2026", exact: true })
+    .click();
+  await page.locator('[data-calendar-date="2026-11-01"]').click();
+  await expect(page.getByRole("alert")).toContainText("01/11/2026");
+  await expect(source).toHaveValue("daily-summary");
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Báo cáo tổng hợp ngày 01/11/2026",
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue("");
+  await expect(
+    page.getByRole("button", { name: "Xem trước mail", exact: true }),
+  ).toBeDisabled();
+  expect(api.submissions).toHaveLength(0);
+});
+
+test("the shared daily aggregate remains selectable when no employee AI document is available", async ({
+  page,
+}) => {
+  const api = await setup(page, { emptyAi: true, dailySummary: true });
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  const source = page.getByRole("combobox", {
+    name: "Báo cáo AI nguồn",
+    exact: true,
+  });
+  await expect(source).toBeEnabled();
+  await source.selectOption("daily-summary");
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Bản AI tổng hợp ngày #301/,
+  );
+  await expect(
+    page.getByRole("button", { name: "Xem trước mail", exact: true }),
+  ).toBeEnabled();
+  expect(api.submissions).toHaveLength(0);
+});
 
 const subject = "Thông báo họp nội bộ";
 const body =

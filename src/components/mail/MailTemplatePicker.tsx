@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Label from "@/components/form/Label";
 import Select from "@/components/form/Select";
@@ -18,6 +19,9 @@ import {
 import {
   dailyMailReady,
   dailyMailTemplate,
+  DAILY_SUMMARY_SOURCE,
+  dailySummaryMailReady,
+  dailySummaryMailTemplate,
   mailTemplateIds,
   staticMailTemplate,
   weeklyMailReady,
@@ -108,9 +112,14 @@ export default function MailTemplatePicker({
     onApply({
       subject:
         nextKind === "daily"
-          ? t("mailTemplates.dailyDateSubject", {
-              date: formatDateOnly(nextDate),
-            })
+          ? t(
+              sourceId === DAILY_SUMMARY_SOURCE
+                ? "mailTemplates.dailySummarySubject"
+                : "mailTemplates.dailyDateSubject",
+              {
+                date: formatDateOnly(nextDate),
+              },
+            )
           : t("mailTemplates.weeklyDefaultSubject"),
       body: "",
     });
@@ -133,23 +142,45 @@ export default function MailTemplatePicker({
             label: `${row.employee_name} · ${formatDateOnly(row.document!.source.date)} · #${row.document!.id}${row.document!.mode === "fake" ? ` · ${t("mailTemplates.mock")}` : ""}`,
           })),
         );
-        const row = sourceId
-          ? rows.find((entry) => String(entry.document!.id) === sourceId)
-          : rows.length === 1
-            ? rows[0]
-            : undefined;
-        if (sourceId && !row) throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
-        if (row) {
-          setSelected(String(row.document!.id));
+        if (sourceId === DAILY_SUMMARY_SOURCE) {
+          const history = await getWorkAnalysisHistory(signal);
+          if (signal.aborted) return;
+          const candidate = history
+            .filter((run) => dailySummaryMailReady(run, nextDate))
+            .sort((a, b) => b.id - a.id)[0];
+          if (!candidate) throw new Error("MAIL_DAILY_SUMMARY_MISSING");
+          const summary = await getWorkAnalysis(candidate.id, signal);
+          if (signal.aborted) return;
+          if (summary.id !== candidate.id)
+            throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
           apply(
-            dailyMailTemplate(
-              row,
+            dailySummaryMailTemplate(
+              summary,
+              nextDate,
               fromName,
               window.location.origin,
               t,
-              nextPage,
             ),
           );
+        } else {
+          const row = sourceId
+            ? rows.find((entry) => String(entry.document!.id) === sourceId)
+            : rows.length === 1
+              ? rows[0]
+              : undefined;
+          if (sourceId && !row) throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
+          if (row) {
+            setSelected(String(row.document!.id));
+            apply(
+              dailyMailTemplate(
+                row,
+                fromName,
+                window.location.origin,
+                t,
+                nextPage,
+              ),
+            );
+          }
         }
       } else {
         let id = sourceId;
@@ -181,7 +212,10 @@ export default function MailTemplatePicker({
           cause instanceof ApiServiceError &&
             [401, 403, 404].includes(cause.status)
             ? "mailTemplates.accessError"
-            : "mailTemplates.sourceError",
+            : cause instanceof Error &&
+                cause.message === "MAIL_DAILY_SUMMARY_MISSING"
+              ? "mailTemplates.dailySummaryMissing"
+              : "mailTemplates.sourceError",
         );
     } finally {
       if (mounted.current && request.current === controller) setLoading(false);
@@ -243,7 +277,12 @@ export default function MailTemplatePicker({
                 clear();
                 setDate(value);
                 setLastPage(1);
-                void loadAI("daily", value, 1);
+                void loadAI(
+                  "daily",
+                  value,
+                  1,
+                  selected === DAILY_SUMMARY_SOURCE ? DAILY_SUMMARY_SOURCE : "",
+                );
               }}
             />
           )}
@@ -252,12 +291,17 @@ export default function MailTemplatePicker({
               variant="outline"
               disabled={disabled || loading}
               onClick={() =>
-                void loadAI(kind as "daily" | "weekly", date, page)
+                void loadAI(
+                  kind as "daily" | "weekly",
+                  date,
+                  page,
+                  selected === DAILY_SUMMARY_SOURCE ? DAILY_SUMMARY_SOURCE : "",
+                )
               }
             >
               {t(loading ? "mailTemplates.loading" : "mailTemplates.reload")}
             </Button>
-            {kind === "daily" && (
+            {kind === "daily" && selected !== DAILY_SUMMARY_SOURCE && (
               <>
                 <Button
                   variant="outline"
@@ -291,9 +335,21 @@ export default function MailTemplatePicker({
           <Select
             id="mail-template-source"
             value={selected}
-            options={choices}
+            options={
+              kind === "daily"
+                ? [
+                    {
+                      value: DAILY_SUMMARY_SOURCE,
+                      label: t("mailTemplates.dailySummaryOption"),
+                    },
+                    ...choices,
+                  ]
+                : choices
+            }
             placeholder={t("mailTemplates.chooseSource")}
-            disabled={disabled || loading || !choices.length}
+            disabled={
+              disabled || loading || (kind !== "daily" && !choices.length)
+            }
             onChange={(id) =>
               void loadAI(kind as "daily" | "weekly", date, page, id)
             }
@@ -311,7 +367,11 @@ export default function MailTemplatePicker({
               role="status"
               className="text-sm text-gray-600 dark:text-gray-300"
             >
-              {t("mailTemplates.empty")}
+              {t(
+                kind === "daily"
+                  ? "mailTemplates.dailyIndividualsEmpty"
+                  : "mailTemplates.empty",
+              )}
             </p>
           )}
           {loaded && !loading && choices.length > 1 && !selected && (
@@ -326,8 +386,16 @@ export default function MailTemplatePicker({
       )}
       {error && (
         <p role="alert" className="text-sm text-error-600 dark:text-error-400">
-          {t(error)}
+          {t(error, { date: formatDateOnly(date) })}
         </p>
+      )}
+      {error === "mailTemplates.dailySummaryMissing" && (
+        <Link
+          to={`/ai/insights?end=${encodeURIComponent(date)}&days=1`}
+          className="inline-block text-sm font-medium text-kps-primary underline dark:text-sidebar-selected"
+        >
+          {t("mailTemplates.openDailySummary")}
+        </Link>
       )}
       {tooLong && (
         <p

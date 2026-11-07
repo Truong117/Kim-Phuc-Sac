@@ -19,6 +19,7 @@ export interface MailTemplateContent {
   body: string;
 }
 export type DailyMailSource = DailyDocumentsPage["reports"][number];
+export const DAILY_SUMMARY_SOURCE = "daily-summary";
 export const dailyMailReady = (row: DailyMailSource) =>
   row.document?.status === "completed" &&
   row.document.result !== null &&
@@ -27,6 +28,14 @@ export const dailyMailReady = (row: DailyMailSource) =>
 export const weeklyMailReady = (run: WorkReportAnalysis) =>
   run.status === "completed" &&
   run.period.days === 7 &&
+  run.source_changed === false &&
+  !run.requires_new_run;
+export const dailySummaryMailReady = (run: WorkReportAnalysis, date: string) =>
+  run.status === "completed" &&
+  run.period.days === 1 &&
+  run.period.start_date === date &&
+  run.period.end_date === date &&
+  run.department_id === null &&
   run.source_changed === false &&
   !run.requires_new_run;
 
@@ -167,12 +176,34 @@ export function weeklyMailTemplate(
 ): MailTemplateContent {
   if (!weeklyMailReady(run) || !run.result)
     throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
+  return analysisMailTemplate(run, fromName, origin, t, "weekly");
+}
+
+export function dailySummaryMailTemplate(
+  run: WorkReportAnalysis,
+  date: string,
+  fromName: string,
+  origin: string,
+  t: TFunction,
+): MailTemplateContent {
+  if (!dailySummaryMailReady(run, date) || !run.result)
+    throw new Error("MAIL_AI_SOURCE_UNAVAILABLE");
+  return analysisMailTemplate(run, fromName, origin, t, "dailySummary");
+}
+
+function analysisMailTemplate(
+  run: WorkReportAnalysis,
+  fromName: string,
+  origin: string,
+  t: TFunction,
+  kind: "weekly" | "dailySummary",
+): MailTemplateContent {
   const start = formatDateOnly(run.period.start_date),
     end = formatDateOnly(run.period.end_date);
   const chunks = [
     t("mailTemplates.greeting"),
-    t("mailTemplates.weeklyHeading", { start, end }),
-    t("mailTemplates.weeklySource", {
+    t(`mailTemplates.${kind}Heading`, { start, end, date: end }),
+    t(`mailTemplates.${kind}Source`, {
       id: run.id,
       revision: run.revision.number,
     }),
@@ -187,7 +218,7 @@ export function weeklyMailTemplate(
     "uncertainties",
     "recommendations",
   ] as const) {
-    const claims = run.result[key];
+    const claims = run.result![key];
     if (claims.length)
       chunks.push(
         section(
@@ -200,7 +231,7 @@ export function weeklyMailTemplate(
   url.search = new URLSearchParams({
     analysis: String(run.id),
     end: run.period.end_date,
-    days: "7",
+    days: String(run.period.days),
     ...(run.department_id ? { department: String(run.department_id) } : {}),
   }).toString();
   chunks.push(
@@ -209,7 +240,7 @@ export function weeklyMailTemplate(
     fromName,
   );
   return {
-    subject: t("mailTemplates.weeklySubject", { start, end }),
+    subject: t(`mailTemplates.${kind}Subject`, { start, end, date: end }),
     body: chunks.join("\n\n"),
   };
 }
