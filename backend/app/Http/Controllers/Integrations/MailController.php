@@ -119,8 +119,10 @@ class MailController extends Controller
 
     private function messagePayload(MailMessage $message): array
     {
+        $interrupted = $message->status === 'sending' && $message->started_at !== null && $message->started_at->lt(now()->subMinutes(5));
+
         return ['id' => $message->id, 'recipient_user_id' => (string) $message->recipient_user_id, 'created_by' => (string) $message->created_by,
-            'recipient_email' => $message->payload['to'], 'subject' => $message->payload['subject'], 'kind' => $message->kind, 'status' => $message->status, 'error_code' => $message->error_code,
+            'recipient_email' => $message->payload['to'], 'subject' => $message->payload['subject'], 'kind' => $message->kind, 'status' => $interrupted ? 'unknown' : $message->status, 'error_code' => $interrupted ? 'PROCESS_INTERRUPTED' : $message->error_code,
             'created_at' => $message->created_at->toIso8601String(), 'accepted_at' => $message->accepted_at?->toIso8601String()];
     }
 
@@ -144,6 +146,31 @@ class MailController extends Controller
     public function processTest(Request $request, string $id): JsonResponse
     {
         return $this->processOwnedMessage($request, $id, 'test');
+    }
+
+    public function messageStatuses(Request $request): JsonResponse
+    {
+        $member = $this->access->require($request->user());
+        abort_unless($this->schemaReady(), 503);
+        $input = $request->validate(['request_keys' => ['required', 'array', 'min:1', 'max:50'], 'request_keys.*' => ['required', 'uuid', 'distinct']]);
+        $messages = MailMessage::query()->where('organization_id', $member->organization_id)
+            ->where('created_by', $request->user()->id)->where('kind', 'internal')->whereIn('request_key', $input['request_keys'])->get();
+
+        return response()->json([
+            'data' => $messages->map(fn ($message) => [...$this->messagePayload($message), 'request_key' => $message->request_key])->values(),
+            'missing_request_keys' => array_values(array_diff($input['request_keys'], $messages->pluck('request_key')->all())),
+        ])->header('Cache-Control', 'no-store');
+    }
+
+    public function messageContent(Request $request, string $id): JsonResponse
+    {
+        $member = $this->access->require($request->user());
+        abort_unless($this->schemaReady(), 503);
+        $message = MailMessage::query()->whereKey($id)->where('organization_id', $member->organization_id)
+            ->where('created_by', $request->user()->id)->where('kind', 'internal')->firstOrFail();
+
+        return response()->json(['data' => ['subject' => $message->payload['subject'], 'body' => $message->payload['text']]])
+            ->header('Cache-Control', 'no-store');
     }
 
     public function previewMessage(Request $request): JsonResponse

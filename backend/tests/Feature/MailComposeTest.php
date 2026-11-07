@@ -92,6 +92,83 @@ class MailComposeTest extends TestCase
         $this->deleteJson('/api/integrations/mail/connection')->assertForbidden();
     }
 
+    public function test_status_read_reconciles_own_request_keys_without_sending_or_mutating_stale_messages(): void
+    {
+        $actor = $this->actor('EXECUTIVE_ASSISTANT');
+        $recipient = $this->actor('OFFICE_STAFF');
+        $this->connection($actor);
+        $payload = $this->payload($recipient);
+        $id = $this->actingAs($actor)->postJson('/api/integrations/mail/messages', $payload)->assertAccepted()->json('data.0.id');
+        MailMessage::query()->whereKey($id)->update(['status' => 'sending', 'started_at' => now()->subMinutes(6)]);
+        $before = DB::table('mail_messages')->where('id', $id)->first();
+        config(['kps_mail.send_enabled' => false, 'kps_mail.gmail.client_secret' => null]);
+        $missing = (string) Str::uuid();
+        $this->postJson('/api/integrations/mail/messages/status', ['request_keys' => [$payload['recipients'][0]['request_key'], $missing]])
+            ->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+            ->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $id)
+            ->assertJsonPath('data.0.request_key', $payload['recipients'][0]['request_key'])
+            ->assertJsonPath('data.0.status', 'unknown')->assertJsonPath('data.0.error_code', 'PROCESS_INTERRUPTED')
+            ->assertJsonPath('missing_request_keys', [$missing])->assertJsonMissingPath('data.0.body');
+        $this->assertEquals($before, DB::table('mail_messages')->where('id', $id)->first());
+        $this->assertDatabaseCount('mail_messages', 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_status_and_content_reads_require_mail_role_actor_organization_and_internal_kind(): void
+    {
+        $actor = $this->actor();
+        $other = $this->actor('EXECUTIVE_ASSISTANT');
+        $foreign = $this->actor('ADMIN', 'OTHER');
+        $recipient = $this->actor('OFFICE_STAFF');
+        $this->connection($actor);
+        $payload = $this->payload($recipient);
+        $id = $this->actingAs($actor)->postJson('/api/integrations/mail/messages', $payload)->assertAccepted()->json('data.0.id');
+        $keys = ['request_keys' => [$payload['recipients'][0]['request_key']]];
+        foreach ([$other] as $denied) {
+            $this->actingAs($denied)->postJson('/api/integrations/mail/messages/status', $keys)->assertOk()
+                ->assertJsonPath('data', [])->assertJsonPath('missing_request_keys', $keys['request_keys']);
+            $this->getJson('/api/integrations/mail/messages/'.$id.'/content')->assertNotFound();
+        }
+        $this->actingAs($foreign)->postJson('/api/integrations/mail/messages/status', $keys)->assertUnauthorized();
+        $this->getJson('/api/integrations/mail/messages/'.$id.'/content')->assertUnauthorized();
+        $organizationId = MailMessage::query()->findOrFail($id)->organization_id;
+        MailMessage::query()->whereKey($id)->update(['organization_id' => $foreign->defaultOrganizationMembership->organization_id]);
+        $this->actingAs($actor)->postJson('/api/integrations/mail/messages/status', $keys)->assertOk()->assertJsonPath('data', []);
+        $this->getJson('/api/integrations/mail/messages/'.$id.'/content')->assertNotFound();
+        MailMessage::query()->whereKey($id)->update(['organization_id' => $organizationId]);
+        $this->actingAs($recipient)->postJson('/api/integrations/mail/messages/status', $keys)->assertForbidden();
+        $this->getJson('/api/integrations/mail/messages/'.$id.'/content')->assertForbidden();
+        $this->actingAs($actor)->getJson('/api/integrations/mail/messages/'.$id.'/content')->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')->assertExactJson(['data' => ['subject' => $payload['subject'], 'body' => $payload['body']]]);
+        MailMessage::query()->whereKey($id)->update(['kind' => 'test']);
+        $this->postJson('/api/integrations/mail/messages/status', $keys)->assertOk()->assertJsonPath('data', []);
+        $this->getJson('/api/integrations/mail/messages/'.$id.'/content')->assertNotFound();
+        $this->assertDatabaseCount('mail_messages', 1);
+        Http::assertNothingSent();
+    }
+
+    public function test_status_lookup_validates_keys_and_never_requeues_terminal_messages(): void
+    {
+        $actor = $this->actor();
+        $recipient = $this->actor('OFFICE_STAFF');
+        $this->connection($actor);
+        $this->actingAs($actor);
+        $key = (string) Str::uuid();
+        foreach ([[], ['bad-key'], [$key, $key], array_map(fn () => (string) Str::uuid(), range(1, 51))] as $keys) {
+            $this->postJson('/api/integrations/mail/messages/status', ['request_keys' => $keys])->assertUnprocessable();
+        }
+        $payload = $this->payload($recipient);
+        $id = $this->postJson('/api/integrations/mail/messages', $payload)->assertAccepted()->json('data.0.id');
+        foreach (['accepted', 'failed', 'cancelled', 'unknown', 'queued', 'sending'] as $status) {
+            MailMessage::query()->whereKey($id)->update(['status' => $status, 'started_at' => now()]);
+            $this->postJson('/api/integrations/mail/messages/status', ['request_keys' => [$payload['recipients'][0]['request_key']]])
+                ->assertOk()->assertJsonPath('data.0.status', $status);
+            $this->assertSame($status, MailMessage::query()->findOrFail($id)->status);
+        }
+        $this->assertDatabaseCount('mail_messages', 1);
+        Http::assertNothingSent();
+    }
+
     public function test_preview_and_gmail_share_html_with_unchanged_plain_text_without_preview_side_effects(): void
     {
         $actor = $this->actor('EXECUTIVE_ASSISTANT');

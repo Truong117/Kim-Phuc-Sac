@@ -30,7 +30,11 @@ import {
   type MailTemplateContent,
 } from "@/utils/mailTemplates";
 
+import type { MailTemplateState } from "@/utils/mailComposeState";
+
 interface Props {
+  initialState?: MailTemplateState;
+  onStateChange?: (state: MailTemplateState) => void;
   fromName: string;
   disabled: boolean;
   onApply: (content: MailTemplateContent) => void;
@@ -39,22 +43,31 @@ interface Props {
 }
 export default function MailTemplatePicker({
   fromName,
+  initialState,
+  onStateChange,
   disabled,
   onApply,
   onBusyChange,
   onReadyChange,
 }: Props) {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<MailTemplateId | "">("");
-  const [date, setDate] = useState(() =>
-    addDaysToDateOnly(dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh"), -1),
+  const [kind, setKind] = useState<MailTemplateId | "">(
+    initialState?.kind ?? "",
   );
-  const [page, setPage] = useState(1);
-  const [lastPage, setLastPage] = useState(1);
+  const [date, setDate] = useState(
+    () =>
+      initialState?.date ??
+      addDaysToDateOnly(dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh"), -1),
+  );
+  const [page, setPage] = useState(initialState?.page ?? 1);
+  const [lastPage, setLastPage] = useState(initialState?.page ?? 1);
   const [choices, setChoices] = useState<{ value: string; label: string }[]>(
-    [],
+    initialState?.selected && initialState.sourceLabel
+      ? [{ value: initialState.selected, label: initialState.sourceLabel }]
+      : [],
   );
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(initialState?.selected ?? "");
+  const [ready, setReady] = useState(initialState?.ready ?? true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -77,10 +90,19 @@ export default function MailTemplatePicker({
     return () => onBusyChange(false);
   }, [loading, onBusyChange]);
 
+  const sourceLabel =
+    choices.find((choice) => choice.value === selected)?.label ?? "";
+  useEffect(() => {
+    onStateChange?.({ kind, date, page, selected, sourceLabel, ready });
+  }, [kind, date, page, selected, sourceLabel, ready, onStateChange]);
+  useEffect(() => {
+    onReadyChange(ready);
+  }, [ready, onReadyChange]);
+
   function apply(content: MailTemplateContent) {
     onApply(content);
     setTooLong(Array.from(content.body).length > 10000);
-    onReadyChange(true);
+    setReady(true);
   }
   function clear() {
     request.current?.abort();
@@ -107,7 +129,7 @@ export default function MailTemplatePicker({
     setTooLong(false);
     setSelected(sourceId);
     setPage(nextPage);
-    onReadyChange(false);
+    setReady(false);
     // A new date/source must never retain the previous report's body.
     onApply({
       subject:
@@ -236,7 +258,7 @@ export default function MailTemplatePicker({
           t,
         ),
       );
-    else onReadyChange(true);
+    else setReady(true);
   }
   return (
     <div className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
