@@ -6,12 +6,17 @@ import Input from "@/components/form/input/InputField";
 import TextArea from "@/components/form/input/TextArea";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
-import { useMailBatch } from "@/hooks/useMailTestBatch";
+import { useMailComposeFlow } from "@/hooks/useMailComposeFlow";
+import { useModal } from "@/hooks/useModal";
+import { hasMailDraft } from "@/utils/mailComposeState";
 import {
   INTERNAL_MAIL_LAYOUT,
   previewMailMessage,
+  readMailContent,
+  type MailHistoryEntry,
   type MailRecipient,
 } from "@/services/mailService";
+import MailSendRuns from "./MailSendRuns";
 import MailBodyPreview from "./MailBodyPreview";
 import MailHistory from "./MailHistory";
 import MailRecipientPicker from "./MailRecipientPicker";
@@ -19,6 +24,8 @@ import MailTemplatePicker from "./MailTemplatePicker";
 
 interface Props {
   storageKey: string;
+  history: MailHistoryEntry[];
+  actorId: string;
   recipients: MailRecipient[];
   fromName: string;
   fromEmail: string;
@@ -29,6 +36,8 @@ interface Props {
 
 export default function MailComposer({
   storageKey,
+  history,
+  actorId,
   recipients,
   fromName,
   fromEmail,
@@ -37,7 +46,15 @@ export default function MailComposer({
   onComplete,
 }: Props) {
   const { t } = useTranslation();
-  const batch = useMailBatch(storageKey, "internal");
+  const batch = useMailComposeFlow(storageKey);
+  const discard = useModal();
+  const historyRoot = useRef<HTMLDivElement>(null);
+  const [reuseBusy, setReuseBusy] = useState(false);
+  const [reuseError, setReuseError] = useState(false);
+  const [replacement, setReplacement] = useState<
+    { subject: string; body: string } | undefined
+  >();
+  const reuseAbort = useRef<AbortController | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
@@ -45,23 +62,26 @@ export default function MailComposer({
   const previewAbort = useRef<AbortController | null>(null);
   const [invalid, setInvalid] = useState<string[]>([]);
   const [templateBusy, setTemplateBusy] = useState(false);
-  const [templateReady, setTemplateReady] = useState(true);
+  const [templateReady, setTemplateReady] = useState(
+    batch.template?.ready ?? true,
+  );
   const root = useRef<HTMLDivElement>(null);
   const mounted = useRef(true);
   const selection = recipients.filter((recipient) =>
     batch.selectedIds.includes(recipient.id),
   );
-  const baseLocked = disabled || batch.busy || batch.started;
+  const baseLocked = disabled || batch.busy || reuseBusy;
   const locked = baseLocked || templateBusy || previewBusy || confirming;
   useEffect(() => {
-    onBusyChange(batch.busy || templateBusy || previewBusy);
+    onBusyChange(batch.busy || templateBusy || previewBusy || reuseBusy);
     return () => onBusyChange(false);
-  }, [batch.busy, templateBusy, previewBusy, onBusyChange]);
+  }, [batch.busy, templateBusy, previewBusy, reuseBusy, onBusyChange]);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       previewAbort.current?.abort();
+      reuseAbort.current?.abort();
     };
   }, []);
   useEffect(() => {
@@ -159,24 +179,73 @@ export default function MailComposer({
       await onComplete();
     }
   }
+  function newDraft(content?: { subject: string; body: string }) {
+    setReplacement(content);
+    if (hasMailDraft(batch)) discard.openModal();
+    else {
+      batch.reset(content);
+      setInvalid([]);
+      setPreviewError(false);
+    }
+  }
+  async function reuse(id: string) {
+    if (locked) return;
+    const controller = new AbortController();
+    reuseAbort.current = controller;
+    setReuseBusy(true);
+    setReuseError(false);
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await readMailContent(id, controller.signal);
+      if (!mounted.current || controller.signal.aborted) return;
+      newDraft(response.data);
+      root.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch {
+      if (mounted.current) setReuseError(true);
+    } finally {
+      clearTimeout(timeout);
+      if (mounted.current) setReuseBusy(false);
+    }
+  }
   return (
     <div ref={root} className="min-w-0 space-y-5">
+      <MailSendRuns
+        runs={batch.runs}
+        busy={batch.busy}
+        reading={batch.reading}
+        disabled={disabled || locked}
+        onRefresh={batch.refresh}
+        onResume={async (id) => {
+          await batch.resume(id);
+          await onComplete();
+        }}
+      />
       <ComponentCard
         title={t("mailCompose.title")}
         desc={t("mailCompose.description")}
       >
-        {!batch.started && (
-          <MailTemplatePicker
-            fromName={fromName}
-            disabled={baseLocked || previewBusy || confirming}
-            onBusyChange={setTemplateBusy}
-            onReadyChange={setTemplateReady}
-            onApply={(content) => {
-              batch.replaceContent(content);
-              setInvalid([]);
-            }}
-          />
-        )}
+        <p role="status" className="text-sm text-gray-500 dark:text-gray-400">
+          {t(
+            batch.storageError
+              ? "mailFlow.storageError"
+              : hasMailDraft(batch)
+                ? "mailFlow.draftSaved"
+                : "mailFlow.freshDraft",
+          )}
+        </p>
+        <MailTemplatePicker
+          key={batch.generation}
+          initialState={batch.template}
+          onStateChange={batch.saveTemplate}
+          fromName={fromName}
+          disabled={baseLocked || previewBusy || confirming}
+          onBusyChange={setTemplateBusy}
+          onReadyChange={setTemplateReady}
+          onApply={(content) => {
+            batch.replaceContent(content);
+            setInvalid([]);
+          }}
+        />
         <MailRecipientPicker
           mode="internal"
           recipients={recipients}
@@ -239,9 +308,12 @@ export default function MailComposer({
             }}
           />
         </div>
-        {batch.started && (
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            {t("mailCompose.resumeHint")}
+        {reuseError && (
+          <p
+            role="alert"
+            className="text-sm text-error-600 dark:text-error-400"
+          >
+            {t("mailFlow.reuseError")}
           </p>
         )}
         {previewError && (
@@ -260,11 +332,6 @@ export default function MailComposer({
             {t(batch.error)}
           </p>
         )}
-        {batch.notice && (
-          <p role="status" className="text-sm text-gray-700 dark:text-gray-200">
-            {t(batch.notice)}
-          </p>
-        )}
         <div className="flex flex-wrap gap-3">
           <Button
             disabled={
@@ -272,9 +339,10 @@ export default function MailComposer({
               batch.busy ||
               templateBusy ||
               previewBusy ||
-              !templateReady
+              !templateReady ||
+              reuseBusy
             }
-            onClick={() => (batch.started ? void send() : void preview())}
+            onClick={() => void preview()}
             className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
           >
             {t(
@@ -282,32 +350,105 @@ export default function MailComposer({
                 ? "mailCompose.previewLoading"
                 : batch.busy
                   ? "mailUi.sending"
-                  : batch.started
-                    ? "mailUi.resumeBatch"
-                    : "mailCompose.preview",
+                  : "mailCompose.preview",
             )}
           </Button>
-          {batch.canReset && (
+          {hasMailDraft(batch) && (
             <Button
               variant="outline"
-              disabled={disabled || batch.busy}
-              onClick={() => {
-                batch.reset();
-                setInvalid([]);
-              }}
+              disabled={locked}
+              onClick={() => newDraft()}
             >
-              {t("mailCompose.newMessage")}
+              {t("mailFlow.discard")}
             </Button>
           )}
         </div>
       </ComponentCard>
       {batch.results.length > 0 && (
-        <MailHistory
-          entries={batch.results}
-          title={t("mailUi.batchResults")}
-          desc={t("mailUi.batchResultsHint")}
-        />
+        <div className="space-y-3">
+          {batch.notice && (
+            <p
+              role="status"
+              className="text-sm text-gray-700 dark:text-gray-200"
+            >
+              {t(batch.notice)}
+            </p>
+          )}
+          <MailHistory
+            entries={batch.results}
+            title={t("mailUi.batchResults")}
+            desc={t("mailFlow.resultHint")}
+          />
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              disabled={locked}
+              onClick={() => {
+                newDraft();
+                root.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                });
+              }}
+            >
+              {t("mailCompose.newMessage")}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                historyRoot.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                })
+              }
+            >
+              {t("mailFlow.history")}
+            </Button>
+          </div>
+        </div>
       )}
+      <div ref={historyRoot}>
+        <MailHistory
+          entries={history}
+          actorId={actorId}
+          onReuse={(id) => void reuse(id)}
+          reuseDisabled={locked}
+        />
+      </div>
+      <Modal
+        isOpen={discard.isOpen}
+        onClose={discard.closeModal}
+        aboveNavigation
+        ariaLabelledBy="mail-discard-heading"
+        className="max-w-lg p-4 sm:p-6"
+      >
+        <div className="space-y-4">
+          <h2
+            id="mail-discard-heading"
+            className="pe-10 text-lg font-semibold text-gray-900 dark:text-white"
+          >
+            {t("mailFlow.replaceTitle")}
+          </h2>
+          <p className="text-sm text-gray-700 dark:text-gray-200">
+            {t("mailFlow.replaceHint")}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              onClick={() => {
+                batch.reset(replacement);
+                setInvalid([]);
+                setPreviewError(false);
+                discard.closeModal();
+              }}
+            >
+              {t("mailFlow.replace")}
+            </Button>
+            <Button variant="outline" onClick={discard.closeModal}>
+              {t("mailFlow.keep")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
       <Modal
         isOpen={confirming}
         onClose={() => {
