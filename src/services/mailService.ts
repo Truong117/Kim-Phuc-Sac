@@ -77,6 +77,21 @@ export const processMailTest = (id: string) =>
     { method: "POST" },
   );
 
+export const INTERNAL_MAIL_LAYOUT = "readable_v1";
+export const previewMailMessage = (
+  subject: string,
+  body: string,
+  signal?: AbortSignal,
+) =>
+  apiRequest<{ data: { html: string; layout: string } }>(
+    "/api/integrations/mail/messages/preview",
+    {
+      method: "POST",
+      signal,
+      body: JSON.stringify({ subject, body, layout: INTERNAL_MAIL_LAYOUT }),
+    },
+  );
+
 export const queueMailMessages = (
   recipients: { recipient_user_id: number; request_key: string }[],
   subject: string,
@@ -84,7 +99,12 @@ export const queueMailMessages = (
 ) =>
   apiRequest<{ data: MailHistoryEntry[] }>("/api/integrations/mail/messages", {
     method: "POST",
-    body: JSON.stringify({ recipients, subject, body }),
+    body: JSON.stringify({
+      recipients,
+      subject,
+      body,
+      layout: INTERNAL_MAIL_LAYOUT,
+    }),
   });
 export const processMailMessage = (id: string) =>
   apiRequest<{ data: MailHistoryEntry }>(

@@ -2906,6 +2906,10 @@
     }
   },
   "mailCompose": {
+    "formattedPreview": "Bố cục thư thực nhận",
+    "textVersion": "Xem nội dung văn bản",
+    "previewLoading": "Đang chuẩn bị xem trước…",
+    "previewError": "Không tải được bản xem trước. Hãy thử lại trước khi gửi.",
     "modeLabel": "Chức năng gửi mail",
     "mode": "Soạn mail",
     "testMode": "Gửi thử kết nối",
@@ -2916,7 +2920,7 @@
     "subject": "Tiêu đề",
     "body": "Nội dung",
     "bodyPlaceholder": "Nhập nội dung gửi cho nhân viên…",
-    "bodyHint": "Tối đa 10.000 ký tự; nội dung quá lớn cần rút ngắn. Gửi dạng văn bản, giữ các dòng xuống hàng.",
+    "bodyHint": "Tối đa 10.000 ký tự; giữ các dòng xuống hàng. Khi gửi, tiêu đề và danh sách được định dạng để dễ đọc.",
     "subjectError": "Nhập tiêu đề từ 1 đến 200 ký tự, không xuống dòng.",
     "bodyError": "Nhập nội dung hợp lệ, tối đa 10.000 ký tự. Nếu thư quá lớn, hãy rút ngắn nội dung.",
     "recipientError": "Chọn ít nhất một nhân viên đang hoạt động và có email hợp lệ.",

@@ -32,7 +32,7 @@ Từ chối tiêu đề có ký tự điều khiển, nội dung có ký tự đ
 xuống dòng, địa chỉ/header do client chỉ định, HTML và đính kèm. Payload sau
 mã hóa phải vừa cột TEXT hiện có (65.535 byte); nếu vượt thì trả lỗi nội dung,
 không cắt thư. Văn bản nhiều Unicode có thể đạt giới hạn kích thước trước
-10.000 ký tự. Nội dung chỉ được gửi dưới dạng text/plain.
+10.000 ký tự. Nội dung người gửi vẫn là văn bản thuần. Thư mới gửi multipart/alternative gồm text/plain nguyên bản và text/html do server tạo, không nhận HTML từ client.
 
 Frontend lưu snapshot nội dung/người nhận/UUID trong session storage theo người
 dùng và tổ chức trước khi tạo batch, sau đó khóa nội dung và danh sách. Reload
@@ -111,3 +111,26 @@ mới nguồn khi cần, không phải bước bắt buộc.
 Vẫn xem trước và xác nhận riêng khi gửi. Nội dung quá dài được cảnh báo, không
 tự cắt. Mẫu bị khóa khi đã bắt đầu lượt gửi để giữ nguyên snapshot và mã chống
 gửi trùng. Không cần migration, biến môi trường hoặc quyền OAuth mới.
+
+
+## Bố cục thư thực nhận
+
+Thư nội bộ mới có bố cục `readable_v1`: khung rộng 100%, tối đa 760px,
+font Arial 15px, tiêu đề báo cáo và bốn mục phân cấp rõ; gạch đầu dòng có
+khoảng cách và phần chủ đề trước dấu “—” được in đậm. Dùng bảng trình bày,
+CSS inline; không có ảnh, font hay tài nguyên ngoài. Chỉ chuyển URL HTTPS
+hợp lệ thành liên kết. Mọi nội dung người dùng được escape, không thực thi
+HTML/script hay mã đánh dấu tùy ý.
+
+`POST /api/integrations/mail/messages/preview` nhận subject/body và layout
+`readable_v1`, cùng giới hạn nội dung và RBAC của soạn thư; trả HTML không
+cache. Không tạo outbox, gọi Gmail hoặc gọi AI. Màn xem trước dùng iframe
+sandbox, không script, có bản văn bản có thể mở; lỗi tải preview sẽ chặn xác
+nhận gửi. Trong khi tải/xem trước, nội dung được khóa để tránh xem một bản
+và gửi một bản khác. Thư gửi được tạo bằng cùng renderer và cùng văn bản.
+
+Outbox chỉ lưu văn bản gốc cùng tên phiên bản bố cục trong payload mã hóa,
+không nhân đôi HTML vào cột TEXT. Giữ renderer phiên bản này cho các thư đã
+xếp hàng. Thư cũ không có phiên bản bố cục tiếp tục gửi dạng plain text;
+thư đã gửi và mã chống gửi trùng không thay đổi. Không cần migration/env mới;
+cần deploy backend và frontend. Không tự gửi thư thử thật.

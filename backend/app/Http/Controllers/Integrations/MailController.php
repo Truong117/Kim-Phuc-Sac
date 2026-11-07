@@ -10,6 +10,7 @@ use App\Services\Mail\MailAccess;
 use App\Services\Mail\MailConfiguration;
 use App\Services\Mail\MailConnectionService;
 use App\Services\Mail\MailOutbox;
+use App\Services\Mail\MailPresentation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -145,6 +146,28 @@ class MailController extends Controller
         return $this->processOwnedMessage($request, $id, 'test');
     }
 
+    public function previewMessage(Request $request): JsonResponse
+    {
+        $this->access->require($request->user());
+        $this->requireAvailable();
+        $input = $request->validate($this->contentRules());
+
+        return response()->json(['data' => ['html' => MailPresentation::render($input['body']), 'layout' => MailPresentation::LAYOUT]])
+            ->header('Cache-Control', 'no-store');
+    }
+
+    private function contentRules(): array
+    {
+        return [
+            'subject' => ['required', 'string', 'max:200', 'not_regex:/[\x00-\x1F\x7F]/u'],
+            'body' => ['required', 'string', 'max:10000', 'not_regex:/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u'],
+            'to' => ['prohibited'], 'email' => ['prohibited'], 'cc' => ['prohibited'], 'bcc' => ['prohibited'],
+            'organization_id' => ['prohibited'], 'provider' => ['prohibited'], 'from' => ['prohibited'],
+            'html' => ['prohibited'], 'attachments' => ['prohibited'], 'kind' => ['prohibited'],
+            'layout' => ['sometimes', 'in:'.MailPresentation::LAYOUT],
+        ];
+    }
+
     public function queueMessages(Request $request): JsonResponse
     {
         $this->access->require($request->user());
@@ -154,11 +177,7 @@ class MailController extends Controller
             'recipients.*' => ['required', 'array:recipient_user_id,request_key'],
             'recipients.*.recipient_user_id' => ['required', 'integer', 'min:1', 'distinct'],
             'recipients.*.request_key' => ['required', 'uuid', 'distinct'],
-            'subject' => ['required', 'string', 'max:200', 'not_regex:/[\x00-\x1F\x7F]/u'],
-            'body' => ['required', 'string', 'max:10000', 'not_regex:/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u'],
-            'to' => ['prohibited'], 'email' => ['prohibited'], 'cc' => ['prohibited'], 'bcc' => ['prohibited'],
-            'organization_id' => ['prohibited'], 'provider' => ['prohibited'], 'from' => ['prohibited'],
-            'html' => ['prohibited'], 'attachments' => ['prohibited'], 'kind' => ['prohibited'],
+            ...$this->contentRules(),
         ]);
         $messages = $this->outbox->queueMessages($request->user(), $input['recipients'], $input['subject'], $input['body']);
 

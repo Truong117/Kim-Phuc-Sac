@@ -58,7 +58,7 @@ class MailOutbox
                 'organization_id' => $membership->organization_id, 'connection_id' => $connection->id, 'created_by' => $actor->id,
                 'recipient_user_id' => $recipientId, 'request_key' => $requestKey, 'kind' => $kind, 'provider' => $connection->provider,
                 'connection_revision' => $connection->revision, 'status' => 'queued', 'available_at' => now(),
-                'payload' => ['to' => $recipient->email, 'from_name' => $this->configuration->fromName(),
+                'payload' => [...($kind === 'internal' ? ['layout' => MailPresentation::LAYOUT] : []), 'to' => $recipient->email, 'from_name' => $this->configuration->fromName(),
                     'subject' => $kind === 'test' ? '[KPS] Kiểm tra kết nối gửi mail' : $subject,
                     'text' => $kind === 'test' ? 'Chào '.$recipient->name.",\n\nĐây là thư kiểm tra kết nối gửi mail từ hệ thống KPS.\n\n".$this->configuration->fromName() : $body],
             ]);
@@ -118,7 +118,8 @@ class MailOutbox
                 throw new MailDeliveryException('CONNECTION_CHANGED');
             }
             $transport = $this->transports->resolve($message->provider);
-            $receipt = $transport->send($connection, new OutboundMail($message->id, $connection->email, $payload['from_name'] ?? $this->configuration->fromName(), $payload['to'], $payload['subject'], $payload['text']));
+            $receipt = $transport->send($connection, new OutboundMail($message->id, $connection->email, $payload['from_name'] ?? $this->configuration->fromName(), $payload['to'], $payload['subject'], $payload['text'],
+                ($payload['layout'] ?? null) === MailPresentation::LAYOUT ? MailPresentation::render($payload['text']) : null));
             $message->fill(['status' => 'accepted', 'provider_message_id' => $receipt, 'accepted_at' => now(), 'error_code' => null])->save();
         } catch (MailDeliveryException $e) {
             $retry = $e->outcome === 'retry' && $message->attempts < 3;
