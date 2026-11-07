@@ -2934,7 +2934,7 @@
     "chooseSource": "Chọn báo cáo AI đã hoàn tất",
     "loading": "Đang tải báo cáo AI…",
     "dailyHint": "Chọn ngày và chọn Tổng hợp ngày để gửi bản AI chung kỳ 1 ngày, hoặc chọn tên nhân viên để gửi báo cáo riêng. Tiêu đề và nội dung tự điền; hệ thống không tạo lượt AI mới.",
-    "weeklyHint": "Danh sách AI 7 ngày tự tải. Chọn bản tổng hợp cần gửi; hệ thống tự điền tiêu đề theo kỳ và nội dung tổng hợp chung, kèm liên kết báo cáo đầy đủ.",
+    "weeklyHint": "Chọn Tổng hợp tuần (AI) đúng kỳ và phạm vi cần gửi. Hệ thống lấy phần tổng hợp chung của bản AI 7 ngày, tự điền tiêu đề/nội dung và kèm liên kết báo cáo đầy đủ.",
     "previous": "Trang trước",
     "next": "Trang sau",
     "page": "Trang {page}/{total}",
@@ -2949,7 +2949,7 @@
     "greeting": "Kính gửi anh/chị,",
     "dailySubject": "[KPS] Báo cáo ngày {date} - {name}",
     "dailyHeading": "BÁO CÁO NGÀY {date}\nNhân viên: {name}",
-    "weeklySubject": "[KPS] Báo cáo tuần {start} - {end}",
+    "weeklySubject": "[KPS] Báo cáo tổng hợp tuần {start} - {end}",
     "weeklyHeading": "BÁO CÁO TỔNG HỢP TUẦN {start} - {end}",
     "dailySource": "Nguồn: Báo cáo AI ngày #{id}, từ báo cáo công việc #{report}.",
     "weeklySource": "Nguồn: Bản tổng hợp AI #{id}, phiên bản {revision}.",
@@ -2976,7 +2976,7 @@
       }
     },
     "dailyDateSubject": "[KPS] Báo cáo ngày {date}",
-    "weeklyDefaultSubject": "[KPS] Báo cáo tuần",
+    "weeklyDefaultSubject": "[KPS] Báo cáo tổng hợp tuần",
     "autoHint": "Tiêu đề và nội dung tự điền theo mẫu. Bạn có thể chỉnh sửa nếu cần, rồi xem trước và xác nhận gửi.",
     "reload": "Tải lại báo cáo AI",
     "chooseSourceHint": "Có nhiều báo cáo phù hợp. Chọn một báo cáo AI để hệ thống tự điền nội dung.",
@@ -2986,6 +2986,8 @@
     "dailySummarySource": "Nguồn: Bản AI tổng hợp ngày #{id}, phiên bản {revision}; phạm vi dữ liệu theo quyền xem trong KPS.",
     "dailySummaryMissing": "Ngày {date} chưa có bản AI tổng hợp chung đã hoàn tất và còn khớp dữ liệu. Vào Phân tích AI, chọn kỳ 1 ngày và phạm vi chung để tạo/cập nhật, rồi tải lại. Báo cáo AI từng nhân viên vẫn chọn riêng được.",
     "dailyIndividualsEmpty": "Chưa có báo cáo AI từng nhân viên phù hợp. Bạn vẫn có thể chọn Tổng hợp ngày nếu đã có bản AI chung cho ngày này.",
-    "openDailySummary": "Mở Phân tích AI cho ngày này"
+    "openDailySummary": "Mở Phân tích AI cho ngày này",
+    "weeklySummaryOption": "Tổng hợp tuần (AI)",
+    "openWeeklySummary": "Mở Phân tích AI kỳ 7 ngày"
   }
 }

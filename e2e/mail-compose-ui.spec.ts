@@ -445,6 +445,7 @@ test("weekly template loads the only eligible run and automatically fills its pe
   page,
 }) => {
   const api = await setup(page);
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
   await page
     .getByRole("combobox", { name: "Mẫu mail", exact: true })
     .selectOption("weekly");
@@ -452,7 +453,7 @@ test("weekly template loads the only eligible run and automatically fills its pe
     page.getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true }),
   ).toHaveValue("201");
   await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
-    "[KPS] Báo cáo tuần 30/10/2026 - 05/11/2026",
+    "[KPS] Báo cáo tổng hợp tuần 30/10/2026 - 05/11/2026",
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
     /Chưa đủ dữ liệu để kết luận doanh thu/,
@@ -462,6 +463,25 @@ test("weekly template loads the only eligible run and automatically fills its pe
   );
   expect(api.aiReads).toHaveLength(2);
   expect(api.submissions).toHaveLength(0);
+  await expect(
+    page
+      .getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true })
+      .locator("option:checked"),
+  ).toContainText("Tổng hợp tuần (AI)");
+  await page
+    .getByRole("button", { name: "Xem trước mail", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("BÁO CÁO TỔNG HỢP TUẦN");
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(api.submissions[0].subject).toBe(
+    "[KPS] Báo cáo tổng hợp tuần 30/10/2026 - 05/11/2026",
+  );
 });
 
 for (const failure of ["aiDenied", "staleAi", "emptyAi"] as const) {
@@ -484,7 +504,7 @@ for (const failure of ["aiDenied", "staleAi", "emptyAi"] as const) {
       ).toBeVisible();
     else await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
-      "[KPS] Báo cáo tuần",
+      "[KPS] Báo cáo tổng hợp tuần",
     );
     await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue("");
     await expect(

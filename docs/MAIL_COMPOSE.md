@@ -66,9 +66,11 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
   liên kết mở Phân tích AI đúng ngày/kỳ 1 ngày. Không tự tạo lượt AI hay gọi API
   tạo/retry. Đổi ngày hoặc tải lại khi đang chọn tổng hợp sẽ giữ chế độ tổng
   hợp; không tự dùng bản cũ hoặc chuyển sang cá nhân. Không cần migration/env.
-- Báo cáo tuần: chọn bản AI 7 ngày trong tối đa 100 lượt gần nhất thuộc phạm
+- Báo cáo tuần: các nguồn được ghi rõ **Tổng hợp tuần (AI)**; chọn bản AI 7 ngày trong tối đa 100 lượt gần nhất thuộc phạm
   vi được phép xem. Lấy toàn bộ các mục trong phần tổng hợp chung của AI;
-  kèm liên kết mở đúng bản và kỳ để xem cả chi tiết từng nhân viên.
+  kèm liên kết mở đúng bản và kỳ để xem cả chi tiết từng nhân viên. Tiêu đề tự
+  điền Báo cáo tổng hợp tuần theo ngày bắt đầu/kết thúc; khi thiếu nguồn, có
+  liên kết đến Phân tích AI kỳ 7 ngày để tạo/cập nhật.
 - Kế hoạch tuần/tháng và vấn đề: khung có các mục cần điền, không tự điền mục
   tiêu, thời hạn, chỉ tiêu hay dữ liệu giả. Người gửi chỉnh sửa trước khi gửi.
 

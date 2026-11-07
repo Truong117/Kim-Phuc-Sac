@@ -191,7 +191,7 @@ export default function MailTemplatePicker({
           setChoices(
             runs.map((entry) => ({
               value: String(entry.id),
-              label: `#${entry.id} · ${formatDateOnly(entry.period.start_date)} – ${formatDateOnly(entry.period.end_date)} · ${entry.department_id ? t("mailTemplates.department", { id: entry.department_id }) : t("mailTemplates.savedScope")}${entry.is_mock ? ` · ${t("mailTemplates.mock")}` : ""}`,
+              label: `${t("mailTemplates.weeklySummaryOption")} · #${entry.id} · ${formatDateOnly(entry.period.start_date)} – ${formatDateOnly(entry.period.end_date)} · ${entry.department_id ? t("mailTemplates.department", { id: entry.department_id }) : t("mailTemplates.savedScope")}${entry.is_mock ? ` · ${t("mailTemplates.mock")}` : ""}`,
             })),
           );
           if (runs.length === 1) id = String(runs[0].id);
@@ -397,6 +397,18 @@ export default function MailTemplatePicker({
           {t("mailTemplates.openDailySummary")}
         </Link>
       )}
+      {kind === "weekly" &&
+        loaded &&
+        !loading &&
+        choices.length === 0 &&
+        !error && (
+          <Link
+            to={`/ai/insights?end=${encodeURIComponent(date)}&days=7`}
+            className="inline-block text-sm font-medium text-kps-primary underline dark:text-sidebar-selected"
+          >
+            {t("mailTemplates.openWeeklySummary")}
+          </Link>
+        )}
       {tooLong && (
         <p
           role="alert"
