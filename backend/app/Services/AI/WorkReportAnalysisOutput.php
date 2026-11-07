@@ -6,13 +6,11 @@ use RuntimeException;
 
 final class WorkReportAnalysisOutput
 {
-    public const VERSION = 'work-report-v3.0';
+    public const VERSION = 'work-report-v3.1';
 
     public const SCHEMA_VERSION = 'work-report-v3.0';
 
     public const SECTIONS = ['overview', 'highlights', 'ongoing', 'attention', 'support', 'uncertainties', 'recommendations'];
-
-    public const CLAIM_PREFIXES = ['Ghi nhận từ nguồn: ', 'Nhận xét có căn cứ: ', 'Chưa đủ thông tin: ', 'Đề xuất: '];
 
     public static function instructions(): string
     {
@@ -26,7 +24,8 @@ final class WorkReportAnalysisOutput
             'Không cộng dồn số lượng lặp lại qua các ngày nếu nguồn không xác nhận đó là các kết quả khác nhau. Giữ diễn biến và mâu thuẫn, không lấy trạng thái cuối để ghi đè các lần báo cáo khác.',
             'Giai đoạn employee_review: dùng nguồn của đúng người đó để tạo work_groups; overview nêu kết luận/nhận xét có giá trị về kết quả và diễn biến, tránh kể lại các nhóm vừa tổng hợp. Tiếp theo nêu điểm đáng chú ý và vướng mắc có căn cứ; cuối cùng mới đề xuất cụ thể. Không chỉ chép lại một vài câu báo cáo hoặc đưa lời khuyên chung chung.',
             'Đầu ra phục vụ đọc tập trung: work_groups trình bày từng nhóm công việc riêng, không gộp toàn bộ công việc thành một đoạn văn. Overview là kết luận ngắn có giá trị, không chép lại danh sách công việc.',
-            'company_summary: ưu tiên 3–5 kết luận nổi bật nếu có đủ căn cứ; nêu kết quả, điểm nghẽn, tác động và quyết định cần quản lý. Không bắt đủ số lượng, không lặp lại cùng một ý ở nhiều mục.',
+            'company_summary: trình bày đúng bốn phần nghiệp vụ: (1) Kết quả trong kỳ qua overview/highlights; (2) Công việc đang tiếp tục qua ongoing; (3) Vướng mắc cần theo dõi qua attention/support, thông tin cần làm rõ qua uncertainties; (4) Việc cần xem xét và quyết định qua recommendations. Không lặp lại một ý giữa các phần; không bắt đủ số lượng và được để trống phần không có dữ liệu.',
+            'Viết trực tiếp chủ đề công việc — tên nhân viên: đã làm gì, kết quả đến đâu, còn chờ gì. Tên lấy đúng employee_name được cung cấp, không dùng employee_id hay mã báo cáo/đầu việc làm tên; không đoán người phụ trách còn thiếu. Kết quả trong kỳ phải ưu tiên công việc và kết quả cụ thể trước nhận xét.',
             'recommendations bắt buộc có text ngắn, evidence, priority (high hoặc normal), rationale (dữ kiện làm căn cứ), impact (ảnh hưởng đã biết; tác động tiềm tàng phải nói rõ là khả năng), action (hành động cụ thể), expected_outcome (kết quả mong đợi, không phải đã đạt), verification (cách kiểm chứng), decision_needed (quyết định cần quản lý, để chuỗi rỗng nếu không cần).',
             'Chỉ xếp priority=high khi nguồn cho thấy trở ngại hoặc ảnh hưởng cần xử lý sớm; đây là thứ tự đề xuất, không phải chấm điểm nhân viên. Không tự tạo người phụ trách, cam kết hoặc hạn chót. Không điền các trường bằng lời khuyên chung chung.',
             'Ví dụ: báo cáo nói chi phí mỗi tin nhắn vượt 100k, chưa có đơn hàng/doanh thu: đề xuất đối chiếu chi phí, khách hỏi phù hợp, đơn và doanh thu trong cùng khoảng quan sát trước khi quyết định ngân sách. Không kết luận hiệu quả hay nguyên nhân quảng cáo chỉ từ số nội dung đã đăng.',
@@ -65,11 +64,11 @@ final class WorkReportAnalysisOutput
             'Không gộp công việc qua nhiều ngày nếu không đủ căn cứ. Nếu suy đoán phải nêu rõ là suy đoán.',
             'Chỉ nêu thông tin thiếu, chưa rõ/mâu thuẫn, giới hạn đánh giá và câu hỏi trong uncertainties khi nguồn cho thấy cần xác minh; nếu đã rõ thì để trống.',
             'Giới hạn chung về kế hoạch tuần/nghiệm thu đã có ghi chú giao diện; không biến thành vấn đề riêng của mỗi nhân viên khi nguồn không có căn cứ.',
-            'overview: tình hình chung; highlights: kết quả nổi bật; ongoing: đang triển khai; attention: cần quản lý can thiệp;',
+            'overview: các kết quả và đầu ra chính theo nhóm công việc/người thực hiện; highlights: kết quả bổ sung đáng chú ý, không lặp overview; ongoing: việc còn tiếp tục, bước đang làm và phần đang chờ; attention: vấn đề cần quản lý can thiệp;',
             'support: vướng mắc/phụ thuộc/nhu cầu hỗ trợ; recommendations: câu hỏi và bước tiếp theo đề xuất.',
-            'Đầu mỗi text dùng một nhãn phù hợp: “Ghi nhận từ nguồn: ” cho thông tin được báo cáo; “Nhận xét có căn cứ: ” cho suy luận, kèm căn cứ và mức độ chắc chắn;',
-            '“Chưa đủ thông tin: ” cho điều chưa thể kết luận; “Đề xuất: ” cho hành động/câu hỏi của AI. Không cần tạo đủ bốn loại.',
-            'Phân biệt bước tiếp theo nhân viên tự ghi (Ghi nhận từ nguồn) với đề xuất của AI (Đề xuất). Đề xuất không phải nhiệm vụ, cam kết hoặc thời hạn đã được giao; không tự gán người hay deadline.',
+            'Không mở đầu text bằng nhãn “Ghi nhận từ nguồn:”, “Nhận xét có căn cứ:”, “Chưa đủ thông tin:” hoặc “Đề xuất:”. Viết câu trực tiếp, tự nhiên; recommendations bắt đầu bằng hành động/quyết định cụ thể, không lặp lại tiêu đề mục.',
+            'Chỉ ghi giới hạn ngay cạnh thông tin cần thận trọng: ví dụ đã có bản trình duyệt nhưng chưa xác nhận phê duyệt cuối; không chèn một lời nhắc về nguồn sau mọi câu. Phân biệt hoạt động, đầu ra, hiệu quả; số liệu từng ngày không tự trở thành tổng tuần.',
+            'Phân biệt bước tiếp theo nhân viên tự ghi với hành động AI gợi ý bằng cách đặt đúng phần: ongoing cho việc đang tiếp tục, recommendations cho việc quản lý cân nhắc. Đề xuất không phải nhiệm vụ, cam kết hoặc thời hạn đã được giao; không tự gán người hay deadline.',
             'Mỗi nhận định phải có evidence: report_id, item_id đúng nguồn và quote nguyên văn không rỗng từ content/result/note của chính đầu việc đó.',
             'Chỉ tổng hợp các phần hợp lệ được cung cấp; không coi phần thiếu/lỗi là đã phân tích. Không lặp lại bí mật hoặc dữ liệu đã che.',
             'Tham chiếu hợp lệ không bảo đảm kết luận đúng; diễn đạt thận trọng, phân biệt dữ kiện và đề xuất.',
@@ -153,9 +152,6 @@ final class WorkReportAnalysisOutput
                 if ($field === 'recommendations') {
                     WorkReportDecision::validate($claim, $currentContract);
                 }
-                if (! collect(self::CLAIM_PREFIXES)->contains(fn ($prefix) => str_starts_with($claim['text'], $prefix))) {
-                    throw new RuntimeException('AI_INVALID_SCHEMA');
-                }
                 foreach ($claim['evidence'] as $ref) {
                     if (! is_array($ref) || count($ref) !== 3 || ! is_int($ref['report_id'] ?? null)
                         || ! is_int($ref['item_id'] ?? null) || ! is_string($ref['quote'] ?? null)
@@ -203,12 +199,12 @@ final class WorkReportAnalysisOutput
                 $field = match ($item['status']) {
                     'BLOCKED' => 'attention', 'COMPLETED' => 'highlights', default => 'ongoing'
                 };
-                $claim['text'] = 'Ghi nhận từ nguồn: '.($item['status'] === 'COMPLETED' ? 'Nhân viên báo đã hoàn thành (chưa xác minh nghiệm thu): ' : '').$claim['text'];
+                $claim['text'] = ($item['status'] === 'COMPLETED' ? 'Nhân viên báo đã hoàn thành (chưa xác minh nghiệm thu): ' : '').$claim['text'];
                 if (count($result[$field]) < 12) {
                     $result[$field][] = $claim;
                 }
                 if ($item['status'] === 'BLOCKED' && count($result['recommendations']) < 12) {
-                    $claim['text'] = 'Đề xuất: Hỏi người báo cáo về nguyên nhân và hỗ trợ cần thiết cho đầu việc này.';
+                    $claim['text'] = 'Hỏi người báo cáo về nguyên nhân và hỗ trợ cần thiết cho đầu việc này.';
                     $result['recommendations'][] = WorkReportDecision::fake($claim);
                 }
             }

@@ -2,6 +2,8 @@ import { useTranslation } from "react-i18next";
 import { ChatIcon, MultiUserIcon, TaskIcon } from "@/icons";
 import type { DailyDocument } from "@/types/dailyDocument";
 
+import { reportText } from "@/utils/reportPresentation";
+
 type Result = NonNullable<DailyDocument["result"]>;
 
 export default function DailyDocumentResult({ result }: { result: Result }) {
@@ -35,7 +37,7 @@ export default function DailyDocumentResult({ result }: { result: Result }) {
                 <span className="font-medium text-gray-900 dark:text-gray-100">
                   {group.title}:{" "}
                 </span>
-                {group.text}
+                {reportText(group.text)}
               </li>
             ))}
           </ul>
@@ -120,7 +122,7 @@ export default function DailyDocumentResult({ result }: { result: Result }) {
             }
           >
             {result.comments.length
-              ? result.comments.map((entry) => entry.text).join(" ")
+              ? result.comments.map((entry) => reportText(entry.text)).join(" ")
               : t("noComments")}
           </p>
         </section>
@@ -140,7 +142,9 @@ export default function DailyDocumentResult({ result }: { result: Result }) {
             }
           >
             {result.recommendations.length
-              ? result.recommendations.map((entry) => entry.text).join(" ")
+              ? result.recommendations
+                  .map((entry) => reportText(entry.text))
+                  .join(" ")
               : t("noRecommendations")}
           </p>
         </section>

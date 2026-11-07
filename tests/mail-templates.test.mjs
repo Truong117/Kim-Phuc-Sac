@@ -8,13 +8,16 @@ const moduleUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString("base64")}`;
 const { dailyMailFixture, weeklyMailFixture, dailySummaryFixture } =
   await import(moduleUrl(await read("tests/fixtures/mail-ai.ts")));
+const presentationUrl = moduleUrl(
+  await read("src/utils/reportPresentation.ts"),
+);
+const presentation = await import(presentationUrl);
 const dateUrl = moduleUrl(await read("src/utils/dateOnly.ts"));
 const templates = await import(
   moduleUrl(
-    (await read("src/utils/mailTemplates.ts")).replace(
-      '"./dateOnly"',
-      JSON.stringify(dateUrl),
-    ),
+    (await read("src/utils/mailTemplates.ts"))
+      .replace('"./dateOnly"', JSON.stringify(dateUrl))
+      .replace('"./reportPresentation"', JSON.stringify(presentationUrl)),
   )
 );
 const resources = JSON.parse(await read("src/locales/vi/common.json"));
@@ -41,7 +44,7 @@ test("five built-in templates include editable weekly/monthly plans and an issue
   }
 });
 
-test("daily template preserves AI groups, evidence, comments, recommendations and unresolved quantities without inventing a total", () => {
+test("daily mail preserves work and qualifiers, omits evidence lists and does not invent unresolved totals", () => {
   const source = structuredClone(dailyMailFixture);
   const before = structuredClone(source);
   const mail = templates.dailyMailTemplate(
@@ -56,10 +59,9 @@ test("daily template preserves AI groups, evidence, comments, recommendations an
     "Đã bàn giao 3 mẫu được duyệt.",
     "Kết quả có căn cứ bàn giao.",
     "Xác nhận lịch triển khai",
-    "Bàn giao 3 mẫu",
     "Thiết kế: 3 mẫu",
     "Doanh thu (đồng): Cần xác nhận",
-    "Nguyễn Văn An · 05/11/2026 — Thiết kế catalogue",
+    "Hoàn thành thiết kế",
     "Báo cáo AI ngày của Nguyễn Văn An, ngày 05/11/2026",
   ])
     assert.ok(mail.body.includes(text), text);
@@ -83,12 +85,12 @@ test("weekly template includes every shared AI section and evidence plus a link 
   assert.match(mail.subject, /30\/10\/2026 - 05\/11\/2026/);
   for (const claims of Object.values(source.result))
     for (const claim of claims) assert.ok(mail.body.includes(claim.text));
-  assert.match(mail.body, /Bàn giao 3 mẫu/);
+  assert.doesNotMatch(mail.body, /Ghi nhận:|Căn cứ báo cáo|Bàn giao 3 mẫu/);
   assert.match(
     mail.body,
     /Bản AI tổng hợp tuần cho kỳ 30\/10\/2026 – 05\/11\/2026/,
   );
-  assert.match(mail.body, /Nguyễn Văn An · 05\/11\/2026 — Thiết kế catalogue/);
+  assert.match(mail.body, /Nguyễn Văn An — Các nhóm đã hoàn thành/);
   assert.doesNotMatch(mail.body, /#\d+/);
   assert.match(mail.body, /analysis=201&end=2026-11-05&days=7&department=9/);
 });
@@ -152,10 +154,11 @@ test("mock results are explicitly labeled and long AI text is never silently tru
   assert.ok(mail.body.length > 10000);
 });
 
-test("weekly mail preserves the structured decision fields introduced by the focused AI reader", () => {
+test("mail keeps decisions concise and links to their full reasoning in the saved report", () => {
   const source = structuredClone(weeklyMailFixture);
   source.result.recommendations[0] = {
     ...source.result.recommendations[0],
+    text: "Đề xuất: Chốt lịch trước thứ Sáu.",
     priority: "high",
     rationale: "Chờ phản hồi ba ngày",
     impact: "Chặn lịch ra mắt",
@@ -170,10 +173,13 @@ test("weekly mail preserves the structured decision fields introduced by the foc
     "https://example.test",
     t,
   );
-  for (const [key, value] of Object.entries(source.result.recommendations[0]))
-    if (!["evidence", "priority"].includes(key))
-      assert.ok(mail.body.includes(value));
-  assert.match(mail.body, /Ưu tiên cao/);
+  assert.match(mail.body, /Ưu tiên cao: Chốt lịch trước thứ Sáu/);
+  assert.match(mail.body, /chưa phải nhiệm vụ hoặc thời hạn đã giao/);
+  assert.doesNotMatch(
+    mail.body,
+    /Đề xuất:|Chờ phản hồi ba ngày|Đối chiếu biên bản/,
+  );
+  assert.match(mail.body, /analysis=201/);
 });
 
 test("the daily aggregate template uses every shared AI section from a one-day analysis and links to that saved run", () => {
@@ -187,7 +193,7 @@ test("the daily aggregate template uses every shared AI section from a one-day a
   assert.equal(mail.subject, "[KPS] Báo cáo tổng hợp ngày 05/11/2026");
   assert.match(mail.body, /BÁO CÁO TỔNG HỢP NGÀY 05\/11\/2026/);
   assert.match(mail.body, /Bản AI tổng hợp chung ngày 05\/11\/2026/);
-  assert.match(mail.body, /Nguyễn Văn An · 05\/11\/2026 — Thiết kế catalogue/);
+  assert.match(mail.body, /Nguyễn Văn An — Các nhóm đã hoàn thành/);
   assert.doesNotMatch(mail.body, /#\d+/);
   assert.match(mail.body, /analysis=301&end=2026-11-05&days=1/);
   for (const claims of Object.values(dailySummaryFixture.result))
@@ -228,7 +234,7 @@ test("daily aggregates reject another date, a multi-day period, a department-onl
   );
 });
 
-test("aggregate evidence identifies each employee and task by report and item, with honest fallbacks for incomplete sources", () => {
+test("names in compact mail come only from matching report/item references without exposing quote lists", () => {
   const source = structuredClone(weeklyMailFixture);
   source.source_reports.push({
     id: 25,
@@ -237,27 +243,15 @@ test("aggregate evidence identifies each employee and task by report and item, w
     date: "2026-11-04",
     item_ids: [4],
   });
-  source.employees.push({
-    employee_id: 3,
-    name: "Phương Anh",
-    work_inventory: [
-      {
-        content: "Chăm sóc khách hàng",
-        observations: [{ report_id: 25, item_id: 4, date: "2026-11-04" }],
-      },
-    ],
-  });
-  source.result.overview[0].evidence.push(
-    { report_id: 25, item_id: 4, quote: "Đã tư vấn khách" },
-    { report_id: 25, item_id: 99, quote: "Chờ phản hồi" },
-    { report_id: 999, item_id: 4, quote: "Chưa xác minh người làm" },
-  );
-  // An observation under another employee must never misattribute the task.
-  source.employees[0].work_inventory[0].observations.push({
+  source.result.overview[0].evidence.push({
     report_id: 25,
-    item_id: 99,
-    date: "2026-11-04",
+    item_id: 4,
+    quote: "Đã tư vấn khách",
   });
+  source.result.ongoing[0] = {
+    text: "Ghi nhận từ nguồn: Chưa xác nhận bàn giao",
+    evidence: [{ report_id: 999, item_id: 4, quote: "Chưa rõ" }],
+  };
   for (const kind of ["daily", "weekly"]) {
     const run =
       kind === "daily"
@@ -275,17 +269,71 @@ test("aggregate evidence identifies each employee and task by report and item, w
         : templates.weeklyMailTemplate(run, "KPS", "https://example.test", t);
     assert.match(
       mail.body,
-      /Nguyễn Văn An · 05\/11\/2026 — Thiết kế catalogue\n    Ghi nhận: “Bàn giao 3 mẫu”/,
+      /Nguyễn Văn An, Phương Anh — Các nhóm đã hoàn thành/,
     );
-    assert.match(
-      mail.body,
-      /Phương Anh · 04\/11\/2026 — Chăm sóc khách hàng\n    Ghi nhận: “Đã tư vấn khách”/,
-    );
-    assert.match(mail.body, /Phương Anh · 04\/11\/2026 — “Chờ phản hồi”/);
-    assert.match(
-      mail.body,
-      /Chưa đủ thông tin người phụ trách trong nguồn: “Chưa xác minh người làm”/,
-    );
-    assert.doesNotMatch(mail.body, /#\d+/);
+    assert.match(mail.body, /Chưa xác nhận bàn giao/);
+    assert.doesNotMatch(mail.body, /Ghi nhận từ nguồn:|Đã tư vấn khách|#\d+/);
+    const headings = [
+      "1. Kết quả trong kỳ",
+      "2. Công việc đang tiếp tục",
+      "3. Vướng mắc cần theo dõi",
+      "4. Việc cần xem xét và quyết định",
+    ];
+    for (let i = 0; i < headings.length; i++) {
+      assert.ok(mail.body.includes(headings[i]));
+      if (i)
+        assert.ok(
+          mail.body.indexOf(headings[i - 1]) < mail.body.indexOf(headings[i]),
+        );
+    }
   }
+});
+
+test("legacy prefixes are removed only at the start; qualifiers, internal wording and saved data stay intact", () => {
+  const claim = {
+    text: "Đề xuất: Đề xuất: Xác nhận duyệt cuối; chưa ghi nhận nghiệm thu.",
+    evidence: [{ report_id: 12, item_id: 4, quote: "Bàn giao 3 mẫu" }],
+  };
+  const before = structuredClone(claim);
+  assert.equal(
+    presentation.reportClaimText(claim, weeklyMailFixture.source_reports),
+    "Nguyễn Văn An — Xác nhận duyệt cuối; chưa ghi nhận nghiệm thu.",
+  );
+  assert.equal(
+    presentation.reportText("Nội dung giữ nguyên: Đề xuất: từ nhân viên"),
+    "Nội dung giữ nguyên: Đề xuất: từ nhân viên",
+  );
+  assert.equal(
+    presentation.reportClaimText(
+      {
+        ...claim,
+        evidence: [{ report_id: 12, item_id: 999, quote: "Chưa rõ" }],
+      },
+      weeklyMailFixture.source_reports,
+    ),
+    "Xác nhận duyệt cuối; chưa ghi nhận nghiệm thu.",
+  );
+  assert.deepEqual(claim, before);
+});
+
+test("merging duplicate findings retains all employees and preserves distinct decision actions", () => {
+  const a = {
+    text: "Ghi nhận từ nguồn: Tiếp tục xử lý",
+    evidence: [{ report_id: 12, item_id: 4, quote: "A" }],
+  };
+  const b = {
+    text: "Tiếp tục xử lý",
+    evidence: [{ report_id: 25, item_id: 4, quote: "B" }],
+  };
+  const merged = presentation.uniqueReportClaims([a, b]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].evidence.length, 2);
+  assert.equal(a.evidence.length, 1);
+  assert.equal(
+    presentation.uniqueReportClaims([
+      { ...a, action: "Xác nhận duyệt" },
+      { ...b, action: "Đối chiếu kết quả" },
+    ]).length,
+    2,
+  );
 });

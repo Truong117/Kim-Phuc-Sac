@@ -5,7 +5,6 @@ namespace Tests\Unit;
 use App\Services\AI\WorkReportAnalysisOutput;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
 
 class WorkReportAnalysisStandardTest extends TestCase
 {
@@ -54,17 +53,29 @@ class WorkReportAnalysisStandardTest extends TestCase
         foreach (['không bắt tạo đủ sáu nhận xét', 'từng nhân viên và tổng hợp công ty', 'không phải điểm trừ nhân viên', 'độ dài hoặc cách viết', 'không tạo vấn đề, câu hỏi', 'Không nêu vướng mắc không có nghĩa', 'result là tùy chọn', 'quy trách nhiệm khi thiếu căn cứ'] as $rule) {
             $this->assertStringContainsString($rule, $instructions);
         }
-        $this->assertSame('work-report-v3.0', WorkReportAnalysisOutput::VERSION);
+        $this->assertSame('work-report-v3.1', WorkReportAnalysisOutput::VERSION);
         $this->assertSame('work-report-v3.0', WorkReportAnalysisOutput::SCHEMA_VERSION);
         WorkReportAnalysisOutput::validate(array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), []);
     }
 
-    public function test_unclassified_claim_is_rejected_even_with_valid_reference(): void
+    public function test_readable_report_instructions_keep_four_business_sections_people_and_local_qualifiers(): void
+    {
+        $instructions = WorkReportAnalysisOutput::instructions();
+        foreach (['Kết quả trong kỳ', 'Công việc đang tiếp tục', 'Vướng mắc cần theo dõi', 'Việc cần xem xét và quyết định', 'employee_name', 'không đoán người phụ trách', 'Không mở đầu text bằng nhãn', 'số liệu từng ngày không tự trở thành tổng tuần', 'report_id, item_id đúng nguồn'] as $rule) {
+            $this->assertStringContainsString($rule, $instructions);
+        }
+        $this->assertStringNotContainsString('Đầu mỗi text dùng một nhãn', $instructions);
+    }
+
+    public function test_plain_work_description_is_valid_with_reference_and_legacy_text_stays_readable(): void
     {
         $reports = [['report_id' => 1, 'items' => [['item_id' => 1, 'content' => 'Đã gửi tài liệu', 'result' => '', 'note' => null, 'status' => 'COMPLETED']]]];
         $result = WorkReportAnalysisOutput::fake(['reports' => $reports]);
         $result['highlights'][0]['text'] = 'Đã gửi tài liệu';
-        $this->expectException(RuntimeException::class);
+        WorkReportAnalysisOutput::validate($result, $reports, true);
+        $this->assertSame('Đã gửi tài liệu', $result['highlights'][0]['text']);
+        $result['highlights'][0]['text'] = 'Ghi nhận từ nguồn: Đã gửi tài liệu';
         WorkReportAnalysisOutput::validate($result, $reports);
+        $this->assertStringStartsWith('Ghi nhận từ nguồn:', $result['highlights'][0]['text']);
     }
 }

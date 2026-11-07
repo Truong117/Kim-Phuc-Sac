@@ -59,7 +59,7 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
   1 ngày, đúng cả ngày bắt đầu/kết thúc, không áp dụng bộ lọc phòng ban và trong
   phạm vi hiện được cấp quyền xem. Dùng bản hoàn tất mới nhất còn khớp nguồn,
   đọc lại bản đó trước khi tự điền. Nội dung gồm đầy đủ phần tổng hợp chung,
-  căn cứ, nhận định/giới hạn và các trường đề xuất có cấu trúc; liên kết mở đúng
+  nhận định/giới hạn và hành động cần xem xét; liên kết mở đúng
   bản AI với `days=1`. Báo cáo tổng hợp và báo cáo từng nhân viên là hai lựa
   chọn độc lập; không ghép các nhận xét cá nhân để giả thành kết luận AI chung.
   Nếu thiếu bản tổng hợp hợp lệ, chặn gửi, giải thích cách tạo/cập nhật và có
@@ -74,12 +74,19 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
 - Kế hoạch tuần/tháng và vấn đề: khung có các mục cần điền, không tự điền mục
   tiêu, thời hạn, chỉ tiêu hay dữ liệu giả. Người gửi chỉnh sửa trước khi gửi.
 
-Trong nội dung mail ngày/tuần, căn cứ ghi tên nhân viên, ngày và tên công việc
-lấy từ nguồn báo cáo đã lưu, kèm trích dẫn gốc; không hiển thị mã báo cáo/đầu
-việc. Ghép đúng cả báo cáo và đầu việc để tránh nhầm người khi mã đầu việc
-trùng nhau. Nếu thiếu tên công việc, giữ tên/ngày và trích dẫn; nếu thiếu nguồn
-định danh, ghi rõ chưa đủ thông tin người phụ trách. Liên kết vẫn mở đúng bản
-AI đầy đủ để đối chiếu.
+Mail tổng hợp ngày/tuần có đúng bốn phần: Kết quả trong kỳ; Công việc đang
+tiếp tục; Vướng mắc cần theo dõi; Việc cần xem xét và quyết định. Phần cần làm
+rõ được giữ trong mục vướng mắc. Tên nhân viên lấy từ cặp báo cáo/đầu việc đã
+lưu, không đoán người phụ trách. Không lặp nhãn “Ghi nhận từ nguồn”, “Nhận xét
+có căn cứ”, “Đề xuất:”; chỉ lược nhãn ở đầu câu, giữ nguyên các giới hạn cụ thể
+như chưa xác nhận phê duyệt cuối. Mail ngày cá nhân cũng bỏ nhãn và danh sách
+trích dẫn sau từng đoạn, giữ nhóm công việc và số liệu chưa rõ.
+
+Mail chỉ đưa nội dung chính của đề xuất (kèm ưu tiên cao nếu có), không chép
+cả danh sách trích dẫn/lý do/kiểm chứng. Liên kết vẫn mở đúng bản AI đầy đủ,
+nơi căn cứ được mở rộng bằng “Xem căn cứ” và mỗi đề xuất mở được phần chi tiết.
+Thay đổi chỉ ở bản trình bày; dữ liệu AI gốc, bằng chứng và bản gửi đã lưu
+không bị viết lại. Không tự tạo lại AI hay gửi lại mail cũ.
 
 Chỉ đọc API AI hiện có, dùng nguyên quyền và phạm vi dữ liệu của các API đó;
 không gọi tạo/retry/regenerate, không tốn thêm lượt AI. Tự tải nguồn khi chọn mẫu, đổi ngày/trang hoặc chọn báo cáo AI. Chặn bản đang chạy, partial/failed, nguồn đã thay đổi, bản ngày

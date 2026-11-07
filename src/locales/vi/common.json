@@ -2383,7 +2383,7 @@
     "configChanged": "Cấu hình phân tích đã thay đổi. Có thể tạo phiên bản mới với cấu hình hiện tại.",
     "standardChanged": "Quy chuẩn của lần phân tích này không còn được worker hiện tại hỗ trợ. Kết quả đã lưu vẫn đọc được; hãy tạo lượt mới để dùng quy chuẩn hiện tại.",
     "reportBasis": "Nhận xét dựa trên nội dung báo cáo; chưa đối chiếu với kế hoạch tuần hoặc kết quả nghiệm thu.",
-    "commentKindsHint": "Định dạng nhận xét mới phân biệt: Ghi nhận từ nguồn · Nhận xét có căn cứ · Chưa đủ thông tin · Đề xuất. Đề xuất của AI chưa phải nhiệm vụ hoặc thời hạn đã giao.",
+    "commentKindsHint": "Báo cáo trình bày kết quả, công việc đang tiếp tục, vướng mắc và việc cần xem xét. Căn cứ được giữ để đối chiếu; gợi ý của AI chưa phải nhiệm vụ hoặc thời hạn đã giao.",
     "partialHint": "Hoàn tất một phần. Xem phần lỗi bên dưới và nhận xét đã có ở tab Theo nhân viên.",
     "summaryMissing": "Chưa có tổng hợp toàn công ty. Các phần thành công vẫn xem được trong tab Theo nhân viên.",
     "unitError": "Phần {unit}",
@@ -2475,6 +2475,18 @@
     },
     "dailyCoverage": "Nguồn tổng hợp ngày: {ready}/{total} báo cáo hợp lệ.",
     "dailyMissing": "Cần xử lý ngày thiếu/lỗi hoặc đã đổi nguồn trước khi tạo lượt mới.",
+    "form": {
+      "results": "1. Kết quả trong kỳ",
+      "ongoing": "2. Công việc đang tiếp tục",
+      "obstacles": "3. Vướng mắc cần theo dõi",
+      "decisions": "4. Việc cần xem xét và quyết định",
+      "empty": {
+        "results": "Chưa có kết quả được tổng hợp trong bản này.",
+        "ongoing": "Chưa ghi nhận công việc đang tiếp tục trong bản này.",
+        "obstacles": "Chưa ghi nhận vướng mắc cần theo dõi trong bản này.",
+        "decisions": "Chưa có hành động hoặc quyết định cần đề xuất trong bản này."
+      }
+    },
     "reader": {
       "summary": "Tổng hợp từ báo cáo",
       "conclusions": "Kết luận trong kỳ",
@@ -2489,7 +2501,7 @@
       "proposalHint": "Đề xuất của AI để quản lý cân nhắc; chưa phải nhiệm vụ hoặc thời hạn đã giao.",
       "quantityClarification": "Những số liệu sau chưa rõ phạm vi hoặc cách tính. Xem nguồn ở cuối để đối chiếu:",
       "legacyProposal": "Bản cũ chưa lưu chi tiết căn cứ, hành động và cách kiểm chứng theo cấu trúc mới.",
-      "sources": "Nguồn báo cáo và đối chiếu",
+      "sources": "Xem căn cứ",
       "selectEmployee": "Chọn nhân viên",
       "employeeList": "Danh sách nhân viên",
       "employeeReport": "Báo cáo AI của {name}",
