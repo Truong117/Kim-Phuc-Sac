@@ -6,6 +6,7 @@ use App\Models\MailConnection;
 use App\Models\MailMessage;
 use App\Models\User;
 use App\Services\Mail\MailConfiguration;
+use App\Services\Mail\MailPresentation;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\DB;
@@ -89,6 +90,71 @@ class MailComposeTest extends TestCase
         $this->getJson('/api/integrations/mail')->assertJsonPath('data.history.0.subject', $payload['subject'])->assertJsonMissingPath('data.history.0.body');
         $this->postJson('/api/integrations/mail/connect')->assertForbidden();
         $this->deleteJson('/api/integrations/mail/connection')->assertForbidden();
+    }
+
+    public function test_preview_and_gmail_share_html_with_unchanged_plain_text_without_preview_side_effects(): void
+    {
+        $actor = $this->actor('EXECUTIVE_ASSISTANT');
+        $recipient = $this->actor('OFFICE_STAFF');
+        $this->connection($actor);
+        $payload = $this->payload($recipient);
+        $payload['body'] = "BÁO CÁO TỔNG HỢP TUẦN\n\n1. Kết quả trong kỳ\n- Thiết kế — Đã có bản duyệt; chưa xác nhận phê duyệt cuối.\n\nhttps://example.test/ai?days=7";
+        $preview = $this->actingAs($actor)->postJson('/api/integrations/mail/messages/preview', [
+            'subject' => $payload['subject'], 'body' => $payload['body'], 'layout' => MailPresentation::LAYOUT,
+        ])->assertOk()->json('data');
+        $this->assertSame(MailPresentation::LAYOUT, $preview['layout']);
+        $this->assertSame(MailPresentation::render($payload['body']), $preview['html']);
+        $this->assertDatabaseCount('mail_messages', 0);
+        Http::assertNothingSent();
+        $id = $this->postJson('/api/integrations/mail/messages', $payload)->assertAccepted()->json('data.0.id');
+        $stored = MailMessage::query()->first()->payload;
+        $this->assertSame(MailPresentation::LAYOUT, $stored['layout']);
+        $this->assertArrayNotHasKey('html', $stored);
+        Http::fake(['https://gmail.googleapis.com/*' => Http::response(['id' => 'gmail-layout'])]);
+        $this->postJson('/api/integrations/mail/messages/'.$id.'/process')->assertAccepted();
+        Http::assertSent(function ($request) use ($payload, $preview): bool {
+            $raw = base64_decode(strtr($request['raw'], '-_', '+/'));
+            $decoded = quoted_printable_decode($raw);
+
+            return str_contains($raw, 'multipart/alternative') && str_contains($raw, 'text/html') && str_contains($raw, 'text/plain')
+                && str_contains($decoded, $preview['html'])
+                && str_contains($decoded, str_replace("\n", "\r\n", $payload['body']));
+        });
+    }
+
+    public function test_preview_rejects_raw_html_invalid_layouts_and_other_roles(): void
+    {
+        $actor = $this->actor();
+        $recipient = $this->actor('OFFICE_STAFF');
+        $this->connection($actor);
+        $body = ['subject' => 'Thông báo', 'body' => 'Nội dung'];
+        $this->actingAs($recipient)->postJson('/api/integrations/mail/messages/preview', $body)->assertForbidden();
+        $this->actingAs($actor);
+        foreach ([['html' => '<script>bad()</script>'], ['layout' => 'arbitrary_html'], ['body' => str_repeat('x', 10001)], ['subject' => "Title\r\nBcc: injected@example.test"]] as $invalid) {
+            $this->postJson('/api/integrations/mail/messages/preview', [...$body, ...$invalid])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('mail_messages', 0);
+        Http::assertNothingSent();
+    }
+
+    public function test_old_queued_plain_text_messages_keep_their_original_format(): void
+    {
+        $actor = $this->actor();
+        $recipient = $this->actor('OFFICE_STAFF');
+        $this->connection($actor);
+        $payload = $this->payload($recipient);
+        $id = $this->actingAs($actor)->postJson('/api/integrations/mail/messages', $payload)->assertAccepted()->json('data.0.id');
+        $message = MailMessage::findOrFail($id);
+        $legacy = $message->payload;
+        unset($legacy['layout']);
+        $message->update(['payload' => $legacy]);
+        Http::fake(['https://gmail.googleapis.com/*' => Http::response(['id' => 'gmail-legacy'])]);
+        $this->postJson('/api/integrations/mail/messages/'.$id.'/process')->assertAccepted();
+        Http::assertSent(function ($request): bool {
+            $raw = base64_decode(strtr($request['raw'], '-_', '+/'));
+
+            return str_contains($raw, 'text/plain') && ! str_contains($raw, 'text/html');
+        });
     }
 
     public function test_reused_keys_cannot_change_content_sender_recipient_or_message_kind(): void

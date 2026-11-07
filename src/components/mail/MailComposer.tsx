@@ -7,7 +7,12 @@ import TextArea from "@/components/form/input/TextArea";
 import Button from "@/components/ui/button/Button";
 import { Modal } from "@/components/ui/modal";
 import { useMailBatch } from "@/hooks/useMailTestBatch";
-import type { MailRecipient } from "@/services/mailService";
+import {
+  INTERNAL_MAIL_LAYOUT,
+  previewMailMessage,
+  type MailRecipient,
+} from "@/services/mailService";
+import MailBodyPreview from "./MailBodyPreview";
 import MailHistory from "./MailHistory";
 import MailRecipientPicker from "./MailRecipientPicker";
 import MailTemplatePicker from "./MailTemplatePicker";
@@ -34,6 +39,10 @@ export default function MailComposer({
   const { t } = useTranslation();
   const batch = useMailBatch(storageKey, "internal");
   const [confirming, setConfirming] = useState(false);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [previewError, setPreviewError] = useState(false);
+  const previewAbort = useRef<AbortController | null>(null);
   const [invalid, setInvalid] = useState<string[]>([]);
   const [templateBusy, setTemplateBusy] = useState(false);
   const [templateReady, setTemplateReady] = useState(true);
@@ -43,15 +52,16 @@ export default function MailComposer({
     batch.selectedIds.includes(recipient.id),
   );
   const baseLocked = disabled || batch.busy || batch.started;
-  const locked = baseLocked || templateBusy;
+  const locked = baseLocked || templateBusy || previewBusy || confirming;
   useEffect(() => {
-    onBusyChange(batch.busy || templateBusy);
+    onBusyChange(batch.busy || templateBusy || previewBusy);
     return () => onBusyChange(false);
-  }, [batch.busy, templateBusy, onBusyChange]);
+  }, [batch.busy, templateBusy, previewBusy, onBusyChange]);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      previewAbort.current?.abort();
     };
   }, []);
   useEffect(() => {
@@ -77,8 +87,8 @@ export default function MailComposer({
         key.startsWith(`${field}.`) ||
         (field === "recipients" && key === "recipient_user_id"),
     );
-  function preview() {
-    if (templateBusy || !templateReady) return;
+  async function preview() {
+    if (disabled || previewBusy || templateBusy || !templateReady) return;
     const errors = [];
     if (
       !selection.length ||
@@ -111,10 +121,38 @@ export default function MailComposer({
             ?.focus();
         else element?.focus();
       });
-    } else setConfirming(true);
+    } else {
+      const controller = new AbortController();
+      previewAbort.current = controller;
+      setPreviewBusy(true);
+      setPreviewError(false);
+      setPreviewHtml("");
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const response = await previewMailMessage(
+          batch.subject.trim(),
+          batch.body.trim(),
+          controller.signal,
+        );
+        if (!mounted.current || controller.signal.aborted) return;
+        if (
+          response.data.layout !== INTERNAL_MAIL_LAYOUT ||
+          typeof response.data.html !== "string" ||
+          !response.data.html
+        )
+          throw new Error("MAIL_PREVIEW_UNAVAILABLE");
+        setPreviewHtml(response.data.html);
+        setConfirming(true);
+      } catch {
+        if (mounted.current) setPreviewError(true);
+      } finally {
+        clearTimeout(timeout);
+        if (mounted.current) setPreviewBusy(false);
+      }
+    }
   }
   async function send() {
-    if (disabled || templateBusy || !templateReady) return;
+    if (disabled || previewBusy || templateBusy || !templateReady) return;
     await batch.send(() => setConfirming(false));
     if (mounted.current) {
       setConfirming(false);
@@ -130,7 +168,7 @@ export default function MailComposer({
         {!batch.started && (
           <MailTemplatePicker
             fromName={fromName}
-            disabled={baseLocked}
+            disabled={baseLocked || previewBusy || confirming}
             onBusyChange={setTemplateBusy}
             onReadyChange={setTemplateReady}
             onApply={(content) => {
@@ -206,6 +244,14 @@ export default function MailComposer({
             {t("mailCompose.resumeHint")}
           </p>
         )}
+        {previewError && (
+          <p
+            role="alert"
+            className="text-sm text-error-600 dark:text-error-400"
+          >
+            {t("mailCompose.previewError")}
+          </p>
+        )}
         {batch.error && (
           <p
             role="alert"
@@ -221,16 +267,24 @@ export default function MailComposer({
         )}
         <div className="flex flex-wrap gap-3">
           <Button
-            disabled={disabled || batch.busy || templateBusy || !templateReady}
-            onClick={() => (batch.started ? void send() : preview())}
+            disabled={
+              disabled ||
+              batch.busy ||
+              templateBusy ||
+              previewBusy ||
+              !templateReady
+            }
+            onClick={() => (batch.started ? void send() : void preview())}
             className="max-w-full !bg-kps-primary whitespace-normal !text-white hover:!bg-kps-primary-hover"
           >
             {t(
-              batch.busy
-                ? "mailUi.sending"
-                : batch.started
-                  ? "mailUi.resumeBatch"
-                  : "mailCompose.preview",
+              previewBusy
+                ? "mailCompose.previewLoading"
+                : batch.busy
+                  ? "mailUi.sending"
+                  : batch.started
+                    ? "mailUi.resumeBatch"
+                    : "mailCompose.preview",
             )}
           </Button>
           {batch.canReset && (
@@ -260,7 +314,8 @@ export default function MailComposer({
           if (!batch.busy) setConfirming(false);
         }}
         ariaLabelledBy="mail-compose-heading"
-        className="max-w-2xl p-4 sm:p-6"
+        aboveNavigation
+        className="max-w-4xl p-4 sm:p-6"
       >
         <div className="min-w-0 space-y-4">
           <h2
@@ -282,9 +337,7 @@ export default function MailComposer({
               ))}
             </ul>
             <p className="font-semibold break-all">{batch.subject.trim()}</p>
-            <p className="break-words whitespace-pre-wrap">
-              {batch.body.trim()}
-            </p>
+            <MailBodyPreview html={previewHtml} text={batch.body.trim()} />
             <p className="text-xs text-gray-500 dark:text-gray-400">
               {t("mailCompose.privacyHint")}
             </p>
