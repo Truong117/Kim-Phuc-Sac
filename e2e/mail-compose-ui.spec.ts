@@ -9,6 +9,8 @@ async function setup(
     invalid?: boolean;
     aiDenied?: boolean;
     staleAi?: boolean;
+    emptyAi?: boolean;
+    manyDaily?: boolean;
   } = {},
 ) {
   const history: Record<string, unknown>[] = [];
@@ -31,6 +33,8 @@ async function setup(
         const params = new URL(request.url()).searchParams;
         const pageNumber = Number(params.get("page") || 1);
         const row = structuredClone(dailyMailFixture);
+        row.source.date = params.get("date")!;
+        row.document.source.date = params.get("date")!;
         if (options.staleAi && aiReads.length > 1) row.source_changed = true;
         if (pageNumber === 2) {
           row.employee_name = "Nhân viên trang hai";
@@ -44,20 +48,31 @@ async function setup(
               page: pageNumber,
               last_page: 2,
               total: 4,
-              reports: [
-                row,
-                {
-                  ...row,
-                  employee_name: "AI chưa hoàn tất",
-                  document: { ...row.document, id: 110, status: "running" },
-                },
-                {
-                  ...row,
-                  employee_name: "Dữ liệu đã đổi",
-                  source_changed: true,
-                  document: { ...row.document, id: 111 },
-                },
-              ],
+              reports: options.emptyAi
+                ? []
+                : [
+                    row,
+                    ...(options.manyDaily
+                      ? [
+                          {
+                            ...row,
+                            employee_name: "Trần Thị Bình",
+                            document: { ...row.document, id: 103 },
+                          },
+                        ]
+                      : []),
+                    {
+                      ...row,
+                      employee_name: "AI chưa hoàn tất",
+                      document: { ...row.document, id: 110, status: "running" },
+                    },
+                    {
+                      ...row,
+                      employee_name: "Dữ liệu đã đổi",
+                      source_changed: true,
+                      document: { ...row.document, id: 111 },
+                    },
+                  ],
             },
           },
         });
@@ -65,16 +80,18 @@ async function setup(
       if (path === "/api/ai/work-report-analyses/history")
         return route.fulfill({
           json: {
-            data: [
-              { ...weeklyMailFixture, result: null },
-              {
-                ...weeklyMailFixture,
-                id: 202,
-                period: { ...weeklyMailFixture.period, days: 1 },
-              },
-              { ...weeklyMailFixture, id: 203, status: "partial" },
-              { ...weeklyMailFixture, id: 204, source_changed: true },
-            ],
+            data: options.emptyAi
+              ? []
+              : [
+                  { ...weeklyMailFixture, result: null },
+                  {
+                    ...weeklyMailFixture,
+                    id: 202,
+                    period: { ...weeklyMailFixture.period, days: 1 },
+                  },
+                  { ...weeklyMailFixture, id: 203, status: "partial" },
+                  { ...weeklyMailFixture, id: 204, source_changed: true },
+                ],
           },
         });
       if (path === "/api/ai/work-report-analyses/201")
@@ -245,131 +262,156 @@ for (const [value, title] of [
   ["monthly_plan", "Kế hoạch tháng"],
   ["issue", "Có vấn đề cần xử lý"],
 ]) {
-  test(`preset ${value}: explicit replacement preserves recipients and remains editable without sending`, async ({
+  test(`preset ${value}: selecting fills subject and body immediately without an apply step`, async ({
     page,
   }) => {
     const api = await setup(page);
     await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
-    await page
-      .getByLabel("Tiêu đề", { exact: true })
-      .fill("Nội dung đang soạn");
-    await page.getByLabel("Nội dung", { exact: true }).fill("Giữ lại nếu hủy");
     const picker = page.getByRole("combobox", {
       name: "Mẫu mail",
       exact: true,
     });
     await expect(picker.getByRole("option")).toHaveCount(6);
     await picker.selectOption(value);
-    await page
-      .getByRole("button", { name: "Xem trước mẫu", exact: true })
-      .click();
-    await expect(page.getByRole("dialog")).toContainText(
-      "Áp dụng sẽ thay toàn bộ tiêu đề",
-    );
-    await expect(page.getByRole("dialog")).toContainText(
-      "Kim Phục Sắc - Nội bộ",
-    );
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Hủy", exact: true })
-      .click();
-    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-      "Giữ lại nếu hủy",
-    );
-    await page
-      .getByRole("button", { name: "Xem trước mẫu", exact: true })
-      .click();
-    await page
-      .getByRole("button", { name: "Dùng nội dung này", exact: true })
-      .click();
     await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
       /^\[KPS\]/,
     );
-    await expect(page.getByLabel("Nội dung", { exact: true })).not.toHaveValue(
-      "Giữ lại nếu hủy",
+    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+      /Kim Phục Sắc - Nội bộ/,
     );
     await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
     await expect(
       page.getByRole("checkbox", { name: /Nguyễn Văn An/ }),
     ).toBeChecked();
     await expect(picker.locator("option:checked")).toHaveText(title);
+    await expect(
+      page.getByRole("button", { name: "Xem trước mẫu", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Dùng nội dung này", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Xem trước mail", exact: true }),
+    ).toBeEnabled();
     expect(api.aiReads).toHaveLength(0);
     expect(api.submissions).toHaveLength(0);
   });
 }
 
-test("daily AI template uses a completed employee report, refreshes the source and keeps evidence and uncertain figures", async ({
+test("daily template and date 01/11 fill both fields automatically and send without typing subject or body", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-11-06T03:00:00Z"));
   const api = await setup(page);
+  await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
   await page
     .getByRole("combobox", { name: "Mẫu mail", exact: true })
     .selectOption("daily");
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Báo cáo ngày 05/11/2026 - Nguyễn Văn An",
+  );
   await page
-    .getByRole("button", { name: "Tải danh sách báo cáo AI", exact: true })
+    .getByRole("button", { name: "Ngày báo cáo AI: 05/11/2026", exact: true })
     .click();
+  await page.locator('[data-calendar-date="2026-11-01"]').click();
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Báo cáo ngày 01/11/2026 - Nguyễn Văn An",
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Đã bàn giao 3 mẫu được duyệt/,
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Doanh thu \(đồng\): Cần xác nhận/,
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).not.toHaveValue(
+    /9000/,
+  );
+  await expect(
+    page.getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true }),
+  ).toHaveValue("101");
+  expect(api.submissions).toHaveLength(0);
+  await page
+    .getByRole("button", { name: "Xem trước mail", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("01/11/2026");
+  await page.getByRole("button", { name: "Gửi mail", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Đã gửi mail qua Gmail đến tất cả người nhận trong lượt gửi.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(api.submissions[0].subject).toBe(
+    "[KPS] Báo cáo ngày 01/11/2026 - Nguyễn Văn An",
+  );
+  expect(api.submissions[0].body).toContain("date=2026-11-01");
+});
+
+test("multiple daily reports require only the source choice, which immediately fills both fields", async ({
+  page,
+}) => {
+  const api = await setup(page, { manyDaily: true });
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
   const source = page.getByRole("combobox", {
     name: "Báo cáo AI nguồn",
     exact: true,
   });
-  await expect(source.getByRole("option")).toHaveCount(2);
-  await source.selectOption("101");
-  await page
-    .getByRole("button", { name: "Xem trước mẫu", exact: true })
-    .click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "Đã bàn giao 3 mẫu được duyệt.",
-  );
-  await expect(page.getByRole("dialog")).toContainText(
-    "Doanh thu (đồng): Cần xác nhận",
-  );
-  await expect(page.getByRole("dialog")).not.toContainText("9000");
-  await page
-    .getByRole("button", { name: "Dùng nội dung này", exact: true })
-    .click();
+  await expect(source.getByRole("option")).toHaveCount(3);
+  await expect(
+    page.getByRole("button", { name: "Xem trước mail", exact: true }),
+  ).toBeDisabled();
+  await source.selectOption("103");
   await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
-    "[KPS] Báo cáo ngày 05/11/2026 - Nguyễn Văn An",
+    /Trần Thị Bình/,
   );
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
     /Căn cứ báo cáo #12, đầu việc #4/,
   );
   expect(api.aiReads).toHaveLength(2);
   expect(api.submissions).toHaveLength(0);
+});
+
+test("daily pagination automatically fills the new page's only valid report", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await page
+    .getByRole("combobox", { name: "Mẫu mail", exact: true })
+    .selectOption("daily");
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    /Nguyễn Văn An/,
+  );
   await page.getByRole("button", { name: "Trang sau", exact: true }).click();
   await expect(
-    source.getByRole("option", { name: /Nhân viên trang hai/ }),
-  ).toBeAttached();
+    page.getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true }),
+  ).toHaveValue("102");
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    /Nhân viên trang hai/,
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /page=2/,
+  );
   expect(new URL(api.aiReads.at(-1)!).searchParams.get("page")).toBe("2");
 });
 
-test("weekly AI template selects only complete seven-day runs and uses the saved summary and precise report link", async ({
+test("weekly template loads the only eligible run and automatically fills its period and AI summary", async ({
   page,
 }) => {
   const api = await setup(page);
   await page
     .getByRole("combobox", { name: "Mẫu mail", exact: true })
     .selectOption("weekly");
-  await page
-    .getByRole("button", { name: "Tải danh sách báo cáo AI", exact: true })
-    .click();
-  const source = page.getByRole("combobox", {
-    name: "Báo cáo AI nguồn",
-    exact: true,
-  });
-  await expect(source.getByRole("option")).toHaveCount(2);
-  await source.selectOption("201");
-  await page
-    .getByRole("button", { name: "Xem trước mẫu", exact: true })
-    .click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "Chưa đủ dữ liệu để kết luận doanh thu.",
+  await expect(
+    page.getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true }),
+  ).toHaveValue("201");
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Báo cáo tuần 30/10/2026 - 05/11/2026",
   );
-  await expect(page.getByRole("dialog")).toContainText(
-    "Bản tổng hợp AI #201, phiên bản 2",
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /Chưa đủ dữ liệu để kết luận doanh thu/,
   );
-  await page
-    .getByRole("button", { name: "Dùng nội dung này", exact: true })
-    .click();
   await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
     /analysis=201&end=2026-11-05&days=7/,
   );
@@ -377,41 +419,82 @@ test("weekly AI template selects only complete seven-day runs and uses the saved
   expect(api.submissions).toHaveLength(0);
 });
 
-for (const failure of ["aiDenied", "staleAi"] as const) {
-  test(`${failure}: an unavailable AI source never replaces the existing draft`, async ({
+for (const failure of ["aiDenied", "staleAi", "emptyAi"] as const) {
+  test(`${failure}: an unavailable AI template cannot send a previous report's body`, async ({
     page,
   }) => {
     const api = await setup(page, { [failure]: true });
-    await page.getByLabel("Tiêu đề", { exact: true }).fill("Giữ tiêu đề");
-    await page.getByLabel("Nội dung", { exact: true }).fill("Giữ nội dung");
+    await page.getByLabel("Tiêu đề", { exact: true }).fill("Tiêu đề cũ");
     await page
-      .getByRole("combobox", { name: "Mẫu mail", exact: true })
-      .selectOption("weekly");
-    await page
-      .getByRole("button", { name: "Tải danh sách báo cáo AI", exact: true })
-      .click();
-    if (failure === "staleAi") {
-      await page
-        .getByRole("combobox", { name: "Báo cáo AI nguồn", exact: true })
-        .selectOption("201");
-      await page
-        .getByRole("button", { name: "Xem trước mẫu", exact: true })
-        .click();
-    }
-    await expect(page.getByRole("alert")).toBeVisible();
+      .getByLabel("Nội dung", { exact: true })
+      .fill("Nội dung cũ không được gửi nhầm");
+    const picker = page.getByRole("combobox", {
+      name: "Mẫu mail",
+      exact: true,
+    });
+    await picker.selectOption("weekly");
+    if (failure === "emptyAi")
+      await expect(
+        page.getByText(/Chưa có báo cáo AI đã hoàn tất/),
+      ).toBeVisible();
+    else await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
-      "Giữ tiêu đề",
+      "[KPS] Báo cáo tuần",
     );
+    await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue("");
+    await expect(
+      page.getByRole("button", { name: "Xem trước mail", exact: true }),
+    ).toBeDisabled();
+    await picker.selectOption("weekly_plan");
     await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-      "Giữ nội dung",
+      /KẾ HOẠCH TUẦN/,
     );
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Xem trước mail", exact: true }),
+    ).toBeEnabled();
     expect(api.submissions).toHaveLength(0);
   });
 }
 
+test("switching templates aborts a delayed AI response and prevents it replacing the new preset", async ({
+  page,
+}) => {
+  await setup(page);
+  let releaseOld!: () => void;
+  const oldGate = new Promise<void>((resolve) => {
+    releaseOld = resolve;
+  });
+  let finished!: () => void;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  await page.route("**/api/ai/daily-documents?**", async (route) => {
+    await oldGate;
+    await route.fulfill({
+      json: { data: { reports: [dailyMailFixture], last_page: 1 } },
+    });
+    finished();
+  });
+  const called = page.waitForRequest("**/api/ai/daily-documents?**");
+  const picker = page.getByRole("combobox", { name: "Mẫu mail", exact: true });
+  await picker.selectOption("daily");
+  await called;
+  await picker.selectOption("monthly_plan");
+  releaseOld();
+  await done;
+  await expect(page.getByLabel("Tiêu đề", { exact: true })).toHaveValue(
+    "[KPS] Kế hoạch tháng [tháng/năm]",
+  );
+  await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
+    /KẾ HOẠCH THÁNG/,
+  );
+  await expect(
+    page.getByRole("button", { name: "Xem trước mail", exact: true }),
+  ).toBeEnabled();
+});
+
 for (const dark of [false, true]) {
-  test(`320px ${dark ? "dark" : "light"}: template preview stays in the viewport and cancels without replacing the draft`, async ({
+  test(`320px ${dark ? "dark" : "light"}: auto-filled template proceeds directly to the final mail preview`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 844 });
@@ -420,16 +503,14 @@ for (const dark of [false, true]) {
       (enabled) => document.documentElement.classList.toggle("dark", enabled),
       dark,
     );
-    await page
-      .getByLabel("Nội dung", { exact: true })
-      .fill("Bản đang soạn trên điện thoại");
+    await page.getByRole("checkbox", { name: /Nguyễn Văn An/ }).check();
     await page
       .getByRole("combobox", { name: "Mẫu mail", exact: true })
       .selectOption("monthly_plan");
     await page
-      .getByRole("button", { name: "Xem trước mẫu", exact: true })
+      .getByRole("button", { name: "Xem trước mail", exact: true })
       .click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByRole("dialog")).toContainText("KẾ HOẠCH THÁNG");
     const sizes = await page.evaluate(() => ({
       page: document.documentElement.scrollWidth,
       viewport: innerWidth,
@@ -440,9 +521,8 @@ for (const dark of [false, true]) {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByLabel("Nội dung", { exact: true })).toHaveValue(
-      "Bản đang soạn trên điện thoại",
+      /KẾ HOẠCH THÁNG/,
     );
-    await expect(page.getByLabel("Nội dung", { exact: true })).toBeEnabled();
   });
 }
 
