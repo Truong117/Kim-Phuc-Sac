@@ -293,4 +293,13 @@ class FacebookAnalyticsTest extends TestCase
         $this->getJson($this->url())->assertOk()->assertJsonPath('data.analysis.stale', true);
         $this->assertDatabaseCount('ai_usage_records', 1);
     }
+
+    public function test_expired_queued_sync_can_be_explicitly_retried_without_being_stuck_disabled(): void
+    {
+        Queue::fake();
+        FacebookAnalyticsState::query()->create(['social_connection_id' => $this->connection->id, 'status' => 'queued', 'created_at' => now()->subMinutes(7), 'updated_at' => now()->subMinutes(7)]);
+        $this->actingAs($this->owner)->getJson($this->url())->assertOk()->assertJsonPath('data.sync.interrupted', true);
+        $this->postJson('/api/social-analytics/facebook/'.$this->entry->id.'/sync')->assertAccepted();
+        Queue::assertPushed(SyncFacebookAnalytics::class, 1);
+    }
 }

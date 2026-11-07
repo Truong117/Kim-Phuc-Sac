@@ -65,7 +65,8 @@ export function csvCell(value: string | number | null) {
   const raw = value == null ? "" : String(value);
   // Spreadsheet applications must not execute captions as formulas.
   const safe =
-    /^[=+@-]/.test(raw.trimStart()) && typeof value === "string"
+    /^[=+@-]/.test(raw.replace(/^[\s\p{Cc}]*/u, "")) &&
+    typeof value === "string"
       ? "'" + raw
       : raw;
   return '"' + safe.replaceAll('"', '""') + '"';

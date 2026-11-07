@@ -67,7 +67,7 @@ class FacebookAnalyticsRead
 
         return ['entry_id' => (int) $entry->id, 'page_name' => $connection?->page_name ?? $entry->name, 'from_date' => $from, 'to_date' => $to,
             'connection_status' => $connection?->status ?? 'disconnected', 'principal_available' => $connection !== null && app(FacebookAnalyticsAccess::class)->principalAvailable($connection),
-            'sync' => ['status' => $state?->status ?? 'idle', 'interrupted' => $state?->status === 'running' && ! $state->leased_until?->isFuture(),
+            'sync' => ['status' => $state?->status ?? 'idle', 'interrupted' => ($state?->status === 'running' && ! $state->leased_until?->isFuture()) || ($state?->status === 'queued' && $state->updated_at->lt(now()->subMinutes(6))),
                 'sampled_at' => $state?->sampled_at?->toIso8601String(), 'catalogued_at' => $state?->catalogued_at?->toIso8601String(),
                 'catalogue_complete' => $state?->catalogue_complete ?? false, 'catalogue_from' => $state?->from_date, 'catalogue_to' => $state?->to_date,
                 'error_code' => $state?->error_code, 'pending_samples' => $pending, 'catalogue_posts' => count($rows)],

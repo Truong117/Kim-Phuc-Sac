@@ -36,7 +36,13 @@ vm.runInNewContext(ts.transpileModule(source, options).outputText, {
   },
 });
 test("CSV captions cannot execute spreadsheet formulas and numbers keep their sign", () => {
-  for (const value of ["=SUM(A1:A2)", " +SUM(A1:A2)", "\t@import", "-cmd"])
+  for (const value of [
+    "=SUM(A1:A2)",
+    " +SUM(A1:A2)",
+    "\t@import",
+    "-cmd",
+    "\0=SUM(A1:A2)",
+  ])
     assert.match(exports.csvCell(value), /^"'/);
   assert.equal(exports.csvCell(-3), '"-3"');
   assert.equal(exports.csvCell(null), '""');
