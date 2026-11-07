@@ -55,11 +55,31 @@ trang quản lý/lưu mẫu tùy chỉnh trong database.
 - Báo cáo ngày: chọn ngày bằng lịch KPS, chọn một nhân viên trong danh sách
   báo cáo AI ngày đã hoàn tất. Danh sách phân trang theo API ngày hiện có.
   Giữ nhóm công việc, nhận xét, đề xuất, căn cứ và số liệu còn cần xác nhận.
-- Báo cáo tuần: chọn bản AI 7 ngày trong tối đa 100 lượt gần nhất thuộc phạm
+  Đầu danh sách có **Tổng hợp ngày (AI)**: lấy bản `work-report-analyses` kỳ
+  1 ngày, đúng cả ngày bắt đầu/kết thúc, không áp dụng bộ lọc phòng ban và trong
+  phạm vi hiện được cấp quyền xem. Dùng bản hoàn tất mới nhất còn khớp nguồn,
+  đọc lại bản đó trước khi tự điền. Nội dung gồm đầy đủ phần tổng hợp chung,
+  căn cứ, nhận định/giới hạn và các trường đề xuất có cấu trúc; liên kết mở đúng
+  bản AI với `days=1`. Báo cáo tổng hợp và báo cáo từng nhân viên là hai lựa
+  chọn độc lập; không ghép các nhận xét cá nhân để giả thành kết luận AI chung.
+  Nếu thiếu bản tổng hợp hợp lệ, chặn gửi, giải thích cách tạo/cập nhật và có
+  liên kết mở Phân tích AI đúng ngày/kỳ 1 ngày. Không tự tạo lượt AI hay gọi API
+  tạo/retry. Đổi ngày hoặc tải lại khi đang chọn tổng hợp sẽ giữ chế độ tổng
+  hợp; không tự dùng bản cũ hoặc chuyển sang cá nhân. Không cần migration/env.
+- Báo cáo tuần: các nguồn được ghi rõ **Tổng hợp tuần (AI)**; chọn bản AI 7 ngày trong tối đa 100 lượt gần nhất thuộc phạm
   vi được phép xem. Lấy toàn bộ các mục trong phần tổng hợp chung của AI;
-  kèm liên kết mở đúng bản và kỳ để xem cả chi tiết từng nhân viên.
+  kèm liên kết mở đúng bản và kỳ để xem cả chi tiết từng nhân viên. Tiêu đề tự
+  điền Báo cáo tổng hợp tuần theo ngày bắt đầu/kết thúc; khi thiếu nguồn, có
+  liên kết đến Phân tích AI kỳ 7 ngày để tạo/cập nhật.
 - Kế hoạch tuần/tháng và vấn đề: khung có các mục cần điền, không tự điền mục
   tiêu, thời hạn, chỉ tiêu hay dữ liệu giả. Người gửi chỉnh sửa trước khi gửi.
+
+Trong nội dung mail ngày/tuần, căn cứ ghi tên nhân viên, ngày và tên công việc
+lấy từ nguồn báo cáo đã lưu, kèm trích dẫn gốc; không hiển thị mã báo cáo/đầu
+việc. Ghép đúng cả báo cáo và đầu việc để tránh nhầm người khi mã đầu việc
+trùng nhau. Nếu thiếu tên công việc, giữ tên/ngày và trích dẫn; nếu thiếu nguồn
+định danh, ghi rõ chưa đủ thông tin người phụ trách. Liên kết vẫn mở đúng bản
+AI đầy đủ để đối chiếu.
 
 Chỉ đọc API AI hiện có, dùng nguyên quyền và phạm vi dữ liệu của các API đó;
 không gọi tạo/retry/regenerate, không tốn thêm lượt AI. Tự tải nguồn khi chọn mẫu, đổi ngày/trang hoặc chọn báo cáo AI. Chặn bản đang chạy, partial/failed, nguồn đã thay đổi, bản ngày
