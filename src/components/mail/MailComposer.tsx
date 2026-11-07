@@ -314,6 +314,7 @@ export default function MailComposer({
           if (!batch.busy) setConfirming(false);
         }}
         ariaLabelledBy="mail-compose-heading"
+        aboveNavigation
         className="max-w-4xl p-4 sm:p-6"
       >
         <div className="min-w-0 space-y-4">
