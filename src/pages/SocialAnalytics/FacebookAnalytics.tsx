@@ -5,6 +5,7 @@ import PageMeta from "@/components/common/PageMeta";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Button from "@/components/ui/button/Button";
+import AnalyticsSamplingStatus from "@/components/social-analytics/AnalyticsSamplingStatus";
 import AnalyticsOverview from "@/components/social-analytics/AnalyticsOverview";
 import AnalyticsContent from "@/components/social-analytics/AnalyticsContent";
 import AnalyticsAiPanel from "@/components/social-analytics/AnalyticsAiPanel";
@@ -358,6 +359,7 @@ function Workspace() {
                       </p>
                     )}
                     <p>{t("dataPolicy")}</p>
+                    <AnalyticsSamplingStatus sampling={data.sampling} />
                     {data.sync.progress && (
                       <details
                         open={!!waiting}

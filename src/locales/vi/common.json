@@ -3041,6 +3041,32 @@
     "reuseError": "Chưa tải được nội dung thư cũ. Bản nháp hiện tại vẫn được giữ."
   },
   "facebookAnalytics": {
+    "sampling": {
+      "title": "Lịch lấy mẫu tự động",
+      "statuses": {
+        "off": "Chưa bật cho Page này",
+        "blocked": "Kết nối hoặc quyền chưa sẵn sàng",
+        "paused": "Tạm dừng để kiểm tra",
+        "queued": "Đang chờ xử lý",
+        "running": "Đang lấy mẫu",
+        "overdue": "Có bài đã quá hạn lấy mẫu",
+        "unconfirmed": "Chưa xác nhận bộ điều phối hoạt động",
+        "waiting": "Đang chờ lịch tiếp theo"
+      },
+      "disabled": "Người quản trị chưa bật lịch tự động cho Page này. Bạn vẫn có thể đồng bộ thủ công.",
+      "lastSample": "Mẫu thành công gần nhất",
+      "lastCheck": "Bộ điều phối kiểm tra gần nhất",
+      "nextCheck": "Lần kiểm tra dự kiến tiếp theo",
+      "counts": "Trong danh mục 90 ngày: {total} bài; {due} bài đến hạn, trong đó {overdue} bài quá hạn; {missing} bài chưa có mẫu theo định nghĩa hiện tại; {late} bài có mẫu gần nhất được lấy trễ.",
+      "cadence": "Giờ Việt Nam: bài 0–7 ngày được kiểm tra lúc 09:00 và 21:00; bài 8–30 ngày lúc 21:00; bài cũ hơn vào Chủ nhật lúc 21:00. Danh mục được kiểm tra hai lần/ngày để tìm bài mới.",
+      "actualTime": "Lịch là thời điểm dự kiến. Nếu backend ngủ hoặc hàng đợi bận, số liệu được ghi theo thời điểm lấy thực tế; trễ hơn 30 phút được đánh dấu. Không tái tạo số liệu cho các thời điểm đã bỏ lỡ.",
+      "help": {
+        "blocked": "Người quản trị cần kiểm tra kết nối Page và quyền của tài khoản đã kết nối.",
+        "paused": "Lịch tạm dừng sau lỗi quyền, giới hạn hoặc nhiều lần thất bại. Kiểm tra nguyên nhân rồi đồng bộ thủ công; hoàn tất thành công sẽ cho phép lịch tiếp tục.",
+        "overdue": "Bài đến hạn chưa có mẫu mới. Kiểm tra worker, hàng đợi và thời điểm bộ điều phối hoạt động gần nhất.",
+        "unconfirmed": "Chưa có lượt kiểm tra tự động hoặc đã quá lịch kiểm tra hơn 10 phút. Backend có thể đang ngủ hoặc lịch chưa được khởi động; trạng thái này không xác nhận tác vụ đang chạy."
+      }
+    },
     "title": "Phân tích Facebook",
     "metaTitle": "Phân tích Facebook | KIM PHỤC SẮC",
     "eyebrow": "HIỆU QUẢ NỘI DUNG",

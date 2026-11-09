@@ -9,6 +9,7 @@ use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\Mail\MailConfiguration;
 use App\Services\Mail\MailOutbox;
 use App\Services\Social\Analytics\FacebookAnalyticsSync;
+use App\Services\Social\Analytics\FacebookSamplingDispatcher;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -82,7 +83,7 @@ Artisan::command('social-metrics:dispatch', function (): void {
     SocialConnection::query()->where('status', 'connected')->orderBy('id')->chunkById(100, function ($connections): void {
         foreach ($connections as $connection) {
             SyncSocialMetrics::dispatch((int) $connection->integration_entry_id);
-            if (config('facebook_analytics.enabled') && $connection->connected_by !== null) {
+            if (config('facebook_analytics.enabled') && ! config('facebook_analytics.auto_sample_enabled') && $connection->connected_by !== null) {
                 app(FacebookAnalyticsSync::class)->enqueue((int) $connection->integration_entry_id, (int) $connection->connected_by);
             }
         }
@@ -92,3 +93,10 @@ Artisan::command('social-metrics:dispatch', function (): void {
 
 Schedule::command('social-metrics:dispatch')->hourly()->withoutOverlapping()
     ->when(fn () => (bool) config('social_metrics.enabled') && (bool) config('social_metrics.auto_sync'));
+
+Artisan::command('facebook-analytics:dispatch', function (FacebookSamplingDispatcher $dispatcher): void {
+    $this->info('Facebook sampling cycles queued: '.$dispatcher->dispatch());
+})->purpose('Queue due Facebook analytics samples without provider calls');
+
+Schedule::command('facebook-analytics:dispatch')->everyFiveMinutes()->withoutOverlapping()
+    ->when(fn () => (bool) config('facebook_analytics.auto_sample_enabled'));

@@ -56,6 +56,7 @@ export interface FacebookAnalyticsData {
   principal_available: boolean;
   can_manage: boolean;
   ai_enabled: boolean;
+  sampling?: FacebookSamplingHealth | null;
   sync: {
     status: string;
     interrupted: boolean;
@@ -99,4 +100,25 @@ export interface FacebookAnalyticsData {
   };
   posts: FacebookAnalyticsPost[];
   analysis: FacebookAnalyticsAnalysis | null;
+}
+
+export interface FacebookSamplingHealth {
+  enabled: boolean;
+  status:
+    | "off"
+    | "blocked"
+    | "paused"
+    | "queued"
+    | "running"
+    | "overdue"
+    | "unconfirmed"
+    | "waiting";
+  total_posts: number;
+  due_posts: number;
+  overdue_posts: number;
+  never_sampled_posts: number;
+  late_posts: number;
+  last_checked_at: string | null;
+  next_check_at: string | null;
+  last_sampled_at: string | null;
 }

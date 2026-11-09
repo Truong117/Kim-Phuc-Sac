@@ -2,7 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function setup(
   page: Page,
-  options: { empty?: boolean; delayed?: boolean; syncCycle?: boolean } = {},
+  options: {
+    empty?: boolean;
+    delayed?: boolean;
+    syncCycle?: boolean;
+    sampling?: "waiting" | "overdue" | "off";
+  } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
   const requests: string[] = [];
@@ -156,6 +161,20 @@ async function setup(
                     }
                   : null,
             },
+            sampling: options.sampling
+              ? {
+                  enabled: options.sampling !== "off",
+                  status: options.sampling,
+                  total_posts: 12,
+                  due_posts: options.sampling === "overdue" ? 3 : 0,
+                  overdue_posts: options.sampling === "overdue" ? 2 : 0,
+                  never_sampled_posts: 1,
+                  late_posts: 2,
+                  last_checked_at: "2026-11-07T02:05:00Z",
+                  last_sampled_at: "2026-11-07T02:10:00Z",
+                  next_check_at: "2026-11-07T14:00:00Z",
+                }
+              : undefined,
             summary: {
               published: 2,
               previous_published: null,
@@ -490,4 +509,65 @@ test("one sync request follows progress until completion and distinguishes the s
   expect(
     requests.filter((r) => r.startsWith("POST ") && r.endsWith("/sync")),
   ).toHaveLength(1);
+});
+
+test("automatic sampling shows real timestamps, cadence and data health", async ({
+  page,
+}) => {
+  await setup(page, { sampling: "waiting" });
+  const details = page
+    .locator("details")
+    .filter({ hasText: "Lịch lấy mẫu tự động" });
+  await expect(details.locator("summary")).toContainText(
+    "Đang chờ lịch tiếp theo",
+  );
+  await details.locator("summary").click();
+  await expect(
+    details.getByText("Bộ điều phối kiểm tra gần nhất", { exact: true }),
+  ).toBeVisible();
+  await expect(details.getByText("09:10", { exact: false })).toBeVisible();
+  await expect(details.getByText("21:00", { exact: false })).toBeVisible();
+  await expect(details.getByRole("status")).toContainText(
+    "12 bài; 0 bài đến hạn",
+  );
+  await expect(details).toContainText(
+    "Không tái tạo số liệu cho các thời điểm đã bỏ lỡ",
+  );
+});
+
+test("overdue sampling opens its explanation and fits a phone viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, { sampling: "overdue" });
+  const details = page
+    .locator("details")
+    .filter({ hasText: "Lịch lấy mẫu tự động" });
+  await expect(details).toHaveAttribute("open", "");
+  await expect(details.getByRole("status")).toContainText(
+    "3 bài đến hạn, trong đó 2 bài quá hạn",
+  );
+  await expect(details).toContainText("Kiểm tra worker, hàng đợi");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+});
+
+test("disabled automatic sampling still permits manual sync", async ({
+  page,
+}) => {
+  const requests = await setup(page, { sampling: "off" });
+  const details = page
+    .locator("details")
+    .filter({ hasText: "Lịch lấy mẫu tự động" });
+  await details.locator("summary").click();
+  await expect(details).toContainText("Bạn vẫn có thể đồng bộ thủ công");
+  await page.getByRole("button", { name: "Đồng bộ Page", exact: true }).click();
+  await expect
+    .poll(() =>
+      requests.some((r) => r === "POST /api/social-analytics/facebook/1/sync"),
+    )
+    .toBeTruthy();
 });

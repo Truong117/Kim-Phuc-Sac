@@ -84,6 +84,7 @@ class FacebookAnalyticsRead
 
                 return $row;
             }, $rows),
+            'sampling' => $connection === null ? null : app(FacebookSamplingPolicy::class)->health($connection, $state, app(FacebookAnalyticsAccess::class)->principalAvailable($connection)),
             'definition' => $activeDefinition, 'ai_enabled' => (bool) config('facebook_analytics.ai_enabled'), 'can_manage' => app(FacebookAnalyticsAccess::class)->broad($actor)];
     }
 
