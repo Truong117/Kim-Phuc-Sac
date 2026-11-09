@@ -3327,6 +3327,7 @@
       "delay": "Sau mốc {minutes} phút",
       "asOf": "Dữ liệu lưu trên hệ thống, cập nhật giao diện lúc {at}. Không gọi Facebook khi mở tab.",
       "compareTitle": "Trung vị D7 theo nhóm tương đồng",
+      "absoluteChange": "Chênh lệch tuyệt đối: {value}",
       "comparePolicy": "Cùng Page, loại bài, chủ đề, mục tiêu, trạng thái quảng cáo và định nghĩa chỉ số. Cần ít nhất {n} bài có số liệu mỗi kỳ, độ phủ từ {coverage}% và danh mục đủ cả hai kỳ. Trung vị mô tả nhóm, không phải điểm đánh giá nhân viên.",
       "previousPeriod": "Kỳ trước liền kề: {from} – {to}.",
       "period": {

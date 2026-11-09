@@ -329,6 +329,14 @@ export default function AnalyticsAgeMetrics({
                             difference: analyticsNumber(comparison.difference),
                           })}
                     </p>
+                    {comparison.reason === "zero_baseline" &&
+                      comparison.difference !== null && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {t("age.absoluteChange", {
+                            value: analyticsNumber(comparison.difference),
+                          })}
+                        </p>
+                      )}
                     <details className="text-xs text-gray-500 dark:text-gray-400">
                       <summary className="cursor-pointer">
                         {t("age.definition")}

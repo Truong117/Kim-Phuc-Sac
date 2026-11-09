@@ -918,3 +918,52 @@ test("age requests use cohort basis and filters without triggering provider sync
     requests.some((r) => r.startsWith("POST") || r.includes("/analyses")),
   ).toBeFalsy();
 });
+
+test("late age response cannot replace a newer publication cohort", async ({
+  page,
+}) => {
+  await setup(page, { age: true });
+  await page.route("**/facebook/1/milestones?**", async (route) => {
+    const url = new URL(route.request().url());
+    const old = url.searchParams.get("basis") === "matured";
+    if (old) await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      json: {
+        data: {
+          basis: old ? "matured" : "published",
+          from_date: "2026-11-01",
+          to_date: "2026-11-07",
+          previous_from: "2026-10-25",
+          previous_to: "2026-10-31",
+          as_of: "2026-11-07T03:00:00Z",
+          catalogue_covered: !old,
+          policy: {
+            version: 1,
+            window_minutes: 30,
+            minimum_posts: 5,
+            minimum_coverage: 0.8,
+          },
+          posts: [],
+          groups: [],
+        },
+      },
+    });
+  });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Đăng trong kỳ", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Trung vị D7 theo nhóm tương đồng" }),
+  ).toBeVisible();
+  await page.waitForTimeout(650);
+  await expect(
+    page.getByText(
+      "Danh mục chưa đủ phạm vi cả hai kỳ; chưa kết luận so sánh.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+});
