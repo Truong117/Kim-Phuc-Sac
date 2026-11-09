@@ -221,9 +221,49 @@ test("Facebook analytics uses real API state, shared calendar, filters, post evi
     page.getByText("Danh mục thu thập 90 ngày chưa tải hết.", { exact: false }),
   ).toBeVisible();
   await expect(page.locator('input[type="date"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "28 ngày", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^(7|28) ngày$/ })).toHaveCount(
+    0,
+  );
   await expect
-    .poll(() => requests.some((r) => r.includes("from_date=2026-10-11")))
+    .poll(() =>
+      requests.some((r) =>
+        r.includes("from_date=2026-11-01&to_date=2026-11-07"),
+      ),
+    )
+    .toBeTruthy();
+  const initialReads = requests.filter((r) =>
+    r.startsWith("GET /api/social-analytics/facebook/1?"),
+  ).length;
+  await page
+    .getByRole("button", { name: "Từ ngày: 01/11/2026", exact: true })
+    .click();
+  const fromCalendar = page.getByRole("dialog", {
+    name: "Từ ngày",
+    exact: true,
+  });
+  await fromCalendar
+    .getByRole("combobox", { name: "Chọn tháng", exact: true })
+    .selectOption("9");
+  await fromCalendar.locator('[data-calendar-date="2026-10-20"]').click();
+  await page
+    .getByRole("button", { name: "Đến ngày: 07/11/2026", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Đến ngày", exact: true })
+    .locator('[data-calendar-date="2026-11-06"]')
+    .click();
+  expect(
+    requests.filter((r) =>
+      r.startsWith("GET /api/social-analytics/facebook/1?"),
+    ).length,
+  ).toBe(initialReads);
+  await page.getByRole("button", { name: "Áp dụng", exact: true }).click();
+  await expect
+    .poll(() =>
+      requests.some((r) =>
+        r.includes("from_date=2026-10-20&to_date=2026-11-06"),
+      ),
+    )
     .toBeTruthy();
   await page.getByRole("tab", { name: "Nội dung", exact: true }).click();
   await page
