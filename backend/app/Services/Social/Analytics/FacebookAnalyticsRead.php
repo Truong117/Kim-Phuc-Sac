@@ -107,6 +107,7 @@ class FacebookAnalyticsRead
     private function trend(Collection $samples, CarbonImmutable $start, CarbonImmutable $end, ?string $definition): array
     {
         $rows = [];
+        $intervals = [];
         $last = [];
         foreach ($samples as $point) {
             $date = CarbonImmutable::parse($point->sampled_at, 'UTC');
@@ -121,13 +122,21 @@ class FacebookAnalyticsRead
                     continue;
                 }
                 if (isset($last[$metric])) {
-                    $rows[$day][$metric] = ($rows[$day][$metric] ?? 0) + $value - $last[$metric];
+                    $previous = $last[$metric];
+                    $rows[$day][$metric] = ($rows[$day][$metric] ?? 0) + $value - $previous['value'];
+                    $interval = $intervals[$day][$metric] ?? null;
+                    $intervals[$day][$metric] = [
+                        'from' => $interval['from'] ?? $previous['at']->toIso8601String(),
+                        'to' => $date->toIso8601String(),
+                        'pairs' => ($interval['pairs'] ?? 0) + 1,
+                        'max_gap_seconds' => max($interval['max_gap_seconds'] ?? 0, $date->getTimestamp() - $previous['at']->getTimestamp()),
+                    ];
                 }
-                $last[$metric] = $value;
+                $last[$metric] = ['value' => $value, 'at' => $date];
             }
         }
 
-        return array_map(fn ($d, $v) => ['date' => $d, ...array_replace(array_fill_keys(self::METRICS, null), $v)], array_keys($rows), array_values($rows));
+        return array_map(fn ($d, $v) => ['date' => $d, ...array_replace(array_fill_keys(self::METRICS, null), $v), 'intervals' => $intervals[$d]], array_keys($rows), array_values($rows));
     }
 
     private function reportLinks(User $actor, IntegrationEntry $entry, string $from, string $to): array

@@ -139,6 +139,30 @@ class FacebookAnalyticsTest extends TestCase
         $this->assertSame('2026-11-03', collect($data['posts'])->firstWhere('id', $one)['trend'][0]['date']);
     }
 
+    public function test_trend_sources_keep_metric_specific_intervals_and_exclude_single_samples(): void
+    {
+        $one = $this->analyticsPost();
+        $two = $this->analyticsPost('100_777');
+        $single = $this->analyticsPost('100_888');
+        $this->sample($one, '2026-11-01 17:00:00', 10);
+        $this->sample($one, '2026-11-03 17:00:00', 8, 10);
+        $this->sample($one, '2026-11-03 18:00:00', 9, 20);
+        $this->sample($two, '2026-11-03 16:00:00', 0);
+        $this->sample($two, '2026-11-03 18:00:00', 0);
+        $this->sample($single, '2026-11-03 18:00:00', 7);
+        $data = $this->actingAs($this->owner)->getJson($this->url())->assertOk()->json('data');
+        $rows = collect($data['posts'])->keyBy('id');
+        $point = $rows[$one]['trend'][0];
+        $this->assertSame('2026-11-04', $point['date']);
+        $this->assertSame(-1, $point['likes']);
+        $this->assertSame(['from' => '2026-11-01T17:00:00+00:00', 'to' => '2026-11-03T18:00:00+00:00', 'pairs' => 2, 'max_gap_seconds' => 172800], $point['intervals']['likes']);
+        $this->assertSame(['from' => '2026-11-03T17:00:00+00:00', 'to' => '2026-11-03T18:00:00+00:00', 'pairs' => 1, 'max_gap_seconds' => 3600], $point['intervals']['media_views']);
+        $this->assertSame(0, $rows[$two]['trend'][0]['likes']);
+        $this->assertSame([], $rows[$single]['trend']);
+        $this->assertSame(-1, $data['summary']['growth']['likes']['value']);
+        Http::assertNothingSent();
+    }
+
     public function test_sync_ingests_page_posts_without_reports_and_resumes_provider_cursor_and_deduplicates_hours(): void
     {
         Queue::fake();

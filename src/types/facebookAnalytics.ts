@@ -10,6 +10,13 @@ export interface FacebookAnalyticsPage {
 }
 export interface FacebookTrendPoint extends FacebookMetricValues {
   date: string;
+  intervals?: Partial<Record<FacebookMetric, FacebookObservationInterval>>;
+}
+export interface FacebookObservationInterval {
+  from: string;
+  to: string;
+  pairs: number;
+  max_gap_seconds: number;
 }
 export interface FacebookAnalyticsPost {
   id: number;
