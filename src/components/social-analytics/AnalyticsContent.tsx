@@ -204,7 +204,7 @@ export default function AnalyticsContent({ data, onPost }: Props) {
             </Button>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-start text-sm">
             <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
               <tr>
@@ -233,6 +233,70 @@ export default function AnalyticsContent({ data, onPost }: Props) {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="divide-y divide-gray-100 px-4 md:hidden dark:divide-gray-800">
+          {displayed.map((p) => (
+            <article key={p.id} className="space-y-3 py-4">
+              <button
+                type="button"
+                onClick={() => onPost(p.id)}
+                className="flex w-full min-w-0 items-start gap-3 text-start"
+              >
+                {p.picture && (
+                  <img
+                    src={p.picture}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                    className="size-10 shrink-0 rounded-lg object-cover"
+                  />
+                )}
+                <span className="min-w-0">
+                  <span className="line-clamp-2 text-sm font-medium text-kps-primary dark:text-brand-300">
+                    {p.message || t("untitled")}
+                  </span>
+                  <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                    {t("types." + p.type)} · {observationDate(p.published_at)}
+                  </span>
+                </span>
+              </button>
+              <div className="grid grid-cols-3 gap-2">
+                {(["likes", "comments", "media_views"] as const).map(
+                  (metric, i) => (
+                    <div
+                      key={metric}
+                      className="min-w-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-800"
+                    >
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {t(
+                          ["likesCurrent", "commentsCurrent", "viewsCurrent"][
+                            i
+                          ],
+                        )}
+                      </p>
+                      <p className="mt-1 text-lg font-semibold text-gray-800 tabular-nums dark:text-gray-100">
+                        {analyticsNumber(p.current[metric])}
+                      </p>
+                    </div>
+                  ),
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {t("growth")}: {analyticsNumber(interactionGrowth(p))}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {p.report_ids.map((id) => (
+                  <Link
+                    key={id}
+                    to={"/reports/" + id}
+                    className="text-xs text-kps-primary underline dark:text-brand-300"
+                  >
+                    {t("reportNumber", { id })}
+                  </Link>
+                ))}
+              </div>
+            </article>
+          ))}
         </div>
         {rows.length === 0 && (
           <p

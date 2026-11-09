@@ -14,6 +14,7 @@ import {
   postInPeriod,
 } from "@/utils/facebookAnalytics";
 import AnalyticsTrend from "./AnalyticsTrend";
+import AnalyticsContributions from "./AnalyticsContributions";
 interface Props {
   data: FacebookAnalyticsData;
   onPost: (id: number) => void;
@@ -29,10 +30,25 @@ export default function AnalyticsOverview({
   const { t } = useTranslation("common", { keyPrefix: "facebookAnalytics" });
   const [metric, setMetric] = useState<FacebookMetric>("likes");
   const [compare, setCompare] = useState(true);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const points = useMemo(
     () => analyticsSeries(data.posts, data.from_date, data.to_date),
     [data],
   );
+  const counts = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const post of data.posts)
+      for (const point of post.trend) {
+        if (point[metric] != null)
+          result[point.date] = (result[point.date] ?? 0) + 1;
+      }
+    return result;
+  }, [data.posts, metric]);
+  const activeDate =
+    selectedDate && points.some((p) => p.date === selectedDate)
+      ? selectedDate
+      : (points.filter((p) => p[metric] != null).at(-1) ?? points.at(-1))?.date;
+  const observedDays = points.filter((p) => p[metric] != null).length;
   const published = data.posts.filter((p) =>
     postInPeriod(p, data.from_date, data.to_date),
   );
@@ -104,8 +120,10 @@ export default function AnalyticsOverview({
       </div>
       <div className="grid gap-5 xl:grid-cols-3">
         <ComponentCard
-          title={t("trendTitle")}
-          desc={t("trendSubtitle")}
+          title={t("review.trendTitle", {
+            metric: t("review.metricNames." + metric),
+          })}
+          desc={t("review.trendScope", { name: data.page_name })}
           className="min-w-0 xl:col-span-2"
           compact
         >
@@ -123,10 +141,31 @@ export default function AnalyticsOverview({
               ))}
             </select>
           </label>
-          <AnalyticsTrend points={points} metric={metric} />
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {t("review.dayCoverage", {
+              ready: observedDays,
+              total: points.length,
+            })}
+          </p>
+          <AnalyticsTrend
+            points={points}
+            metric={metric}
+            selectedDate={activeDate}
+            onSelectDate={setSelectedDate}
+            counts={counts}
+          />
           <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
             {t("trendPolicy")}
           </p>
+          {activeDate && (
+            <AnalyticsContributions
+              key={data.entry_id + ":" + activeDate + ":" + metric}
+              data={data}
+              date={activeDate}
+              metric={metric}
+              onPost={onPost}
+            />
+          )}
         </ComponentCard>
         <ComponentCard
           title={t("formatsTitle")}

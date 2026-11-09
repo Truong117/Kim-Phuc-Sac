@@ -3041,10 +3041,36 @@
     "reuseError": "Chưa tải được nội dung thư cũ. Bản nháp hiện tại vẫn được giữ."
   },
   "facebookAnalytics": {
+    "sampling": {
+      "title": "Lịch lấy mẫu tự động",
+      "statuses": {
+        "off": "Chưa bật cho Page này",
+        "blocked": "Kết nối hoặc quyền chưa sẵn sàng",
+        "paused": "Tạm dừng để kiểm tra",
+        "queued": "Đang chờ xử lý",
+        "running": "Đang lấy mẫu",
+        "overdue": "Có bài đã quá hạn lấy mẫu",
+        "unconfirmed": "Chưa xác nhận bộ điều phối hoạt động",
+        "waiting": "Đang chờ lịch tiếp theo"
+      },
+      "disabled": "Người quản trị chưa bật lịch tự động cho Page này. Bạn vẫn có thể đồng bộ thủ công.",
+      "lastSample": "Mẫu thành công gần nhất",
+      "lastCheck": "Bộ điều phối kiểm tra gần nhất",
+      "nextCheck": "Lần kiểm tra dự kiến tiếp theo",
+      "counts": "Trong danh mục 90 ngày: {total} bài; {due} bài đến hạn, trong đó {overdue} bài quá hạn; {missing} bài chưa có mẫu theo định nghĩa hiện tại; {late} bài có mẫu gần nhất được lấy trễ.",
+      "cadence": "Giờ Việt Nam: bài 0–7 ngày được kiểm tra lúc 09:00 và 21:00; bài 8–30 ngày lúc 21:00; bài cũ hơn vào Chủ nhật lúc 21:00. Danh mục được kiểm tra hai lần/ngày để tìm bài mới.",
+      "actualTime": "Lịch là thời điểm dự kiến. Nếu backend ngủ hoặc hàng đợi bận, số liệu được ghi theo thời điểm lấy thực tế; trễ hơn 30 phút được đánh dấu. Không tái tạo số liệu cho các thời điểm đã bỏ lỡ.",
+      "help": {
+        "blocked": "Người quản trị cần kiểm tra kết nối Page và quyền của tài khoản đã kết nối.",
+        "paused": "Lịch tạm dừng sau lỗi quyền, giới hạn hoặc nhiều lần thất bại. Kiểm tra nguyên nhân rồi đồng bộ thủ công; hoàn tất thành công sẽ cho phép lịch tiếp tục.",
+        "overdue": "Bài đến hạn chưa có mẫu mới. Kiểm tra worker, hàng đợi và thời điểm bộ điều phối hoạt động gần nhất.",
+        "unconfirmed": "Chưa có lượt kiểm tra tự động hoặc đã quá lịch kiểm tra hơn 10 phút. Backend có thể đang ngủ hoặc lịch chưa được khởi động; trạng thái này không xác nhận tác vụ đang chạy."
+      }
+    },
     "title": "Phân tích Facebook",
     "metaTitle": "Phân tích Facebook | KIM PHỤC SẮC",
     "eyebrow": "HIỆU QUẢ NỘI DUNG",
-    "subtitle": "Theo dõi Page, so sánh nội dung và tìm hướng thử nghiệm tiếp theo.",
+    "subtitle": "Theo dõi diễn biến, so sánh nội dung và chọn việc cần làm tiếp theo.",
     "page": "Page đang phân tích",
     "from": "Từ ngày",
     "to": "Đến ngày",
@@ -3083,9 +3109,9 @@
     "interrupted": "Tác vụ có thể đã gián đoạn. Tải lại trạng thái; nếu vẫn không tiến triển, hãy thử lại thao tác.",
     "dataPolicy": "— là thiếu dữ liệu. Mức tăng chỉ phản ánh khoảng quan sát; không cộng số lũy kế của các ngày và chưa tách tự nhiên/quảng cáo.",
     "tabs": {
-      "overview": "Tổng quan",
-      "content": "Nội dung",
-      "ai": "Nhận xét AI"
+      "overview": "Diễn biến Page",
+      "content": "Hiệu quả bài",
+      "ai": "Đánh giá & hành động"
     },
     "metrics": {
       "published": "Bài đăng mới đã tải",
@@ -3191,6 +3217,75 @@
     "openOriginal": "Mở bài gốc trên Facebook ↗",
     "delta": "Thay đổi quan sát: {value}",
     "observationWindow": "{count} mẫu · từ {from} đến {to}",
-    "openDashboard": "Mở màn phân tích Facebook →"
+    "openDashboard": "Mở màn phân tích Facebook →",
+    "review": {
+      "trendTitle": "Thay đổi {metric} đã quan sát",
+      "metricNames": {
+        "likes": "LIKE",
+        "comments": "bình luận",
+        "media_views": "hiển thị/phát nội dung"
+      },
+      "trendScope": "Page {name} · các bài có số liệu trong kỳ, gồm cả bài đăng trước kỳ.",
+      "dayCoverage": "{ready}/{total} ngày có chênh lệch tính được. Khoảng trống không có nghĩa là tăng 0.",
+      "selectDay": "Ngày cần xem bài đóng góp",
+      "contributorCount": "{count} bài có cặp mẫu",
+      "contributors": "Bài có cặp mẫu",
+      "laterSampleDate": "Ngày lấy mẫu sau",
+      "daySources": "Bài đóng góp vào thay đổi trong ngày",
+      "missingPair": "Thiếu cặp mẫu",
+      "noDayPairs": "Chưa có cặp mẫu hợp lệ để tính thay đổi cho ngày này. Không thể coi là tăng 0.",
+      "sourceOrder": "Xếp theo độ lớn thay đổi. Mỗi bài được tính một lần; bấm tên bài để xem nguồn số liệu.",
+      "extendedIntervals": "Có {count} bài có cặp mẫu cách nhau hơn 24 giờ. Mức thay đổi có thể bao gồm nhiều ngày, được gắn vào ngày lấy mẫu sau.",
+      "samplePairs": "{count} cặp mẫu",
+      "intervalUnavailable": "Khoảng thời gian chi tiết chưa có trong dữ liệu trả về.",
+      "postViews": {
+        "current": "Số liệu trong kỳ",
+        "milestones": "Theo mốc D1 / D3 / D7"
+      },
+      "milestoneTitle": "Hiệu quả bài ở cùng tuổi",
+      "milestoneDefinition": "D1: sau 24 giờ · D3: sau 72 giờ · D7: sau 7 ngày kể từ lúc đăng.",
+      "nextPhase": "Đang chuẩn bị",
+      "milestoneNotReady": "Các mốc D1/D3/D7 chưa được xác nhận để so sánh. Số liệu hiện có vẫn xem ở “Số liệu trong kỳ”; không dùng số lũy kế hôm nay thay cho mốc đã qua.",
+      "cohorts": {
+        "matured": "Đạt D7 trong kỳ",
+        "published": "Đăng trong kỳ"
+      },
+      "cohortScope": {
+        "matured": "Chọn bài có thời điểm tròn 7 ngày nằm trong {from}–{to}, trong danh mục đang hiển thị.",
+        "published": "Chọn bài xuất bản trong {from}–{to}. Bài chưa đủ 7 ngày được ghi rõ ngày chờ."
+      },
+      "loadedCohort": "Bài thuộc nhóm đã tải",
+      "waitingAge": "Chưa đủ tuổi D7",
+      "needsMilestone": "Đủ tuổi · chưa xác nhận mốc",
+      "medianD7": "Trung vị D7",
+      "waitingUntil": "Chờ đến {at}",
+      "unclassifiedMilestone": "Mốc D7 chưa xác nhận",
+      "milestoneStatus": "Tình trạng mốc D7",
+      "noMilestonePosts": "Chưa có bài thuộc nhóm này trong danh mục đang hiển thị. Thử đổi khoảng ngày hoặc định dạng.",
+      "loadedOnly": "Phạm vi là các bài đã tải; mục tiêu nội dung và so sánh D7 sẽ được bổ sung sau khi chuẩn hóa mốc.",
+      "reviewModes": {
+        "period": "Nhận xét trong kỳ",
+        "month": "Báo cáo tháng"
+      },
+      "aiCurrentScope": "Nhận xét hiện tại dựa trên các khoảng quan sát của kỳ đã chọn. Đánh giá cùng tuổi D7 và bản chốt tháng đang được chuẩn bị.",
+      "monthTitle": "Đánh giá tháng theo hai góc nhìn",
+      "monthNotReady": "Bản chốt tháng sẽ có khi hoàn thiện mốc D7, nhóm mục tiêu nội dung và độ đầy đủ dữ liệu. Hiện chưa có kết quả chấm điểm tháng.",
+      "monthSections": {
+        "activity": {
+          "title": "Hoạt động quan sát trong tháng",
+          "body": "Theo dõi thay đổi trên các bài cũ và mới có dữ liệu trong tháng, kèm khoảng quan sát và độ phủ."
+        },
+        "cohort": {
+          "title": "Hiệu quả bài đăng trong tháng",
+          "body": "So sánh các bài xuất bản trong tháng tại cùng D7, tách định dạng và mục tiêu. Chốt sau khi bài cuối tháng đủ tuổi và có mẫu."
+        }
+      },
+      "dataStatus": "Tình trạng dữ liệu",
+      "statusSummary": "{name} · {count} bài có mẫu trong kỳ",
+      "showStatus": "Xem tình trạng dữ liệu",
+      "hideStatus": "Thu gọn tình trạng dữ liệu",
+      "milestoneDetail": "Mốc tuổi bài dự kiến",
+      "milestoneDetailNote": "Các mốc dưới đây tính theo giờ đăng. Chưa có mẫu mốc được xác nhận để đánh giá; các số liệu phía trên là quan sát trong kỳ."
+    }
   }
 }

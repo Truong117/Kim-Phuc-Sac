@@ -1,6 +1,7 @@
 import type {
   FacebookAnalyticsPost,
   FacebookMetric,
+  FacebookObservationInterval,
   FacebookTrendPoint,
 } from "@/types/facebookAnalytics";
 import { addDaysToDateOnly, dateOnlyInTimeZone } from "./dateOnly";
@@ -60,6 +61,32 @@ export function analyticsSeries(
         if (point[key] != null) row[key] = (row[key] ?? 0) + point[key];
     }
   return [...map.values()];
+}
+export function trendContributors(
+  posts: FacebookAnalyticsPost[],
+  date: string,
+  metric: FacebookMetric,
+): {
+  post: FacebookAnalyticsPost;
+  value: number;
+  interval: FacebookObservationInterval | null;
+}[] {
+  return posts
+    .flatMap((post) => {
+      const point = post.trend.find((p) => p.date === date);
+      const value = point?.[metric];
+      return value == null
+        ? []
+        : [{ post, value, interval: point?.intervals?.[metric] ?? null }];
+    })
+    .sort(
+      (a, b) => Math.abs(b.value) - Math.abs(a.value) || a.post.id - b.post.id,
+    );
+}
+export function postMilestoneAt(publishedAt: string, days: 1 | 3 | 7): string {
+  return new Date(
+    new Date(publishedAt).getTime() + days * 24 * 60 * 60 * 1000,
+  ).toISOString();
 }
 export function csvCell(value: string | number | null) {
   const raw = value == null ? "" : String(value);

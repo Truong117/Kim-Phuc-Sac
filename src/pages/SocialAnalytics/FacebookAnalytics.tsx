@@ -5,26 +5,23 @@ import PageMeta from "@/components/common/PageMeta";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Button from "@/components/ui/button/Button";
+import AnalyticsDataStatus from "@/components/social-analytics/AnalyticsDataStatus";
 import AnalyticsOverview from "@/components/social-analytics/AnalyticsOverview";
-import AnalyticsContent from "@/components/social-analytics/AnalyticsContent";
-import AnalyticsAiPanel from "@/components/social-analytics/AnalyticsAiPanel";
+import AnalyticsPostWorkspace from "@/components/social-analytics/AnalyticsPostWorkspace";
+import AnalyticsActions from "@/components/social-analytics/AnalyticsActions";
 import AnalyticsPostDetail from "@/components/social-analytics/AnalyticsPostDetail";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthorization } from "@/hooks/useAuthorization";
 import { useFacebookAnalytics } from "@/hooks/useFacebookAnalytics";
 import { useModal } from "@/hooks/useModal";
-import { AiIcon, DocsIcon, GridIcon, InfoCircleIcon } from "@/icons";
+import { AiIcon, DocsIcon, GridIcon } from "@/icons";
 import {
   analyzeFacebook,
   saveFacebookTopic,
   syncFacebookAnalytics,
 } from "@/services/facebookAnalyticsService";
 import type { FacebookTopic } from "@/types/facebookAnalytics";
-import {
-  addDaysToDateOnly,
-  dateOnlyInTimeZone,
-  formatDateOnly,
-} from "@/utils/dateOnly";
+import { addDaysToDateOnly, dateOnlyInTimeZone } from "@/utils/dateOnly";
 import { observationDate } from "@/utils/facebookAnalytics";
 
 export default function FacebookAnalytics() {
@@ -168,8 +165,8 @@ function Workspace() {
         ) : (
           <>
             <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
-              <div className="grid min-w-0 items-end gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                <label className="block min-w-0 text-xs text-gray-500 sm:col-span-2 xl:col-span-1 dark:text-gray-400">
+              <div className="grid min-w-0 items-end gap-4 sm:grid-cols-2 xl:grid-cols-12">
+                <label className="block min-w-0 text-xs text-gray-500 sm:col-span-2 xl:col-span-5 dark:text-gray-400">
                   <span>{t("page")}</span>
                   <select
                     value={api.selected?.id ?? ""}
@@ -186,7 +183,7 @@ function Workspace() {
                     ))}
                   </select>
                 </label>
-                <div className="min-w-0 space-y-2">
+                <div className="min-w-0 space-y-2 xl:col-span-3">
                   <label
                     htmlFor="facebook-analytics-from"
                     className="block text-xs text-gray-500 dark:text-gray-400"
@@ -204,7 +201,7 @@ function Workspace() {
                     maxDate={draft.to}
                   />
                 </div>
-                <div className="min-w-0 space-y-2">
+                <div className="min-w-0 space-y-2 xl:col-span-3">
                   <label
                     htmlFor="facebook-analytics-to"
                     className="block text-xs text-gray-500 dark:text-gray-400"
@@ -222,13 +219,11 @@ function Workspace() {
                     maxDate={today}
                   />
                 </div>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-end sm:col-span-2 xl:col-span-1">
                   <Button
                     size="sm"
-                    className="h-11 whitespace-nowrap"
-                    variant="outline"
+                    className="h-11 w-full px-2 text-xs whitespace-nowrap"
+                    variant="primary"
                     onClick={() => {
                       if (draft.to > addDaysToDateOnly(draft.from, 89)) {
                         setMessage({
@@ -243,15 +238,6 @@ function Workspace() {
                   >
                     {t("apply")}
                   </Button>
-                  <Button
-                    size="sm"
-                    className="h-11 whitespace-nowrap"
-                    variant="outline"
-                    onClick={api.refresh}
-                    disabled={api.loading}
-                  >
-                    {t("reload")}
-                  </Button>
                 </div>
               </div>
             </section>
@@ -262,6 +248,15 @@ function Workspace() {
                 })}
               </span>
               <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  size="sm"
+                  className="h-11 whitespace-nowrap"
+                  variant="outline"
+                  onClick={api.refresh}
+                  disabled={api.loading}
+                >
+                  {t("reload")}
+                </Button>
                 <span>
                   {t("lastSync", {
                     at: observationDate(data?.sync.sampled_at ?? null),
@@ -333,91 +328,15 @@ function Workspace() {
                     )}
                   </p>
                 )}
-                <div className="flex gap-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/3">
-                  <InfoCircleIcon className="mt-0.5 size-4 shrink-0 text-kps-primary" />
-                  <div className="space-y-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                    <p>
-                      {t("coverage", {
-                        published: data.summary.published,
-                        observed: data.summary.observed_posts,
-                      })}
-                    </p>
-                    {!data.sync.catalogue_complete && (
-                      <p className="text-warning-700 dark:text-warning-400">
-                        {t("cataloguePending")}
-                      </p>
-                    )}
-                    {data.sync.error_code && (
-                      <p className="text-error-600 dark:text-error-400">
-                        {t("syncFailed")}
-                      </p>
-                    )}
-                    {data.sync.interrupted && (
-                      <p className="text-warning-700 dark:text-warning-400">
-                        {t("interrupted")}
-                      </p>
-                    )}
-                    <p>{t("dataPolicy")}</p>
-                    {data.sync.progress && (
-                      <details
-                        open={!!waiting}
-                        className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-800"
-                      >
-                        <summary className="cursor-pointer font-medium text-gray-700 dark:text-gray-200">
-                          <span>
-                            {t(`syncPhases.${data.sync.progress.phase}`)}
-                          </span>
-                          <span className="ms-2 text-kps-primary dark:text-brand-300">
-                            {data.sync.progress.ready_posts}/
-                            {data.sync.progress.catalogue_posts}
-                          </span>
-                        </summary>
-                        <div className="mt-2 space-y-2">
-                          <p>
-                            {t("syncScope", {
-                              from: formatDateOnly(
-                                data.sync.progress.from_date,
-                              ),
-                              to: formatDateOnly(data.sync.progress.to_date),
-                            })}
-                          </p>
-                          <p role="status">
-                            {t("syncProgress", {
-                              ready: data.sync.progress.ready_posts,
-                              total: data.sync.progress.catalogue_posts,
-                              pending: data.sync.progress.pending_posts,
-                              batches: data.sync.progress.batches_completed,
-                            })}
-                          </p>
-                          {data.sync.catalogue_complete &&
-                            data.sync.progress.catalogue_posts > 0 && (
-                              <div
-                                role="progressbar"
-                                aria-label={t("syncProgressLabel")}
-                                aria-valuemin={0}
-                                aria-valuemax={
-                                  data.sync.progress.catalogue_posts
-                                }
-                                aria-valuenow={data.sync.progress.ready_posts}
-                                className="h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800"
-                              >
-                                <div
-                                  className="h-full rounded-full bg-kps-primary"
-                                  style={{
-                                    width: `${Math.min(100, (data.sync.progress.ready_posts / data.sync.progress.catalogue_posts) * 100)}%`,
-                                  }}
-                                />
-                              </div>
-                            )}
-                        </div>
-                      </details>
-                    )}
-                  </div>
-                </div>
+                <AnalyticsDataStatus
+                  key={api.key}
+                  data={data}
+                  waiting={!!waiting}
+                />
                 <div
                   role="tablist"
                   aria-label={t("title")}
-                  className="flex max-w-full gap-4 overflow-x-auto border-b border-gray-200 dark:border-gray-800"
+                  className="grid grid-cols-3 gap-2 border-b border-gray-200 sm:flex sm:gap-4 dark:border-gray-800"
                 >
                   {tabs.map(([key, Icon], index) => (
                     <button
@@ -451,9 +370,9 @@ function Workspace() {
                             ?.focus();
                         }
                       }}
-                      className={`flex shrink-0 items-center gap-2 border-b-2 px-2 py-3 text-sm font-medium ${tab === key ? "border-kps-primary text-kps-primary dark:text-brand-300" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
+                      className={`flex min-w-0 items-center justify-center gap-2 border-b-2 px-1 py-3 text-center text-xs font-medium sm:justify-start sm:px-2 sm:text-sm ${tab === key ? "border-kps-primary text-kps-primary dark:text-brand-300" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"}`}
                     >
-                      <Icon className="size-4" />
+                      <Icon className="hidden size-4 shrink-0 sm:block" />
                       {t(`tabs.${key}`)}
                     </button>
                   ))}
@@ -472,13 +391,13 @@ function Workspace() {
                       onAi={() => setTab("ai")}
                     />
                   ) : tab === "content" ? (
-                    <AnalyticsContent
+                    <AnalyticsPostWorkspace
                       key={api.key}
                       data={data}
                       onPost={openPost}
                     />
                   ) : (
-                    <AnalyticsAiPanel
+                    <AnalyticsActions
                       data={data}
                       onPost={openPost}
                       busy={actionBusy}

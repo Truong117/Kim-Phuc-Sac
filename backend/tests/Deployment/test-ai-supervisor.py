@@ -20,7 +20,11 @@ if pathlib.Path(sys.argv[0]).name == 'frankenphp':
     while True: time.sleep(.02)
 elif '-r' in sys.argv:
     code = sys.argv[sys.argv.index('-r') + 1]
-    if 'daily_report_ai.auto_dispatch' in code:
+    if 'facebook_analytics.scheduler_mode' in code:
+        print(os.environ.get('TEST_FB_MODE', 'off'))
+    elif 'facebook_analytics.auto_sample_enabled' in code:
+        print(os.environ.get('TEST_FB_ENABLED', 'no'))
+    elif 'daily_report_ai.auto_dispatch' in code:
         print(os.environ.get('TEST_DAILY_AUTO', 'no'))
     elif 'social_metrics.enabled' in code:
         print(os.environ.get('TEST_SOCIAL_ENABLED', 'no'))
@@ -36,6 +40,10 @@ elif 'daily-report-ai:recover' in sys.argv:
     event('daily-recovery')
 elif 'daily-report-ai:dispatch' in sys.argv:
     event('daily-dispatch')
+elif 'facebook-analytics:dispatch' in sys.argv:
+    event('facebook-dispatch')
+    signal.signal(signal.SIGTERM, lambda *_: (event('facebook-dispatch-stop'), sys.exit(0)))
+    while True: time.sleep(.02)
 elif 'queue:work' in sys.argv:
     prefix = ('social-worker' if 'social_metrics' in sys.argv else
               'daily-worker' if 'daily_report_ai' in sys.argv else 'worker')
@@ -62,7 +70,7 @@ else:
 
 
 class SupervisorTest(unittest.TestCase):
-    def run_service(self, mode='embedded', enabled='yes', daily_mode='off', daily_enabled='no', daily_auto='no', social_mode='off', social_enabled='no', social_delay='0'):
+    def run_service(self, mode='embedded', enabled='yes', daily_mode='off', daily_enabled='no', daily_auto='no', social_mode='off', social_enabled='no', social_delay='0', facebook_mode='off', facebook_enabled='no'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -77,7 +85,7 @@ class SupervisorTest(unittest.TestCase):
             'TEST_QUEUE_ENABLED': enabled, 'DAILY_REPORT_AI_WORKER_MODE': daily_mode,
             'DAILY_REPORT_AI_BOOT_DELAY_SECONDS': '0', 'TEST_DAILY_ENABLED': daily_enabled,
             'TEST_DAILY_AUTO': daily_auto, 'SOCIAL_METRICS_BOOT_DELAY_SECONDS': social_delay,
-            'TEST_SOCIAL_ENABLED': social_enabled}
+            'TEST_SOCIAL_ENABLED': social_enabled, 'TEST_FB_MODE': facebook_mode, 'TEST_FB_ENABLED': facebook_enabled}
         environment.pop('SOCIAL_METRICS_WORKER_MODE', None)
         if social_mode is not None:
             environment['SOCIAL_METRICS_WORKER_MODE'] = social_mode
@@ -209,6 +217,27 @@ class SupervisorTest(unittest.TestCase):
         process, root = self.run_service(enabled='no', social_mode='invalid', social_enabled='yes')
         self.assertEqual(1, process.wait(timeout=5))
         self.assertNotIn('social-worker-start', self.events(root))
+
+    def test_facebook_dispatcher_is_opt_in_and_drains_before_the_web_stops(self):
+        process, root = self.run_service(enabled='no', social_mode='embedded', social_enabled='yes',
+                                         facebook_mode='embedded', facebook_enabled='yes')
+        self.await_event(root, 'facebook-dispatch')
+        self.await_event(root, 'social-worker-start')
+        process.terminate()
+        self.assertEqual(0, process.wait(timeout=5))
+        events = self.events(root)
+        self.assertLess(events.index('facebook-dispatch-stop'), events.index('web-stop'))
+        self.assertLess(events.index('social-worker-completed'), events.index('web-stop'))
+
+    def test_facebook_external_off_and_disabled_modes_do_not_start_an_embedded_dispatcher(self):
+        for mode, enabled in [('off', 'yes'), ('external', 'yes'), ('embedded', 'no')]:
+            with self.subTest(mode=mode, enabled=enabled):
+                process, root = self.run_service(enabled='no', facebook_mode=mode, facebook_enabled=enabled)
+                self.await_event(root, 'web-start')
+                time.sleep(.2)
+                process.terminate()
+                self.assertEqual(0, process.wait(timeout=5))
+                self.assertEqual(['web-start', 'web-stop'], self.events(root))
 
 
 if __name__ == '__main__':

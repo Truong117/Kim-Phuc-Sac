@@ -15,6 +15,7 @@ import {
   analyticsSeries,
   facebookTopics,
   observationDate,
+  postMilestoneAt,
 } from "@/utils/facebookAnalytics";
 interface Props {
   post: FacebookAnalyticsPost;
@@ -119,6 +120,30 @@ export default function AnalyticsPostDetail({
             to: observationDate(post.observed_to),
           })}
         </p>
+        <section className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+          <h3 className="text-sm font-medium text-gray-800 dark:text-gray-100">
+            {t("review.milestoneDetail")}
+          </h3>
+          <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            {t("review.milestoneDetailNote")}
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {([1, 3, 7] as const).map((days) => (
+              <div
+                key={days}
+                className="min-w-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-800"
+              >
+                <span className="text-xs font-semibold text-kps-primary dark:text-brand-300">
+                  D{days}
+                </span>
+                <p className="mt-1 text-xs break-words text-gray-500 dark:text-gray-400">
+                  {observationDate(postMilestoneAt(post.published_at, days))}
+                </p>
+                <p className="mt-1 text-lg text-gray-400">—</p>
+              </div>
+            ))}
+          </div>
+        </section>
         <AnalyticsTrend metric="likes" points={points} />
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
           {t("trendPolicy")}
