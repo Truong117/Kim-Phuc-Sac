@@ -113,7 +113,7 @@ export interface WorkReportAnalysis {
   result: AnalysisResult | null;
   employees: AnalysisEmployee[];
   source_reports: AnalysisSource[];
-  errors: { unit_key: string; code: string }[];
+  errors: { unit_key: string; code: string; max_output_tokens?: number }[];
   can_retry: boolean;
   can_regenerate: boolean;
   can_regenerate_summary?: boolean;

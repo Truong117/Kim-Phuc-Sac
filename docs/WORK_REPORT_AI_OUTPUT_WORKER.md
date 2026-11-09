@@ -16,7 +16,7 @@ This change needs no migration and does not rewrite stored analyses. Keep automa
 
 | Variable | Default | Meaning |
 | --- | ---: | --- |
-| `WORK_REPORT_AI_EMPLOYEE_OUTPUT_TOKENS` | 6000 | Maximum output per employee part |
+| `WORK_REPORT_AI_EMPLOYEE_OUTPUT_TOKENS` | 16000 | Maximum output per employee part (honors explicit ENV overrides) |
 | `WORK_REPORT_AI_SUMMARY_OUTPUT_TOKENS` | 16000 | Maximum output per summary batch |
 | `WORK_REPORT_AI_SUMMARY_INPUT_BYTES` | 50000 | Summary input ceiling, further reduced for Gateway overhead |
 | `WORK_REPORT_AI_SUMMARY_PARTS_PER_BATCH` | 2 | Maximum employee-result fragments per summary batch |
@@ -46,3 +46,34 @@ The follow-up verification exercised the real loopback HTTP server with an ident
 The browser spec now checks the `summaryOnly` recovery pointer and the summary-only button/API result, using a separate authorized reviewer to keep scenarios independent of per-user mutation throttling. Browser execution in this managed session was blocked before page creation: Chrome's process singleton could not create a Unix socket (`Operation not permitted`). These three browser cases are therefore **not recorded as passing** here. They can be run on the existing Windows local stack with `powershell -NoProfile -ExecutionPolicy Bypass -File e2e/run.ps1 work-report-analysis.spec.ts`, using only the reviewed `.env.weekly-planning-v3-e2e` fake profile. Do not use a production `.env` or API key for this test.
 
 Feature tests cover batched completion, interrupted batch recovery, selective retry, paid-call counts, immutable source history, summary-only mode/idempotency, incompatible sources, and unchanged budgets. Unit tests cover lossless input partitioning, unrepresentable claims, output allowances and timeout ordering. `python3 backend/tests/Deployment/test-ai-supervisor.py` exercises the actual entrypoint with fake children, including worker crashes and SIGTERM during a job, without a database or provider call. The existing container health/concurrency smoke test still runs in CI.
+
+
+## Output truncation and production recovery
+
+`WORK_REPORT_AI_EMPLOYEE_OUTPUT_TOKENS` controls employee parts. It is independent
+of `KPS_AI_MAX_OUTPUT_TOKENS`, `DAILY_REPORT_AI_OUTPUT_TOKENS` and the summary cap.
+Absent ENV previously meant 6000; the default is now 16000. Explicit ENV values
+(including 9000) remain authoritative. Each run freezes its limits at creation.
+Changing ENV requires applying/redeploying the service configuration and creating
+a new run; retry never silently increases an old run's saved cap.
+
+For work-report analysis only, provider `incomplete_details.reason=max_output_tokens`
+is classified as `AI_OUTPUT_TRUNCATED`, with the frozen unit cap shown in its error.
+Partial JSON is discarded, measured usage is charged normally, and a same-cap retry
+is not offered. Other features and other incomplete reasons keep existing behavior.
+Legacy `AI_INCOMPLETE` rows also stop offering retry when the current cap is higher
+than their saved one. Summary-only errors without valid employee parts cannot be
+retried until employee recovery supplies actual input.
+
+A new current-source run can reuse completed, revalidated employee parts when ONLY
+the employee/summary generation caps changed and their frozen inputs still match.
+All other settings (model, prompt/schema hashes, privacy/source mode, budget, etc.)
+must match exactly. Failed parts are not reused; history and prior settings remain
+intact. Generation caps do not invalidate content that already passed validation.
+Budget reservations and global/run ceilings remain enforced; this does not raise
+any spending limit or enable automatic retries, schedules or mail.
+
+Incident #210006 (2026-11-08, Asia/Ho_Chi_Minh): units 180124 and 180126 each stopped
+at 6000 output tokens with HTTP 200 / status incomplete / reason max_output_tokens,
+confirmed in sanitized production Gateway metadata. Reasoning usage was 819 and 293
+respectively. The failure occurred at the provider stage, before evidence binding.

@@ -5,6 +5,7 @@ namespace App\Services\AI;
 use App\Jobs\GenerateWorkReportAnalysis;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
+use App\Models\WorkReportAnalysisUnit;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -108,14 +109,14 @@ class WorkReportAnalysisService
         });
     }
 
-    /** Reuse only exact, successfully validated inputs under the identical saved contract. */
+    /** Reuse exact, validated inputs under the same contract; generation caps may differ. */
     private function reusableInputs(User $viewer, WorkReportAnalysis $run, array $inputs): array
     {
         $previous = WorkReportAnalysis::query()->where('organization_id', $run->organization_id)
             ->where('scope_hash', $run->scope_hash)->where('end_date', $run->end_date->toDateString())
             ->where('days', $run->days)->where('department_id', $run->department_id)
             ->where('id', '<', $run->id)->whereIn('status', ['completed', 'partial'])->latest('id')->first();
-        if ($previous === null || WorkReportSnapshot::hash($previous->analysis_config) !== WorkReportSnapshot::hash($run->analysis_config)) {
+        if ($previous === null || $this->reuseContractHash($previous->analysis_config) !== $this->reuseContractHash($run->analysis_config)) {
             return [];
         }
         try {
@@ -145,6 +146,31 @@ class WorkReportAnalysisService
         }
 
         return $reused;
+    }
+
+    private function reuseContractHash(array $settings): string
+    {
+        // Output caps affect generation capacity, not already validated content.
+        // All semantic, model, source, privacy and budget settings must still match.
+        unset($settings['employee_output_tokens'], $settings['summary_output_tokens']);
+
+        return WorkReportSnapshot::hash($settings);
+    }
+
+    private function retryableUnit(WorkReportAnalysis $run, WorkReportAnalysisUnit $unit): bool
+    {
+        if ($unit->status !== 'failed' || $unit->attempts >= $run->analysis_config['unit_attempts']
+            || in_array($unit->error_code, ['AI_OUTPUT_TRUNCATED', 'AI_NO_VALID_PARTS'], true)
+            || ($unit->unit_key === 'summary' && isset($unit->input['_batch_ids']) && ! ($unit->input['_consolidate'] ?? false))) {
+            return false;
+        }
+        // Legacy incomplete rows did not distinguish truncation. A higher current
+        // cap needs a new run; retry must never silently change the saved limit.
+        $summary = str_starts_with($unit->unit_key, 'summary');
+
+        return $unit->error_code !== 'AI_INCOMPLETE'
+            || WorkReportExecutionPolicy::outputTokens($this->settings(), $summary)
+                <= WorkReportExecutionPolicy::outputTokens($run->analysis_config, $summary);
     }
 
     public function activeUnits(WorkReportAnalysis $run, ?Collection $units = null): Collection
@@ -336,10 +362,11 @@ class WorkReportAnalysisService
             'result' => $includeContent ? $run->result : null, 'employees' => $includeContent ? $employees : [],
             'daily_coverage' => $snapshot['daily_coverage'] ?? null,
             'source_reports' => $includeContent ? $this->sourcePayloads($snapshot) : [],
-            'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code])->values()->all(),
+            'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code,
+                'max_output_tokens' => WorkReportExecutionPolicy::outputTokens($run->analysis_config, str_starts_with($u->unit_key, 'summary')),
+            ])->values()->all(),
             'can_retry' => (bool) config('work_report_ai.enabled') && WorkReportAnalysisOutput::canExecute($run->analysis_config)
-                && $units->contains(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']
-                    && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids']) && ! ($u->input['_consolidate'] ?? false))),
+                && $units->contains(fn ($u) => $this->retryableUnit($run, $u)),
             'usage' => [
                 'input_tokens' => $allUnits->contains(fn ($u) => $u->status !== 'completed' || $u->input_tokens === null) ? null : $allUnits->sum('input_tokens'),
                 'output_tokens' => $allUnits->contains(fn ($u) => $u->status !== 'completed' || $u->output_tokens === null) ? null : $allUnits->sum('output_tokens'),
@@ -379,8 +406,7 @@ class WorkReportAnalysisService
                 throw ValidationException::withMessages(['analysis' => 'Không thể tiếp tục hoặc thử lại theo đúng quy chuẩn đã lưu. Kết quả cũ vẫn đọc được; hãy tạo một lượt phân tích mới.']);
             }
             $active = $this->activeUnits($run, $run->units()->get());
-            $retryable = $active->filter(fn ($u) => $u->status === 'failed' && $u->attempts < $run->analysis_config['unit_attempts']
-                && ! ($u->unit_key === 'summary' && isset($u->input['_batch_ids']) && ! ($u->input['_consolidate'] ?? false)));
+            $retryable = $active->filter(fn ($u) => $this->retryableUnit($run, $u));
             if (in_array($run->status, ['pending', 'running'], true) || $retryable->isEmpty()) {
                 return;
             }
