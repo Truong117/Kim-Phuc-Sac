@@ -670,6 +670,40 @@ class AiGatewayTest extends TestCase
         Http::assertSentCount(3);
     }
 
+    public function test_report_output_truncation_has_a_specific_non_retryable_code_and_never_caches_partial_json(): void
+    {
+        [$user, $organizationId] = $this->userContext();
+        $cases = [['work_report_analysis', 'max_output_tokens', 'AI_OUTPUT_TRUNCATED'],
+            ['gateway_test', 'max_output_tokens', 'AI_INCOMPLETE'],
+            ['work_report_analysis', 'content_filter', 'AI_INCOMPLETE']];
+        $sequence = Http::sequence();
+        foreach ($cases as [$feature, $reason, $expected]) {
+            $sequence->push([
+                'status' => 'incomplete', 'incomplete_details' => ['reason' => $reason],
+                'usage' => ['input_tokens' => 10, 'output_tokens' => 100],
+                'output' => [['type' => 'message', 'content' => [['type' => 'output_text', 'text' => '{"private_incomplete":']]]],
+            ]);
+        }
+        Http::fake(['api.openai.test/v1/responses' => $sequence]);
+        foreach ($cases as [$feature, $reason, $expected]) {
+            $base = $this->request($organizationId, $user->id, $feature.'-'.$reason);
+            $request = new AiGatewayRequest(...array_replace(get_object_vars($base), ['feature' => $feature]));
+            try {
+                app(OpenAiGateway::class)->respond($request);
+                $this->fail('Incomplete output must not be accepted.');
+            } catch (AiGatewayException $exception) {
+                $this->assertSame($expected, $exception->errorCode);
+                $this->assertSame($expected === 'AI_INCOMPLETE', $exception->retryable);
+            }
+            $record = AiUsageRecord::latest('id')->firstOrFail();
+            $this->assertSame('failed', $record->status);
+            $this->assertSame($expected, $record->error_code);
+            $this->assertNull($record->response_payload);
+            $this->assertSame(100, $record->output_tokens);
+        }
+        Http::assertSentCount(3);
+    }
+
     public function test_provider_failures_are_classified_without_storing_provider_content(): void
     {
         [$user, $organizationId] = $this->userContext();
