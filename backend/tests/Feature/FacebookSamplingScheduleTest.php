@@ -213,6 +213,23 @@ class FacebookSamplingScheduleTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_a_cycle_crossing_the_next_slot_does_not_skip_that_due_check(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-11-09 20:59', 'Asia/Ho_Chi_Minh')->utc());
+        $this->analyticsPost(1, '2026-11-08 12:00');
+        $this->state();
+        Http::fake(function ($r) {
+            $this->travelTo(CarbonImmutable::parse('2026-11-09 21:03', 'Asia/Ho_Chi_Minh')->utc());
+
+            return str_contains($r->url(), 'published_posts') ? Http::response(['data' => []]) : Http::response(['summary' => ['total_count' => 5]]);
+        });
+        $dispatcher = app(FacebookSamplingDispatcher::class);
+        $this->assertSame(1, $dispatcher->dispatch());
+        $this->runLast();
+        $this->assertTrue(FacebookAnalyticsState::query()->firstOrFail()->sampling_next_check_at->lte(now()));
+        $this->assertSame(1, $dispatcher->dispatch()); // Discover posts published since the morning catalogue.
+    }
+
     public function test_permission_errors_pause_instead_of_repeated_provider_calls(): void
     {
         Http::fake(['*' => Http::response(['error' => ['code' => 10]], 403)]);

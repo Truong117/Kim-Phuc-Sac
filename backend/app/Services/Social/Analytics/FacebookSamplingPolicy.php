@@ -103,7 +103,10 @@ class FacebookSamplingPolicy
             return;
         }
         $plan = [...$state->sampling_schedule, 'failures' => 0, 'paused' => false, 'retry_after' => null, 'last_success_at' => now()->toIso8601String()];
-        $this->save($state, $plan, $this->nextCheck(CarbonImmutable::now()));
+        $at = CarbonImmutable::now();
+        $anchor = isset($state->counts['schedule_anchor']) ? CarbonImmutable::parse($state->counts['schedule_anchor']) : $at;
+        // A cycle finishing after the next slot must not postpone that due check until tomorrow.
+        $this->save($state, $plan, $this->nextCheck($anchor)->max($at));
     }
 
     public function failed(FacebookAnalyticsState $state, string $code): void
