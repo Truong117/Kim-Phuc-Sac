@@ -526,7 +526,12 @@ test("automatic sampling shows real timestamps, cadence and data health", async 
     details.getByText("Bộ điều phối kiểm tra gần nhất", { exact: true }),
   ).toBeVisible();
   await expect(details.getByText("09:10", { exact: false })).toBeVisible();
-  await expect(details.getByText("21:00", { exact: false })).toBeVisible();
+  await expect(
+    details
+      .getByText("Lần kiểm tra dự kiến tiếp theo", { exact: true })
+      .locator("..")
+      .getByText("21:00", { exact: false }),
+  ).toBeVisible();
   await expect(details.getByRole("status")).toContainText(
     "12 bài; 0 bài đến hạn",
   );
