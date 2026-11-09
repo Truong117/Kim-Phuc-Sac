@@ -10,6 +10,7 @@ async function setup(
     sampling?: "waiting" | "overdue" | "off";
     sources?: boolean;
     milestones?: boolean;
+    age?: boolean;
   } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
@@ -67,7 +68,7 @@ async function setup(
       trend: [],
     },
   ];
-  if (options.sources || options.milestones)
+  if (options.sources || options.milestones || options.age)
     posts[0].published_at = "2026-10-30T03:00:00Z";
   if (options.sources) {
     const interval = posts[0].trend[0].intervals?.likes;
@@ -91,6 +92,36 @@ async function setup(
       ],
     });
   }
+  const agePoints = Object.fromEntries(
+    ([1, 3, 7] as const).map((day) => {
+      const due = new Date(
+        new Date(posts[0].published_at).getTime() + day * 86400000,
+      ).toISOString();
+      return [
+        `D${day}`,
+        {
+          day,
+          due_at: due,
+          status: day === 3 ? "missing" : "on_time",
+          sampled_at: day === 3 ? null : due,
+          delay_seconds: day === 3 ? null : 0,
+          definition: "v27:like",
+          source: "milestone",
+          metrics: {
+            likes: day === 1 ? 0 : day === 3 ? null : 20,
+            comments: 2,
+            media_views: null,
+          },
+        },
+      ];
+    }),
+  ) as NonNullable<FacebookAnalyticsPost["milestones"]>;
+  if (options.age)
+    Object.assign(posts[0], {
+      objective: "engagement",
+      distribution: "organic",
+      milestones: agePoints,
+    });
   let analysis = false;
   let sync = false;
   let syncReads = 0;
@@ -142,6 +173,107 @@ async function setup(
       sync = true;
       return route.fulfill({ status: 202, json: { message: "Queued" } });
     }
+    if (path.endsWith("/milestones") && options.age) {
+      const statistic = {
+        posts: 5,
+        waiting: 0,
+        metrics: {
+          likes: { median: 20, posts: 5, coverage: 1 },
+          comments: { median: 2, posts: 5, coverage: 1 },
+          media_views: { median: null, posts: 0, coverage: 0 },
+        },
+      };
+      return route.fulfill({
+        json: {
+          data: {
+            basis: url.searchParams.get("basis"),
+            from_date: url.searchParams.get("from_date"),
+            to_date: url.searchParams.get("to_date"),
+            previous_from: "2026-10-25",
+            previous_to: "2026-10-31",
+            as_of: "2026-11-07T03:00:00Z",
+            catalogue_covered: true,
+            policy: {
+              version: 1,
+              window_minutes: 30,
+              minimum_posts: 5,
+              minimum_coverage: 0.8,
+            },
+            posts: [
+              { ...posts[0] },
+              {
+                ...posts[0],
+                id: 99,
+                message: "Bài D7 ngoài danh sách quan sát",
+                milestones: {
+                  ...agePoints,
+                  D7: {
+                    ...agePoints.D7,
+                    status: "late",
+                    delay_seconds: 2400,
+                    sampled_at: "2026-11-06T03:40:00Z",
+                  },
+                },
+              },
+            ],
+            groups: [
+              {
+                identity: {
+                  type: "reel",
+                  topic: "education",
+                  objective: posts[0].objective,
+                  distribution: posts[0].distribution,
+                  definition: "v27:like",
+                },
+                current: statistic,
+                previous: {
+                  ...statistic,
+                  metrics: {
+                    ...statistic.metrics,
+                    likes: { median: 10, posts: 5, coverage: 1 },
+                  },
+                },
+                comparison: {
+                  likes: { percent: 100, difference: 10, reason: null },
+                  comments: {
+                    percent: null,
+                    difference: 0,
+                    reason: "zero_baseline",
+                  },
+                  media_views: {
+                    percent: null,
+                    difference: null,
+                    reason: "small_sample",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      });
+    }
+    if (/\/posts\/99$/.test(path) && options.age)
+      return route.fulfill({
+        json: {
+          data: {
+            ...posts[0],
+            id: 99,
+            message: "Bài D7 ngoài danh sách quan sát",
+            milestones: agePoints,
+          },
+        },
+      });
+    if (path.endsWith("/classification") && options.age) {
+      Object.assign(posts[0], req.postDataJSON());
+      return route.fulfill({
+        json: {
+          data: {
+            objective: posts[0].objective,
+            distribution: posts[0].distribution,
+          },
+        },
+      });
+    }
     if (path.endsWith("/analyses")) {
       analysis = true;
       return route.fulfill({
@@ -172,6 +304,7 @@ async function setup(
             principal_available: true,
             can_manage: true,
             ai_enabled: true,
+            milestones_enabled: !!options.age,
             sync: {
               status:
                 options.syncCycle && sync && !cycleDone ? "queued" : "idle",
@@ -693,4 +826,95 @@ test("milestone UI distinguishes waiting age and unclassified historical milesto
   await expect(
     page.getByText("Hiện chưa có kết quả chấm điểm tháng", { exact: false }),
   ).toBeVisible();
+});
+
+test("real age view shows actual windows, missing and late data, grouped medians and scoped classification", async ({
+  page,
+}) => {
+  const requests = await setup(page, { age: true });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Trung vị D7 theo nhóm tương đồng" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Chênh lệch 10 · 100% so với kỳ trước"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Lấy trễ, loại khỏi so sánh").filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Bỏ lỡ, không có mẫu").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Bài D7 ngoài danh sách quan sát",
+      exact: true,
+    })
+    .filter({ visible: true })
+    .click();
+  const detail = page.getByRole("dialog", {
+    name: "Chi tiết nội dung Facebook",
+  });
+  await expect(detail).toBeVisible();
+  await detail
+    .getByRole("combobox", { name: "Mục tiêu nội dung", exact: true })
+    .selectOption("traffic");
+  await expect
+    .poll(() =>
+      requests.some(
+        (r) =>
+          r ===
+          "PATCH /api/social-analytics/facebook/1/posts/99/classification",
+      ),
+    )
+    .toBeTruthy();
+  await expect(
+    detail.getByRole("combobox", { name: "Mục tiêu nội dung", exact: true }),
+  ).toHaveValue("traffic");
+  await detail.getByRole("button", { name: "Đóng", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByText("Lấy trễ, loại khỏi so sánh").filter({ visible: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+});
+test("age requests use cohort basis and filters without triggering provider sync", async ({
+  page,
+}) => {
+  const requests = await setup(page, { age: true });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Trung vị D7 theo nhóm tương đồng" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Đăng trong kỳ", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      requests.some(
+        (r) => r.includes("/milestones?") && r.includes("basis=published"),
+      ),
+    )
+    .toBeTruthy();
+  await page
+    .getByRole("combobox", { name: "Chỉ số", exact: true })
+    .selectOption("media_views");
+  await expect(
+    page
+      .getByText("Chưa đủ số bài có số liệu cho cả hai kỳ", { exact: false })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  expect(
+    requests.some((r) => r.startsWith("POST") || r.includes("/analyses")),
+  ).toBeFalsy();
 });

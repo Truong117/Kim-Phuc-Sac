@@ -238,6 +238,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_dry_run_before_m23_m24_is_readable_but_apply_requires_both_migrations(): void
     {
+        (require database_path('migrations/2026_11_09_010000_create_facebook_age_milestones.php'))->down();
         (require database_path('migrations/2026_11_09_000000_add_facebook_sampling_schedule.php'))->down();
         (require database_path('migrations/2026_11_07_000000_create_facebook_analytics_tables.php'))->down();
         (require database_path('migrations/2026_11_06_010000_create_mail_foundation_tables.php'))->down();
@@ -252,7 +253,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         DB::table('migrations')->whereIn('migration', array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 22))->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertFalse($preview['schema_ready']);
-        $this->assertCount(11, $preview['pending_migrations']);
+        $this->assertCount(12, $preview['pending_migrations']);
         $this->expectExceptionMessage('FIXTURE_APPLY_REQUIRES_M23_M24');
         $this->fixture->apply($this->batch, $this->end, $this->store, $preview['fingerprint'], []);
     }
@@ -373,6 +374,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_facebook_analytics_ledger_without_a_table_is_rejected_before_fixture_writes(): void
     {
+        (require database_path('migrations/2026_11_09_010000_create_facebook_age_milestones.php'))->down();
         (require database_path('migrations/2026_11_09_000000_add_facebook_sampling_schedule.php'))->down();
         (require database_path('migrations/2026_11_07_000000_create_facebook_analytics_tables.php'))->down();
         $this->expectExceptionMessage('FIXTURE_PARTIAL_SCHEMA_REQUIRES_RECOVERY');
@@ -381,6 +383,8 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_sampling_columns_must_match_the_reviewed_ledger(): void
     {
+        DB::table('migrations')->where('migration', '2026_11_09_010000_create_facebook_age_milestones')->delete();
+        (require database_path('migrations/2026_11_09_010000_create_facebook_age_milestones.php'))->down();
         (require database_path('migrations/2026_11_09_000000_add_facebook_sampling_schedule.php'))->down();
         $this->expectExceptionMessage('FIXTURE_FACEBOOK_SAMPLING_SCHEMA_DRIFT');
         $this->fixture->dryRun($this->batch, $this->end, $this->store);

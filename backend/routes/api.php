@@ -80,6 +80,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::prefix('social-analytics/facebook')->group(function (): void {
         Route::get('/pages', [FacebookAnalyticsController::class, 'pages'])->middleware('throttle:60,1,fb-analytics-pages');
         Route::get('/{id}', [FacebookAnalyticsController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-read');
+        Route::get('/{id}/milestones', [FacebookAnalyticsController::class, 'milestones'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-milestones');
+        Route::get('/{id}/posts/{post}', [FacebookAnalyticsController::class, 'post'])->whereNumber(['id', 'post'])->middleware('throttle:60,1,fb-analytics-post');
+        Route::patch('/{id}/posts/{post}/classification', [FacebookAnalyticsController::class, 'classification'])->whereNumber(['id', 'post'])->middleware('throttle:30,1,fb-analytics-classification');
         Route::post('/{id}/sync', [FacebookAnalyticsController::class, 'sync'])->whereNumber('id')->middleware('throttle:2,1,fb-analytics-sync');
         Route::patch('/{id}/posts/{post}/topic', [FacebookAnalyticsController::class, 'topic'])->whereNumber(['id', 'post'])->middleware('throttle:30,1,fb-analytics-topic');
         Route::post('/{id}/analyses', [FacebookAnalyticsController::class, 'analyze'])->whereNumber('id')->middleware('throttle:2,1,fb-analytics-ai');

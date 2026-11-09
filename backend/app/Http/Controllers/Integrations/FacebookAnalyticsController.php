@@ -8,6 +8,8 @@ use App\Services\Social\Analytics\FacebookAnalyticsAccess;
 use App\Services\Social\Analytics\FacebookAnalyticsAi;
 use App\Services\Social\Analytics\FacebookAnalyticsRead;
 use App\Services\Social\Analytics\FacebookAnalyticsSync;
+use App\Services\Social\Analytics\FacebookMilestoneRead;
+use App\Services\Social\Analytics\FacebookMilestoneSampling;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,6 +76,46 @@ class FacebookAnalyticsController extends Controller
         DB::table('facebook_analytics_posts')->where('id', $post)->update(['topic' => $input['topic'] ?? null, 'updated_at' => now()]);
 
         return response()->json(null, 204);
+    }
+
+    public function milestones(Request $request, int $id): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        abort_unless(app(FacebookMilestoneSampling::class)->enabled(), 404);
+        $period = $this->period($request);
+        $input = $request->validate(['basis' => ['sometimes', 'in:matured,published']]);
+        $data = app(FacebookMilestoneRead::class)->show($entry, $period['from_date'], $period['to_date'], $input['basis'] ?? 'matured');
+        abort_if(strlen(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > 4194304, 422, 'Kết quả quá lớn. Hãy giảm khoảng ngày.');
+
+        return response()->json(['data' => $data]);
+    }
+
+    public function post(Request $request, int $id, int $post, FacebookAnalyticsRead $read): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        $period = $this->period($request);
+        $data = $read->show($request->user(), $entry, $period['from_date'], $period['to_date'], $post);
+        abort_if(count($data['posts']) !== 1, 404);
+
+        return response()->json(['data' => $data['posts'][0]]);
+    }
+
+    public function classification(Request $request, int $id, int $post): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        abort_unless(app(FacebookMilestoneSampling::class)->enabled(), 404);
+        $connection = $this->access->connection($entry);
+        $input = $request->validate(['objective' => ['sometimes', 'nullable', 'in:awareness,engagement,traffic,leads'],
+            'distribution' => ['sometimes', 'nullable', 'in:organic,paid']]);
+        if ($input === []) {
+            throw ValidationException::withMessages(['objective' => 'Chọn mục tiêu hoặc trạng thái quảng cáo cần cập nhật.']);
+        }
+        $row = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)->where('organization_id', $entry->organization_id)->where('id', $post)->first();
+        abort_if($row === null, 404);
+        $values = [...$input, 'classified_by' => $request->user()->id, 'classified_at' => now(), 'updated_at' => now()];
+        DB::table('facebook_analytics_posts')->where('id', $post)->update($values);
+
+        return response()->json(['data' => ['objective' => array_key_exists('objective', $input) ? $input['objective'] : $row->objective, 'distribution' => array_key_exists('distribution', $input) ? $input['distribution'] : $row->distribution]]);
     }
 
     public function analyze(Request $request, int $id, FacebookAnalyticsRead $read, FacebookAnalyticsAi $ai): JsonResponse

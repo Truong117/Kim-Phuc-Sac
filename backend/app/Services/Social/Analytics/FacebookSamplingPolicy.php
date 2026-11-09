@@ -106,7 +106,8 @@ class FacebookSamplingPolicy
         $at = CarbonImmutable::now();
         $anchor = isset($state->counts['schedule_anchor']) ? CarbonImmutable::parse($state->counts['schedule_anchor']) : $at;
         // A cycle finishing after the next slot must not postpone that due check until tomorrow.
-        $this->save($state, $plan, $this->nextCheck($anchor)->max($at));
+        $next = $this->nextCheck($anchor)->max($at);
+        $this->save($state, $plan, app(FacebookMilestoneSampling::class)->nextCheck($connection, $at, $next));
     }
 
     public function failed(FacebookAnalyticsState $state, string $code): void
@@ -142,6 +143,19 @@ class FacebookSamplingPolicy
         abort_if($posts->count() > 5000, 422, 'Danh mục vượt giới hạn kiểm tra lịch lấy mẫu.');
         $latestIds = DB::table('facebook_analytics_samples')->whereIn('post_id', $posts->pluck('id'))->where('definition', FacebookAnalyticsSync::definition())->selectRaw('MAX(id)')->groupBy('post_id');
         $latest = DB::table('facebook_analytics_samples')->whereIn('id', $latestIds)->get(['post_id', 'sampled_at', 'sampling_late'])->keyBy('post_id');
+        $ageDue = [];
+        if (app(FacebookMilestoneSampling::class)->enabled()) {
+            $ageDue = array_fill_keys(app(FacebookMilestoneSampling::class)->pending(DB::table('facebook_analytics_posts')->whereIn('id', $posts->pluck('id')), $at, FacebookAnalyticsSync::definition())->pluck('id')->all(), true);
+            $ageIds = DB::table('facebook_analytics_milestones as m')->join('facebook_analytics_posts as p', 'p.id', '=', 'm.post_id')
+                ->whereIn('m.post_id', $posts->pluck('id'))->whereColumn('m.published_at', 'p.published_at')->where('m.policy_version', FacebookMilestoneSampling::VERSION)
+                ->where('m.definition', FacebookAnalyticsSync::definition())->where('m.sampled_at', '<=', $at)->selectRaw('MAX(m.id)')->groupBy('m.post_id');
+            foreach (DB::table('facebook_analytics_milestones')->whereIn('id', $ageIds)->get(['post_id', 'sampled_at', 'quality']) as $age) {
+                $regular = $latest->get($age->post_id);
+                if ($regular === null || $age->sampled_at > $regular->sampled_at) {
+                    $latest->put($age->post_id, (object) ['post_id' => $age->post_id, 'sampled_at' => $age->sampled_at, 'sampling_late' => $age->quality === 'late']);
+                }
+            }
+        }
         $due = $overdue = $never = $late = 0;
         $last = null;
         $slots = $this->slots($at);
@@ -150,9 +164,10 @@ class FacebookSamplingPolicy
             $never += $sample === null ? 1 : 0;
             $late += $sample?->sampling_late === null ? 0 : (int) (bool) $sample->sampling_late;
             $last = $sample !== null && ($last === null || $sample->sampled_at > $last) ? $sample->sampled_at : $last;
-            if ($sample === null || CarbonImmutable::parse($sample->sampled_at, 'UTC')->lt($slots[$this->tier($post->published_at, $at)])) {
+            $cadenceDue = $sample === null || CarbonImmutable::parse($sample->sampled_at, 'UTC')->lt($slots[$this->tier($post->published_at, $at)]);
+            if ($cadenceDue || isset($ageDue[$post->id])) {
                 $due++;
-                $overdue += $this->late($this->timing($post, $at, $plan['activated_at'] ?? $at->toIso8601String(), $sample === null), $at) ? 1 : 0;
+                $overdue += $cadenceDue && $this->late($this->timing($post, $at, $plan['activated_at'] ?? $at->toIso8601String(), $sample === null), $at) ? 1 : 0;
             }
         }
         $blocked = $connection->status !== 'connected' || ! $principalAvailable;

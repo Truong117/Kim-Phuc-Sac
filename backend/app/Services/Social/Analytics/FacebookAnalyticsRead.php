@@ -20,7 +20,7 @@ class FacebookAnalyticsRead
 {
     public const METRICS = ['likes', 'comments', 'media_views'];
 
-    public function show(User $actor, IntegrationEntry $entry, string $from, string $to): array
+    public function show(User $actor, IntegrationEntry $entry, string $from, string $to, ?int $postId = null): array
     {
         $connection = SocialConnection::query()->where('integration_entry_id', $entry->id)->where('organization_id', $entry->organization_id)->first();
         $start = CarbonImmutable::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay()->utc();
@@ -28,7 +28,8 @@ class FacebookAnalyticsRead
         $previousEnd = $start->subMicrosecond();
         $previousStart = $start->subDays(CarbonImmutable::parse($from)->diffInDays(CarbonImmutable::parse($to)) + 1);
         $state = $connection === null ? null : FacebookAnalyticsState::query()->where('social_connection_id', $connection->id)->first();
-        $posts = $connection === null ? collect() : DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)->where('organization_id', $entry->organization_id)->where('published_at', '<=', $end)->where(fn ($q) => $q->where('published_at', '>=', $previousStart)->orWhereIn('id', DB::table('facebook_analytics_samples')->whereBetween('sampled_at', [$previousStart, $end])->select('post_id')))->orderByDesc('published_at')->orderByDesc('id')->limit(1001)->get();
+        $milestonesEnabled = app(FacebookMilestoneSampling::class)->enabled();
+        $posts = $connection === null ? collect() : DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)->where('organization_id', $entry->organization_id)->where('published_at', '<=', now())->when($postId !== null, fn ($q) => $q->where('id', $postId), fn ($q) => $q->where('published_at', '<=', $end)->where(fn ($q) => $q->where('published_at', '>=', $previousStart)->orWhereIn('id', DB::table('facebook_analytics_samples')->whereBetween('sampled_at', [$previousStart, $end])->select('post_id'))->when($milestonesEnabled, fn ($q) => $q->orWhereIn('id', DB::table('facebook_analytics_milestones')->whereBetween('sampled_at', [$previousStart, $end])->select('post_id')))))->orderByDesc('published_at')->orderByDesc('id')->limit(1001)->get();
         if ($posts->count() > 1000) {
             throw ValidationException::withMessages(['from_date' => 'Danh mục vượt giới hạn đọc. Cần thu hẹp phạm vi thu thập.']);
         }
@@ -36,16 +37,29 @@ class FacebookAnalyticsRead
         if ($points->count() > 20000) {
             throw ValidationException::withMessages(['from_date' => 'Khoảng ngày có quá nhiều mẫu. Hãy giảm khoảng ngày.']);
         }
+        $milestones = $milestonesEnabled ? app(FacebookMilestoneRead::class)->points($posts) : collect();
+        if ($milestonesEnabled) {
+            $extra = DB::table('facebook_analytics_milestones as m')->join('facebook_analytics_posts as p', 'p.id', '=', 'm.post_id')
+                ->whereIn('m.post_id', $posts->pluck('id'))->whereColumn('m.published_at', 'p.published_at')
+                ->where('m.policy_version', FacebookMilestoneSampling::VERSION)->whereBetween('m.sampled_at', [$previousStart, $end])->select('m.*')->limit(20001)->get();
+            if ($points->count() + $extra->count() > 20000) {
+                throw ValidationException::withMessages(['from_date' => 'Khoảng ngày có quá nhiều mẫu. Hãy giảm khoảng ngày.']);
+            }
+            // A normal and an age snapshot from the same HTTP call are one observation.
+            $points = $extra->concat($points)->unique(fn ($p) => $p->post_id.':'.$p->definition.':'.$p->sampled_at)->sortBy('sampled_at')->values();
+        }
         $activeDefinition = $points->filter(fn ($p) => CarbonImmutable::parse($p->sampled_at, 'UTC')->betweenIncluded($start, $end))->last()?->definition ?? FacebookAnalyticsSync::definition();
         $points = $points->where('definition', $activeDefinition)->groupBy('post_id');
         $links = $this->reportLinks($actor, $entry, $from, $to);
-        $rows = $posts->map(function ($post) use ($points, $start, $end, $previousStart, $previousEnd, $links): array {
+        $rows = $posts->map(function ($post) use ($points, $start, $end, $previousStart, $previousEnd, $links, $milestonesEnabled, $milestones): array {
             $samples = $points->get($post->id, collect());
             $current = $this->observations($samples, $start, $end);
             $previous = $this->observations($samples, $previousStart, $previousEnd);
 
             return ['id' => (int) $post->id, 'external_id' => $post->external_id, 'url' => $post->url, 'message' => $post->message,
                 'picture' => $post->picture, 'type' => $post->type, 'topic' => $post->topic,
+                ...($milestonesEnabled ? ['objective' => $post->objective, 'distribution' => $post->distribution,
+                    'milestones' => app(FacebookMilestoneRead::class)->forPost($post, $milestones->get($post->id, collect()))] : []),
                 'published_at' => CarbonImmutable::parse($post->published_at, 'UTC')->toIso8601String(),
                 'report_ids' => array_values(array_unique($links[$post->external_id] ?? [])), ...$current,
                 'previous' => $previous, 'trend' => $this->trend($samples, $start, $end, $current['definition'])];
@@ -85,7 +99,7 @@ class FacebookAnalyticsRead
                 return $row;
             }, $rows),
             'sampling' => $connection === null ? null : app(FacebookSamplingPolicy::class)->health($connection, $state, app(FacebookAnalyticsAccess::class)->principalAvailable($connection)),
-            'definition' => $activeDefinition, 'ai_enabled' => (bool) config('facebook_analytics.ai_enabled'), 'can_manage' => app(FacebookAnalyticsAccess::class)->broad($actor)];
+            'milestones_enabled' => $milestonesEnabled, 'definition' => $activeDefinition, 'ai_enabled' => (bool) config('facebook_analytics.ai_enabled'), 'can_manage' => app(FacebookAnalyticsAccess::class)->broad($actor)];
     }
 
     private function observations(Collection $samples, CarbonImmutable $start, CarbonImmutable $end): array
@@ -139,7 +153,7 @@ class FacebookAnalyticsRead
         return array_map(fn ($d, $v) => ['date' => $d, ...array_replace(array_fill_keys(self::METRICS, null), $v), 'intervals' => $intervals[$d]], array_keys($rows), array_values($rows));
     }
 
-    private function reportLinks(User $actor, IntegrationEntry $entry, string $from, string $to): array
+    private function reportLinks(User $actor, IntegrationEntry $entry, string $from, string $to, ?int $postId = null): array
     {
         $auth = new AuthorizationService(new KpsMembershipResolver);
         if (! $auth->allows($actor, 'reports.view')) {
