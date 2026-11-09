@@ -90,6 +90,25 @@ class FacebookAgeMilestoneTest extends TestCase
         Http::assertSentCount(2);
     }
 
+    public function test_both_snapshot_paths_share_one_observation_time_even_when_writes_cross_seconds(): void
+    {
+        $post = $this->analyticsPost('2026-11-08 03:00:00');
+        $this->state()->update(['sampling_next_check_at' => now()]);
+        Http::fake(['*' => Http::response(['summary' => ['total_count' => 5]])]);
+        DB::listen(function ($query): void {
+            if (str_starts_with($query->sql, 'insert') && str_contains($query->sql, 'facebook_analytics_milestones')) {
+                $this->travelTo(now()->addSeconds(3));
+            }
+        });
+        app(FacebookSamplingDispatcher::class)->dispatch();
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle(app(FacebookAnalyticsSync::class));
+        $regular = DB::table('facebook_analytics_samples')->where('post_id', $post->id)->first();
+        $age = DB::table('facebook_analytics_milestones')->where('post_id', $post->id)->first();
+        $this->assertSame($regular->sampled_at, $age->sampled_at);
+        $this->actingAs($this->admin)->getJson($this->endpoint('?from_date=2026-11-09&to_date=2026-11-09'))->assertOk()
+            ->assertJsonPath('data.posts.0.sample_count', 1)->assertJsonPath('data.posts.0.observed_delta.likes', null);
+    }
+
     public function test_boundaries_waiting_missing_and_definition_are_truthful(): void
     {
         $post = $this->analyticsPost('2026-11-02 03:05:00');

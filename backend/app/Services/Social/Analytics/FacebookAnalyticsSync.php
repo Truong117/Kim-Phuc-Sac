@@ -194,14 +194,16 @@ class FacebookAnalyticsSync
                         : app(FacebookMilestoneSampling::class)->target($post, $started);
                 }
                 $metrics = $this->facebook->metrics($connection->access_token, $post->external_id);
-                DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $metrics, $scheduledFor, $started): void {
+                // Bind both storage paths to one completed provider observation, even across a second/hour boundary.
+                $observedAt = CarbonImmutable::now()->utc();
+                DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $metrics, $scheduledFor, $started, $observedAt): void {
                     $this->fence($connection, $state, $lease, $entryVersion, $actor, true);
                     if (($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION) {
-                        app(FacebookMilestoneSampling::class)->capture($post, $metrics, $started, CarbonImmutable::now(), self::definition());
+                        app(FacebookMilestoneSampling::class)->capture($post, $metrics, $started, $observedAt, self::definition());
                     }
-                    DB::table('facebook_analytics_samples')->insertOrIgnore(['post_id' => $post->id, 'definition' => self::definition(), 'bucket' => now()->utc()->startOfHour(), 'sampled_at' => now()->utc(), 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR), ...($scheduledFor === null ? [] : ['scheduled_for' => $scheduledFor, 'sampling_late' => $this->sampling->late($scheduledFor, CarbonImmutable::now())])]);
-                    DB::table('facebook_analytics_posts')->where('id', $post->id)->update(['sampled_at' => now()->utc()]);
-                    $state->fill(['sampled_at' => now(), 'counts' => [...$state->counts, 'processed_posts' => (int) ($state->counts['processed_posts'] ?? 0) + 1]])->save();
+                    DB::table('facebook_analytics_samples')->insertOrIgnore(['post_id' => $post->id, 'definition' => self::definition(), 'bucket' => $observedAt->startOfHour(), 'sampled_at' => $observedAt, 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR), ...($scheduledFor === null ? [] : ['scheduled_for' => $scheduledFor, 'sampling_late' => $this->sampling->late($scheduledFor, $observedAt)])]);
+                    DB::table('facebook_analytics_posts')->where('id', $post->id)->update(['sampled_at' => $observedAt]);
+                    $state->fill(['sampled_at' => $observedAt, 'counts' => [...$state->counts, 'processed_posts' => (int) ($state->counts['processed_posts'] ?? 0) + 1]])->save();
                     $this->progress($connection, $state);
                 });
             }
