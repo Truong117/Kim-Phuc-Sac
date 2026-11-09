@@ -223,32 +223,7 @@ function Workspace() {
                   />
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
-                <div className="flex flex-wrap items-center gap-2">
-                  {[7, 28].map((days) => (
-                    <Button
-                      key={days}
-                      size="sm"
-                      className="h-11 whitespace-nowrap"
-                      variant={
-                        period.from === addDaysToDateOnly(today, 1 - days) &&
-                        period.to === today
-                          ? "primary"
-                          : "outline"
-                      }
-                      onClick={() => {
-                        const p = {
-                          from: addDaysToDateOnly(today, 1 - days),
-                          to: today,
-                        };
-                        setDraft(p);
-                        setPeriod(p);
-                      }}
-                    >
-                      {t("days", { count: days })}
-                    </Button>
-                  ))}
-                </div>
+              <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-gray-100 pt-4 dark:border-gray-800">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"
