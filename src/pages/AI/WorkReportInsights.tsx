@@ -398,6 +398,7 @@ function PeriodWorkReportInsights() {
                       {t("unitError", { unit: error.unit_key })}:{" "}
                       {t(`errors.${error.code}`, {
                         defaultValue: t("unitFailure"),
+                        limit: error.max_output_tokens ?? t("unknown"),
                       })}
                     </p>
                   ))}
