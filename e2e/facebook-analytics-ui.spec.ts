@@ -671,7 +671,10 @@ test("milestone UI distinguishes waiting age and unclassified historical milesto
     .getByRole("button", { name: "Đăng trong kỳ", exact: true })
     .click();
   await expect(
-    page.getByText("Chờ đến", { exact: false }).first(),
+    page
+      .getByText("Chờ đến", { exact: false })
+      .filter({ visible: true })
+      .first(),
   ).toBeVisible();
   expect(
     await page.evaluate(
