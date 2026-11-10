@@ -2317,6 +2317,11 @@
     }
   },
   "workReportAnalysis": {
+    "dailyTitle": "Phân tích báo cáo ngày",
+    "dailyMetaTitle": "Phân tích báo cáo ngày | KIM PHỤC SẮC",
+    "dailyDate": "Ngày công việc",
+    "dailySourcesTitle": "Xem và xử lý bản tổng hợp ngày làm nguồn",
+    "dailySourcesHint": "Các bản tổng hợp nguồn bên dưới được xử lý theo ngày và phạm vi tài khoản. Sau khi xử lý xong, bấm Tải lại ở phần phân tích để cập nhật trạng thái nguồn; bản phân tích đã lưu vẫn được giữ nguyên.",
     "defaultVersion": "Mặc định hiển thị bản hoàn tất hoặc hoàn tất một phần mới nhất. Lượt mới hơn:",
     "latestAttempt": "Lần phân tích #{id} — {status}",
     "revisionInfo": "Phiên bản {number} · Yêu cầu bởi {name} · {time}",
@@ -2528,6 +2533,7 @@
     }
   },
   "dailyDocuments": {
+    "sourceTitle": "Bản tổng hợp ngày trong phạm vi được phép",
     "title": "Tổng hợp báo cáo ngày",
     "description": "Danh sách công việc và kết quả từng nhân viên từ báo cáo đã khóa; nhận xét và đề xuất có căn cứ.",
     "modeLabel": "Chế độ phân tích",

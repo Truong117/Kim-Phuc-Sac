@@ -156,6 +156,35 @@ async function setup(
       };
       return route.fulfill({ status: 202, json: { data: row!.document } });
     }
+    if (path === "/api/ai/work-report-analyses/preview") {
+      return route.fulfill({
+        json: {
+          data: {
+            enabled: true,
+            mode: "fake",
+            period: {
+              start_date: "2026-11-02",
+              end_date: "2026-11-02",
+              days: 1,
+              timezone: "Asia/Ho_Chi_Minh",
+            },
+            departments: [],
+            max_days_back: 365,
+            work_counts: {
+              reports: 0,
+              items: 0,
+              completed: 0,
+              in_progress: 0,
+              blocked: 0,
+            },
+            employees: [],
+            source_reports: [],
+            run: null,
+            latest_attempt: null,
+          },
+        },
+      });
+    }
     if (path === "/api/ai/daily-documents") {
       const current = Number(url.searchParams.get("page") ?? 1);
       return route.fulfill({
@@ -244,7 +273,13 @@ test("focused reader keeps separate AI work lines, selected employee on reload a
   await expect(
     panel(page, "Nhân viên B").getByRole("link", { name: /Đầu việc #81/ }),
   ).toHaveAttribute("href", "/reports/8#work-item-81");
-  await page.getByRole("button", { name: "Tải lại", exact: true }).click();
+  await page
+    .getByRole("region", {
+      name: "Xem và xử lý bản tổng hợp ngày làm nguồn",
+      exact: true,
+    })
+    .getByRole("button", { name: "Tải lại", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Nhân viên B", exact: true }),
   ).toBeVisible();
