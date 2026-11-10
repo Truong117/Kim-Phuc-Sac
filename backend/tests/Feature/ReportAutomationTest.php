@@ -14,6 +14,7 @@ use App\Services\AI\ReportAutomation;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\Mail\MailConfiguration;
 use App\Services\Mail\MailOutbox;
+use App\Services\Mail\MailPresentation;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -132,6 +133,9 @@ class ReportAutomationTest extends TestCase
         Http::assertSentCount(2);
         $message = MailMessage::query()->first();
         $this->assertStringContainsString('analysis=', $message->payload['text']);
+        $html = MailPresentation::render($message->payload['text']);
+        $this->assertStringContainsString('<h1 ', $html);
+        $this->assertStringContainsString('<h2 ', $html);
         $this->assertStringNotContainsString($message->payload['text'], DB::table('mail_messages')->value('payload'));
         $this->assertStringNotContainsString($message->payload['text'], DB::table('report_automation_cycles')->value('mail_content'));
     }

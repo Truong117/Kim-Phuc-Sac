@@ -15,17 +15,17 @@ final class ReportAutomationMail
         $end = $run->end_date->format('d/m/Y');
         $period = $kind === 'weekly' ? $run->start_date->format('d/m/Y').' – '.$end : $end;
         $result = $run->result;
-        $chunks = ['Kính gửi anh/chị,', 'Tổng hợp báo cáo '.($kind === 'weekly' ? 'tuần' : 'ngày').' '.$period.'.'];
+        $chunks = ['Kính gửi anh/chị,', 'BÁO CÁO TỔNG HỢP '.($kind === 'weekly' ? 'TUẦN' : 'NGÀY').' '.$period];
         if ($run->analysis_config['driver'] === 'fake') {
             $chunks[] = 'Dữ liệu phân tích mô phỏng, chỉ phục vụ kiểm thử.';
         }
         $people = array_column($run->snapshot['employees'], 'name', 'employee_id');
         $authors = array_column($run->snapshot['reports'], 'employee_id', 'report_id');
         $sections = [
-            ['Kết quả nổi bật', [...($result['overview'] ?? []), ...($result['highlights'] ?? [])], 5],
-            ['Công việc đang tiếp tục', $result['ongoing'] ?? [], 3],
-            ['Vướng mắc và nội dung cần làm rõ', [...($result['attention'] ?? []), ...($result['support'] ?? []), ...($result['uncertainties'] ?? [])], 3],
-            ['Đề xuất và quyết định cần xem xét', $result['recommendations'] ?? [], 3],
+            ['1. Kết quả trong kỳ', [...($result['overview'] ?? []), ...($result['highlights'] ?? [])], 5],
+            ['2. Công việc đang tiếp tục', $result['ongoing'] ?? [], 3],
+            ['3. Vướng mắc cần theo dõi', [...($result['attention'] ?? []), ...($result['support'] ?? []), ...($result['uncertainties'] ?? [])], 3],
+            ['4. Việc cần xem xét và quyết định', $result['recommendations'] ?? [], 3],
         ];
         foreach ($sections as [$title, $claims, $limit]) {
             $lines = [];
@@ -36,7 +36,7 @@ final class ReportAutomationMail
                 if ($text === '' || isset($lines[$text])) {
                     continue;
                 }
-                $detail = $title === 'Đề xuất và quyết định cần xem xét' ? trim((string) ($claim['action'] ?? '')) : '';
+                $detail = $title === '4. Việc cần xem xét và quyết định' ? trim((string) ($claim['action'] ?? '')) : '';
                 $names = array_values(array_unique(array_filter(array_map(fn ($ref) => $people[$authors[$ref['report_id']] ?? 0] ?? null, $claim['evidence'] ?? []))));
                 $label = $names !== [] && ! collect($names)->every(fn ($name) => str_contains($text, $name)) ? implode(', ', $names).' — ' : '';
                 $decision = $detail === '' ? '' : trim((string) ($claim['decision_needed'] ?? ''));
