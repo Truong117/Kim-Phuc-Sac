@@ -11,7 +11,7 @@ async function setup(
     sources?: boolean;
     milestones?: boolean;
     age?: boolean;
-    review?: "ready" | "blocked" | "conflict" | "loadfail";
+    review?: "ready" | "blocked" | "conflict";
     contributionPages?: boolean;
   } = {},
 ) {
@@ -136,7 +136,6 @@ async function setup(
       distribution: "organic",
       milestones: agePoints,
     });
-  let reviewReads = 0;
   let reviewPlan = {
     version: 0,
     expected_posts: null as number | null,
@@ -221,10 +220,6 @@ async function setup(
           actions: values.actions,
           updated_at: "2026-11-07T03:00:00Z",
         };
-      } else {
-        reviewReads++;
-        if (options.review === "loadfail" && reviewReads > 1)
-          return route.abort();
       }
       const blocked = options.review === "blocked",
         selected =
@@ -1197,7 +1192,7 @@ test("review conflict keeps edits and does not overwrite another editor", async 
 test("review data failure keeps an edited plan and warns before changing tabs", async ({
   page,
 }) => {
-  await setup(page, { review: "loadfail" });
+  await setup(page, { review: "ready" });
   await page
     .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
     .click();
@@ -1205,6 +1200,7 @@ test("review data failure keeps an edited plan and warns before changing tabs", 
     name: "Số bài dự kiến của kỳ đang xem",
   });
   await target.fill("12");
+  await page.route("**/facebook/1/review?**", (route) => route.abort());
   await page
     .getByRole("button", { name: "Tải lại căn cứ", exact: true })
     .click();
