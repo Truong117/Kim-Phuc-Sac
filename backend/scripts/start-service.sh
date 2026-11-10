@@ -24,12 +24,13 @@ pause() {
 }
 
 case "${1:-service}" in
-    worker|recovery|daily-worker|daily-recovery|daily-scheduler|social-worker|facebook-scheduler)
+    worker|recovery|daily-worker|daily-recovery|daily-scheduler|social-worker|facebook-scheduler|report-scheduler)
         mode=$1
         trap stop_child TERM INT
         # On the first rollout, let the old unsupervised container leave the queue.
         case "$mode" in
             social-worker|facebook-scheduler) pause "${SOCIAL_METRICS_BOOT_DELAY_SECONDS:-60}" ;;
+            report-scheduler) pause "${REPORT_AUTOMATION_BOOT_DELAY_SECONDS:-60}" ;;
             daily-*) pause "${DAILY_REPORT_AI_BOOT_DELAY_SECONDS:-60}" ;;
             *) pause "${WORK_REPORT_AI_BOOT_DELAY_SECONDS:-60}" ;;
         esac
@@ -48,6 +49,7 @@ case "${1:-service}" in
                         --queue=social-metrics --timeout=300 --tries=1 --sleep=5 --memory=96 --max-time=3600 &
                     ;;
                 facebook-scheduler) php -d max_execution_time=0 artisan facebook-analytics:dispatch & ;;
+                report-scheduler) php -d max_execution_time=0 artisan report-automation:tick & ;;
                 daily-recovery) php -d max_execution_time=0 artisan daily-report-ai:recover & ;;
                 daily-scheduler) php -d max_execution_time=0 artisan daily-report-ai:dispatch & ;;
                 recovery) php -d max_execution_time=0 artisan work-report-ai:recover & ;;
@@ -66,6 +68,7 @@ case "${1:-service}" in
                     pause 2
                     ;;
                 daily-scheduler|facebook-scheduler) pause 300 ;;
+                report-scheduler) pause 60 ;;
                 *) pause 60 ;;
             esac
         done
@@ -83,12 +86,14 @@ daily_recovery=
 daily_scheduler=
 social_worker=
 facebook_scheduler=
+report_scheduler=
 web=
 monitor=
 shutdown() {
     trap '' TERM INT
     [ -z "$monitor" ] || kill -TERM "$monitor" 2>/dev/null || :
     # Stop producers first, then let queue consumers finish their in-flight jobs.
+    [ -z "$report_scheduler" ] || kill -TERM "$report_scheduler" 2>/dev/null || :
     [ -z "$facebook_scheduler" ] || kill -TERM "$facebook_scheduler" 2>/dev/null || :
     [ -z "$daily_scheduler" ] || kill -TERM "$daily_scheduler" 2>/dev/null || :
     [ -z "$daily_recovery" ] || kill -TERM "$daily_recovery" 2>/dev/null || :
@@ -96,6 +101,7 @@ shutdown() {
     [ -z "$daily_worker" ] || kill -TERM "$daily_worker" 2>/dev/null || :
     [ -z "$worker" ] || kill -TERM "$worker" 2>/dev/null || :
     [ -z "$recovery" ] || kill -TERM "$recovery" 2>/dev/null || :
+    [ -z "$report_scheduler" ] || wait "$report_scheduler" 2>/dev/null || :
     [ -z "$facebook_scheduler" ] || wait "$facebook_scheduler" 2>/dev/null || :
     [ -z "$daily_scheduler" ] || wait "$daily_scheduler" 2>/dev/null || :
     [ -z "$daily_recovery" ] || wait "$daily_recovery" 2>/dev/null || :
@@ -177,9 +183,22 @@ case "$facebook_scheduler_mode" in
     *) echo 'Invalid FACEBOOK_ANALYTICS_SCHEDULER_MODE.' >&2; shutdown 1 ;;
 esac
 
+# Opt in separately from the AI consumers. Persistent cycle rows catch up after sleep.
+report_scheduler_mode=$(php -r 'require "vendor/autoload.php"; $app = require "bootstrap/app.php"; $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo config("report_automation.enabled") ? config("report_automation.scheduler_mode", "off") : "off";') || shutdown 1
+case "$report_scheduler_mode" in
+    embedded)
+        sh "$script" report-scheduler &
+        report_scheduler=$!
+        echo 'Report automation dispatcher started (60-second interval).'
+        ;;
+    external|off) ;;
+    *) echo 'Invalid REPORT_AUTOMATION_SCHEDULER_MODE.' >&2; shutdown 1 ;;
+esac
+
 while kill -0 "$web" 2>/dev/null; do
     # A failed supervisor loop must fail the container, allowing Render to restart it.
-    if { [ -n "$facebook_scheduler" ] && ! kill -0 "$facebook_scheduler" 2>/dev/null; } || \
+    if { [ -n "$report_scheduler" ] && ! kill -0 "$report_scheduler" 2>/dev/null; } || \
+        { [ -n "$facebook_scheduler" ] && ! kill -0 "$facebook_scheduler" 2>/dev/null; } || \
         { [ -n "$worker" ] && ! kill -0 "$worker" 2>/dev/null; } || \
         { [ -n "$recovery" ] && ! kill -0 "$recovery" 2>/dev/null; } || \
         { [ -n "$daily_worker" ] && ! kill -0 "$daily_worker" 2>/dev/null; } || \

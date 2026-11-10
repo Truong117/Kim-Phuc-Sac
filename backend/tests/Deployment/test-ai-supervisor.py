@@ -20,7 +20,9 @@ if pathlib.Path(sys.argv[0]).name == 'frankenphp':
     while True: time.sleep(.02)
 elif '-r' in sys.argv:
     code = sys.argv[sys.argv.index('-r') + 1]
-    if 'facebook_analytics.scheduler_mode' in code:
+    if 'report_automation.scheduler_mode' in code:
+        print(os.environ.get('TEST_REPORT_MODE', 'off'))
+    elif 'facebook_analytics.scheduler_mode' in code:
         print(os.environ.get('TEST_FB_MODE', 'off'))
     elif 'facebook_analytics.auto_sample_enabled' in code:
         print(os.environ.get('TEST_FB_ENABLED', 'no'))
@@ -40,6 +42,10 @@ elif 'daily-report-ai:recover' in sys.argv:
     event('daily-recovery')
 elif 'daily-report-ai:dispatch' in sys.argv:
     event('daily-dispatch')
+elif 'report-automation:tick' in sys.argv:
+    event('report-tick')
+    signal.signal(signal.SIGTERM, lambda *_: (event('report-tick-stop'), sys.exit(0)))
+    while True: time.sleep(.02)
 elif 'facebook-analytics:dispatch' in sys.argv:
     event('facebook-dispatch')
     signal.signal(signal.SIGTERM, lambda *_: (event('facebook-dispatch-stop'), sys.exit(0)))
@@ -70,7 +76,7 @@ else:
 
 
 class SupervisorTest(unittest.TestCase):
-    def run_service(self, mode='embedded', enabled='yes', daily_mode='off', daily_enabled='no', daily_auto='no', social_mode='off', social_enabled='no', social_delay='0', facebook_mode='off', facebook_enabled='no'):
+    def run_service(self, mode='embedded', enabled='yes', daily_mode='off', daily_enabled='no', daily_auto='no', social_mode='off', social_enabled='no', social_delay='0', facebook_mode='off', facebook_enabled='no', report_mode='off'):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
@@ -85,6 +91,7 @@ class SupervisorTest(unittest.TestCase):
             'TEST_QUEUE_ENABLED': enabled, 'DAILY_REPORT_AI_WORKER_MODE': daily_mode,
             'DAILY_REPORT_AI_BOOT_DELAY_SECONDS': '0', 'TEST_DAILY_ENABLED': daily_enabled,
             'TEST_DAILY_AUTO': daily_auto, 'SOCIAL_METRICS_BOOT_DELAY_SECONDS': social_delay,
+            'TEST_REPORT_MODE': report_mode, 'REPORT_AUTOMATION_BOOT_DELAY_SECONDS': '0',
             'TEST_SOCIAL_ENABLED': social_enabled, 'TEST_FB_MODE': facebook_mode, 'TEST_FB_ENABLED': facebook_enabled}
         environment.pop('SOCIAL_METRICS_WORKER_MODE', None)
         if social_mode is not None:
@@ -238,6 +245,22 @@ class SupervisorTest(unittest.TestCase):
                 process.terminate()
                 self.assertEqual(0, process.wait(timeout=5))
                 self.assertEqual(['web-start', 'web-stop'], self.events(root))
+
+    def test_report_scheduler_drains_in_flight_mail_before_the_web_stops(self):
+        process, root = self.run_service(report_mode='embedded')
+        self.await_event(root, 'report-tick')
+        process.terminate()
+        self.assertEqual(0, process.wait(timeout=5))
+        self.assertLess(self.events(root).index('report-tick-stop'), self.events(root).index('web-stop'))
+
+    def test_report_scheduler_external_or_off_does_not_launch_loop(self):
+        for mode in ['off', 'external']:
+            process, root = self.run_service(enabled='no', report_mode=mode)
+            self.await_event(root, 'web-start')
+            time.sleep(.2)
+            process.terminate()
+            self.assertEqual(0, process.wait(timeout=5))
+            self.assertNotIn('report-tick', self.events(root))
 
 
 if __name__ == '__main__':

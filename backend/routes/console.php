@@ -2,9 +2,11 @@
 
 use App\Jobs\SyncSocialMetrics;
 use App\Models\MailMessage;
+use App\Models\ReportAutomationCycle;
 use App\Models\SocialConnection;
 use App\Services\AI\Daily\DailyDocumentDispatcher;
 use App\Services\AI\Daily\DailyDocumentService;
+use App\Services\AI\ReportAutomation;
 use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\Mail\MailConfiguration;
 use App\Services\Mail\MailOutbox;
@@ -13,6 +15,32 @@ use App\Services\Social\Analytics\FacebookSamplingDispatcher;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
+use Illuminate\Support\Facades\Schema;
+
+Artisan::command('report-automation:tick', function (ReportAutomation $automation): int {
+    try {
+        $this->info(json_encode($automation->tick(), JSON_THROW_ON_ERROR));
+
+        return 0;
+    } catch (Throwable) {
+        $this->error('REPORT_AUTOMATION_NOT_READY: inspect migration, activation date, actor, queues and feature configuration.');
+
+        return 1;
+    }
+})->purpose('Catch up daily/weekly AI cycles and deliver due mail; never retry ambiguous AI or mail outcomes');
+
+Artisan::command('report-automation:status', function (): void {
+    if (! Schema::hasTable('report_automation_cycles')) {
+        $this->warn('REPORT_AUTOMATION_MIGRATION_REQUIRED');
+
+        return;
+    }
+    $this->table(['Cycle', 'Kind', 'End date', 'Analysis', 'AI state', 'Mail state', 'Next check', 'Error'],
+        ReportAutomationCycle::query()->latest('id')->limit(50)->get()->map(fn ($c) => [$c->id, $c->kind, $c->end_date->toDateString(), $c->analysis_id, $c->status, $c->mail_status, $c->next_check_at, $c->error_code])->all());
+})->purpose('Read automation progress without generating AI or sending mail');
+
+Schedule::command('report-automation:tick')->everyMinute()->withoutOverlapping()
+    ->when(fn () => (bool) config('report_automation.enabled') && config('report_automation.scheduler_mode') === 'external');
 
 Artisan::command('kps-mail:process {--limit=10}', function (MailOutbox $outbox, MailConfiguration $configuration): int {
     if (! config('kps_mail.enabled') || ! config('kps_mail.send_enabled') || ! $configuration->ready()) {
