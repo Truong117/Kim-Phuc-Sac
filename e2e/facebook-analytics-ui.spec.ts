@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { FacebookAnalyticsPost } from "../src/types/facebookAnalytics";
+import type {
+  FacebookAnalyticsPost,
+  FacebookMonthlyReportData,
+} from "../src/types/facebookAnalytics";
 
 async function setup(
   page: Page,
@@ -13,6 +16,7 @@ async function setup(
     age?: boolean;
     review?: "ready" | "blocked" | "conflict";
     contributionPages?: boolean;
+    monthly?: boolean;
   } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
@@ -422,6 +426,7 @@ async function setup(
             ai_enabled: true,
             milestones_enabled: !!(options.age || options.review),
             reviews_enabled: !!options.review,
+            monthly_reports_enabled: !!options.monthly,
             sync: {
               status:
                 options.syncCycle && sync && !cycleDone ? "queued" : "idle",
@@ -1237,4 +1242,257 @@ test("320px review shows insufficient data honestly and the plan fits the viewpo
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBeTruthy();
+});
+
+async function monthlySetup(
+  page: Page,
+  mode: "ready" | "waiting" | "conflict" = "ready",
+) {
+  const requests = await setup(page, { review: "ready", monthly: true });
+  let saved: FacebookMonthlyReportData | null = null;
+  let displayed: FacebookMonthlyReportData;
+  const review = {
+    entry_id: 1,
+    entry_version: 1,
+    from_date: "2026-10-01",
+    to_date: "2026-10-31",
+    previous_from: "2026-09-01",
+    previous_to: "2026-09-30",
+    as_of: "2026-11-10T03:00:00Z",
+    source_hash: "b".repeat(64),
+    catalogue_covered: false,
+    publication: { count: 12, covered: false },
+    quality: {
+      total: 12,
+      statuses: { on_time: 5, missing: 4, late: 2, waiting: 1, due: 0 },
+    },
+    policy: {
+      version: 1,
+      window_minutes: 30,
+      minimum_posts: 5,
+      minimum_coverage: 0.8,
+    },
+    owner: { id: 10001, name: "Người phụ trách kênh" },
+    plan: {
+      version: 0,
+      expected_posts: null,
+      actions: [],
+      updated_at: null,
+      source_changed: false,
+    },
+    groups: [],
+  };
+  const observation = {
+    value: -2,
+    posts: 3,
+    pairs: 4,
+    observed_from: "2026-10-02T03:00:00Z",
+    observed_to: "2026-10-20T03:00:00Z",
+    max_gap_seconds: 172800,
+  };
+  await page.route("**/monthly-report**", async (route) => {
+    const req = route.request(),
+      url = new URL(req.url());
+    requests.push(req.method() + " " + url.pathname);
+    if (req.method() === "POST") {
+      if (mode === "conflict")
+        return route.fulfill({
+          status: 409,
+          json: { message: "Source changed" },
+        });
+      const values = req.postDataJSON();
+      saved = {
+        ...displayed,
+        month: values.month,
+        status: "closed",
+        can_close: false,
+        existing_snapshot: true,
+        notes: values.notes,
+        actions: values.actions,
+        closed_at: "2026-11-10T03:00:00Z",
+        closed_by_name: "Quản lý",
+        snapshot_id: 1,
+      };
+      return route.fulfill({ json: { data: saved } });
+    }
+    const report: FacebookMonthlyReportData = {
+      schema_version: 1,
+      entry_id: 1,
+      entry_version: 1,
+      month: url.searchParams.get("month")!,
+      page_name: "KPS Page",
+      page_id: "100",
+      status: "preview",
+      as_of: "2026-11-10T03:00:00Z",
+      close_available_at: "2026-11-07T17:30:00Z",
+      can_close: mode !== "waiting" && !saved,
+      existing_snapshot: !!saved,
+      limited: true,
+      source_hash: "b".repeat(64),
+      reviews: {
+        likes: { ...review, metric: "likes" },
+        comments: { ...review, metric: "comments" },
+        media_views: { ...review, metric: "media_views" },
+      },
+      activity: {
+        definition: "v27:like",
+        metrics: {
+          likes: observation,
+          comments: { ...observation, value: 0 },
+          media_views: { ...observation, value: null, posts: 0, pairs: 0 },
+        },
+      },
+      notes: "",
+      actions: [],
+      closed_at: null,
+      closed_by_name: null,
+    };
+    displayed = report;
+    return route.fulfill({
+      json: {
+        data: saved && url.searchParams.get("view") !== "live" ? saved : report,
+      },
+    });
+  });
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Báo cáo tháng", exact: true })
+    .click();
+  return requests;
+}
+
+test("monthly closure freezes the report, keeps limits honest and separates later live data", async ({
+  page,
+}) => {
+  const requests = await monthlySetup(page);
+  await expect(
+    page.getByRole("heading", {
+      name: "Đánh giá và chốt báo cáo tháng",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("1. Biến động quan sát trong tháng", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("2. Hiệu quả D7 của bài đăng trong tháng", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", {
+      name: "Nhận xét của người chốt (không phải kết luận AI)",
+      exact: true,
+    })
+    .fill("Chốt số liệu hiện có");
+  await page.getByRole("checkbox").last().check();
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "Chốt và lưu báo cáo tháng", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đã chốt · bản lưu cố định", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Chốt số liệu hiện có", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Chốt và lưu báo cáo tháng",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Xem dữ liệu hiện tại", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đây là dữ liệu hiện tại để đối chiếu.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Chốt và lưu báo cáo tháng",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Xem bản đã chốt", exact: true })
+    .click();
+  await expect(
+    page.getByText("Chốt số liệu hiện có", { exact: true }),
+  ).toBeVisible();
+  expect(
+    requests.filter(
+      (r) => r.startsWith("POST ") && r.endsWith("/monthly-report"),
+    ),
+  ).toHaveLength(1);
+  expect(
+    requests.some((r) => r.includes("/analyses") || r.endsWith("/sync")),
+  ).toBeFalsy();
+});
+
+test("monthly preliminary data and actions fit 320px and unsaved notes warn on leaving", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await monthlySetup(page, "waiting");
+  await expect(
+    page.getByRole("button", {
+      name: "Chốt và lưu báo cáo tháng",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Thêm hành động", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: /Hạn thực hiện:/ }),
+  ).toBeVisible();
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("button", { name: "Tháng trước", exact: true }).click();
+  await expect(
+    page.getByText("Đang xem toàn bộ tháng 2026-10.", { exact: false }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+});
+
+test("monthly stale source preserves notes and requires refresh before another close", async ({
+  page,
+}) => {
+  await monthlySetup(page, "conflict");
+  const notes = page.getByRole("textbox", {
+    name: "Nhận xét của người chốt (không phải kết luận AI)",
+    exact: true,
+  });
+  await notes.fill("Giữ nguyên bản nháp");
+  await page.getByRole("checkbox").last().check();
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "Chốt và lưu báo cáo tháng", exact: true })
+    .click();
+  await expect(
+    page.getByText("Dữ liệu, phân công hoặc bản chốt đã thay đổi.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(notes).toHaveValue("Giữ nguyên bản nháp");
+  await expect(
+    page.getByRole("button", {
+      name: "Chốt và lưu báo cáo tháng",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Tải lại báo cáo tháng", exact: true })
+    .click();
+  await expect(notes).toHaveValue("Giữ nguyên bản nháp");
+  await expect(
+    page.getByRole("button", {
+      name: "Chốt và lưu báo cáo tháng",
+      exact: true,
+    }),
+  ).toBeEnabled();
 });

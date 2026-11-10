@@ -8,6 +8,7 @@ use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\FacebookAnalyticsController;
+use App\Http\Controllers\Integrations\FacebookMonthlyReportController;
 use App\Http\Controllers\Integrations\IntegrationController;
 use App\Http\Controllers\Integrations\MailController;
 use App\Http\Controllers\Integrations\SocialMetricsController;
@@ -80,6 +81,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::prefix('social-analytics/facebook')->group(function (): void {
         Route::get('/pages', [FacebookAnalyticsController::class, 'pages'])->middleware('throttle:60,1,fb-analytics-pages');
         Route::get('/{id}', [FacebookAnalyticsController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-read');
+        Route::get('/{id}/monthly-report', [FacebookMonthlyReportController::class, 'show'])->whereNumber('id')->middleware('throttle:20,1,fb-monthly-read');
+        Route::post('/{id}/monthly-report', [FacebookMonthlyReportController::class, 'close'])->whereNumber('id')->middleware('throttle:5,1,fb-monthly-close');
         Route::get('/{id}/review', [FacebookAnalyticsController::class, 'review'])->whereNumber('id')->middleware('throttle:30,1,fb-review-read');
         Route::put('/{id}/review', [FacebookAnalyticsController::class, 'saveReview'])->whereNumber('id')->middleware('throttle:10,1,fb-review-write');
         Route::get('/{id}/milestones', [FacebookAnalyticsController::class, 'milestones'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-milestones');
