@@ -1249,6 +1249,11 @@ async function monthlySetup(
   mode: "ready" | "waiting" | "conflict" = "ready",
 ) {
   const requests = await setup(page, { review: "ready", monthly: true });
+  await page.clock.setFixedTime(
+    new Date(
+      mode === "waiting" ? "2026-11-01T03:00:00Z" : "2026-11-10T03:00:00Z",
+    ),
+  );
   let saved: FacebookMonthlyReportData | null = null;
   let displayed: FacebookMonthlyReportData;
   const review = {
@@ -1264,7 +1269,13 @@ async function monthlySetup(
     publication: { count: 12, covered: false },
     quality: {
       total: 12,
-      statuses: { on_time: 5, missing: 4, late: 2, waiting: 1, due: 0 },
+      statuses: {
+        on_time: 5,
+        missing: mode === "waiting" ? 4 : 5,
+        late: 2,
+        waiting: mode === "waiting" ? 1 : 0,
+        due: 0,
+      },
     },
     policy: {
       version: 1,
@@ -1367,6 +1378,15 @@ test("monthly closure freezes the report, keeps limits honest and separates late
   page,
 }) => {
   const requests = await monthlySetup(page);
+  await expect(
+    page.getByText("Đang xem toàn bộ tháng 2026-10.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "12 bài trong danh mục · 5 có D7 đúng cửa sổ · 5 thiếu · 2 trễ · 0 chưa qua cửa sổ",
+      { exact: true },
+    ),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "Đánh giá và chốt báo cáo tháng",
