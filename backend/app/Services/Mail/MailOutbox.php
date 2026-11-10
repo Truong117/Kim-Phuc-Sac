@@ -7,6 +7,7 @@ use App\Models\MailMessage;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\User;
+use App\Services\AI\ReportAutomationMailGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Throwable;
@@ -101,6 +102,11 @@ class MailOutbox
             return;
         }
         try {
+            if (! app(ReportAutomationMailGuard::class)->canProcess($message)) {
+                $message->fill(['status' => 'queued', 'started_at' => null, 'attempts' => $message->attempts - 1])->save();
+
+                return;
+            }
             $actor = User::query()->find($message->created_by);
             $membership = $actor === null ? null : $this->access->membership($actor);
             if ($membership === null || (int) $membership->organization_id !== (int) $message->organization_id) {
