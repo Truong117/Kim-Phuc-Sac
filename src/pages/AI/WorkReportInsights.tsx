@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
 import PageMeta from "@/components/common/PageMeta";
@@ -22,6 +22,10 @@ import type {
   AnalysisFilters,
   WorkReportAnalysis,
 } from "@/types/workReportAnalysis";
+import {
+  workAnalysisRoute,
+  workAnalysisSearch,
+} from "@/utils/workAnalysisRoute";
 
 type Tab = "overview" | "employees" | "history" | "sources";
 const tabs: Tab[] = ["overview", "employees", "history", "sources"];
@@ -37,74 +41,92 @@ const DailyDocuments = lazy(() => import("./DailyDocuments"));
 export default function WorkReportInsights() {
   const [params] = useSearchParams();
   const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
-  const daily = params.get("view") === "daily";
+  const today = dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh");
+  const { daily, filters } = workAnalysisRoute(params, today);
+  const sourceLink = params.get("source") === "daily" || params.has("page");
   return (
     <div className="kps-ai-theme">
       <nav aria-label={t("modeLabel")} className="mb-5 flex gap-3 text-sm">
         <Link
-          to="/ai/insights?view=daily"
+          to={`?${workAnalysisSearch({ ...filters, days: 1 })}`}
           aria-current={daily ? "page" : undefined}
           className={`rounded-lg border px-4 py-2 transition-colors focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none ${daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
         >
           {t("dayMode")}
         </Link>
         <Link
-          to="/ai/insights"
+          to={`?${workAnalysisSearch({ ...filters, days: daily ? 7 : filters.days })}`}
           aria-current={!daily ? "page" : undefined}
           className={`rounded-lg border px-4 py-2 transition-colors focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:outline-none ${!daily ? "border-brand-500 bg-brand-500 text-white" : "border-gray-200 text-gray-700 hover:bg-brand-50 hover:text-brand-600 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-brand-900/20 dark:hover:text-brand-300"}`}
         >
           {t("periodMode")}
         </Link>
       </nav>
-      {daily ? (
-        <Suspense fallback={<p role="status">{t("loading")}</p>}>
-          <DailyDocuments />
-        </Suspense>
-      ) : (
-        <PeriodWorkReportInsights />
-      )}
+      <PeriodWorkReportInsights
+        key={`${daily ? "daily" : "period"}:${sourceLink ? "sources" : "analysis"}`}
+        daily={daily}
+      />
     </div>
   );
 }
 
-function PeriodWorkReportInsights() {
+function PeriodWorkReportInsights({ daily }: { daily: boolean }) {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>("overview");
+  const sourceLink = params.get("source") === "daily" || params.has("page");
+  const [tab, setTab] = useState<Tab>(sourceLink ? "sources" : "overview");
+  const [sourceToolsOpen, setSourceToolsOpen] = useState(sourceLink);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number>();
   const today = dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh");
-  const filters: AnalysisFilters = {
-    end_date: params.get("end") ?? addDaysToDateOnly(today, -1),
-    days: Number(params.get("days") ?? 7),
-    department_id: params.get("department")
-      ? Number(params.get("department"))
-      : null,
-  };
-  const historyId = params.get("analysis")
-    ? Number(params.get("analysis"))
-    : null;
+  const { filters, historyId } = workAnalysisRoute(params, today);
   const state = useWorkReportAnalysis(filters, historyId);
   const { preview, run, loading, busy, running } = state;
+  // Saved links may omit (or carry stale) filter parameters. The frozen run owns its period.
+  useEffect(() => {
+    if (!run || historyId === null) return;
+    if (
+      run.period.days !== filters.days ||
+      run.period.end_date !== filters.end_date ||
+      run.department_id !== filters.department_id
+    ) {
+      setParams(
+        workAnalysisSearch(
+          {
+            days: run.period.days,
+            end_date: run.period.end_date,
+            department_id: run.department_id,
+          },
+          run.id,
+        ),
+        { replace: true },
+      );
+    }
+  }, [
+    run,
+    historyId,
+    filters.days,
+    filters.end_date,
+    filters.department_id,
+    setParams,
+  ]);
   const selectRun = (selected: WorkReportAnalysis) => {
     state.clear();
-    setParams({
-      analysis: String(selected.id),
-      end: selected.period.end_date,
-      days: String(selected.period.days),
-      ...(selected.department_id
-        ? { department: String(selected.department_id) }
-        : {}),
-    });
+    setParams(
+      workAnalysisSearch(
+        {
+          days: selected.period.days,
+          end_date: selected.period.end_date,
+          department_id: selected.department_id,
+        },
+        selected.id,
+      ),
+    );
     setTab("overview");
   };
   const updateFilters = (patch: Partial<AnalysisFilters>) => {
     state.clear();
     const next = { ...filters, ...patch };
-    setParams({
-      end: next.end_date,
-      days: String(next.days),
-      ...(next.department_id ? { department: String(next.department_id) } : {}),
-    });
+    setParams(workAnalysisSearch(next));
   };
   const counts = run?.work_counts ?? preview?.work_counts;
   const sources = run?.source_reports ?? preview?.source_reports ?? [];
@@ -130,8 +152,11 @@ function PeriodWorkReportInsights() {
   const isHistory = historyId !== null;
   return (
     <>
-      <PageMeta title={t("metaTitle")} description={t("description")} />
-      <PageBreadCrumb pageTitle={t("title")} />
+      <PageMeta
+        title={t(daily ? "dailyMetaTitle" : "metaTitle")}
+        description={t("description")}
+      />
+      <PageBreadCrumb pageTitle={t(daily ? "dailyTitle" : "title")} />
       <div className="space-y-5">
         <ComponentCard title={t("reader.filters")} compact>
           <details open={!run}>
@@ -160,22 +185,24 @@ function PeriodWorkReportInsights() {
                   <Select
                     id="analysis-period"
                     value={String(filters.days)}
-                    options={[1, 7, 30].map((days) => ({
+                    options={(daily ? [1] : [7, 30]).map((days) => ({
                       value: String(days),
                       label: t("periodDays", { days }),
                     }))}
                     onChange={(value) => updateFilters({ days: Number(value) })}
-                    disabled={busy}
+                    disabled={busy || daily}
                   />
                 </div>
                 <div>
-                  <Label htmlFor="analysis-end">{t("endDate")}</Label>
+                  <Label htmlFor="analysis-end">
+                    {t(daily ? "dailyDate" : "endDate")}
+                  </Label>
                   <KpsDatePicker
                     id="analysis-end"
                     value={filters.end_date}
                     onChange={(end_date) => updateFilters({ end_date })}
-                    ariaLabel={t("endDate")}
-                    placeholder={t("endDate")}
+                    ariaLabel={t(daily ? "dailyDate" : "endDate")}
+                    placeholder={t(daily ? "dailyDate" : "endDate")}
                     maxDate={today}
                     minDate={addDaysToDateOnly(
                       today,
@@ -530,6 +557,39 @@ function PeriodWorkReportInsights() {
                     {t("status.no_data")}
                   </p>
                 )}
+                <details
+                  open={sourceToolsOpen}
+                  onToggle={(event) =>
+                    setSourceToolsOpen(event.currentTarget.open)
+                  }
+                  className="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
+                >
+                  <summary className="cursor-pointer text-sm font-medium text-gray-900 dark:text-white">
+                    {t("dailySourcesTitle")}
+                  </summary>
+                  {sourceToolsOpen && (
+                    <div
+                      role="region"
+                      aria-label={t("dailySourcesTitle")}
+                      className="mt-4 space-y-4"
+                    >
+                      <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
+                        {t("dailySourcesHint")}
+                      </p>
+                      <Suspense fallback={<p role="status">{t("loading")}</p>}>
+                        <DailyDocuments
+                          embedded
+                          initialDate={filters.end_date}
+                          minDate={addDaysToDateOnly(
+                            filters.end_date,
+                            1 - filters.days,
+                          )}
+                          maxDate={filters.end_date}
+                        />
+                      </Suspense>
+                    </div>
+                  )}
+                </details>
               </div>
             )}
           </div>

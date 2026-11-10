@@ -113,6 +113,7 @@ export function dailyMailTemplate(
     view: "daily",
     date: document.source.date,
     page: String(page),
+    source: "daily",
   }).toString();
   chunks.push(
     t("mailTemplates.dailySource", {
