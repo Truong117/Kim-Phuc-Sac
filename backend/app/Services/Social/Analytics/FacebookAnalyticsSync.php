@@ -58,7 +58,7 @@ class FacebookAnalyticsSync
                     $plan = ['binding' => $binding, 'activated_at' => $anchor->toIso8601String(), 'failures' => 0, 'paused' => false];
                 }
                 $plan['last_checked_at'] = $anchor->toIso8601String();
-                $this->sampling->save($state, $plan, $this->sampling->nextCheck($anchor));
+                $this->sampling->save($state, $plan, app(FacebookMilestoneSampling::class)->nextCheck($connection, $anchor, $this->sampling->nextCheck($anchor)));
                 if (($plan['paused'] ?? false) || (isset($plan['retry_after']) && CarbonImmutable::parse($plan['retry_after'])->gt($anchor))) {
                     if (isset($plan['retry_after'])) {
                         $this->sampling->save($state, $plan, CarbonImmutable::parse($plan['retry_after'])->max($anchor->addMinutes(5)));
@@ -77,7 +77,7 @@ class FacebookAnalyticsSync
                 $query = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)
                     ->whereBetween('published_at', [$anchor->setTimezone('Asia/Ho_Chi_Minh')->subDays(89)->startOfDay()->utc(), $anchor]);
                 $discoveryDue = ! $state->catalogue_complete || $state->catalogued_at === null || $state->catalogued_at->lt($this->sampling->slots($anchor)['young']);
-                if (! $discoveryDue && ! $this->sampling->pending($query, $anchor, self::definition())->exists()) {
+                if (! $discoveryDue && ! $this->scheduledPending($query, $anchor, self::definition(), app(FacebookMilestoneSampling::class)->enabled())->exists()) {
                     return null;
                 }
             }
@@ -86,7 +86,7 @@ class FacebookAnalyticsSync
             }
             $runId = (string) Str::uuid();
             $state->fill(['status' => 'queued', 'lease_token' => null, 'leased_until' => null, 'error_code' => null,
-                'counts' => ['mode' => $scheduled ? 'scheduled' : 'manual', 'schedule_anchor' => $anchor->toIso8601String(), 'run_id' => $runId, 'requested_by' => $requestedBy, 'connection_revision' => (int) $connection->revision,
+                'counts' => ['milestone_policy' => app(FacebookMilestoneSampling::class)->enabled() ? FacebookMilestoneSampling::VERSION : null, 'mode' => $scheduled ? 'scheduled' : 'manual', 'schedule_anchor' => $anchor->toIso8601String(), 'run_id' => $runId, 'requested_by' => $requestedBy, 'connection_revision' => (int) $connection->revision,
                     'entry_version' => (int) $entry->version, 'target_bucket' => now()->utc()->startOfHour()->toIso8601String(),
                     'definition' => self::definition(), 'batches_completed' => 0, 'processed_posts' => 0,
                     'from_date' => $state->from_date, 'to_date' => $state->to_date, 'phase' => 'catalogue', 'started_at' => now()->toIso8601String(), 'finished_at' => null]])->save();
@@ -173,19 +173,37 @@ class FacebookAnalyticsSync
             }
             $posts = $this->pending($connection, $state)->orderBy('sampled_at')->orderByDesc('published_at')
                 ->limit(min(10, config('facebook_analytics.samples_per_job')))->get();
+            if (($state->counts['mode'] ?? null) === 'scheduled' && ($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION && app(FacebookMilestoneSampling::class)->enabled()) {
+                $urgent = app(FacebookMilestoneSampling::class)->pending($this->catalogue($connection, $state), CarbonImmutable::parse($state->counts['schedule_anchor']), self::definition())
+                    ->orderBy('published_at')->limit(min(10, config('facebook_analytics.samples_per_job')))->get();
+                $posts = $urgent->concat($posts)->unique('id')->take(min(10, config('facebook_analytics.samples_per_job')));
+            }
             foreach ($posts as $post) {
                 $this->fence($connection, $state, $lease, $entryVersion, $actor);
+                // Earlier calls in a batch may have consumed the age window.
+                if (! $this->pending($connection, $state)->where('facebook_analytics_posts.id', $post->id)->exists()) {
+                    continue;
+                }
+                $started = CarbonImmutable::now();
                 $scheduledFor = null;
                 if (($state->counts['mode'] ?? null) === 'scheduled') {
                     $previous = DB::table('facebook_analytics_samples')->where('post_id', $post->id)->where('definition', self::definition())->exists();
-                    $scheduledFor = $this->sampling->timing($post, CarbonImmutable::parse($state->counts['schedule_anchor']), $state->sampling_schedule['activated_at'] ?? null, ! $previous);
+                    $anchor = CarbonImmutable::parse($state->counts['schedule_anchor']);
+                    $cadenceDue = $this->sampling->pending(DB::table('facebook_analytics_posts')->where('id', $post->id), $anchor, self::definition())->exists();
+                    $scheduledFor = $cadenceDue ? $this->sampling->timing($post, $anchor, $state->sampling_schedule['activated_at'] ?? null, ! $previous)
+                        : app(FacebookMilestoneSampling::class)->target($post, $started);
                 }
                 $metrics = $this->facebook->metrics($connection->access_token, $post->external_id);
-                DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $metrics, $scheduledFor): void {
+                // Bind both storage paths to one completed provider observation, even across a second/hour boundary.
+                $observedAt = CarbonImmutable::now()->utc();
+                DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $metrics, $scheduledFor, $started, $observedAt): void {
                     $this->fence($connection, $state, $lease, $entryVersion, $actor, true);
-                    DB::table('facebook_analytics_samples')->insertOrIgnore(['post_id' => $post->id, 'definition' => self::definition(), 'bucket' => now()->utc()->startOfHour(), 'sampled_at' => now()->utc(), 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR), ...($scheduledFor === null ? [] : ['scheduled_for' => $scheduledFor, 'sampling_late' => $this->sampling->late($scheduledFor, CarbonImmutable::now())])]);
-                    DB::table('facebook_analytics_posts')->where('id', $post->id)->update(['sampled_at' => now()->utc()]);
-                    $state->fill(['sampled_at' => now(), 'counts' => [...$state->counts, 'processed_posts' => (int) ($state->counts['processed_posts'] ?? 0) + 1]])->save();
+                    if (($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION) {
+                        app(FacebookMilestoneSampling::class)->capture($post, $metrics, $started, $observedAt, self::definition());
+                    }
+                    DB::table('facebook_analytics_samples')->insertOrIgnore(['post_id' => $post->id, 'definition' => self::definition(), 'bucket' => $observedAt->startOfHour(), 'sampled_at' => $observedAt, 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR), ...($scheduledFor === null ? [] : ['scheduled_for' => $scheduledFor, 'sampling_late' => $this->sampling->late($scheduledFor, $observedAt)])]);
+                    DB::table('facebook_analytics_posts')->where('id', $post->id)->update(['sampled_at' => $observedAt]);
+                    $state->fill(['sampled_at' => $observedAt, 'counts' => [...$state->counts, 'processed_posts' => (int) ($state->counts['processed_posts'] ?? 0) + 1]])->save();
                     $this->progress($connection, $state);
                 });
             }
@@ -259,12 +277,23 @@ class FacebookAnalyticsSync
     private function pending(SocialConnection $connection, FacebookAnalyticsState $state): Builder
     {
         if (($state->counts['mode'] ?? null) === 'scheduled') {
-            return $this->sampling->pending($this->catalogue($connection, $state), CarbonImmutable::parse($state->counts['schedule_anchor']), $state->counts['definition']);
+            return $this->scheduledPending($this->catalogue($connection, $state), CarbonImmutable::parse($state->counts['schedule_anchor']), $state->counts['definition'],
+                ($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION && app(FacebookMilestoneSampling::class)->enabled());
         }
 
         return $this->catalogue($connection, $state)->whereNotExists(function ($query) use ($state): void {
             $query->selectRaw('1')->from('facebook_analytics_samples')->whereColumn('post_id', 'facebook_analytics_posts.id')
                 ->where('definition', $state->counts['definition'])->where('sampled_at', '>=', CarbonImmutable::parse($state->counts['target_bucket'])->utc());
+        });
+    }
+
+    private function scheduledPending(Builder $query, CarbonImmutable $anchor, string $definition, bool $milestones): Builder
+    {
+        return $query->where(function ($q) use ($anchor, $definition, $milestones): void {
+            $q->where(fn ($cadence) => $this->sampling->pending($cadence, $anchor, $definition));
+            if ($milestones) {
+                $q->orWhere(fn ($age) => app(FacebookMilestoneSampling::class)->pending($age, $anchor, $definition));
+            }
         });
     }
 

@@ -17,10 +17,17 @@ import { useModal } from "@/hooks/useModal";
 import { AiIcon, DocsIcon, GridIcon } from "@/icons";
 import {
   analyzeFacebook,
+  getFacebookAnalyticsPost,
+  saveFacebookClassification,
   saveFacebookTopic,
   syncFacebookAnalytics,
 } from "@/services/facebookAnalyticsService";
-import type { FacebookTopic } from "@/types/facebookAnalytics";
+import type {
+  FacebookTopic,
+  FacebookAnalyticsPost,
+  FacebookObjective,
+  FacebookDistribution,
+} from "@/types/facebookAnalytics";
 import { addDaysToDateOnly, dateOnlyInTimeZone } from "@/utils/dateOnly";
 import { observationDate } from "@/utils/facebookAnalytics";
 
@@ -51,23 +58,91 @@ function Workspace() {
     kind?: "sync" | "ai" | "topic";
   } | null>(null);
   const action = useRef<AbortController | null>(null);
+  const detailRequest = useRef<AbortController | null>(null);
+  const [externalPost, setExternalPost] = useState<{
+    key: string;
+    post: FacebookAnalyticsPost;
+  } | null>(null);
   const api = useFacebookAnalytics(pageId, period.from, period.to);
   const modal = useModal();
-  useEffect(() => () => action.current?.abort(), [api.key]);
+  useEffect(
+    () => () => {
+      action.current?.abort();
+      detailRequest.current?.abort();
+    },
+    [api.key],
+  );
   const data = api.data;
-  const selectedPost = data?.posts.find((p) => p.id === postId);
+  const selectedPost =
+    externalPost?.key === api.key && externalPost.post.id === postId
+      ? externalPost.post
+      : data?.posts.find((p) => p.id === postId);
   const waiting =
     data &&
     ["queued", "running"].includes(data.sync.status) &&
     !data.sync.interrupted;
   const actionBusy = busy === api.key;
-  function openPost(id: number) {
-    if (!data?.posts.some((p) => p.id === id)) {
-      setMessage({ key: api.key, text: t("sourceUnavailable"), error: true });
+  async function openPost(id: number) {
+    if (!api.selected || !data) return;
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    const key = api.key;
+    const cached = data.posts.find((p) => p.id === id);
+    if (cached) {
+      setExternalPost(null);
+      setPostId(id);
+      modal.openModal();
       return;
     }
-    setPostId(id);
-    modal.openModal();
+    try {
+      const response = await getFacebookAnalyticsPost(
+        api.selected.id,
+        id,
+        period.from,
+        period.to,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(45000)]),
+      );
+      if (!controller.signal.aborted && api.current.current === key) {
+        setExternalPost({ key, post: response.data });
+        setPostId(id);
+        modal.openModal();
+      }
+    } catch {
+      if (!controller.signal.aborted && api.current.current === key)
+        setMessage({ key, text: t("sourceUnavailable"), error: true });
+    }
+  }
+  async function classify(values: {
+    objective?: FacebookObjective | null;
+    distribution?: FacebookDistribution | null;
+  }) {
+    if (!api.selected || !selectedPost) return;
+    action.current?.abort();
+    const controller = new AbortController();
+    action.current = controller;
+    const key = api.key,
+      post = selectedPost;
+    setBusy(key);
+    setMessage(null);
+    try {
+      const response = await saveFacebookClassification(
+        api.selected.id,
+        post.id,
+        values,
+        AbortSignal.any([controller.signal, AbortSignal.timeout(45000)]),
+      );
+      if (!controller.signal.aborted && api.current.current === key) {
+        setExternalPost({ key, post: { ...post, ...response.data } });
+        setMessage({ key, text: t("age.classificationSaved") });
+        api.refresh();
+      }
+    } catch {
+      if (!controller.signal.aborted && api.current.current === key)
+        setMessage({ key, text: t("actionError"), error: true });
+    } finally {
+      if (api.current.current === key) setBusy(null);
+    }
   }
   async function mutate(
     kind: "sync" | "ai" | "topic",
@@ -100,6 +175,11 @@ function Workspace() {
                 : "topicSaved",
           ),
         });
+        if (kind === "topic" && selectedPost)
+          setExternalPost({
+            key,
+            post: { ...selectedPost, topic: topic ?? null },
+          });
         api.refresh();
       }
     } catch {
@@ -415,6 +495,7 @@ function Workspace() {
             data={data}
             onClose={modal.closeModal}
             onTopic={(topic) => void mutate("topic", topic)}
+            onClassification={(values) => void classify(values)}
             busy={actionBusy}
           />
         )}

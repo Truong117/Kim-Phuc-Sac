@@ -18,7 +18,7 @@ const LayoutContent: React.FC = () => {
 
       <div
         className={cn(
-          "min-w-0 flex-1 transition-[margin] duration-300 ease-in-out",
+          "min-w-0 flex-1 xl:transition-[margin] xl:duration-300 xl:ease-in-out",
           isExpanded || isHovered ? "xl:ms-72.5" : "xl:ms-22.5",
           isMobileOpen ? "ms-0" : "",
         )}

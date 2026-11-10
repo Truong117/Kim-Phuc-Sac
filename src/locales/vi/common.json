@@ -3286,6 +3286,76 @@
       "hideStatus": "Thu gọn tình trạng dữ liệu",
       "milestoneDetail": "Mốc tuổi bài dự kiến",
       "milestoneDetailNote": "Các mốc dưới đây tính theo giờ đăng. Chưa có mẫu mốc được xác nhận để đánh giá; các số liệu phía trên là quan sát trong kỳ."
+    },
+    "age": {
+      "policy": "D1 = 24 giờ, D3 = 72 giờ, D7 = 168 giờ sau khi đăng. Chấp nhận mẫu trong 30 phút sau mỗi mốc; không dựng lại số liệu đã bỏ lỡ.",
+      "scope": {
+        "matured": "Các bài chạm mốc D7 từ {from} đến {to}, dù ngày đăng nằm ngoài khoảng này.",
+        "published": "Các bài đăng từ {from} đến {to}. Bài chưa đủ 7 ngày sẽ tiếp tục chờ; chưa dùng để kết luận so sánh."
+      },
+      "objective": "Mục tiêu nội dung",
+      "distribution": "Trạng thái quảng cáo",
+      "all": "Tất cả",
+      "objectiveValues": {
+        "unknown": "Chưa phân loại mục tiêu",
+        "awareness": "Nhận biết",
+        "engagement": "Tương tác",
+        "traffic": "Truy cập",
+        "leads": "Khách hàng tiềm năng"
+      },
+      "distributionValues": {
+        "unknown": "Chưa rõ quảng cáo",
+        "organic": "Xác nhận không chạy quảng cáo",
+        "paid": "Có chạy quảng cáo"
+      },
+      "manualNote": "Mục tiêu và quảng cáo do người phụ trách hoặc quản lý xác nhận trong chi tiết bài; hệ thống chưa đối soát Ads. Chỉ nhóm xác nhận không chạy quảng cáo và có mục tiêu mới được so sánh. LIKE và bình luận không đo được truy cập, khách hàng hay doanh thu.",
+      "counts": {
+        "total": "Tổng bài trong nhóm kỳ hiện tại",
+        "ready": "D7 có mẫu trong cửa sổ",
+        "waiting": "D7 chưa tới mốc / đang chờ lấy",
+        "unavailable": "D7 bỏ lỡ / lấy trễ"
+      },
+      "status": {
+        "waiting": "Chưa tới mốc",
+        "due": "Trong cửa sổ, chờ lấy mẫu",
+        "missing": "Bỏ lỡ, không có mẫu",
+        "on_time": "Có mẫu trong cửa sổ",
+        "late": "Lấy trễ, loại khỏi so sánh"
+      },
+      "target": "Mốc: {at}",
+      "actual": "Lấy mẫu: {at}",
+      "delay": "Sau mốc {minutes} phút",
+      "asOf": "Dữ liệu lưu trên hệ thống, cập nhật giao diện lúc {at}. Không gọi Facebook khi mở tab.",
+      "compareTitle": "Trung vị D7 theo nhóm tương đồng",
+      "absoluteChange": "Chênh lệch tuyệt đối: {value}",
+      "comparePolicy": "Cùng Page, loại bài, chủ đề, mục tiêu, trạng thái quảng cáo và định nghĩa chỉ số. Cần ít nhất {n} bài có số liệu mỗi kỳ, độ phủ từ {coverage}% và danh mục đủ cả hai kỳ. Trung vị mô tả nhóm, không phải điểm đánh giá nhân viên.",
+      "previousPeriod": "Kỳ trước liền kề: {from} – {to}.",
+      "period": {
+        "current": "Trung vị kỳ này",
+        "previous": "Trung vị kỳ trước"
+      },
+      "coverage": "{n}/{total} bài · độ phủ {percent}%",
+      "change": "Chênh lệch {difference} · {percent}% so với kỳ trước",
+      "reasons": {
+        "objective_unknown": "Chưa xác nhận mục tiêu; chỉ xem số liệu mô tả.",
+        "distribution_unconfirmed": "Có quảng cáo hoặc chưa rõ quảng cáo; chưa so sánh hiệu quả tự nhiên.",
+        "catalogue_incomplete": "Danh mục chưa đủ phạm vi cả hai kỳ; chưa kết luận so sánh.",
+        "immature": "Còn bài chưa qua cửa sổ D7; chờ đủ tuổi trước khi so sánh.",
+        "small_sample": "Chưa đủ số bài có số liệu cho cả hai kỳ; chưa kết luận tăng/giảm.",
+        "low_coverage": "Độ phủ mẫu chưa đạt; chưa kết luận tăng/giảm.",
+        "zero_baseline": "Trung vị kỳ trước bằng 0; không tính phần trăm tăng/giảm."
+      },
+      "definition": "Định nghĩa chỉ số",
+      "filteredPosts": "Hiển thị {count} bài theo bộ lọc",
+      "loadError": "Không tải được số liệu mốc tuổi bài. Hãy thử tải lại.",
+      "classificationSaved": "Đã cập nhật phân loại bài.",
+      "detailTitle": "Số liệu theo tuổi bài",
+      "detailNote": "Đây là bộ đếm ghi nhận tại mốc tuổi bài, không phải phần tăng trong 1/3/7 ngày. Mẫu trễ chỉ để tham khảo; chỉ số không có dữ liệu để trống.",
+      "metricNames": {
+        "likes": "Lượt thích LIKE tại mốc",
+        "comments": "Bình luận tại mốc",
+        "media_views": "Hiển thị/phát tại mốc"
+      }
     }
   }
 }

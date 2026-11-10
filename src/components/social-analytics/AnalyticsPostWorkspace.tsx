@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import AnalyticsContent from "./AnalyticsContent";
+import AnalyticsAgeMetrics from "./AnalyticsAgeMetrics";
 import AnalyticsMilestones from "./AnalyticsMilestones";
 import type { FacebookAnalyticsData } from "@/types/facebookAnalytics";
 
@@ -35,6 +36,12 @@ export default function AnalyticsPostWorkspace({
       </div>
       {view === "current" ? (
         <AnalyticsContent data={data} onPost={onPost} />
+      ) : data.milestones_enabled ? (
+        <AnalyticsAgeMetrics
+          key={`${data.entry_id}:${data.from_date}:${data.to_date}`}
+          data={data}
+          onPost={onPost}
+        />
       ) : (
         <AnalyticsMilestones data={data} onPost={onPost} />
       )}
