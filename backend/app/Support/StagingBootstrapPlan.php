@@ -47,6 +47,7 @@ final class StagingBootstrapPlan
         '2026_11_09_000000_add_facebook_sampling_schedule',
         '2026_11_09_010000_create_facebook_age_milestones',
         '2026_11_10_000000_create_facebook_review_plans',
+        '2026_11_10_010000_create_facebook_monthly_reports',
     ];
 
     /** @var list<string> */

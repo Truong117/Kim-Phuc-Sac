@@ -19,9 +19,9 @@ class FacebookPeriodReview
         return app(FacebookMilestoneSampling::class)->enabled() && config('facebook_analytics.reviews_enabled');
     }
 
-    public function show(User $actor, IntegrationEntry $entry, string $from, string $to, string $metric): array
+    public function show(User $actor, IntegrationEntry $entry, string $from, string $to, string $metric, string $basis = 'matured', ?string $previousFrom = null, bool $loadPlan = true): array
     {
-        $data = app(FacebookMilestoneRead::class)->show($entry, $from, $to, 'matured');
+        $data = app(FacebookMilestoneRead::class)->show($entry, $from, $to, $basis, $previousFrom);
         $connection = SocialConnection::query()->where('integration_entry_id', $entry->id)->where('organization_id', $entry->organization_id)->first();
         $state = $connection === null ? null : FacebookAnalyticsState::query()->where('social_connection_id', $connection->id)->first();
         $start = CarbonImmutable::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay()->utc();
@@ -57,9 +57,9 @@ class FacebookPeriodReview
                 'current_total' => $group['current']['posts'], 'previous_total' => $group['previous']['posts'],
                 'comparison' => $comparison, 'status' => ! $eligible ? 'insufficient' : ($difference > 0 ? 'improved' : ($difference < 0 ? 'declined' : 'unchanged')), 'evidence' => $evidence];
         }
-        $plan = FacebookAnalyticsReviewPlan::query()->where('organization_id', $entry->organization_id)->where('integration_entry_id', $entry->id)->where('from_date', $from)->where('to_date', $to)->first();
+        $plan = ! $loadPlan ? null : FacebookAnalyticsReviewPlan::query()->where('organization_id', $entry->organization_id)->where('integration_entry_id', $entry->id)->where('from_date', $from)->where('to_date', $to)->first();
         // Independent of display metric and wall-clock refresh; binds actual observations, classifications and catalogue scope.
-        $hash = hash('sha256', json_encode(['v' => 1, 'entry' => $entry->version, 'revision' => $connection?->revision, 'from' => $from, 'to' => $to,
+        $hash = hash('sha256', json_encode(['v' => 1, ...($basis === 'matured' && $previousFrom === null ? [] : ['basis' => $basis, 'previous_from' => $data['previous_from']]), 'entry' => $entry->version, 'revision' => $connection?->revision, 'from' => $from, 'to' => $to,
             'groups' => $data['groups'], 'points' => array_map(fn ($p) => ['id' => $p['id'], 'milestones' => $p['milestones']], $data['posts']),
             'published' => $published, 'publication_covered' => $publicationCovered, 'catalogue_covered' => $data['catalogue_covered']], JSON_THROW_ON_ERROR));
         $owner = $this->owner($entry);

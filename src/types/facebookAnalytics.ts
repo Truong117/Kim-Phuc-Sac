@@ -68,6 +68,7 @@ export interface FacebookAnalyticsData {
   ai_enabled: boolean;
   milestones_enabled?: boolean;
   reviews_enabled?: boolean;
+  monthly_reports_enabled?: boolean;
   sampling?: FacebookSamplingHealth | null;
   sync: {
     status: string;
@@ -251,4 +252,48 @@ export interface FacebookPeriodReviewData {
       point: FacebookMilestone;
     }[];
   }[];
+}
+
+export interface FacebookMonthlyReportData {
+  schema_version: number;
+  entry_id: number;
+  entry_version: number;
+  month: string;
+  page_name: string;
+  page_id: string | null;
+  status: "preview" | "closed";
+  as_of: string;
+  close_available_at: string;
+  can_close: boolean;
+  existing_snapshot: boolean;
+  limited: boolean;
+  source_hash: string;
+  reviews: Record<FacebookMetric, FacebookPeriodReviewData>;
+  activity: {
+    definition: string;
+    metrics: Record<
+      FacebookMetric,
+      {
+        value: number | null;
+        posts: number;
+        pairs: number;
+        observed_from: string | null;
+        observed_to: string | null;
+        max_gap_seconds: number;
+      }
+    >;
+  };
+  notes: string;
+  actions: FacebookReviewAction[];
+  closed_at: string | null;
+  closed_by_name: string | null;
+  snapshot_id?: number;
+}
+export interface FacebookMonthlyCloseInput {
+  month: string;
+  entry_version: number;
+  source_hash: string;
+  notes: string;
+  acknowledge_limits: boolean;
+  actions: FacebookReviewAction[];
 }

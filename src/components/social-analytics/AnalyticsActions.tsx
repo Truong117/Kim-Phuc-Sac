@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import AnalyticsPeriodReview from "./AnalyticsPeriodReview";
+import AnalyticsMonthlyReview from "./AnalyticsMonthlyReview";
 import AnalyticsAiPanel from "./AnalyticsAiPanel";
 import type { FacebookAnalyticsData } from "@/types/facebookAnalytics";
 import { formatDateOnly } from "@/utils/dateOnly";
@@ -30,7 +31,7 @@ export default function AnalyticsActions(props: Props) {
               aria-pressed={mode === key}
               onClick={() => {
                 if (key === mode) return;
-                if (mode === "period" && !props.onLeaveReview()) return;
+                if (!props.onLeaveReview()) return;
                 setMode(key);
               }}
               className={
@@ -67,6 +68,13 @@ export default function AnalyticsActions(props: Props) {
           </p>
           <AnalyticsAiPanel {...props} />
         </>
+      ) : props.data.monthly_reports_enabled ? (
+        <AnalyticsMonthlyReview
+          data={props.data}
+          onPost={props.onPost}
+          onDirtyChange={props.onDirtyChange}
+          onLeaveReview={props.onLeaveReview}
+        />
       ) : (
         <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/3">
           <span className="inline-block rounded-md bg-warning-50 px-2 py-1 text-xs text-warning-800 dark:bg-warning-500/10 dark:text-warning-400">

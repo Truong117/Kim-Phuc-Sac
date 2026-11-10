@@ -12,6 +12,7 @@ if (is_string($samplingEntryList) && $samplingEntryList !== '') {
 
 return [
     'enabled' => (bool) env('FACEBOOK_ANALYTICS_ENABLED', false),
+    'monthly_reports_enabled' => (bool) env('FACEBOOK_ANALYTICS_MONTHLY_REPORTS_ENABLED', false),
     'reviews_enabled' => (bool) env('FACEBOOK_ANALYTICS_REVIEWS_ENABLED', false),
     'milestones_enabled' => (bool) env('FACEBOOK_ANALYTICS_MILESTONES_ENABLED', false),
     'auto_sample_enabled' => (bool) env('FACEBOOK_ANALYTICS_AUTO_SAMPLE_ENABLED', false),

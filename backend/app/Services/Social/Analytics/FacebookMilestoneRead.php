@@ -73,13 +73,13 @@ class FacebookMilestoneRead
         return $result;
     }
 
-    public function show(IntegrationEntry $entry, string $from, string $to, string $basis): array
+    public function show(IntegrationEntry $entry, string $from, string $to, string $basis, ?string $previousFrom = null): array
     {
         $connection = SocialConnection::query()->where('integration_entry_id', $entry->id)->where('organization_id', $entry->organization_id)->first();
         $start = CarbonImmutable::parse($from, 'Asia/Ho_Chi_Minh')->startOfDay()->utc();
         $end = CarbonImmutable::parse($to, 'Asia/Ho_Chi_Minh')->endOfDay()->utc();
         $length = (int) CarbonImmutable::parse($from)->diffInDays(CarbonImmutable::parse($to)) + 1;
-        $previousStart = $start->subDays($length);
+        $previousStart = $previousFrom === null ? $start->subDays($length) : CarbonImmutable::parse($previousFrom, 'Asia/Ho_Chi_Minh')->startOfDay()->utc();
         $previousEnd = $start->subMicrosecond();
         $shift = $basis === 'matured' ? 7 : 0;
         $pubStart = $previousStart->subDays($shift);
