@@ -10,6 +10,7 @@ use App\Services\Social\Analytics\FacebookAnalyticsRead;
 use App\Services\Social\Analytics\FacebookAnalyticsSync;
 use App\Services\Social\Analytics\FacebookMilestoneRead;
 use App\Services\Social\Analytics\FacebookMilestoneSampling;
+use App\Services\Social\Analytics\FacebookPeriodReview;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -116,6 +117,46 @@ class FacebookAnalyticsController extends Controller
         DB::table('facebook_analytics_posts')->where('id', $post)->update($values);
 
         return response()->json(['data' => ['objective' => array_key_exists('objective', $input) ? $input['objective'] : $row->objective, 'distribution' => array_key_exists('distribution', $input) ? $input['distribution'] : $row->distribution]]);
+    }
+
+    public function review(Request $request, int $id, FacebookPeriodReview $reviews): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        abort_unless($reviews->enabled(), 404);
+        $period = $this->period($request);
+        $input = $request->validate(['metric' => ['sometimes', 'in:likes,comments,media_views']]);
+
+        return $this->reviewResponse($reviews->show($request->user(), $entry, $period['from_date'], $period['to_date'], $input['metric'] ?? 'likes'));
+    }
+
+    public function saveReview(Request $request, int $id, FacebookPeriodReview $reviews): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        abort_unless($reviews->enabled(), 404);
+        $period = $this->period($request);
+        $input = $request->validate([
+            'metric' => ['sometimes', 'in:likes,comments,media_views'], 'entry_version' => ['required', 'integer', 'min:1'], 'version' => ['required', 'integer', 'min:0'], 'source_hash' => ['required', 'regex:/^[a-f0-9]{64}$/D'],
+            'expected_posts' => ['present', 'nullable', 'integer', 'between:1,1000'], 'actions' => ['present', 'array', 'list', 'max:3'],
+            'actions.*' => ['array:id,title,expected_result,metric,due_date,review_date,status,result_note'],
+            'actions.*.id' => ['required', 'uuid', 'distinct:ignore_case'], 'actions.*.title' => ['required', 'string', 'max:160'],
+            'actions.*.expected_result' => ['required', 'string', 'max:600'], 'actions.*.metric' => ['present', 'nullable', 'in:likes,comments,media_views'],
+            'actions.*.due_date' => ['required', 'date_format:Y-m-d'], 'actions.*.review_date' => ['required', 'date_format:Y-m-d'],
+            'actions.*.status' => ['required', 'in:planned,doing,done'], 'actions.*.result_note' => ['present', 'nullable', 'string', 'max:1000'],
+        ]);
+        // Nullable empty strings are normalized by Laravel; persist the intended optional note as text.
+        foreach ($input['actions'] as &$action) {
+            $action['result_note'] ??= '';
+        }
+        unset($action);
+
+        return $this->reviewResponse($reviews->save($request->user(), $entry, [...$period, ...$input]));
+    }
+
+    private function reviewResponse(array $data): JsonResponse
+    {
+        abort_if(strlen(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > 4194304, 422, 'Kết quả quá lớn. Hãy giảm khoảng ngày.');
+
+        return response()->json(['data' => $data]);
     }
 
     public function analyze(Request $request, int $id, FacebookAnalyticsRead $read, FacebookAnalyticsAi $ai): JsonResponse

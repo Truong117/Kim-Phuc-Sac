@@ -98,3 +98,28 @@ export function csvCell(value: string | number | null) {
       : raw;
   return '"' + safe.replaceAll('"', '""') + '"';
 }
+
+// Facebook captions do not have a separate title field. Keep the first line;
+// do not invent a summary or send employee content to an AI provider.
+export function facebookPostTitle(message: string, limit = 100): string {
+  const first =
+    message
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) ?? "";
+  const title = first
+    .split(
+      /(?:[-–—_=]\s*){4,}|\b(?:hotline|website|youtube)\s*:|https?:\/\//iu,
+      1,
+    )[0]
+    .replace(/\s+/gu, " ")
+    .trim();
+  const points = Array.from(title || first);
+  if (points.length <= limit) return points.join("");
+  const clipped = points.slice(0, Math.max(1, limit - 1)).join("");
+  const boundary = clipped.lastIndexOf(" ");
+  return (
+    (boundary > limit * 0.65 ? clipped.slice(0, boundary) : clipped).trimEnd() +
+    "…"
+  );
+}

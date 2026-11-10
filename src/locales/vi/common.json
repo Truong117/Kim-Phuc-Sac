@@ -3234,7 +3234,7 @@
       "daySources": "Bài đóng góp vào thay đổi trong ngày",
       "missingPair": "Thiếu cặp mẫu",
       "noDayPairs": "Chưa có cặp mẫu hợp lệ để tính thay đổi cho ngày này. Không thể coi là tăng 0.",
-      "sourceOrder": "Xếp theo độ lớn thay đổi. Mỗi bài được tính một lần; bấm tên bài để xem nguồn số liệu.",
+      "sourceOrder": "Xếp theo độ lớn thay đổi · 5 bài/trang. Tên rút gọn từ dòng đầu caption; bấm để xem nội dung đầy đủ.",
       "extendedIntervals": "Có {count} bài có cặp mẫu cách nhau hơn 24 giờ. Mức thay đổi có thể bao gồm nhiều ngày, được gắn vào ngày lấy mẫu sau.",
       "samplePairs": "{count} cặp mẫu",
       "intervalUnavailable": "Khoảng thời gian chi tiết chưa có trong dữ liệu trả về.",
@@ -3265,7 +3265,8 @@
       "loadedOnly": "Phạm vi là các bài đã tải; mục tiêu nội dung và so sánh D7 sẽ được bổ sung sau khi chuẩn hóa mốc.",
       "reviewModes": {
         "period": "Nhận xét trong kỳ",
-        "month": "Báo cáo tháng"
+        "month": "Báo cáo tháng",
+        "observations": "AI diễn biến quan sát"
       },
       "aiCurrentScope": "Nhận xét hiện tại dựa trên các khoảng quan sát của kỳ đã chọn. Đánh giá cùng tuổi D7 và bản chốt tháng đang được chuẩn bị.",
       "monthTitle": "Đánh giá tháng theo hai góc nhìn",
@@ -3356,6 +3357,80 @@
         "comments": "Bình luận tại mốc",
         "media_views": "Hiển thị/phát tại mốc"
       }
+    },
+    "period": {
+      "mode": "Đánh giá & kế hoạch kỳ",
+      "title": "Đánh giá theo kỳ và việc cần làm tiếp theo",
+      "scope": "Dùng khoảng ngày đã chọn; mặc định 7 ngày gần nhất. Kết quả được tính trực tiếp từ mẫu D7, không tạo nhận xét AI tự động.",
+      "policy": "Chỉ so sánh nhóm tương đồng đủ số bài và độ phủ. Đây là thay đổi đã ghi nhận, không chứng minh nguyên nhân hay dùng để chấm điểm nhân viên.",
+      "sampling": "Lấy mẫu: {status} · Mẫu thành công gần nhất: {at}",
+      "loadFailed": "Không tải được đánh giá. Hãy tải lại; các nội dung đang sửa vẫn được giữ.",
+      "previous": "Kỳ trước liền kề: {from} – {to}.",
+      "counts": {
+        "published": "Bài đăng trong kỳ đã tải",
+        "onTime": "Bài có mẫu D7 trong cửa sổ",
+        "missingLate": "D7 bỏ lỡ hoặc lấy trễ",
+        "eligible": "Nhóm đủ điều kiện so sánh"
+      },
+      "cadenceTitle": "Nhịp đăng bài và chỉ tiêu đã khai báo",
+      "partialPublication": "Danh mục bài đăng chưa đủ kỳ; số đã tải chưa thể dùng để kết luận đạt chỉ tiêu.",
+      "noTarget": "Chưa khai báo số bài dự kiến cho kỳ này. Chưa đánh giá đạt hay thiếu số lượng.",
+      "targetProgress": "Đã ghi nhận {actual}/{expected} bài; còn thiếu {gap} bài so với chỉ tiêu đã khai báo.",
+      "cadenceNote": "Số bài đăng thuộc kỳ đang xem. Các nhóm D7 bên dưới tính theo ngày đạt D7 và có thể gồm bài đăng trước kỳ. Chưa đối chiếu tự động với kế hoạch tuần.",
+      "waiting": "Còn {count} bài chưa qua cửa sổ D7 trong nhóm đang đánh giá.",
+      "findings": "Kết quả và bài làm căn cứ",
+      "notEnough": "Chưa có nhóm nào đủ điều kiện so sánh. Hãy xem lý do của từng nhóm, hoàn thiện phân loại và tiếp tục lấy mẫu; chưa kết luận kênh tăng hay giảm hiệu quả.",
+      "groupStatus": {
+        "improved": "Trung vị D7 tăng trong nhóm này",
+        "declined": "Trung vị D7 giảm trong nhóm này",
+        "unchanged": "Trung vị D7 chưa thay đổi trong nhóm này",
+        "insufficient": "Chưa đủ điều kiện kết luận"
+      },
+      "evidenceNote": "Các bài dưới đây thuộc nhóm có mẫu hợp lệ, không phải bảng xếp hạng toàn Page. Một bài có thể xuất hiện ở nhiều vai trò.",
+      "evidenceKinds": {
+        "typical": "Bài gần trung vị",
+        "highest": "Giá trị cao nhất trong nhóm",
+        "lowest": "Giá trị thấp nhất trong nhóm"
+      },
+      "planTitle": "Kế hoạch hành động sau đánh giá",
+      "planNote": "Chọn tối đa 3 việc cần làm. Ghi rõ điều muốn kiểm chứng và ngày xem lại; đánh dấu đã thực hiện không có nghĩa thử nghiệm đã đạt hiệu quả. Đây là kế hoạch riêng của kỳ và kênh, chưa tự tạo công việc hay gửi thông báo.",
+      "owner": "Người chịu trách nhiệm theo phân công kênh hiện tại: {name}",
+      "noOwner": "Chưa có người phụ trách đang hoạt động",
+      "ownerNeeded": "Cần quản lý cập nhật người phụ trách đang hoạt động trước khi thêm hành động.",
+      "expectedPosts": "Số bài dự kiến của kỳ đang xem",
+      "actionNumber": "Hành động {number}",
+      "expected_result": "Kết quả mong muốn / giả thuyết cần kiểm chứng",
+      "measure": "Chỉ số để xem lại",
+      "operational": "Hoàn thiện dữ liệu / vận hành",
+      "metricNames": {
+        "likes": "Trung vị LIKE tại D7",
+        "comments": "Trung vị bình luận tại D7",
+        "media_views": "Trung vị hiển thị/phát tại D7"
+      },
+      "actionStatus": "Tiến độ thực hiện",
+      "actionStatuses": {
+        "planned": "Chưa thực hiện",
+        "doing": "Đang thực hiện",
+        "done": "Đã thực hiện"
+      },
+      "due_date": "Hạn thực hiện",
+      "review_date": "Ngày xem lại kết quả",
+      "resultNote": "Ghi nhận kết quả thực tế / điều cần kiểm tra thêm",
+      "remove": "Bỏ hành động",
+      "addAction": "Thêm hành động",
+      "save": "Lưu kế hoạch",
+      "saving": "Đang lưu…",
+      "saved": "Đã lưu kế hoạch của kỳ và kênh này.",
+      "saveFailed": "Chưa xác nhận lưu thành công. Nội dung vẫn được giữ; hãy tải lại căn cứ trước khi thử lưu tiếp.",
+      "conflict": "Kênh, dữ liệu hoặc kế hoạch đã thay đổi. Tải lại căn cứ để kiểm tra; nếu người khác đã sửa, chọn dùng bản máy chủ trước khi tiếp tục. Nội dung bạn nhập chưa bị xóa.",
+      "sourceChanged": "Dữ liệu căn cứ khác lần lưu kế hoạch gần nhất. Rà soát lại hành động theo dữ liệu mới.",
+      "refreshSource": "Tải lại căn cứ",
+      "useServer": "Dùng bản máy chủ",
+      "discardConfirm": "Thay nội dung đang sửa bằng bản máy chủ? Các thay đổi chưa lưu sẽ bị bỏ.",
+      "unsaved": "Có thay đổi chưa lưu. Tải lại căn cứ không ghi đè nội dung đang sửa.",
+      "lastSaved": "Lần lưu kế hoạch gần nhất: {at}",
+      "leaveConfirm": "Kế hoạch hành động chưa được lưu. Rời khỏi phần này và bỏ thay đổi?",
+      "actionTitle": "Việc cần làm"
     }
   }
 }
