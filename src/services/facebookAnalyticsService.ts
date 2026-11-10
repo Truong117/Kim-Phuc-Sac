@@ -1,3 +1,7 @@
+import type {
+  FacebookMonthlyReportData,
+  FacebookMonthlyCloseInput,
+} from "@/types/facebookAnalytics";
 import { apiRequest } from "./apiClient";
 import type {
   FacebookAnalyticsData,
@@ -124,3 +128,23 @@ export const saveFacebookReviewPlan = (
     body: JSON.stringify(values),
     signal,
   });
+
+export const getFacebookMonthlyReport = (
+  id: number,
+  month: string,
+  live: boolean,
+  signal?: AbortSignal,
+) =>
+  apiRequest<{ data: FacebookMonthlyReportData }>(
+    `${root}/${id}/monthly-report?${new URLSearchParams({ month, view: live ? "live" : "saved" })}`,
+    { signal },
+  );
+export const closeFacebookMonthlyReport = (
+  id: number,
+  values: FacebookMonthlyCloseInput,
+  signal?: AbortSignal,
+) =>
+  apiRequest<{ data: FacebookMonthlyReportData }>(
+    `${root}/${id}/monthly-report`,
+    { method: "POST", body: JSON.stringify(values), signal },
+  );
