@@ -1,12 +1,21 @@
 import { expect, test, type Page } from "@playwright/test";
+import type { FacebookAnalyticsPost } from "../src/types/facebookAnalytics";
 
 async function setup(
   page: Page,
-  options: { empty?: boolean; delayed?: boolean; syncCycle?: boolean } = {},
+  options: {
+    empty?: boolean;
+    delayed?: boolean;
+    syncCycle?: boolean;
+    sampling?: "waiting" | "overdue" | "off";
+    sources?: boolean;
+    milestones?: boolean;
+    age?: boolean;
+  } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
   const requests: string[] = [];
-  const posts = [
+  const posts: FacebookAnalyticsPost[] = [
     {
       id: 1,
       external_id: "100_555",
@@ -24,7 +33,20 @@ async function setup(
       current: { likes: 20, comments: 3, media_views: null },
       observed_delta: { likes: 10, comments: 2, media_views: null },
       trend: [
-        { date: "2026-11-06", likes: 10, comments: 2, media_views: null },
+        {
+          date: "2026-11-06",
+          likes: 10,
+          comments: 2,
+          media_views: null,
+          intervals: {
+            likes: {
+              from: "2026-11-05T03:00:00Z",
+              to: "2026-11-06T03:00:00Z",
+              pairs: 1,
+              max_gap_seconds: 86400,
+            },
+          },
+        },
       ],
     },
     {
@@ -46,6 +68,60 @@ async function setup(
       trend: [],
     },
   ];
+  if (options.sources || options.milestones || options.age)
+    posts[0].published_at = "2026-10-30T03:00:00Z";
+  if (options.sources) {
+    const interval = posts[0].trend[0].intervals?.likes;
+    if (!interval) throw new Error("Missing source interval fixture");
+    interval.from = "2026-11-04T03:00:00Z";
+    interval.max_gap_seconds = 172800;
+    posts.push({
+      ...posts[1],
+      id: 3,
+      message: "Bài có mức giảm",
+      trend: [
+        { date: "2026-11-06", likes: -10, comments: null, media_views: null },
+      ],
+    });
+    posts.push({
+      ...posts[1],
+      id: 4,
+      message: "Bài không thay đổi",
+      trend: [
+        { date: "2026-11-06", likes: 0, comments: null, media_views: null },
+      ],
+    });
+  }
+  const agePoints = Object.fromEntries(
+    ([1, 3, 7] as const).map((day) => {
+      const due = new Date(
+        new Date(posts[0].published_at).getTime() + day * 86400000,
+      ).toISOString();
+      return [
+        `D${day}`,
+        {
+          day,
+          due_at: due,
+          status: day === 3 ? "missing" : "on_time",
+          sampled_at: day === 3 ? null : due,
+          delay_seconds: day === 3 ? null : 0,
+          definition: "v27:like",
+          source: "milestone",
+          metrics: {
+            likes: day === 1 ? 0 : day === 3 ? null : 20,
+            comments: 2,
+            media_views: null,
+          },
+        },
+      ];
+    }),
+  ) as NonNullable<FacebookAnalyticsPost["milestones"]>;
+  if (options.age)
+    Object.assign(posts[0], {
+      objective: "engagement",
+      distribution: "organic",
+      milestones: agePoints,
+    });
   let analysis = false;
   let sync = false;
   let syncReads = 0;
@@ -97,6 +173,107 @@ async function setup(
       sync = true;
       return route.fulfill({ status: 202, json: { message: "Queued" } });
     }
+    if (path.endsWith("/milestones") && options.age) {
+      const statistic = {
+        posts: 5,
+        waiting: 0,
+        metrics: {
+          likes: { median: 20, posts: 5, coverage: 1 },
+          comments: { median: 2, posts: 5, coverage: 1 },
+          media_views: { median: null, posts: 0, coverage: 0 },
+        },
+      };
+      return route.fulfill({
+        json: {
+          data: {
+            basis: url.searchParams.get("basis"),
+            from_date: url.searchParams.get("from_date"),
+            to_date: url.searchParams.get("to_date"),
+            previous_from: "2026-10-25",
+            previous_to: "2026-10-31",
+            as_of: "2026-11-07T03:00:00Z",
+            catalogue_covered: true,
+            policy: {
+              version: 1,
+              window_minutes: 30,
+              minimum_posts: 5,
+              minimum_coverage: 0.8,
+            },
+            posts: [
+              { ...posts[0] },
+              {
+                ...posts[0],
+                id: 99,
+                message: "Bài D7 ngoài danh sách quan sát",
+                milestones: {
+                  ...agePoints,
+                  D7: {
+                    ...agePoints.D7,
+                    status: "late",
+                    delay_seconds: 2400,
+                    sampled_at: "2026-11-06T03:40:00Z",
+                  },
+                },
+              },
+            ],
+            groups: [
+              {
+                identity: {
+                  type: "reel",
+                  topic: "education",
+                  objective: posts[0].objective,
+                  distribution: posts[0].distribution,
+                  definition: "v27:like",
+                },
+                current: statistic,
+                previous: {
+                  ...statistic,
+                  metrics: {
+                    ...statistic.metrics,
+                    likes: { median: 10, posts: 5, coverage: 1 },
+                  },
+                },
+                comparison: {
+                  likes: { percent: 100, difference: 10, reason: null },
+                  comments: {
+                    percent: null,
+                    difference: 0,
+                    reason: "zero_baseline",
+                  },
+                  media_views: {
+                    percent: null,
+                    difference: null,
+                    reason: "small_sample",
+                  },
+                },
+              },
+            ],
+          },
+        },
+      });
+    }
+    if (/\/posts\/99$/.test(path) && options.age)
+      return route.fulfill({
+        json: {
+          data: {
+            ...posts[0],
+            id: 99,
+            message: "Bài D7 ngoài danh sách quan sát",
+            milestones: agePoints,
+          },
+        },
+      });
+    if (path.endsWith("/classification") && options.age) {
+      Object.assign(posts[0], req.postDataJSON());
+      return route.fulfill({
+        json: {
+          data: {
+            objective: posts[0].objective,
+            distribution: posts[0].distribution,
+          },
+        },
+      });
+    }
     if (path.endsWith("/analyses")) {
       analysis = true;
       return route.fulfill({
@@ -127,6 +304,7 @@ async function setup(
             principal_available: true,
             can_manage: true,
             ai_enabled: true,
+            milestones_enabled: !!options.age,
             sync: {
               status:
                 options.syncCycle && sync && !cycleDone ? "queued" : "idle",
@@ -156,6 +334,20 @@ async function setup(
                     }
                   : null,
             },
+            sampling: options.sampling
+              ? {
+                  enabled: options.sampling !== "off",
+                  status: options.sampling,
+                  total_posts: 12,
+                  due_posts: options.sampling === "overdue" ? 3 : 0,
+                  overdue_posts: options.sampling === "overdue" ? 2 : 0,
+                  never_sampled_posts: 1,
+                  late_posts: 2,
+                  last_checked_at: "2026-11-07T02:05:00Z",
+                  last_sampled_at: "2026-11-07T02:10:00Z",
+                  next_check_at: "2026-11-07T14:00:00Z",
+                }
+              : undefined,
             summary: {
               published: 2,
               previous_published: null,
@@ -265,7 +457,7 @@ test("Facebook analytics uses real API state, shared calendar, filters, post evi
       ),
     )
     .toBeTruthy();
-  await page.getByRole("tab", { name: "Nội dung", exact: true }).click();
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Tìm trong nội dung bài…" })
     .fill("không tồn tại");
@@ -311,7 +503,9 @@ test("mobile analytics keeps navigation usable, missing metrics and AI evidence 
   await expect(
     page.getByRole("status").filter({ hasText: "Đã xếp hàng đồng bộ" }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Nhận xét AI", exact: true }).click();
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
   await page
     .getByRole("button", { name: "Tạo / cập nhật nhận xét AI", exact: true })
     .click();
@@ -366,7 +560,7 @@ test("changing pages cannot display a delayed response from the previous page", 
     .selectOption("2");
   await expect(page.getByText("Người phụ trách: Nhân viên hai")).toBeVisible();
   await expect.poll(() => requests.includes("DELAY_RELEASED")).toBeTruthy();
-  await page.getByRole("tab", { name: "Nội dung", exact: true }).click();
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
   await expect(
     page.getByText("Không có bài phù hợp.", { exact: false }),
   ).toBeVisible();
@@ -421,7 +615,11 @@ test("analytics stays within the app shell on desktop, tablet and phone across a
   await setup(page);
   for (const width of [1440, 1280, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const name of ["Tổng quan", "Nội dung", "Nhận xét AI"]) {
+    for (const name of [
+      "Diễn biến Page",
+      "Hiệu quả bài",
+      "Đánh giá & hành động",
+    ]) {
       await page.getByRole("tab", { name, exact: true }).click();
       await expect
         .poll(
@@ -490,4 +688,282 @@ test("one sync request follows progress until completion and distinguishes the s
   expect(
     requests.filter((r) => r.startsWith("POST ") && r.endsWith("/sync")),
   ).toHaveLength(1);
+});
+
+test("automatic sampling shows real timestamps, cadence and data health", async ({
+  page,
+}) => {
+  await setup(page, { sampling: "waiting" });
+  const details = page
+    .locator("details")
+    .filter({ hasText: "Lịch lấy mẫu tự động" });
+  await expect(details.locator("summary")).toContainText(
+    "Đang chờ lịch tiếp theo",
+  );
+  await details.locator("summary").click();
+  await expect(
+    details.getByText("Bộ điều phối kiểm tra gần nhất", { exact: true }),
+  ).toBeVisible();
+  await expect(details.getByText("09:10", { exact: false })).toBeVisible();
+  await expect(
+    details
+      .getByText("Lần kiểm tra dự kiến tiếp theo", { exact: true })
+      .locator("..")
+      .getByText("21:00", { exact: false }),
+  ).toBeVisible();
+  await expect(details.getByRole("status")).toContainText(
+    "12 bài; 0 bài đến hạn",
+  );
+  await expect(details).toContainText(
+    "Không tái tạo số liệu cho các thời điểm đã bỏ lỡ",
+  );
+});
+
+test("overdue sampling opens its explanation and fits a phone viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, { sampling: "overdue" });
+  const details = page
+    .locator("details")
+    .filter({ hasText: "Lịch lấy mẫu tự động" });
+  await expect(details).toHaveAttribute("open", "");
+  await expect(details.getByRole("status")).toContainText(
+    "3 bài đến hạn, trong đó 2 bài quá hạn",
+  );
+  await expect(details).toContainText("Kiểm tra worker, hàng đợi");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+});
+
+test("disabled automatic sampling still permits manual sync", async ({
+  page,
+}) => {
+  const requests = await setup(page, { sampling: "off" });
+  const details = page
+    .locator("details")
+    .filter({ hasText: "Lịch lấy mẫu tự động" });
+  await details.locator("summary").click();
+  await expect(details).toContainText("Bạn vẫn có thể đồng bộ thủ công");
+  await page.getByRole("button", { name: "Đồng bộ Page", exact: true }).click();
+  await expect
+    .poll(() =>
+      requests.some((r) => r === "POST /api/social-analytics/facebook/1/sync"),
+    )
+    .toBeTruthy();
+});
+
+test("Page chart exposes contributors, zero net change and extended intervals without claiming daily activity", async ({
+  page,
+}) => {
+  await setup(page, { sources: true });
+  await page
+    .getByRole("combobox", { name: "Ngày cần xem bài đóng góp" })
+    .selectOption("2026-11-06");
+  const sources = page.getByRole("region", {
+    name: "Bài đóng góp vào thay đổi trong ngày",
+  });
+  await expect(sources).toContainText("3 bài có cặp mẫu");
+  await expect(sources).toContainText("cách nhau hơn 24 giờ");
+  await expect(sources).toContainText("Bài có mức giảm");
+  await expect(sources).toContainText("-10");
+  await expect(sources).toContainText("Bài không thay đổi");
+  await sources
+    .getByRole("button", { name: "Routine tối giản cho làn da", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Chi tiết nội dung Facebook" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("combobox", { name: "Ngày cần xem bài đóng góp" })
+    .selectOption("2026-11-05");
+  await expect(sources).toContainText("Không thể coi là tăng 0");
+});
+test("milestone UI distinguishes waiting age and unclassified historical milestones without fake D7 scores", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, { milestones: true });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await expect(
+    page.getByText("Các mốc D1/D3/D7 chưa được xác nhận", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText("Mốc D7 chưa xác nhận", { exact: true })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Đăng trong kỳ", exact: true })
+    .click();
+  await expect(
+    page
+      .getByText("Chờ đến", { exact: false })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Báo cáo tháng", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Đánh giá tháng theo hai góc nhìn" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Hiện chưa có kết quả chấm điểm tháng", { exact: false }),
+  ).toBeVisible();
+});
+
+test("real age view shows actual windows, missing and late data, grouped medians and scoped classification", async ({
+  page,
+}) => {
+  const requests = await setup(page, { age: true });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Trung vị D7 theo nhóm tương đồng" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Chênh lệch 10 · 100% so với kỳ trước"),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Lấy trễ, loại khỏi so sánh").filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Bỏ lỡ, không có mẫu").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Bài D7 ngoài danh sách quan sát",
+      exact: true,
+    })
+    .filter({ visible: true })
+    .click();
+  const detail = page.getByRole("dialog", {
+    name: "Chi tiết nội dung Facebook",
+  });
+  await expect(detail).toBeVisible();
+  await detail
+    .getByRole("combobox", { name: "Mục tiêu nội dung", exact: true })
+    .selectOption("traffic");
+  await expect
+    .poll(() =>
+      requests.some(
+        (r) =>
+          r ===
+          "PATCH /api/social-analytics/facebook/1/posts/99/classification",
+      ),
+    )
+    .toBeTruthy();
+  await expect(
+    detail.getByRole("combobox", { name: "Mục tiêu nội dung", exact: true }),
+  ).toHaveValue("traffic");
+  await detail.getByRole("button", { name: "Đóng", exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByText("Lấy trễ, loại khỏi so sánh").filter({ visible: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
+});
+test("age requests use cohort basis and filters without triggering provider sync", async ({
+  page,
+}) => {
+  const requests = await setup(page, { age: true });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Trung vị D7 theo nhóm tương đồng" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Đăng trong kỳ", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      requests.some(
+        (r) => r.includes("/milestones?") && r.includes("basis=published"),
+      ),
+    )
+    .toBeTruthy();
+  await page
+    .getByRole("combobox", { name: "Chỉ số", exact: true })
+    .selectOption("media_views");
+  await expect(
+    page
+      .getByText("Chưa đủ số bài có số liệu cho cả hai kỳ", { exact: false })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  expect(
+    requests.some((r) => r.startsWith("POST") || r.includes("/analyses")),
+  ).toBeFalsy();
+});
+
+test("late age response cannot replace a newer publication cohort", async ({
+  page,
+}) => {
+  await setup(page, { age: true });
+  await page.route("**/facebook/1/milestones?**", async (route) => {
+    const url = new URL(route.request().url());
+    const old = url.searchParams.get("basis") === "matured";
+    if (old) await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fulfill({
+      json: {
+        data: {
+          basis: old ? "matured" : "published",
+          from_date: "2026-11-01",
+          to_date: "2026-11-07",
+          previous_from: "2026-10-25",
+          previous_to: "2026-10-31",
+          as_of: "2026-11-07T03:00:00Z",
+          catalogue_covered: !old,
+          policy: {
+            version: 1,
+            window_minutes: 30,
+            minimum_posts: 5,
+            minimum_coverage: 0.8,
+          },
+          posts: [],
+          groups: [],
+        },
+      },
+    });
+  });
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Theo mốc D1 / D3 / D7", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Đăng trong kỳ", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Trung vị D7 theo nhóm tương đồng" }),
+  ).toBeVisible();
+  await page.waitForTimeout(650);
+  await expect(
+    page.getByText(
+      "Danh mục chưa đủ phạm vi cả hai kỳ; chưa kết luận so sánh.",
+      { exact: true },
+    ),
+  ).toHaveCount(0);
 });

@@ -10,6 +10,13 @@ export interface FacebookAnalyticsPage {
 }
 export interface FacebookTrendPoint extends FacebookMetricValues {
   date: string;
+  intervals?: Partial<Record<FacebookMetric, FacebookObservationInterval>>;
+}
+export interface FacebookObservationInterval {
+  from: string;
+  to: string;
+  pairs: number;
+  max_gap_seconds: number;
 }
 export interface FacebookAnalyticsPost {
   id: number;
@@ -19,6 +26,9 @@ export interface FacebookAnalyticsPost {
   picture: string | null;
   type: "reel" | "video" | "photo" | "post";
   topic: FacebookTopic | null;
+  objective?: FacebookObjective | null;
+  distribution?: FacebookDistribution | null;
+  milestones?: Record<FacebookMilestoneKey, FacebookMilestone>;
   published_at: string;
   report_ids: number[];
   definition: string | null;
@@ -56,6 +66,8 @@ export interface FacebookAnalyticsData {
   principal_available: boolean;
   can_manage: boolean;
   ai_enabled: boolean;
+  milestones_enabled?: boolean;
+  sampling?: FacebookSamplingHealth | null;
   sync: {
     status: string;
     interrupted: boolean;
@@ -99,4 +111,88 @@ export interface FacebookAnalyticsData {
   };
   posts: FacebookAnalyticsPost[];
   analysis: FacebookAnalyticsAnalysis | null;
+}
+
+export interface FacebookSamplingHealth {
+  enabled: boolean;
+  status:
+    | "off"
+    | "blocked"
+    | "paused"
+    | "queued"
+    | "running"
+    | "overdue"
+    | "unconfirmed"
+    | "waiting";
+  total_posts: number;
+  due_posts: number;
+  overdue_posts: number;
+  never_sampled_posts: number;
+  late_posts: number;
+  last_checked_at: string | null;
+  next_check_at: string | null;
+  last_sampled_at: string | null;
+}
+
+export type FacebookObjective =
+  "awareness" | "engagement" | "traffic" | "leads";
+export type FacebookDistribution = "organic" | "paid";
+export type FacebookMilestoneKey = "D1" | "D3" | "D7";
+export interface FacebookMilestone {
+  day: number;
+  due_at: string;
+  status: "waiting" | "due" | "missing" | "on_time" | "late";
+  sampled_at: string | null;
+  delay_seconds: number | null;
+  definition: string | null;
+  source: "periodic" | "milestone" | null;
+  metrics: FacebookMetricValues;
+}
+export interface FacebookMilestonePost {
+  id: number;
+  message: string;
+  url: string;
+  type: FacebookAnalyticsPost["type"];
+  topic: FacebookTopic | null;
+  objective: FacebookObjective | null;
+  distribution: FacebookDistribution | null;
+  published_at: string;
+  milestones: Record<FacebookMilestoneKey, FacebookMilestone>;
+}
+export interface FacebookMilestoneGroup {
+  identity: Pick<
+    FacebookMilestonePost,
+    "type" | "topic" | "objective" | "distribution"
+  > & { definition: string };
+  current: FacebookCohortStatistics;
+  previous: FacebookCohortStatistics;
+  comparison: Record<
+    FacebookMetric,
+    { reason: string | null; difference: number | null; percent: number | null }
+  >;
+}
+export interface FacebookCohortStatistics {
+  posts: number;
+  waiting: number;
+  metrics: Record<
+    FacebookMetric,
+    { median: number | null; posts: number; coverage: number }
+  >;
+}
+export interface FacebookMilestoneData {
+  basis: "matured" | "published";
+  from_date: string;
+  to_date: string;
+  previous_from: string;
+  previous_to: string;
+  as_of: string;
+  catalogue_covered: boolean;
+  policy: {
+    version: number;
+    window_minutes: number;
+    minimum_posts: number;
+    minimum_coverage: number;
+  };
+  posts: FacebookMilestonePost[];
+  groups: FacebookMilestoneGroup[];
 }

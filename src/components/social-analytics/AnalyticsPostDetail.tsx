@@ -1,26 +1,35 @@
 import { createPortal } from "react-dom";
-import { useId, useMemo } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { Modal } from "@/components/ui/modal";
 import Button from "@/components/ui/button/Button";
+import AnalyticsMilestoneValue from "./AnalyticsMilestoneValue";
 import AnalyticsTrend from "./AnalyticsTrend";
 import type {
   FacebookAnalyticsData,
   FacebookAnalyticsPost,
   FacebookTopic,
+  FacebookObjective,
+  FacebookDistribution,
+  FacebookMetric,
 } from "@/types/facebookAnalytics";
 import {
   analyticsNumber,
   analyticsSeries,
   facebookTopics,
   observationDate,
+  postMilestoneAt,
 } from "@/utils/facebookAnalytics";
 interface Props {
   post: FacebookAnalyticsPost;
   data: FacebookAnalyticsData;
   onClose: () => void;
   onTopic: (topic: FacebookTopic | null) => void;
+  onClassification: (values: {
+    objective?: FacebookObjective | null;
+    distribution?: FacebookDistribution | null;
+  }) => void;
   busy: boolean;
 }
 export default function AnalyticsPostDetail({
@@ -28,10 +37,13 @@ export default function AnalyticsPostDetail({
   data,
   onClose,
   onTopic,
+  onClassification,
   busy,
 }: Props) {
   const { t } = useTranslation("common", { keyPrefix: "facebookAnalytics" });
   const title = useId();
+  const [milestoneMetric, setMilestoneMetric] =
+    useState<FacebookMetric>("likes");
   const points = useMemo(
     () => analyticsSeries([post], data.from_date, data.to_date),
     [post, data.from_date, data.to_date],
@@ -99,6 +111,41 @@ export default function AnalyticsPostDetail({
             ))}
           </select>
         </label>
+        {data.milestones_enabled && (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["objective", "distribution"] as const).map((key) => (
+                <label
+                  key={key}
+                  className="space-y-2 text-sm text-gray-600 dark:text-gray-300"
+                >
+                  <span className="block">{t(`age.${key}`)}</span>
+                  <select
+                    value={post[key] ?? ""}
+                    disabled={busy}
+                    onChange={(e) =>
+                      onClassification({ [key]: e.target.value || null })
+                    }
+                    className="w-full rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    <option value="">{t(`age.${key}Values.unknown`)}</option>
+                    {(key === "objective"
+                      ? ["awareness", "engagement", "traffic", "leads"]
+                      : ["organic", "paid"]
+                    ).map((v) => (
+                      <option key={v} value={v}>
+                        {t(`age.${key}Values.${v}`)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              {t("age.manualNote")}
+            </p>
+          </div>
+        )}
         <div className="grid grid-cols-3 gap-3">
           {(["likes", "comments", "media_views"] as const).map((k) => (
             <div key={k} className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800">
@@ -119,6 +166,65 @@ export default function AnalyticsPostDetail({
             to: observationDate(post.observed_to),
           })}
         </p>
+        <section className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+          <h3 className="text-sm font-medium text-gray-800 dark:text-gray-100">
+            {t(
+              data.milestones_enabled
+                ? "age.detailTitle"
+                : "review.milestoneDetail",
+            )}
+          </h3>
+          <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+            {t(
+              data.milestones_enabled
+                ? "age.detailNote"
+                : "review.milestoneDetailNote",
+            )}
+          </p>
+          {post.milestones && (
+            <label className="block space-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <span>{t("metric")}</span>
+              <select
+                value={milestoneMetric}
+                onChange={(e) =>
+                  setMilestoneMetric(e.target.value as FacebookMetric)
+                }
+                className="h-10 w-full rounded-lg border border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-900"
+              >
+                {(["likes", "comments", "media_views"] as const).map((k) => (
+                  <option value={k} key={k}>
+                    {t(`age.metricNames.${k}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {([1, 3, 7] as const).map((days) => (
+              <div
+                key={days}
+                className="min-w-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-800"
+              >
+                <span className="text-xs font-semibold text-kps-primary dark:text-brand-300">
+                  D{days}
+                </span>
+                {!post.milestones && (
+                  <p className="mt-1 text-xs break-words text-gray-500 dark:text-gray-400">
+                    {observationDate(postMilestoneAt(post.published_at, days))}
+                  </p>
+                )}
+                {post.milestones ? (
+                  <AnalyticsMilestoneValue
+                    point={post.milestones[`D${days}`]}
+                    metric={milestoneMetric}
+                  />
+                ) : (
+                  <p className="mt-1 text-lg text-gray-400">—</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
         <AnalyticsTrend metric="likes" points={points} />
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
           {t("trendPolicy")}
