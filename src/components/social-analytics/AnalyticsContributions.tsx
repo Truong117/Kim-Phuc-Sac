@@ -9,6 +9,7 @@ import {
   analyticsNumber,
   observationDate,
   trendContributors,
+  facebookPostTitle,
 } from "@/utils/facebookAnalytics";
 import { formatDateOnly } from "@/utils/dateOnly";
 
@@ -30,9 +31,9 @@ export default function AnalyticsContributions({
     () => trendContributors(data.posts, date, metric),
     [data.posts, date, metric],
   );
-  const count = Math.max(1, Math.ceil(rows.length / 25)),
+  const count = Math.max(1, Math.ceil(rows.length / 5)),
     current = Math.min(page, count);
-  const visible = rows.slice((current - 1) * 25, current * 25);
+  const visible = rows.slice((current - 1) * 5, current * 5);
   const value = rows.length ? rows.reduce((n, r) => n + r.value, 0) : null;
   const extended = rows.filter(
     (r) => r.interval && r.interval.max_gap_seconds > 86400,
@@ -78,9 +79,9 @@ export default function AnalyticsContributions({
                   <button
                     type="button"
                     onClick={() => onPost(post.id)}
-                    className="line-clamp-2 max-w-full text-start text-sm font-medium break-words text-kps-primary underline underline-offset-2 dark:text-brand-300"
+                    className="block w-full truncate text-start text-sm font-medium break-words text-kps-primary underline underline-offset-2 dark:text-brand-300"
                   >
-                    {post.message || t("untitled")}
+                    {facebookPostTitle(post.message) || t("untitled")}
                   </button>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                     {t("types." + post.type)} ·{" "}

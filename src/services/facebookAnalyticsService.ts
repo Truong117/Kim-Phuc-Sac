@@ -7,6 +7,9 @@ import type {
   FacebookMilestoneData,
   FacebookObjective,
   FacebookDistribution,
+  FacebookPeriodReviewData,
+  FacebookReviewAction,
+  FacebookMetric,
 } from "@/types/facebookAnalytics";
 const root = "/api/social-analytics/facebook";
 export const getFacebookAnalyticsPages = (signal?: AbortSignal) =>
@@ -87,6 +90,37 @@ export const saveFacebookClassification = (
     };
   }>(`${root}/${id}/posts/${post}/classification`, {
     method: "PATCH",
+    body: JSON.stringify(values),
+    signal,
+  });
+
+export const getFacebookPeriodReview = (
+  id: number,
+  from: string,
+  to: string,
+  metric: FacebookMetric,
+  signal?: AbortSignal,
+) =>
+  apiRequest<{ data: FacebookPeriodReviewData }>(
+    `${root}/${id}/review?${new URLSearchParams({ from_date: from, to_date: to, metric })}`,
+    { signal },
+  );
+export const saveFacebookReviewPlan = (
+  id: number,
+  values: {
+    from_date: string;
+    to_date: string;
+    metric: FacebookMetric;
+    entry_version: number;
+    version: number;
+    source_hash: string;
+    expected_posts: number | null;
+    actions: FacebookReviewAction[];
+  },
+  signal?: AbortSignal,
+) =>
+  apiRequest<{ data: FacebookPeriodReviewData }>(`${root}/${id}/review`, {
+    method: "PUT",
     body: JSON.stringify(values),
     signal,
   });

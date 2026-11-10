@@ -67,6 +67,7 @@ export interface FacebookAnalyticsData {
   can_manage: boolean;
   ai_enabled: boolean;
   milestones_enabled?: boolean;
+  reviews_enabled?: boolean;
   sampling?: FacebookSamplingHealth | null;
   sync: {
     status: string;
@@ -195,4 +196,59 @@ export interface FacebookMilestoneData {
   };
   posts: FacebookMilestonePost[];
   groups: FacebookMilestoneGroup[];
+}
+
+export interface FacebookReviewAction {
+  id: string;
+  title: string;
+  expected_result: string;
+  metric: FacebookMetric | null;
+  due_date: string;
+  review_date: string;
+  status: "planned" | "doing" | "done";
+  result_note: string;
+}
+export interface FacebookReviewPlan {
+  version: number;
+  expected_posts: number | null;
+  actions: FacebookReviewAction[];
+  updated_at: string | null;
+  source_changed: boolean;
+}
+export interface FacebookPeriodReviewData {
+  entry_id: number;
+  entry_version: number;
+  from_date: string;
+  to_date: string;
+  metric: FacebookMetric;
+  previous_from: string;
+  previous_to: string;
+  as_of: string;
+  source_hash: string;
+  catalogue_covered: boolean;
+  publication: { count: number; covered: boolean };
+  quality: {
+    total: number;
+    statuses: Record<FacebookMilestone["status"], number>;
+  };
+  policy: FacebookMilestoneData["policy"];
+  owner: { id: number; name: string } | null;
+  plan: FacebookReviewPlan;
+  groups: {
+    id: string;
+    identity: FacebookMilestoneGroup["identity"];
+    current: FacebookCohortStatistics["metrics"][FacebookMetric];
+    previous: FacebookCohortStatistics["metrics"][FacebookMetric];
+    current_total: number;
+    previous_total: number;
+    comparison: FacebookMilestoneGroup["comparison"][FacebookMetric];
+    status: "improved" | "declined" | "unchanged" | "insufficient";
+    evidence: {
+      kind: "typical" | "highest" | "lowest";
+      id: number;
+      message: string;
+      published_at: string;
+      point: FacebookMilestone;
+    }[];
+  }[];
 }

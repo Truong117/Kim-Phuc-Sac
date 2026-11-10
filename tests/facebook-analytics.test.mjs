@@ -125,3 +125,26 @@ test("post age milestones follow the original publication instant across calenda
     "2026-12-04T16:15:00.000Z",
   );
 });
+
+test("post labels use the real first line, omit footer noise and truncate without breaking emoji", () => {
+  assert.equal(
+    exports.facebookPostTitle("\n  Tiêu đề bài viết\nNội dung chi tiết"),
+    "Tiêu đề bài viết",
+  );
+  assert.equal(
+    exports.facebookPostTitle(
+      "Cách chăm sóc da ------- KIM PHỤC SẮC Hotline: 0123",
+    ),
+    "Cách chăm sóc da",
+  );
+  assert.equal(
+    exports.facebookPostTitle(
+      "Tiêu đề Hotline: 0123 Website: https://example.test",
+    ),
+    "Tiêu đề",
+  );
+  const title = exports.facebookPostTitle("✨ ".repeat(100));
+  assert.ok(Array.from(title).length <= 100);
+  assert.ok(title.endsWith("…"));
+  assert.equal(exports.facebookPostTitle(""), "");
+});
