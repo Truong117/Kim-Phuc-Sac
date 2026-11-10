@@ -98,7 +98,7 @@ function sampleRun(
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
-    days?: 1 | 7;
+    days?: 1 | 7 | 30;
   } = {},
 ): WorkReportAnalysis {
   const employees = [employee(7, "Nhân viên A"), employee(8, "Nhân viên B")];
@@ -116,7 +116,12 @@ function sampleRun(
     id: 41,
     status: options.partial ? "partial" : "completed",
     period: {
-      start_date: options.days === 1 ? "2026-11-01" : "2026-10-26",
+      start_date:
+        options.days === 1
+          ? "2026-11-01"
+          : options.days === 30
+            ? "2026-10-03"
+            : "2026-10-26",
       end_date: "2026-11-01",
       days: options.days ?? 7,
       timezone: "Asia/Ho_Chi_Minh",
@@ -172,10 +177,16 @@ function sampleRun(
       },
     ],
     errors: options.truncated
-      ? [{ unit_key: "employee:8:1", code: "AI_OUTPUT_TRUNCATED", max_output_tokens: 6000 }]
+      ? [
+          {
+            unit_key: "employee:8:1",
+            code: "AI_OUTPUT_TRUNCATED",
+            max_output_tokens: 6000,
+          },
+        ]
       : options.partial
-      ? [{ unit_key: "employee:8:1", code: "AI_INVALID_EVIDENCE" }]
-      : [],
+        ? [{ unit_key: "employee:8:1", code: "AI_INVALID_EVIDENCE" }]
+        : [],
     can_retry: Boolean(options.partial) && !options.truncated,
     can_regenerate: false,
     created_at: "2026-11-02T00:00:00Z",
@@ -192,7 +203,7 @@ async function setup(
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
-    days?: 1 | 7;
+    days?: 1 | 7 | 30;
   } = {},
 ) {
   let run = sampleRun(options);
@@ -207,13 +218,20 @@ async function setup(
         body: request.postData() ? request.postDataJSON() : null,
       });
       run = {
-        ...sampleRun(),
+        ...sampleRun({
+          ...options,
+          partial: false,
+          truncated: false,
+          changed: false,
+        }),
         id: options.changed ? 42 : 41,
         reused_employee_units: options.changed ? 1 : 0,
       };
       return route.fulfill({ status: 202, json: { data: run } });
     }
-    if (path === root + "/preview")
+    if (path === root + "/preview") {
+      const days = Number(url.searchParams.get("days")) as 1 | 7 | 30;
+      if (days !== run.period.days) run = sampleRun({ ...options, days });
       return route.fulfill({
         json: {
           data: {
@@ -229,6 +247,7 @@ async function setup(
           },
         },
       });
+    }
     if (path === root + "/history")
       return route.fulfill({ json: { data: [run] } });
     if (path === root + "/" + run.id)
@@ -468,13 +487,158 @@ for (const days of [1, 7] as const) {
   });
 }
 
-
-test("output truncation shows the saved limit without a misleading permission error or paid retry", async ({ page }) => {
+test("output truncation shows the saved limit without a misleading permission error or paid retry", async ({
+  page,
+}) => {
   const posts = await setup(page, { partial: true, truncated: true });
-  await expect(page.getByText(/AI đã chạm giới hạn đầu ra 6000 token/)).toBeVisible();
-  await expect(page.getByText(/Kiểm tra quyền, cấu hình và nhật ký trạng thái/)).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Thử lại phần lỗi (có thể phát sinh phí)", exact: true })).not.toBeVisible();
+  await expect(
+    page.getByText(/AI đã chạm giới hạn đầu ra 6000 token/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Kiểm tra quyền, cấu hình và nhật ký trạng thái/),
+  ).not.toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Thử lại phần lỗi (có thể phát sinh phí)",
+      exact: true,
+    }),
+  ).not.toBeVisible();
   await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
-  await expect(employeePanel(page, "Nhân viên A").getByRole("heading", { name: "Tổng hợp từ báo cáo", exact: true })).toBeVisible();
+  await expect(
+    employeePanel(page, "Nhân viên A").getByRole("heading", {
+      name: "Tổng hợp từ báo cáo",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(posts).toEqual([]);
+});
+
+test("daily tab reuses the whole analysis screen; switching modes preserves the date and removes period-one duplication", async ({
+  page,
+}) => {
+  const posts = await setup(page, { days: 1 });
+  const daily = page.getByRole("link", { name: "Theo ngày", exact: true });
+  const periodic = page.getByRole("link", {
+    name: "Theo kỳ / báo cáo tuần",
+    exact: true,
+  });
+  await expect(daily).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "Phân tích báo cáo ngày", exact: true }),
+  ).toBeVisible();
+  for (const name of [
+    "Toàn công ty",
+    "Theo nhân viên",
+    "Lịch sử phân tích",
+    "Báo cáo nguồn",
+  ])
+    await expect(page.getByRole("tab", { name, exact: true })).toBeVisible();
+  await expect(page.locator("#analysis-period")).toHaveValue("1");
+  await expect(page.locator("#analysis-period")).toBeDisabled();
+  await periodic.click();
+  await expect(periodic).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#analysis-period option[value='1']")).toHaveCount(
+    0,
+  );
+  await expect(page.locator("#analysis-period option[value='7']")).toHaveCount(
+    1,
+  );
+  await expect(page.locator("#analysis-period option[value='30']")).toHaveCount(
+    1,
+  );
+  const filters = page
+    .locator("details")
+    .filter({ has: page.locator("#analysis-period") });
+  if ((await filters.getAttribute("open")) === null)
+    await filters.locator("summary").click();
+  await page.locator("#analysis-period").selectOption("30");
+  await expect(page).toHaveURL(/end=2026-11-01&days=30/);
+  await daily.click();
+  await expect(daily).toHaveAttribute("aria-current", "page");
+  await expect(page).toHaveURL(/view=daily&end=2026-11-01&days=1/);
+  await page.goBack();
+  await expect(periodic).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("#analysis-period")).toHaveValue("30");
+  expect(posts).toEqual([]);
+});
+
+test("legacy daily date and saved one-day mail links open the same reader without creating AI work", async ({
+  page,
+}) => {
+  const posts = await setup(page, { days: 1 });
+  await page.goto("/ai/insights?view=daily&date=2026-11-01");
+  await expect(
+    page.getByRole("heading", { name: "1. Kết quả trong kỳ", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Theo ngày", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.goto("/ai/insights?analysis=41&end=2026-11-01&days=1");
+  await page.reload();
+  await expect(
+    page.getByRole("link", { name: "Theo ngày", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "1. Kết quả trong kỳ", exact: true }),
+  ).toBeVisible();
+  expect(posts).toEqual([]);
+});
+
+test("a saved run owns its period when a historical link omits or carries the wrong mode", async ({
+  page,
+}) => {
+  const posts = await setup(page, { days: 1 });
+  await page.goto("/ai/insights?analysis=41");
+  await expect(page).toHaveURL(/view=daily&analysis=41&end=2026-11-01&days=1/);
+  await expect(
+    page.getByRole("link", { name: "Theo ngày", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "1. Kết quả trong kỳ", exact: true }),
+  ).toBeVisible();
+  expect(posts).toEqual([]);
+});
+
+test("manual daily creation uses the one-day engine and does not request a daily-document batch", async ({
+  page,
+}) => {
+  const posts = await setup(page, { days: 1 });
+  await page
+    .getByRole("button", { name: "Tạo / mở phân tích", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "1. Kết quả trong kỳ", exact: true }),
+  ).toBeVisible();
+  expect(posts).toEqual([
+    {
+      path: root,
+      body: { end_date: "2026-11-01", days: 1, department_id: null },
+    },
+  ]);
+});
+
+test("selecting a weekly result from shared daily history activates the period tab and keeps that saved result", async ({
+  page,
+}) => {
+  const posts = await setup(page, { days: 1 });
+  const weekly = { ...sampleRun(), id: 42 };
+  await page.route("**/api/ai/work-report-analyses/history", (route) =>
+    route.fulfill({ json: { data: [weekly] } }),
+  );
+  await page.route("**/api/ai/work-report-analyses/42", (route) =>
+    route.fulfill({ json: { data: weekly } }),
+  );
+  await page
+    .getByRole("tab", { name: "Lịch sử phân tích", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Xem kết quả", exact: true }).click();
+  await expect(page).toHaveURL(/analysis=42&end=2026-11-01&days=7/);
+  await expect(
+    page.getByRole("link", { name: "Theo kỳ / báo cáo tuần", exact: true }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "1. Kết quả trong kỳ", exact: true }),
+  ).toBeVisible();
   expect(posts).toEqual([]);
 });

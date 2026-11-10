@@ -114,7 +114,30 @@ test("focused daily reader shows AI groups and retries only the failed part", as
       });
     }
   });
-  await page.goto("/ai/insights?view=daily&date=2026-11-02");
+  await page.route("**/api/ai/work-report-analyses/preview?**", (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          enabled: true,
+          mode: "fake",
+          departments: [],
+          max_days_back: 365,
+          work_counts: {
+            reports: 0,
+            items: 0,
+            completed: 0,
+            in_progress: 0,
+            blocked: 0,
+          },
+          employees: [],
+          source_reports: [],
+          run: null,
+          latest_attempt: null,
+        },
+      },
+    }),
+  );
+  await page.goto("/ai/insights?view=daily&date=2026-11-02&source=daily");
   await expect(page.getByRole("link", { name: /Báo cáo #7/ })).toHaveAttribute(
     "href",
     "/reports/7",

@@ -17,24 +17,67 @@ import {
 import type { DailyDocumentBatch } from "@/types/dailyDocument";
 import { dateOnlyInTimeZone, isDateOnly } from "@/utils/dateOnly";
 
-export default function DailyDocuments() {
+interface DailyDocumentsProps {
+  embedded?: boolean;
+  initialDate?: string;
+  minDate?: string;
+  maxDate?: string;
+}
+
+export default function DailyDocuments({
+  embedded = false,
+  initialDate,
+  minDate,
+  maxDate,
+}: DailyDocumentsProps) {
   const { t } = useTranslation("common", { keyPrefix: "dailyDocuments" });
   const [params, setParams] = useSearchParams();
   const today = dateOnlyInTimeZone(new Date(), "Asia/Ho_Chi_Minh");
-  const date = isDateOnly(params.get("date") ?? "")
-    ? params.get("date")!
-    : today;
-  const page = Math.max(1, Math.min(10000, Number(params.get("page")) || 1));
+  const candidate = embedded
+    ? (params.get("source_date") ?? initialDate ?? today)
+    : (params.get("date") ?? today);
+  const date =
+    isDateOnly(candidate) &&
+    (!minDate || candidate >= minDate) &&
+    (!maxDate || candidate <= maxDate)
+      ? candidate
+      : (initialDate ?? today);
+  const page = Math.max(
+    1,
+    Math.min(
+      10000,
+      Number(
+        params.get(embedded ? "source_page" : "page") ?? params.get("page"),
+      ) || 1,
+    ),
+  );
   // Remount on date/page selection to discard action error state from the prior view.
   return (
     <DailyDocumentsView
       key={`${date}:${page}`}
       date={date}
-      today={today}
+      today={maxDate ?? today}
+      minDate={minDate}
+      embedded={embedded}
       page={page}
-      onSelect={(next, nextPage) =>
-        setParams({ view: "daily", date: next, page: String(nextPage) })
-      }
+      onSelect={(next, nextPage) => {
+        if (embedded) {
+          setParams((current) => {
+            const updated = new URLSearchParams(current);
+            updated.set("source", "daily");
+            updated.set("source_date", next);
+            updated.set("source_page", String(nextPage));
+            return updated;
+          });
+        } else {
+          setParams({
+            view: "daily",
+            date: next,
+            page: String(nextPage),
+            source: "daily",
+          });
+        }
+      }}
       t={t}
     />
   );
@@ -42,12 +85,16 @@ export default function DailyDocuments() {
 function DailyDocumentsView({
   date,
   today,
+  minDate,
+  embedded,
   page,
   onSelect,
   t,
 }: {
   date: string;
   today: string;
+  minDate?: string;
+  embedded: boolean;
   page: number;
   onSelect: (date: string, page: number) => void;
   t: ReturnType<typeof useTranslation>["t"];
@@ -72,10 +119,17 @@ function DailyDocumentsView({
   }
   return (
     <>
-      <PageMeta title={t("title")} description={t("description")} />
-      <PageBreadCrumb pageTitle={t("title")} />
+      {!embedded && (
+        <>
+          <PageMeta title={t("title")} description={t("description")} />
+          <PageBreadCrumb pageTitle={t("title")} />
+        </>
+      )}
       <div className="space-y-5">
-        <ComponentCard title={t("title")} desc={t("description")}>
+        <ComponentCard
+          title={t(embedded ? "sourceTitle" : "title")}
+          desc={t("description")}
+        >
           <label
             htmlFor="daily-doc-date"
             className="mb-2 block text-sm text-gray-700 dark:text-gray-300"
@@ -89,6 +143,7 @@ function DailyDocumentsView({
             ariaLabel={t("date")}
             placeholder={t("date")}
             maxDate={today}
+            minDate={minDate}
             disabled={busy}
           />
           <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">

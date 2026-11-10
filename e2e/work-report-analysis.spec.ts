@@ -106,6 +106,9 @@ test("work-report analysis: create, employees, source item, shared history, relo
   expect(creates).toBe(1);
 
   await page.getByRole("button", { name: "Xem dữ liệu hiện tại" }).click();
+  await page
+    .getByRole("link", { name: "Theo kỳ / báo cáo tuần", exact: true })
+    .click();
   for (const [days, expected] of [
     [7, 2],
     [30, 3],
