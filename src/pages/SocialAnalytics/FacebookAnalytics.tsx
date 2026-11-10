@@ -13,6 +13,7 @@ import AnalyticsPostDetail from "@/components/social-analytics/AnalyticsPostDeta
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthorization } from "@/hooks/useAuthorization";
 import { useFacebookAnalytics } from "@/hooks/useFacebookAnalytics";
+import { useWeeklyPlanV3NavigationSafety } from "@/utils/weeklyPlanV3NavigationSafety";
 import { useModal } from "@/hooks/useModal";
 import { AiIcon, DocsIcon, GridIcon } from "@/icons";
 import {
@@ -48,6 +49,13 @@ function Workspace() {
     to: today,
   }));
   const [period, setPeriod] = useState(draft);
+  const [reviewDirty, setReviewDirty] = useState(false);
+  useWeeklyPlanV3NavigationSafety(reviewDirty, t("period.leaveConfirm"));
+  function leaveReview() {
+    if (reviewDirty && !window.confirm(t("period.leaveConfirm"))) return false;
+    setReviewDirty(false);
+    return true;
+  }
   const [tab, setTab] = useState("overview");
   const [postId, setPostId] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -251,6 +259,7 @@ function Workspace() {
                   <select
                     value={api.selected?.id ?? ""}
                     onChange={(e) => {
+                      if (!leaveReview()) return;
                       setPageId(Number(e.target.value));
                       modal.closeModal();
                     }}
@@ -313,6 +322,9 @@ function Workspace() {
                         });
                         return;
                       }
+                      if (draft.from === period.from && draft.to === period.to)
+                        return;
+                      if (!leaveReview()) return;
                       setPeriod(draft);
                     }}
                   >
@@ -427,7 +439,9 @@ function Workspace() {
                       aria-selected={tab === key}
                       aria-controls="fb-panel"
                       tabIndex={tab === key ? 0 : -1}
-                      onClick={() => setTab(key)}
+                      onClick={() => {
+                        if (key !== tab && leaveReview()) setTab(key);
+                      }}
                       onKeyDown={(e) => {
                         if (
                           ["ArrowLeft", "ArrowRight", "Home", "End"].includes(
@@ -444,6 +458,7 @@ function Workspace() {
                                     (e.key === "ArrowRight" ? 1 : -1) +
                                     tabs.length) %
                                   tabs.length;
+                          if (tabs[next][0] === tab || !leaveReview()) return;
                           setTab(tabs[next][0]);
                           document
                             .getElementById(`fb-tab-${tabs[next][0]}`)
@@ -482,6 +497,8 @@ function Workspace() {
                       onPost={openPost}
                       busy={actionBusy}
                       onGenerate={() => void mutate("ai")}
+                      onDirtyChange={setReviewDirty}
+                      onLeaveReview={leaveReview}
                     />
                   )}
                 </div>

@@ -11,6 +11,8 @@ async function setup(
     sources?: boolean;
     milestones?: boolean;
     age?: boolean;
+    review?: "ready" | "blocked" | "conflict";
+    contributionPages?: boolean;
   } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
@@ -68,7 +70,7 @@ async function setup(
       trend: [],
     },
   ];
-  if (options.sources || options.milestones || options.age)
+  if (options.sources || options.milestones || options.age || options.review)
     posts[0].published_at = "2026-10-30T03:00:00Z";
   if (options.sources) {
     const interval = posts[0].trend[0].intervals?.likes;
@@ -92,6 +94,18 @@ async function setup(
       ],
     });
   }
+  if (options.contributionPages)
+    for (let i = 1; i <= 7; i++)
+      posts.push({
+        ...posts[0],
+        id: 100 + i,
+        message:
+          `Tiêu đề ngắn ${i}\n` +
+          "Nội dung dài cần giữ trong chi tiết. ".repeat(30),
+        trend: [
+          { date: "2026-11-06", likes: i, comments: null, media_views: null },
+        ],
+      });
   const agePoints = Object.fromEntries(
     ([1, 3, 7] as const).map((day) => {
       const due = new Date(
@@ -116,12 +130,28 @@ async function setup(
       ];
     }),
   ) as NonNullable<FacebookAnalyticsPost["milestones"]>;
-  if (options.age)
+  if (options.age || options.review)
     Object.assign(posts[0], {
       objective: "engagement",
       distribution: "organic",
       milestones: agePoints,
     });
+  let reviewPlan = {
+    version: 0,
+    expected_posts: null as number | null,
+    actions: [] as {
+      id: string;
+      title: string;
+      expected_result: string;
+      metric: string | null;
+      due_date: string;
+      review_date: string;
+      status: string;
+      result_note: string;
+    }[],
+    updated_at: null as string | null,
+    source_changed: false,
+  };
   let analysis = false;
   let sync = false;
   let syncReads = 0;
@@ -172,6 +202,92 @@ async function setup(
     if (path.endsWith("/sync")) {
       sync = true;
       return route.fulfill({ status: 202, json: { message: "Queued" } });
+    }
+    if (path.endsWith("/review") && options.review) {
+      if (req.method() === "PUT") {
+        if (options.review === "conflict") {
+          reviewPlan = { ...reviewPlan, version: 1, expected_posts: 15 };
+          return route.fulfill({
+            status: 409,
+            json: { message: "Kế hoạch đã đổi" },
+          });
+        }
+        const values = req.postDataJSON();
+        reviewPlan = {
+          ...reviewPlan,
+          version: reviewPlan.version + 1,
+          expected_posts: values.expected_posts,
+          actions: values.actions,
+          updated_at: "2026-11-07T03:00:00Z",
+        };
+      }
+      const blocked = options.review === "blocked",
+        selected =
+          url.searchParams.get("metric") ??
+          req.postDataJSON()?.metric ??
+          "likes";
+      return route.fulfill({
+        json: {
+          data: {
+            entry_id: 1,
+            entry_version: 1,
+            from_date: "2026-11-01",
+            to_date: "2026-11-07",
+            metric: selected,
+            previous_from: "2026-10-25",
+            previous_to: "2026-10-31",
+            as_of: "2026-11-07T03:00:00Z",
+            source_hash: "a".repeat(64),
+            catalogue_covered: !blocked,
+            publication: { count: 12, covered: !blocked },
+            quality: {
+              total: 5,
+              statuses: { on_time: 5, missing: 0, late: 0, due: 0, waiting: 0 },
+            },
+            policy: {
+              version: 1,
+              window_minutes: 30,
+              minimum_posts: 5,
+              minimum_coverage: 0.8,
+            },
+            owner: { id: 10001, name: "Người phụ trách kênh" },
+            plan: reviewPlan,
+            groups: [
+              {
+                id: "g1",
+                identity: {
+                  type: "reel",
+                  topic: "education",
+                  objective: "engagement",
+                  distribution: "organic",
+                  definition: "v27:like",
+                },
+                current: { median: 20, posts: 5, coverage: 1 },
+                previous: { median: 10, posts: 5, coverage: 1 },
+                current_total: 5,
+                previous_total: 5,
+                comparison: {
+                  reason: blocked ? "catalogue_incomplete" : null,
+                  difference: blocked ? null : 10,
+                  percent: blocked ? null : 100,
+                },
+                status: blocked ? "insufficient" : "improved",
+                evidence: blocked
+                  ? []
+                  : [
+                      {
+                        kind: "typical",
+                        id: 1,
+                        message: posts[0].message,
+                        published_at: posts[0].published_at,
+                        point: agePoints.D7,
+                      },
+                    ],
+              },
+            ],
+          },
+        },
+      });
     }
     if (path.endsWith("/milestones") && options.age) {
       const statistic = {
@@ -304,7 +420,8 @@ async function setup(
             principal_available: true,
             can_manage: true,
             ai_enabled: true,
-            milestones_enabled: !!options.age,
+            milestones_enabled: !!(options.age || options.review),
+            reviews_enabled: !!options.review,
             sync: {
               status:
                 options.syncCycle && sync && !cycleDone ? "queued" : "idle",
@@ -966,4 +1083,158 @@ test("late age response cannot replace a newer publication cohort", async ({
       { exact: true },
     ),
   ).toHaveCount(0);
+});
+
+test("chart contributors paginate by five and keep full captions only in detail", async ({
+  page,
+}) => {
+  await setup(page, { contributionPages: true });
+  const sources = page.getByRole("region", {
+    name: "Bài đóng góp vào thay đổi trong ngày",
+  });
+  await expect(sources.getByRole("article")).toHaveCount(5);
+  await expect(sources).toContainText("8 bài có cặp mẫu");
+  await expect(sources).not.toContainText("Nội dung dài cần giữ");
+  await sources
+    .getByRole("button", { name: "Tiêu đề ngắn 7", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Chi tiết nội dung Facebook" }),
+  ).toContainText("Nội dung dài cần giữ");
+  await page.keyboard.press("Escape");
+  await sources.getByRole("button", { name: "Sau", exact: true }).click();
+  await expect(sources.getByRole("article")).toHaveCount(3);
+  await expect(sources).toContainText("Trang 2/2");
+});
+
+test("period review cites qualified D7 evidence and explicitly saves a shared action plan", async ({
+  page,
+}) => {
+  const requests = await setup(page, { review: "ready" });
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Đánh giá theo kỳ và việc cần làm tiếp theo",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Trung vị D7 tăng trong nhóm này", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Bài gần trung vị · 20", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Thêm hành động", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Việc cần làm", exact: true })
+    .fill("Thử một cách mở đầu mới");
+  await page
+    .getByRole("textbox", {
+      name: "Kết quả mong muốn / giả thuyết cần kiểm chứng",
+      exact: true,
+    })
+    .fill("Đối chiếu LIKE D7 cùng loại và mục tiêu sau 7 ngày");
+  await page
+    .getByRole("spinbutton", { name: "Số bài dự kiến của kỳ đang xem" })
+    .fill("14");
+  await page.getByRole("button", { name: "Lưu kế hoạch", exact: true }).click();
+  await expect(
+    page.getByText("Đã lưu kế hoạch của kỳ và kênh này.", { exact: true }),
+  ).toBeVisible();
+  expect(
+    requests.filter((r) => r.startsWith("PUT ") && r.endsWith("/review")),
+  ).toHaveLength(1);
+  expect(requests.some((r) => r.includes("/analyses"))).toBeFalsy();
+  await page.reload();
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Việc cần làm", exact: true }),
+  ).toHaveValue("Thử một cách mở đầu mới");
+});
+
+test("review conflict keeps edits and does not overwrite another editor", async ({
+  page,
+}) => {
+  await setup(page, { review: "conflict" });
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  const target = page.getByRole("spinbutton", {
+    name: "Số bài dự kiến của kỳ đang xem",
+  });
+  await target.fill("12");
+  await page.getByRole("button", { name: "Lưu kế hoạch", exact: true }).click();
+  await expect(
+    page.getByText("Kênh, dữ liệu hoặc kế hoạch đã thay đổi.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(target).toHaveValue("12");
+  await page
+    .getByRole("button", { name: "Tải lại căn cứ", exact: true })
+    .click();
+  await expect(target).toHaveValue("12");
+  await expect(
+    page.getByRole("button", { name: "Lưu kế hoạch", exact: true }),
+  ).toBeDisabled();
+  page.once("dialog", (d) => d.accept());
+  await page
+    .getByRole("button", { name: "Dùng bản máy chủ", exact: true })
+    .click();
+  await expect(target).toHaveValue("15");
+});
+
+test("review data failure keeps an edited plan and warns before changing tabs", async ({
+  page,
+}) => {
+  await setup(page, { review: "ready" });
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  const target = page.getByRole("spinbutton", {
+    name: "Số bài dự kiến của kỳ đang xem",
+  });
+  await target.fill("12");
+  await page.route("**/facebook/1/review?**", (route) => route.abort());
+  await page
+    .getByRole("button", { name: "Tải lại căn cứ", exact: true })
+    .click();
+  await expect(
+    page.getByText("Không tải được đánh giá.", { exact: false }).first(),
+  ).toBeVisible();
+  await expect(target).toHaveValue("12");
+  page.once("dialog", (d) => d.dismiss());
+  await page.getByRole("tab", { name: "Diễn biến Page", exact: true }).click();
+  await expect(
+    page.getByRole("tab", { name: "Đánh giá & hành động", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+});
+
+test("320px review shows insufficient data honestly and the plan fits the viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await setup(page, { review: "blocked" });
+  await page
+    .getByRole("tab", { name: "Đánh giá & hành động", exact: true })
+    .click();
+  await expect(
+    page.getByText("Chưa có nhóm nào đủ điều kiện so sánh.", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Thêm hành động", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: /Hạn thực hiện:/ }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBeTruthy();
 });

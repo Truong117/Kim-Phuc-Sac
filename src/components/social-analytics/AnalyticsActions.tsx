@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import AnalyticsPeriodReview from "./AnalyticsPeriodReview";
 import AnalyticsAiPanel from "./AnalyticsAiPanel";
 import type { FacebookAnalyticsData } from "@/types/facebookAnalytics";
 import { formatDateOnly } from "@/utils/dateOnly";
@@ -9,6 +10,8 @@ interface Props {
   busy: boolean;
   onGenerate: () => void;
   onPost: (id: number) => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onLeaveReview: () => boolean;
 }
 export default function AnalyticsActions(props: Props) {
   const { t } = useTranslation("common", { keyPrefix: "facebookAnalytics" });
@@ -17,12 +20,19 @@ export default function AnalyticsActions(props: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap gap-2">
-          {["period", "month"].map((key) => (
+          {(props.data.reviews_enabled
+            ? ["period", "observations", "month"]
+            : ["period", "month"]
+          ).map((key) => (
             <button
               key={key}
               type="button"
               aria-pressed={mode === key}
-              onClick={() => setMode(key)}
+              onClick={() => {
+                if (key === mode) return;
+                if (mode === "period" && !props.onLeaveReview()) return;
+                setMode(key);
+              }}
               className={
                 "min-h-10 rounded-lg border px-3 py-2 text-xs " +
                 (mode === key
@@ -30,7 +40,11 @@ export default function AnalyticsActions(props: Props) {
                   : "border-gray-200 text-gray-600 dark:border-gray-700 dark:text-gray-300")
               }
             >
-              {t("review.reviewModes." + key)}
+              {t(
+                props.data.reviews_enabled && key === "period"
+                  ? "period.mode"
+                  : "review.reviewModes." + key,
+              )}
             </button>
           ))}
         </div>
@@ -39,7 +53,14 @@ export default function AnalyticsActions(props: Props) {
           {formatDateOnly(props.data.to_date)}
         </p>
       </div>
-      {mode === "period" ? (
+      {mode === "period" && props.data.reviews_enabled ? (
+        <AnalyticsPeriodReview
+          key={`${props.data.entry_id}:${props.data.from_date}:${props.data.to_date}`}
+          data={props.data}
+          onPost={props.onPost}
+          onDirtyChange={props.onDirtyChange}
+        />
+      ) : mode !== "month" ? (
         <>
           <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400">
             {t("review.aiCurrentScope")}
