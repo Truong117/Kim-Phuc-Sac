@@ -15,6 +15,7 @@ use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Reports\MakeupReportController;
+use App\Http\Controllers\Reports\PersonalWeeklyReportController;
 use App\Http\Controllers\Reports\ReportCommentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportFacebookPostsController;
@@ -78,6 +79,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
 
     Route::get('/navigation', NavigationController::class);
+    Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
+        ->middleware('permission:reports.view');
     Route::prefix('social-analytics/facebook')->group(function (): void {
         Route::get('/pages', [FacebookAnalyticsController::class, 'pages'])->middleware('throttle:60,1,fb-analytics-pages');
         Route::get('/{id}', [FacebookAnalyticsController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-read');

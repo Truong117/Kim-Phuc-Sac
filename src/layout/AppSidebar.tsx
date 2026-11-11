@@ -65,7 +65,17 @@ const navGroups: NavGroup[] = [
         icon: <CalenderIcon fontSize={24} />,
         path: "/reports",
         matchChildren: true,
-        excludedChildPaths: ["/reports/new", "/reports/makeup/new"],
+        excludedChildPaths: [
+          "/reports/new",
+          "/reports/makeup/new",
+          "/reports/my-weekly-summary",
+        ],
+      },
+      {
+        navigationKey: "reports.history",
+        nameKey: "personalWeeklyReport",
+        icon: <CalenderIcon fontSize={24} />,
+        path: "/reports/my-weekly-summary",
       },
       {
         navigationKey: "tasks",
