@@ -2,6 +2,8 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router";
 import AuthorizationRoute from "./components/auth/AuthorizationRoute";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
+import AuthLoadingScreen from "./components/auth/AuthLoadingScreen";
+import { spaUiPreviewEnabled } from "./features/spa/config";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import AppLayout from "./layout/AppLayout";
 import AiDailyInsights from "./pages/AI/WorkReportInsights";
@@ -37,6 +39,11 @@ import { createWeeklyPlanV3NavigationWindow } from "./utils/weeklyPlanV3Navigati
 const FacebookAnalytics = lazy(
   () => import("./pages/SocialAnalytics/FacebookAnalytics"),
 );
+const SpaLayout = lazy(() => import("./features/spa/components/SpaLayout"));
+const SpaOverview = lazy(() => import("./pages/Spa/SpaOverview"));
+const SpaAppointments = lazy(() => import("./pages/Spa/SpaAppointments"));
+const SpaTechnician = lazy(() => import("./pages/Spa/SpaTechnician"));
+const SpaSection = lazy(() => import("./pages/Spa/SpaSection"));
 
 const navigationWindow = createWeeklyPlanV3NavigationWindow(window);
 
@@ -59,6 +66,64 @@ export default function App() {
               <Route path="/account" element={<Account />} />
 
               {/* KPS Modules */}
+              {spaUiPreviewEnabled && (
+                <Route
+                  element={<AuthorizationRoute navigationKey="settings" />}
+                >
+                  <Route
+                    path="/spa"
+                    element={
+                      <Suspense fallback={<AuthLoadingScreen />}>
+                        <SpaLayout />
+                      </Suspense>
+                    }
+                  >
+                    <Route index element={<SpaOverview />} />
+                    <Route path="appointments" element={<SpaAppointments />} />
+                    <Route path="technician" element={<SpaTechnician />} />
+                    <Route
+                      path="reception"
+                      element={<SpaSection section="reception" />}
+                    />
+                    <Route
+                      path="customers"
+                      element={<SpaSection section="customers" />}
+                    />
+                    <Route
+                      path="services"
+                      element={<SpaSection section="services" />}
+                    />
+                    <Route
+                      path="treatments"
+                      element={<SpaSection section="treatments" />}
+                    />
+                    <Route
+                      path="cashier"
+                      element={<SpaSection section="cashier" />}
+                    />
+                    <Route
+                      path="rooms"
+                      element={<SpaSection section="rooms" />}
+                    />
+                    <Route
+                      path="inventory"
+                      element={<SpaSection section="inventory" />}
+                    />
+                    <Route
+                      path="care"
+                      element={<SpaSection section="care" />}
+                    />
+                    <Route
+                      path="reports"
+                      element={<SpaSection section="reports" />}
+                    />
+                    <Route
+                      path="settings"
+                      element={<SpaSection section="settings" />}
+                    />
+                  </Route>
+                </Route>
+              )}
               <Route path="/reports/new" element={<NewReport />} />
               <Route path="/reports/makeup/new" element={<MakeupReport />} />
               <Route

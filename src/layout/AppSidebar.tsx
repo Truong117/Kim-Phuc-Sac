@@ -1,6 +1,7 @@
 import BrandMark from "@/components/common/BrandMark";
 import { useSidebar } from "@/context/SidebarContext";
 import { useAuthorization } from "@/hooks/useAuthorization";
+import { spaUiPreviewEnabled } from "@/features/spa/config";
 import {
   AiIcon,
   BoxCubeIcon,
@@ -24,6 +25,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router";
 
 interface NavItem {
+  enabled?: boolean;
   navigationKey: NavigationKey;
   nameKey: string;
   icon: React.ReactNode;
@@ -80,6 +82,14 @@ const navGroups: NavGroup[] = [
   {
     labelKey: "business",
     items: [
+      {
+        navigationKey: "settings",
+        enabled: spaUiPreviewEnabled,
+        nameKey: "spaPreview",
+        icon: <CalenderIcon fontSize={24} />,
+        path: "/spa",
+        matchChildren: true,
+      },
       {
         navigationKey: "customers",
         nameKey: "customers",
@@ -156,6 +166,11 @@ const navGroups: NavGroup[] = [
   },
 ];
 
+const enabledNavGroups = navGroups.map((group) => ({
+  ...group,
+  items: group.items.filter((item) => item.enabled !== false),
+}));
+
 export default function AppSidebar() {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered, setIsMobileOpen } =
     useSidebar();
@@ -163,7 +178,7 @@ export default function AppSidebar() {
   const { canNavigate } = useAuthorization();
   const location = useLocation();
   const showContent = isExpanded || isHovered || isMobileOpen;
-  const visibleNavGroups = navGroups
+  const visibleNavGroups = enabledNavGroups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => canNavigate(item.navigationKey)),

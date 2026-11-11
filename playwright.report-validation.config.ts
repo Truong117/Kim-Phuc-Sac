@@ -4,6 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   testMatch: [
+    "spa-ui.spec.ts",
     "report-validation-ui.spec.ts",
     "facebook-post-picker-ui.spec.ts",
     "facebook-analytics-ui.spec.ts",
@@ -30,7 +31,10 @@ export default defineConfig({
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 5176 --strictPort",
     url: "http://127.0.0.1:5176",
-    env: { VITE_API_BASE_URL: "/" },
+    env: {
+      VITE_API_BASE_URL: "/",
+      VITE_SPA_UI_PREVIEW_ENABLED: process.env.SPA_UI_TEST_ENABLED ?? "true",
+    },
     reuseExistingServer: !process.env.CI,
   },
 });

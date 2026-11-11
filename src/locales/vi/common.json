@@ -27,7 +27,8 @@
       "socialAnalytics": "Phân tích MXH",
       "employees": "Nhân viên",
       "integrations": "Tích hợp",
-      "settings": "Cài đặt"
+      "settings": "Cài đặt",
+      "spaPreview": "Spa · Bản mẫu"
     }
   },
   "modules": {
@@ -3482,6 +3483,126 @@
         "validation": "Chưa thể chốt. Kiểm tra các trường và thời điểm chốt; nội dung nhập vẫn được giữ.",
         "uncertain": "Chưa xác nhận được kết quả chốt. Tải lại báo cáo để kiểm tra bản đã lưu trước khi thử lại."
       }
+    }
+  },
+  "spa": {
+    "preview": {
+      "badge": "UI mẫu",
+      "title": "Không gian vận hành spa",
+      "description": "Dữ liệu minh họa. Các thao tác tại đây chưa tạo lịch, lưu hồ sơ hoặc phát sinh giao dịch thật."
+    },
+    "navigationLabel": "Chức năng spa",
+    "navigation": {
+      "overview": "Tổng quan spa",
+      "appointments": "Lịch hẹn",
+      "reception": "Tiếp nhận và điều phối",
+      "customers": "Khách hàng",
+      "services": "Dịch vụ và sản phẩm",
+      "treatments": "Liệu trình",
+      "cashier": "Thu ngân",
+      "technician": "Công việc KTV",
+      "rooms": "Phòng và giường",
+      "inventory": "Kho",
+      "care": "Chăm sóc khách hàng",
+      "reports": "Báo cáo spa",
+      "settings": "Thiết lập spa"
+    },
+    "meta": {
+      "overview": "Tổng quan spa | KIM PHỤC SẮC",
+      "appointments": "Lịch hẹn spa | KIM PHỤC SẮC",
+      "technician": "Công việc KTV | KIM PHỤC SẮC",
+      "section": "{name} | KIM PHỤC SẮC",
+      "description": "Bản mẫu giao diện quản lý spa trong hệ thống KPS."
+    },
+    "sampleDate": "Cơ sở KPS mẫu · Ngày minh họa {date}",
+    "minutes": "{count} phút",
+    "openTechnician": "Mở giao diện KTV",
+    "metrics": {
+      "appointments": "Lịch hẹn còn hiệu lực",
+      "waiting": "Lượt đang chờ phục vụ",
+      "inProgress": "Dịch vụ đang thực hiện",
+      "completed": "Dịch vụ đã hoàn tất"
+    },
+    "overview": {
+      "schedule": "Lịch phục vụ trong ngày",
+      "viewSchedule": "Xem tất cả lịch hẹn",
+      "quickLinks": "Truy cập nhanh",
+      "statusNote": "Trạng thái lịch hẹn và tiến độ thực hiện dịch vụ được theo dõi riêng. Thanh toán sẽ được bổ sung ở bước tiếp theo."
+    },
+    "appointments": {
+      "title": "Danh sách lịch hẹn mẫu",
+      "search": "Tìm khách hoặc mã lịch",
+      "searchPlaceholder": "Nhập tên khách hoặc SPA-001…",
+      "status": "Trạng thái lịch hẹn",
+      "all": "Tất cả trạng thái",
+      "empty": "Không có lịch hẹn phù hợp với bộ lọc.",
+      "count": "{count} lịch hẹn phù hợp",
+      "assignment": "{name} · Phòng {room} · {time}"
+    },
+    "status": {
+      "appointment": {
+        "booked": "Đã đặt lịch",
+        "arrived": "Đã đến",
+        "cancelled": "Đã hủy"
+      },
+      "task": {
+        "assigned": "Đã phân công",
+        "in_progress": "Đang thực hiện",
+        "completed": "Hoàn tất"
+      }
+    },
+    "services": {
+      "skinRecovery": "Chăm sóc phục hồi da",
+      "deepClean": "Chăm sóc da chuyên sâu",
+      "relaxation": "Chăm sóc thư giãn"
+    },
+    "notes": {
+      "sensitiveSkin": "Da nhạy cảm. Kiểm tra lưu ý của buổi trước khi bắt đầu dịch vụ.",
+      "firstVisit": "Khách mới. Xác nhận nhu cầu và các lưu ý trước khi thực hiện.",
+      "reviewPreviousSession": "Xem lại ghi chú của buổi trước và ghi nhận tình trạng da hiện tại.",
+      "noSpecialNote": "Chưa có lưu ý đặc biệt trong dữ liệu mẫu."
+    },
+    "technician": {
+      "identity": "Nhân sự minh họa: {name} · Không phải phân công từ tài khoản đang đăng nhập.",
+      "viewsLabel": "Bộ lọc công việc KTV",
+      "views": {
+        "today": "Hôm nay",
+        "schedule": "Lịch của tôi",
+        "handover": "Bàn giao",
+        "history": "Đã làm"
+      },
+      "detail": "Chi tiết buổi dịch vụ",
+      "back": "Quay lại danh sách",
+      "time": "Giờ bắt đầu",
+      "room": "Phòng / giường",
+      "roomLabel": "Phòng {room}",
+      "duration": "Thời lượng",
+      "assignee": "Người được giao",
+      "notes": "Lưu ý trước khi thực hiện",
+      "photoRequired": "Dịch vụ yêu cầu ảnh tình trạng da",
+      "photoOptional": "Ảnh tùy chọn",
+      "photoPlanned": "Khu vực ảnh và kết quả sẽ được phát triển ở bước tiếp theo. Base hiện chưa chụp, tải hoặc lưu ảnh.",
+      "readOnly": "Bản xem bố cục. Nhận việc, lưu nháp, bàn giao và hoàn tất dịch vụ sẽ được bổ sung sau.",
+      "handoverPlanned": "Chưa có yêu cầu bàn giao mẫu. Luồng gửi và nhận bàn giao sẽ được bổ sung sau.",
+      "empty": "Chưa có công việc mẫu trong mục này.",
+      "taskList": "Danh sách công việc"
+    },
+    "foundation": {
+      "badge": "Đã dựng khung màn hình",
+      "description": "Đã có vị trí trong module spa. Biểu mẫu và thao tác chi tiết sẽ được bổ sung theo luồng nghiệp vụ đã thống nhất.",
+      "back": "Về tổng quan spa"
+    },
+    "sections": {
+      "reception": "Dự kiến quản lý khách đến, hàng chờ và phân công người thực hiện cho từng dịch vụ.",
+      "customers": "Dự kiến quản lý hồ sơ khách và lịch sử dịch vụ theo phạm vi được cấp.",
+      "services": "Dự kiến quản lý danh mục, thời lượng và yêu cầu ảnh tình trạng da của dịch vụ.",
+      "treatments": "Dự kiến quản lý gói đã mua, quyền lợi và lịch sử sử dụng buổi.",
+      "cashier": "Dự kiến tách phiếu phải thu, khoản thu và số tiền còn nợ.",
+      "rooms": "Dự kiến quản lý phòng, giường và lịch sử dụng theo thời gian.",
+      "inventory": "Dự kiến quản lý nhập, xuất và các điều chỉnh tồn có lý do.",
+      "care": "Dự kiến quản lý lịch chăm sóc, người phụ trách và kết quả liên hệ.",
+      "reports": "Dự kiến theo dõi lượt phục vụ, công suất, thực thu và nguồn khách.",
+      "settings": "Dự kiến cấu hình cơ sở và bộ quyền spa sau khi ma trận được chốt."
     }
   }
 }
