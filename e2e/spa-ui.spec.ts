@@ -93,7 +93,8 @@ test.describe("spa UI preview", () => {
     );
     expect(links).toHaveLength(13);
     for (const link of links) {
-      await page.goto(link.href);
+      await nav.getByRole("link", { name: link.name, exact: true }).click();
+      await expect(page).toHaveURL(link.href);
       await expect(
         page.getByRole("heading", { name: link.name, exact: true, level: 2 }),
       ).toBeVisible();
