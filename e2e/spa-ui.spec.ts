@@ -95,7 +95,7 @@ test.describe("spa UI preview", () => {
     for (const link of links) {
       await page.goto(link.href);
       await expect(
-        page.getByRole("heading", { name: link.name, exact: true }),
+        page.getByRole("heading", { name: link.name, exact: true, level: 2 }),
       ).toBeVisible();
     }
     expect(errors).toEqual([]);
