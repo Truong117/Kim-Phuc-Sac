@@ -262,3 +262,21 @@ test("a read failure can be retried without triggering AI", async ({
   ).toBeVisible();
   expect(requests.every((request) => request.method === "GET")).toBe(true);
 });
+
+test("a revoked read permission removes previously displayed report content", async ({
+  page,
+}) => {
+  let allowed = true;
+  await setup(page, () => (allowed ? sample() : 403));
+  await expect(
+    page.getByRole("heading", { name: "Thiết kế nội dung" }),
+  ).toBeVisible();
+  allowed = false;
+  await page.getByRole("button", { name: "Tải lại", exact: true }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "Bạn không có quyền xem báo cáo này.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Thiết kế nội dung" }),
+  ).toHaveCount(0);
+});

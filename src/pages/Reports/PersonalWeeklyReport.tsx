@@ -103,6 +103,12 @@ function WeeklyResult({ endDate }: { endDate: string }) {
           timer = setTimeout(load, 10_000);
       } catch (failure) {
         if (controller.signal.aborted) return;
+        if (
+          failure instanceof ApiServiceError &&
+          [401, 403].includes(failure.status)
+        ) {
+          setReport(null);
+        }
         setError(
           t(
             failure instanceof ApiServiceError && failure.status === 403
