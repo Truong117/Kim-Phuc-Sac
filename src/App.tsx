@@ -20,6 +20,7 @@ import MakeupReport from "./pages/Reports/MakeupReport";
 import NewReport from "./pages/Reports/NewReport";
 import ReportDetail from "./pages/Reports/ReportDetail";
 import ReportHistory from "./pages/Reports/ReportHistory";
+import PersonalWeeklyReport from "./pages/Reports/PersonalWeeklyReport";
 import TaskCreate from "./pages/Tasks/TaskCreate";
 import TaskDetail from "./pages/Tasks/TaskDetail";
 import TaskList from "./pages/Tasks/TaskList";
@@ -65,6 +66,10 @@ export default function App() {
                 element={<AuthorizationRoute navigationKey="reports.history" />}
               >
                 <Route path="/reports" element={<ReportHistory />} />
+                <Route
+                  path="/reports/my-weekly-summary"
+                  element={<PersonalWeeklyReport />}
+                />
                 <Route path="/reports/:id" element={<ReportDetail />} />
               </Route>
               <Route element={<AuthorizationRoute navigationKey="tasks" />}>
