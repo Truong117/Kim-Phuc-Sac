@@ -17,6 +17,7 @@
       "dashboard": "Tổng quan",
       "newReport": "Báo cáo công việc",
       "reportHistory": "Lịch sử báo cáo",
+      "personalWeeklyReport": "Báo cáo tuần của tôi",
       "tasks": "Công việc",
       "customers": "Khách hàng",
       "products": "Sản phẩm",
@@ -3046,6 +3047,32 @@
     "replace": "Thay bản nháp",
     "keep": "Giữ bản nháp",
     "reuseError": "Chưa tải được nội dung thư cũ. Bản nháp hiện tại vẫn được giữ."
+  },
+  "personalWeeklyReport": {
+    "title": "Báo cáo tuần của tôi",
+    "subtitle": "Xem phần phân tích của bạn từ báo cáo tổng hợp tuần công ty. Không cần tạo lượt AI riêng.",
+    "chooseWeek": "Chọn tuần",
+    "weekEnding": "Tuần kết thúc vào thứ Bảy",
+    "previous": "Tuần trước",
+    "next": "Tuần sau",
+    "period": "Từ {start} đến {end}",
+    "result": "Kết quả tuần của bạn",
+    "reload": "Tải lại",
+    "loading": "Đang tải báo cáo…",
+    "forbidden": "Bạn không có quyền xem báo cáo này.",
+    "loadError": "Chưa tải được báo cáo. Vui lòng thử tải lại.",
+    "updating": "Bản mới đang được phân tích. Bạn đang xem kết quả đã hoàn tất trước đó.",
+    "sourceChanged": "Báo cáo nguồn đã thay đổi. Nội dung dưới đây thuộc lần tổng hợp đã lưu, chưa bao gồm các cập nhật mới.",
+    "mock": "Đây là kết quả mô phỏng dùng để kiểm thử.",
+    "captured": "Nguồn được chốt lúc {time}",
+    "status": {
+      "completed": "Đã tổng hợp",
+      "running": "Phần báo cáo của bạn đang được phân tích. Các phần đã hoàn tất được hiển thị bên dưới.",
+      "partial": "Phần báo cáo của bạn mới hoàn tất một phần. Các kết quả đã có được giữ lại.",
+      "failed": "Chưa phân tích được phần báo cáo của bạn. Vui lòng liên hệ quản trị viên để kiểm tra.",
+      "not_analyzed": "Chưa có báo cáo tổng hợp cho tuần này.",
+      "no_data": "Không có báo cáo đã chốt trong tuần này."
+    }
   },
   "facebookAnalytics": {
     "sampling": {
