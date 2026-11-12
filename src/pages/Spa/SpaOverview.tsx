@@ -16,7 +16,9 @@ export default function SpaOverview() {
     snapshot.appointments,
     "",
     "all",
-  ).filter((item) => item.status !== "cancelled");
+  ).filter(
+    (item) => item.status !== "cancelled" && item.date === snapshot.date,
+  );
   return (
     <>
       <PageMeta

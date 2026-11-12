@@ -1,11 +1,14 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { SpaAppointment } from "../types";
 import SpaStatusBadge from "./SpaStatusBadge";
 
 export default function SpaAppointmentList({
   appointments,
+  renderActions,
 }: {
   appointments: SpaAppointment[];
+  renderActions?: (appointment: SpaAppointment) => ReactNode;
 }) {
   const { t } = useTranslation();
   if (!appointments.length)
@@ -22,6 +25,7 @@ export default function SpaAppointmentList({
       {appointments.map((appointment) => (
         <li
           key={appointment.id}
+          aria-label={`${appointment.id} · ${appointment.customerName}`}
           className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start"
         >
           <div className="flex shrink-0 items-center gap-3 sm:w-24 sm:flex-col sm:items-start sm:gap-1">
@@ -47,15 +51,20 @@ export default function SpaAppointmentList({
                     <SpaStatusBadge kind="task" status={task.status} />
                   </div>
                   <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
-                    {t("spa.appointments.assignment", {
-                      name: task.technicianName,
-                      room: task.room,
-                      time: task.startTime,
-                    })}
+                    {task.status === "unassigned"
+                      ? t("spa.flow.notAssigned")
+                      : t("spa.appointments.assignment", {
+                          name: task.technicianName,
+                          room: task.room,
+                          time: task.startTime,
+                        })}
                   </p>
                 </li>
               ))}
             </ul>
+            {renderActions && (
+              <div className="mt-3">{renderActions(appointment)}</div>
+            )}
           </div>
           <div className="self-start">
             <SpaStatusBadge kind="appointment" status={appointment.status} />

@@ -176,7 +176,7 @@ test.describe("spa UI preview", () => {
       .getByRole("link", { name: "Công việc KTV", exact: true })
       .click();
     const tasks = page.getByRole("region", { name: "Danh sách công việc" });
-    await expect(tasks.getByRole("button")).toHaveCount(3);
+    await expect(tasks.getByRole("button")).toHaveCount(2);
     await expect(tasks.getByText("Trần Ngọc Linh")).toHaveCount(0);
     await tasks.getByRole("button", { name: /Nguyễn Minh Anh/ }).click();
     const detail = page.getByRole("article", { name: "Chi tiết buổi dịch vụ" });
@@ -375,5 +375,305 @@ test.describe("workspace routing and switching", () => {
     await expect(page).toHaveURL(/\/login$/);
     await page.goto("/spa/technician");
     await expect(page).toHaveURL(/\/login$/);
+  });
+});
+
+async function bookExistingCustomer(page: Page, time = "14:30") {
+  await page
+    .getByRole("button", { name: "Tạo lịch hẹn mẫu", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Tạo lịch hẹn mẫu",
+    exact: true,
+  });
+  await dialog
+    .getByLabel("Chọn khách hàng", { exact: true })
+    .selectOption("customer-6");
+  await dialog.getByLabel("Giờ hẹn", { exact: true }).fill(time);
+  await dialog
+    .getByLabel("Dịch vụ 1", { exact: true })
+    .selectOption("relaxation");
+  await dialog
+    .getByRole("button", { name: "Lưu lịch hẹn mẫu", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+}
+async function receiveNewBooking(page: Page) {
+  const row = page.getByRole("listitem", {
+    name: "SPA-007 · Đỗ Mỹ Duyên",
+    exact: true,
+  });
+  await row.getByRole("link", { name: "Mở tiếp nhận", exact: true }).click();
+  const card = page.getByRole("article", {
+    name: "SPA-007 · Đỗ Mỹ Duyên",
+    exact: true,
+  });
+  await card
+    .getByRole("button", { name: "Xác nhận khách đến", exact: true })
+    .click();
+  await card
+    .getByRole("button", { name: "Phân công dịch vụ", exact: true })
+    .click();
+  return page.getByRole("dialog", { name: "Phân công dịch vụ", exact: true });
+}
+
+test.describe("spa reception workflow preview", () => {
+  test.skip(!previewEnabled, "Preview is disabled for this run");
+  test("new customer through booking, reception, assignment and KTV uses the same in-memory session", async ({
+    page,
+  }) => {
+    const requests = await setup(page);
+    await page.goto("/spa/customers");
+    await page
+      .getByRole("button", { name: "Thêm khách hàng mẫu", exact: true })
+      .click();
+    const customerDialog = page.getByRole("dialog", {
+      name: "Thêm khách hàng mẫu",
+      exact: true,
+    });
+    await customerDialog
+      .getByLabel("Tên khách hàng", { exact: true })
+      .fill("Khách UI thử");
+    await customerDialog
+      .getByLabel("Số điện thoại mẫu", { exact: true })
+      .fill("0000000088");
+    await customerDialog
+      .getByRole("button", { name: "Lưu khách hàng mẫu", exact: true })
+      .click();
+    await page
+      .getByRole("article", { name: "Khách UI thử", exact: true })
+      .getByRole("button", { name: "Đặt lịch", exact: true })
+      .click();
+    const bookingDialog = page.getByRole("dialog", {
+      name: "Tạo lịch hẹn mẫu",
+      exact: true,
+    });
+    await bookingDialog.getByLabel("Giờ hẹn", { exact: true }).fill("14:30");
+    await bookingDialog
+      .getByLabel("Dịch vụ 1", { exact: true })
+      .selectOption("skinRecovery");
+    await bookingDialog
+      .getByRole("button", { name: "Lưu lịch hẹn mẫu", exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/spa\/appointments\?/);
+    const booking = page.getByRole("listitem", {
+      name: "SPA-007 · Khách UI thử",
+      exact: true,
+    });
+    await expect(booking).toContainText("Chưa phân công");
+    await booking
+      .getByRole("link", { name: "Mở tiếp nhận", exact: true })
+      .click();
+    const card = page.getByRole("article", {
+      name: "SPA-007 · Khách UI thử",
+      exact: true,
+    });
+    await card
+      .getByRole("button", { name: "Xác nhận khách đến", exact: true })
+      .click();
+    await expect(card).toContainText("Tiếp nhận: Người xem UI");
+    await card
+      .getByRole("button", { name: "Phân công dịch vụ", exact: true })
+      .click();
+    const assignment = page.getByRole("dialog", {
+      name: "Phân công dịch vụ",
+      exact: true,
+    });
+    await assignment
+      .getByLabel("Kỹ thuật viên", { exact: true })
+      .selectOption("tech-1");
+    await assignment
+      .getByLabel("Phòng / giường", { exact: true })
+      .selectOption("bed-02");
+    await assignment
+      .getByRole("button", { name: "Lưu phân công mẫu", exact: true })
+      .click();
+    await expect(card).toContainText("Lan Anh");
+    await expect(card).toContainText("Điều phối: Người xem UI");
+    await card
+      .getByRole("button", { name: "Xem chi tiết", exact: true })
+      .click();
+    const detail = page.getByRole("dialog", {
+      name: "Chi tiết lịch hẹn mẫu",
+      exact: true,
+    });
+    await expect(detail).toContainText("Lịch sử thao tác trong phiên thử");
+    await expect(detail).toContainText("Xác nhận khách đến");
+    await detail
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await card
+      .getByRole("button", { name: "Mở giao diện KTV", exact: true })
+      .click();
+    const tasks = page.getByRole("region", {
+      name: "Danh sách công việc",
+      exact: true,
+    });
+    await expect(
+      tasks.getByRole("button", { name: /Khách UI thử/ }),
+    ).toBeVisible();
+    await tasks.getByRole("button", { name: /Khách UI thử/ }).click();
+    await expect(
+      page.getByRole("article", { name: "Chi tiết buổi dịch vụ" }),
+    ).toContainText("Phòng / giường");
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+    expect(
+      requests.some((request) => request.path.startsWith("/api/spa")),
+    ).toBe(false);
+    await page.reload();
+    await expect(page.getByText("Khách UI thử", { exact: true })).toHaveCount(
+      0,
+    );
+  });
+  test("conflicting KTV and beds show errors without losing the form or creating an assignment", async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto("/spa/appointments");
+    await bookExistingCustomer(page, "09:00");
+    const dialog = await receiveNewBooking(page);
+    await dialog
+      .getByLabel("Kỹ thuật viên", { exact: true })
+      .selectOption("tech-1");
+    await dialog
+      .getByLabel("Phòng / giường", { exact: true })
+      .selectOption("bed-03");
+    await dialog
+      .getByRole("button", { name: "Lưu phân công mẫu", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "KTV đã có dịch vụ trùng giờ",
+    );
+    await expect(
+      dialog.getByLabel("Kỹ thuật viên", { exact: true }),
+    ).toHaveAttribute("aria-invalid", "true");
+    await dialog
+      .getByLabel("Kỹ thuật viên", { exact: true })
+      .selectOption("tech-3");
+    await dialog
+      .getByLabel("Phòng / giường", { exact: true })
+      .selectOption("bed-01");
+    await dialog
+      .getByRole("button", { name: "Lưu phân công mẫu", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "Giường đã có dịch vụ trùng giờ",
+    );
+    await dialog
+      .getByLabel("Phòng / giường", { exact: true })
+      .selectOption("bed-03");
+    await dialog
+      .getByRole("button", { name: "Lưu phân công mẫu", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole("article", { name: "SPA-007 · Đỗ Mỹ Duyên", exact: true }),
+    ).toContainText("Bích Ngọc");
+  });
+  test("validates, protects dirty forms, edits bookings and cancels with a reason", async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto("/spa/appointments");
+    await page
+      .getByRole("button", { name: "Tạo lịch hẹn mẫu", exact: true })
+      .click();
+    let dialog = page.getByRole("dialog", {
+      name: "Tạo lịch hẹn mẫu",
+      exact: true,
+    });
+    await dialog
+      .getByRole("button", { name: "Lưu lịch hẹn mẫu", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "Chọn khách hàng trước khi lưu lịch",
+    );
+    await expect(
+      dialog.getByLabel("Chọn khách hàng", { exact: true }),
+    ).toBeFocused();
+    await dialog
+      .getByLabel("Ghi chú lịch hẹn", { exact: true })
+      .fill("Bản chưa lưu");
+    page.once("dialog", (prompt) => prompt.dismiss());
+    await dialog
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await expect(dialog).toBeVisible();
+    page.once("dialog", (prompt) => prompt.accept());
+    await dialog
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await bookExistingCustomer(page);
+    const row = page.getByRole("listitem", {
+      name: "SPA-007 · Đỗ Mỹ Duyên",
+      exact: true,
+    });
+    await row
+      .getByRole("button", { name: "Sửa lịch hẹn", exact: true })
+      .click();
+    dialog = page.getByRole("dialog", { name: "Sửa lịch hẹn", exact: true });
+    await dialog.getByLabel("Giờ hẹn", { exact: true }).fill("16:00");
+    await dialog
+      .getByRole("button", { name: "Lưu lịch hẹn mẫu", exact: true })
+      .click();
+    await expect(row).toContainText("16:00");
+    await row
+      .getByRole("button", { name: "Hủy lịch hẹn", exact: true })
+      .click();
+    dialog = page.getByRole("dialog", { name: "Hủy lịch hẹn", exact: true });
+    await dialog
+      .getByRole("button", { name: "Xác nhận hủy lịch mẫu", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText("Nhập lý do hủy");
+    await dialog
+      .getByLabel("Lý do hủy", { exact: true })
+      .fill("Khách đổi kế hoạch");
+    await dialog
+      .getByRole("button", { name: "Xác nhận hủy lịch mẫu", exact: true })
+      .click();
+    await expect(row).toContainText("Đã hủy");
+    await row
+      .getByRole("button", { name: "Xem chi tiết", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog", { name: "Chi tiết lịch hẹn mẫu", exact: true }),
+    ).toContainText("Khách đổi kế hoạch");
+  });
+  test("phone customer form stays within viewport and duplicate phones retain the entered data", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page);
+    await page.goto("/spa/customers");
+    await page
+      .getByRole("button", { name: "Thêm khách hàng mẫu", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", {
+      name: "Thêm khách hàng mẫu",
+      exact: true,
+    });
+    await dialog
+      .getByLabel("Tên khách hàng", { exact: true })
+      .fill("Khách trùng số");
+    await dialog
+      .getByLabel("Số điện thoại mẫu", { exact: true })
+      .fill("0000000001");
+    await dialog
+      .getByRole("button", { name: "Lưu khách hàng mẫu", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "Số điện thoại đã có",
+    );
+    await expect(
+      dialog.getByLabel("Tên khách hàng", { exact: true }),
+    ).toHaveValue("Khách trùng số");
+    await expect(
+      dialog.getByLabel("Số điện thoại mẫu", { exact: true }),
+    ).toBeFocused();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
   });
 });

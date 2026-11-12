@@ -121,7 +121,7 @@ jobs:
         run: npx playwright install --only-shell chromium
 
       - name: Run frontend browser tests
-        timeout-minutes: 6
+        timeout-minutes: 7
         run: npx playwright test --config playwright.report-validation.config.ts
 
       - name: Upload browser failure diagnostics

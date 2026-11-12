@@ -30,7 +30,7 @@ export function filterSpaAppointments(
 
 export function getSpaOverview(snapshot: SpaPreviewSnapshot) {
   const active = snapshot.appointments.filter(
-    (item) => item.status !== "cancelled",
+    (item) => item.status !== "cancelled" && item.date === snapshot.date,
   );
   const tasks = active.flatMap((item) => item.tasks);
   return {
@@ -38,7 +38,9 @@ export function getSpaOverview(snapshot: SpaPreviewSnapshot) {
     waiting: active.filter(
       (item) =>
         item.status === "arrived" &&
-        item.tasks.some((task) => task.status === "assigned"),
+        item.tasks.some((task) =>
+          ["unassigned", "assigned"].includes(task.status),
+        ),
     ).length,
     inProgress: tasks.filter((task) => task.status === "in_progress").length,
     completed: tasks.filter((task) => task.status === "completed").length,
@@ -50,7 +52,11 @@ export function getSpaTechnicianTasks(
   technicianId: string,
 ): SpaTechnicianTask[] {
   return snapshot.appointments
-    .filter((appointment) => appointment.status !== "cancelled")
+    .filter(
+      (appointment) =>
+        appointment.status !== "cancelled" &&
+        appointment.date === snapshot.date,
+    )
     .flatMap((appointment) =>
       appointment.tasks
         .filter((task) => task.technicianId === technicianId)
