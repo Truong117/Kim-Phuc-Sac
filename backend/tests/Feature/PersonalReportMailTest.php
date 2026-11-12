@@ -9,6 +9,7 @@ use App\Models\ReportAutomationCycle;
 use App\Models\ReportMailPreference;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
+use App\Services\AI\ReportAutomation;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\Mail\MailConfiguration;
 use App\Services\Mail\MailOutbox;
@@ -232,6 +233,22 @@ class PersonalReportMailTest extends TestCase
         $this->assertSame('skipped', PersonalWeeklyMailDelivery::query()->where('user_id', $this->alice->id)->value('status'));
         $this->assertDatabaseCount('mail_messages', 0);
         Http::assertNothingSent();
+    }
+
+    public function test_existing_automation_tick_delivers_personal_mail_when_company_mail_is_off(): void
+    {
+        $this->subscribe($this->alice);
+        $this->weekly();
+        $this->at('2026-11-15 09:10:00');
+        config(['report_automation.personal_weekly_mail_enabled' => true,
+            'report_automation.start_date' => '2026-11-14',
+            'daily_report_ai.enabled' => true, 'daily_report_ai.driver' => 'fake', 'daily_report_ai.queue_connection' => 'daily_report_ai']);
+        $result = app(ReportAutomation::class)->tick();
+        $this->assertSame('ok', $result['status']);
+        $this->assertArrayNotHasKey('personal_mail', $result);
+        $this->assertDatabaseCount('report_automation_deliveries', 0);
+        $this->assertSame('accepted', MailMessage::query()->where('recipient_user_id', $this->alice->id)->firstOrFail()->status);
+        Http::assertSentCount(1);
     }
 
     public function test_placeholder_unverified_and_opted_out_users_are_skipped_independently(): void
