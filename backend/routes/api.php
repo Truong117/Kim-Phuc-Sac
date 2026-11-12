@@ -83,6 +83,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/workspaces', WorkspaceController::class);
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');
+    Route::get('/reports/my-weekly-summary/periods', [PersonalWeeklyReportController::class, 'periods'])
+        ->middleware('permission:reports.view');
     Route::prefix('social-analytics/facebook')->group(function (): void {
         Route::get('/pages', [FacebookAnalyticsController::class, 'pages'])->middleware('throttle:60,1,fb-analytics-pages');
         Route::get('/{id}', [FacebookAnalyticsController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-read');

@@ -11,6 +11,7 @@ use App\Services\KpsMembershipResolver;
 use App\Services\ReportClock;
 use App\Services\ReportScopeService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -34,8 +35,8 @@ final class PersonalWeeklyReport
         }
         $end = CarbonImmutable::createFromFormat('!Y-m-d', $endDate, 'Asia/Ho_Chi_Minh');
         $now = $this->clock->now();
-        if (! $end || ! $end->isSaturday() || $end->greaterThan($now->setTimezone('Asia/Ho_Chi_Minh')->endOfWeek(CarbonImmutable::SATURDAY))) {
-            throw ValidationException::withMessages(['end_date' => 'Chọn tuần kết thúc vào thứ Bảy, không vượt quá tuần hiện tại.']);
+        if (! $end || $end->greaterThan($now->setTimezone('Asia/Ho_Chi_Minh')->endOfWeek(CarbonImmutable::SATURDAY))) {
+            throw ValidationException::withMessages(['end_date' => 'Chọn ngày kết thúc kỳ 7 ngày, không vượt quá tuần hiện tại.']);
         }
         $period = ['start_date' => $end->subDays(6)->toDateString(), 'end_date' => $endDate, 'days' => 7, 'timezone' => 'Asia/Ho_Chi_Minh'];
         // A broad management permission must never widen this endpoint beyond the signed-in user.
@@ -44,9 +45,7 @@ final class PersonalWeeklyReport
             ->whereNotNull('daily_reports.locked_at')->where('daily_reports.locked_at', '<=', $now->utc())
             ->orderBy('daily_reports.id')->get();
         $scope = ['organization_id' => (int) $member->organization_id, 'restrictions' => [['organization', (int) $member->organization_id]]];
-        $query = WorkReportAnalysis::query()->where('organization_id', $member->organization_id)
-            ->where('scope_hash', WorkReportSnapshot::hash($scope))->whereNull('department_id')
-            ->where('days', 7)->whereDate('end_date', $endDate)->whereDate('start_date', $period['start_date']);
+        $query = $this->companyAnalyses($scope)->whereDate('end_date', $endDate)->whereDate('start_date', $period['start_date']);
         $cycleId = ReportAutomationCycle::query()->where('organization_id', $member->organization_id)
             ->where('kind', 'weekly')->whereDate('end_date', $endDate)->value('analysis_id');
         $ownUnits = fn (HasMany $q) => $q->where('unit_key', 'like', 'employee:'.$viewer->id.':%');
@@ -64,13 +63,11 @@ final class PersonalWeeklyReport
                 || ($snapshot['department_id'] ?? null) !== null) {
                 continue;
             }
-            $ownReports = array_values(array_filter($snapshot['reports'], fn ($r) => $r['employee_id'] === $viewer->id));
-            // Recheck current ownership, organization and source authorization, even for old snapshots.
-            $ids = array_column($ownReports, 'report_id');
-            if ($ids !== [] && $this->reports->queryFor($viewer)->where('daily_reports.user_id', $viewer->id)
-                ->whereIn('daily_reports.id', $ids)->count() !== count($ids)) {
+            $ownReports = $this->ownReports($viewer, $snapshot);
+            if ($ownReports === null) {
                 continue;
             }
+            $ids = array_column($ownReports, 'report_id');
             $payload = $this->project($viewer, $run, $period, $ownReports);
             $payload['source_changed'] = $current->modelKeys() !== $ids
                 || $current->contains(fn ($r) => $r->updated_at?->greaterThan($run->captured_at))
@@ -94,6 +91,52 @@ final class PersonalWeeklyReport
         return ['period' => $period, 'status' => $current->isEmpty() ? 'no_data' : 'not_analyzed',
             'employee' => null, 'source_reports' => [], 'source_changed' => false, 'updating' => false,
             'captured_at' => null, 'is_mock' => false];
+    }
+
+    /** Only period metadata for company analyses that contain this user's authorized sources. */
+    public function periods(User $viewer): array
+    {
+        $member = $this->memberships->activeMembershipFor($viewer);
+        if (! $member || ! $this->authorization->allows($viewer, 'reports.view')) {
+            throw new AccessDeniedHttpException;
+        }
+        $scope = ['organization_id' => (int) $member->organization_id, 'restrictions' => [['organization', (int) $member->organization_id]]];
+        $runs = $this->companyAnalyses($scope)
+            ->whereDate('end_date', '<=', $this->clock->businessDate())
+            ->whereHas('units', fn (Builder $q) => $q->where('unit_key', 'like', 'employee:'.$viewer->id.':%'))
+            ->orderByDesc('end_date')->orderByDesc('id')->limit(100)->get();
+        $periods = [];
+        foreach ($runs as $run) {
+            $snapshot = $run->snapshot;
+            $period = ['start_date' => $run->start_date->toDateString(), 'end_date' => $run->end_date->toDateString(), 'days' => 7, 'timezone' => 'Asia/Ho_Chi_Minh'];
+            if ($run->start_date->toDateString() !== $run->end_date->subDays(6)->toDateString()
+                || ($snapshot['scope'] ?? null) !== $scope || ($snapshot['period'] ?? null) !== $period
+                || ($snapshot['department_id'] ?? null) !== null || ! $this->ownReports($viewer, $snapshot)) {
+                continue;
+            }
+            $periods[$period['end_date']] ??= $period;
+        }
+
+        return array_values($periods);
+    }
+
+    private function companyAnalyses(array $scope): Builder
+    {
+        return WorkReportAnalysis::query()->where('organization_id', $scope['organization_id'])
+            ->where('scope_hash', WorkReportSnapshot::hash($scope))->whereNull('department_id')->where('days', 7);
+    }
+
+    private function ownReports(User $viewer, array $snapshot): ?array
+    {
+        $reports = array_values(array_filter($snapshot['reports'], fn ($r) => $r['employee_id'] === $viewer->id));
+        $ids = array_column($reports, 'report_id');
+        // Recheck current ownership, organization and source authorization for reads and period discovery.
+        if ($ids !== [] && $this->reports->queryFor($viewer)->where('daily_reports.user_id', $viewer->id)
+            ->whereIn('daily_reports.id', $ids)->count() !== count($ids)) {
+            return null;
+        }
+
+        return $reports;
     }
 
     private function project(User $viewer, WorkReportAnalysis $run, array $period, array $reports): array

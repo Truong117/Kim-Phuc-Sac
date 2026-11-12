@@ -66,16 +66,28 @@ async function setup(
     week: string,
     attempt: number,
   ) => PersonalWeeklyReport | number = () => sample(),
+  options: {
+    periods?: PersonalWeeklyReport["period"][];
+    path?: string;
+    periodsError?: boolean;
+  } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-11T02:00:00Z"));
   const requests: { path: string; method: string }[] = [];
   let reads = 0;
   await page.route("**/api/**", async (route) => {
     if (new URL(route.request().url()).pathname === "/api/workspaces")
-      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
+      return route.fulfill({
+        json: { workspaces: [{ id: "internal", home: "/", sections: [] }] },
+      });
     const request = route.request(),
       url = new URL(request.url());
     requests.push({ path: url.pathname, method: request.method() });
+    if (url.pathname === endpoint + "/periods") {
+      return options.periodsError
+        ? route.fulfill({ status: 503, json: { message: "Unavailable" } })
+        : route.fulfill({ json: { data: options.periods ?? [] } });
+    }
     if (url.pathname === endpoint) {
       const next = response(url.searchParams.get("end_date")!, ++reads);
       return typeof next === "number"
@@ -102,7 +114,9 @@ async function setup(
             };
     await route.fulfill({ json });
   });
-  await page.goto("/reports/my-weekly-summary?end_date=2026-11-07");
+  await page.goto(
+    options.path ?? "/reports/my-weekly-summary?end_date=2026-11-07",
+  );
   await expect(
     page.getByRole("heading", { name: "Báo cáo tuần của tôi", exact: true }),
   ).toBeVisible();
@@ -281,4 +295,90 @@ test("a revoked read permission removes previously displayed report content", as
   await expect(
     page.getByRole("heading", { name: "Thiết kế nội dung" }),
   ).toHaveCount(0);
+});
+
+test("the latest saved Sunday period opens by default and exact saved weeks stay distinct", async ({
+  page,
+}) => {
+  const saturday = sample().period;
+  const sunday = {
+    ...saturday,
+    start_date: "2026-11-02",
+    end_date: "2026-11-08",
+  };
+  const requests = await setup(
+    page,
+    (end) => ({
+      ...sample(),
+      period: end === sunday.end_date ? sunday : saturday,
+      employee: {
+        ...sample().employee!,
+        work_groups: [
+          {
+            title: `Nhóm công việc ${end}`,
+            text: "Đã thiết kế 2 ảnh",
+            evidence,
+          },
+        ],
+      },
+    }),
+    { periods: [sunday, saturday], path: "/reports/my-weekly-summary" },
+  );
+  await expect(
+    page.getByRole("heading", { name: "Nhóm công việc 2026-11-08" }),
+  ).toBeVisible();
+  await expect(
+    page.locator("p").filter({ hasText: "Từ 02/11/2026 đến 08/11/2026" }),
+  ).toBeVisible();
+  const saved = page.getByRole("combobox", {
+    name: "Các kỳ đã có bản phân tích",
+  });
+  await expect(saved).toHaveValue("2026-11-08");
+  await saved.selectOption("2026-11-07");
+  await expect(
+    page.getByRole("heading", { name: "Nhóm công việc 2026-11-07" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/end_date=2026-11-07/);
+  await page.goBack();
+  await expect(
+    page.getByRole("heading", { name: "Nhóm công việc 2026-11-08" }),
+  ).toBeVisible();
+  expect(requests.every((request) => request.method === "GET")).toBe(true);
+});
+
+test("an explicit Sunday link retains its exact dates and the calendar permits Sunday", async ({
+  page,
+}) => {
+  const period = {
+    ...sample().period,
+    start_date: "2026-11-02",
+    end_date: "2026-11-08",
+  };
+  await setup(page, () => ({ ...sample(), period }), {
+    periods: [period],
+    path: "/reports/my-weekly-summary?end_date=2026-11-08",
+  });
+  await expect(
+    page.getByRole("heading", { name: "Thiết kế nội dung" }),
+  ).toBeVisible();
+  await expect(
+    page.locator("p").filter({ hasText: "Từ 02/11/2026 đến 08/11/2026" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: "Ngày kết thúc kỳ 7 ngày: 08/11/2026",
+      exact: true,
+    })
+    .click();
+  await expect(page.locator('[data-calendar-date="2026-11-08"]')).toBeEnabled();
+});
+
+test("failure to discover old periods still permits an exact date read", async ({
+  page,
+}) => {
+  await setup(page, () => sample(), { periodsError: true });
+  await expect(
+    page.getByRole("heading", { name: "Thiết kế nội dung" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Chưa tải được danh sách kỳ/)).toBeVisible();
 });
