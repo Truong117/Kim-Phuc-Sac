@@ -30,19 +30,28 @@ class MailOutbox
         ));
     }
 
-    private function queueMessage(User $actor, int $recipientId, string $requestKey, string $kind, ?string $subject = null, ?string $body = null): MailMessage
+    /** Internal-only binding; HTTP compose endpoints cannot supply report mail context. */
+    public function queueReportMail(User $actor, int $recipientId, string $requestKey, string $subject, string $body, array $context): MailMessage
+    {
+        abort_unless(in_array($context['purpose'] ?? null, ['report_email_verification', 'personal_weekly_report'], true), 409);
+
+        return $this->queueMessage($actor, $recipientId, $requestKey, 'internal', $subject, $body, $context);
+    }
+
+    private function queueMessage(User $actor, int $recipientId, string $requestKey, string $kind, ?string $subject = null, ?string $body = null, ?array $context = null): MailMessage
     {
         $membership = $this->access->require($actor);
         $this->configuration->requireReady();
         abort_unless(config('kps_mail.send_enabled'), 503, 'KPS_MAIL_SEND_DISABLED');
 
-        return DB::transaction(function () use ($actor, $recipientId, $requestKey, $membership, $kind, $subject, $body): MailMessage {
+        return DB::transaction(function () use ($actor, $recipientId, $requestKey, $membership, $kind, $subject, $body, $context): MailMessage {
             Organization::query()->whereKey($membership->organization_id)->lockForUpdate()->firstOrFail();
             $existing = MailMessage::query()->where('organization_id', $membership->organization_id)->where('request_key', $requestKey)->first();
             if ($existing !== null) {
                 abort_unless((int) $existing->created_by === (int) $actor->id && (int) $existing->recipient_user_id === $recipientId && $existing->kind === $kind, 409);
                 if ($kind === 'internal') {
                     abort_unless($existing->payload['subject'] === $subject && $existing->payload['text'] === $body, 409, 'MAIL_REQUEST_CONTENT_CHANGED');
+                    abort_unless(($existing->payload['report_context'] ?? null) === $context, 409, 'MAIL_REQUEST_CONTEXT_CHANGED');
                 }
 
                 return $existing;
@@ -59,7 +68,7 @@ class MailOutbox
                 'organization_id' => $membership->organization_id, 'connection_id' => $connection->id, 'created_by' => $actor->id,
                 'recipient_user_id' => $recipientId, 'request_key' => $requestKey, 'kind' => $kind, 'provider' => $connection->provider,
                 'connection_revision' => $connection->revision, 'status' => 'queued', 'available_at' => now(),
-                'payload' => [...($kind === 'internal' ? ['layout' => MailPresentation::LAYOUT] : []), 'to' => $recipient->email, 'from_name' => $this->configuration->fromName(),
+                'payload' => [...($kind === 'internal' ? ['layout' => MailPresentation::LAYOUT] : []), ...($context === null ? [] : ['report_context' => $context]), 'to' => $recipient->email, 'from_name' => $this->configuration->fromName(),
                     'subject' => $kind === 'test' ? '[KPS] Kiểm tra kết nối gửi mail' : $subject,
                     'text' => $kind === 'test' ? 'Chào '.$recipient->name.",\n\nĐây là thư kiểm tra kết nối gửi mail từ hệ thống KPS.\n\n".$this->configuration->fromName() : $body],
             ]);
@@ -102,6 +111,11 @@ class MailOutbox
             return;
         }
         try {
+            if (! app(PersonalReportMailGuard::class)->canProcess($message)) {
+                $message->fill(['status' => 'queued', 'started_at' => null, 'attempts' => $message->attempts - 1])->save();
+
+                return;
+            }
             if (! app(ReportAutomationMailGuard::class)->canProcess($message)) {
                 $message->fill(['status' => 'queued', 'started_at' => null, 'attempts' => $message->attempts - 1])->save();
 

@@ -20,6 +20,7 @@ use App\Http\Controllers\Reports\ReportCommentController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\ReportFacebookPostsController;
 use App\Http\Controllers\Reports\ReportLinkCheckController;
+use App\Http\Controllers\Reports\ReportMailController;
 use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
 use App\Http\Controllers\Reports\TodayReportController;
@@ -72,6 +73,11 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/messages/{id}/process', [MailController::class, 'processMessage'])->whereUuid('id')->middleware('throttle:60,1,mail-compose-process');
     });
     Route::prefix('account')->group(function () {
+        Route::get('/report-mail', [ReportMailController::class, 'show'])->middleware('permission:reports.view');
+        Route::post('/report-mail/verification', [ReportMailController::class, 'requestVerification'])
+            ->middleware(['permission:reports.view', 'throttle:3,1,report-mail-verification', 'throttle:6,60,report-mail-verification-hour']);
+        Route::post('/report-mail/confirm', [ReportMailController::class, 'confirm'])->middleware(['permission:reports.view', 'throttle:6,1,report-mail-confirm']);
+        Route::patch('/report-mail', [ReportMailController::class, 'update'])->middleware(['permission:reports.view', 'throttle:10,1,report-mail-preferences']);
         Route::patch('/profile', [AccountController::class, 'updateProfile']);
         Route::patch('/password', [AccountController::class, 'updatePassword'])
             ->middleware('throttle:6,1,account-password');
@@ -80,6 +86,7 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
 
     Route::get('/navigation', NavigationController::class);
+    Route::get('/integrations/mail/personal-weekly-recipients', [ReportMailController::class, 'recipients']);
     Route::get('/workspaces', WorkspaceController::class);
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');

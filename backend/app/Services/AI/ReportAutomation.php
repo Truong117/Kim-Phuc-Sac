@@ -11,6 +11,7 @@ use App\Models\WorkReportAnalysis;
 use App\Services\AI\Daily\DailyDocumentService;
 use App\Services\Mail\MailAccess;
 use App\Services\Mail\MailOutbox;
+use App\Services\Mail\PersonalWeeklyMail;
 use App\Services\Mail\ReportAutomationMail;
 use App\Services\ReportClock;
 use Carbon\CarbonImmutable;
@@ -82,6 +83,13 @@ class ReportAutomation
                 $message = MailMessage::query()->findOrFail($delivery->mail_message_id);
                 $delivery->update(['status' => $message->status, 'error_code' => $message->error_code]);
             }
+        }
+
+        try {
+            app(PersonalWeeklyMail::class)->tick($actor, (int) $scope['organization_id']);
+        } catch (Throwable) {
+            // A personal-mail setup problem must not stop company AI/mail processing.
+            return ['status' => 'ok', 'checked' => $ids->count(), 'personal_mail' => 'requires_review'];
         }
 
         return ['status' => 'ok', 'checked' => $ids->count()];

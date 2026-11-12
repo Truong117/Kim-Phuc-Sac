@@ -17,6 +17,7 @@ import MailHistory from "./MailHistory";
 import MailRecipientPicker from "./MailRecipientPicker";
 import MailTestDialog from "./MailTestDialog";
 import MailComposer from "./MailComposer";
+import PersonalReportMailAdmin from "./PersonalReportMailAdmin";
 import { useMailTestBatch } from "@/hooks/useMailTestBatch";
 
 export default function MailWorkspace() {
@@ -140,6 +141,7 @@ export default function MailWorkspace() {
   const fromName = data.from_name || t("mailUi.defaultFromName");
   return (
     <div className="space-y-5">
+      <PersonalReportMailAdmin />
       <ComponentCard title={t("mailUi.title")} desc={t("mailUi.description")}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
