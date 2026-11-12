@@ -5,6 +5,8 @@ import Select from "@/components/form/Select";
 import TaskForm from "@/components/tasks/TaskForm";
 import TaskPriorityBadge from "@/components/tasks/TaskPriorityBadge";
 import TaskStatusBadge from "@/components/tasks/TaskStatusBadge";
+import TaskProgressBar from "@/components/tasks/TaskProgressBar";
+import TaskProgressHistory from "@/components/tasks/TaskProgressHistory";
 import Button from "@/components/ui/button/Button";
 import { ApiServiceError, type ValidationErrors } from "@/services/apiClient";
 import {
@@ -26,9 +28,9 @@ import { Link, useNavigate, useParams } from "react-router";
 
 const formatDate = (value: string | null) => {
   if (!value) return null;
-  return new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }).format(
-    new Date(`${value}T00:00:00+07:00`),
-  );
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).format(new Date(`${value}T00:00:00+07:00`));
 };
 
 const toValues = (task: ManagedTask): TaskFormValues => ({
@@ -38,6 +40,8 @@ const toValues = (task: ManagedTask): TaskFormValues => ({
   priority: task.priority,
   startDate: task.start_date ?? "",
   dueDate: task.due_date,
+  targetQuantity: task.target_quantity ? String(task.target_quantity) : "",
+  quantityUnit: task.quantity_unit ?? "",
 });
 
 const toInput = (values: TaskFormValues): TaskInput => ({
@@ -47,6 +51,8 @@ const toInput = (values: TaskFormValues): TaskInput => ({
   priority: values.priority,
   start_date: values.startDate || null,
   due_date: values.dueDate,
+  target_quantity: values.targetQuantity ? Number(values.targetQuantity) : null,
+  quantity_unit: values.quantityUnit || null,
 });
 
 export default function TaskDetail() {
@@ -68,7 +74,10 @@ export default function TaskDetail() {
   useEffect(() => {
     if (!id) return;
     const controller = new AbortController();
-    Promise.all([getTask(id, controller.signal), getTaskReferences(controller.signal)])
+    Promise.all([
+      getTask(id, controller.signal),
+      getTaskReferences(controller.signal),
+    ])
       .then(([nextTask, nextReferences]) => {
         setTask(nextTask);
         setReferences(nextReferences);
@@ -77,10 +86,17 @@ export default function TaskDetail() {
         setError(null);
       })
       .catch((nextError: unknown) => {
-        if (nextError instanceof DOMException && nextError.name === "AbortError") return;
+        if (
+          nextError instanceof DOMException &&
+          nextError.name === "AbortError"
+        )
+          return;
         if (nextError instanceof ApiServiceError && nextError.status === 404) {
           setError(t("errors.notFound"));
-        } else if (nextError instanceof ApiServiceError && nextError.status === 403) {
+        } else if (
+          nextError instanceof ApiServiceError &&
+          nextError.status === 403
+        ) {
           setError(t("errors.forbidden"));
         } else {
           setError(t("errors.loadDetail"));
@@ -144,17 +160,28 @@ export default function TaskDetail() {
 
   return (
     <>
-      <PageMeta title={`${t("detail.title")} | KIM PHỤC SẮC`} description={t("detail.metaDescription")} />
+      <PageMeta
+        title={`${t("detail.title")} | KIM PHỤC SẮC`}
+        description={t("detail.metaDescription")}
+      />
       <PageBreadCrumb pageTitle={t("detail.title")} />
 
       {isLoading ? (
         <div className="h-96 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
       ) : error || !task ? (
         <section className="rounded-2xl border border-error-200 bg-white px-6 py-12 text-center dark:border-error-800 dark:bg-white/3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t("errors.title")}</h2>
-          <p className="mt-2 text-theme-sm text-error-600 dark:text-error-400">{error}</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {t("errors.title")}
+          </h2>
+          <p className="mt-2 text-theme-sm text-error-600 dark:text-error-400">
+            {error}
+          </p>
           <div className="mt-5 flex justify-center gap-3">
-            <Button type="button" variant="outline" onClick={() => navigate("/tasks")}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => navigate("/tasks")}
+            >
               {t("actions.backToList")}
             </Button>
             <Button
@@ -183,7 +210,9 @@ export default function TaskDetail() {
                   </span>
                 )}
               </div>
-              <h1 className="mt-3 text-title-sm font-bold text-gray-900 dark:text-white">{task.title}</h1>
+              <h1 className="mt-3 text-title-sm font-bold text-gray-900 dark:text-white">
+                {task.title}
+              </h1>
               <p className="mt-1 text-theme-sm text-gray-500 dark:text-gray-400">
                 {t("detail.taskId", { id: task.id })}
               </p>
@@ -196,7 +225,11 @@ export default function TaskDetail() {
                 {t("actions.backToList")}
               </Link>
               {task.actions.can_manage && !isEditing && (
-                <Button type="button" className="bg-kps-primary hover:bg-kps-primary-hover" onClick={() => setIsEditing(true)}>
+                <Button
+                  type="button"
+                  className="bg-kps-primary hover:bg-kps-primary-hover"
+                  onClick={() => setIsEditing(true)}
+                >
                   {t("detail.edit")}
                 </Button>
               )}
@@ -204,7 +237,10 @@ export default function TaskDetail() {
           </div>
 
           {actionError && (
-            <p role="alert" className="rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400">
+            <p
+              role="alert"
+              className="rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400"
+            >
               {actionError}
             </p>
           )}
@@ -235,36 +271,71 @@ export default function TaskDetail() {
             </ComponentCard>
           ) : (
             <div className="grid gap-5 xl:grid-cols-3">
-              <ComponentCard title={t("detail.information")} compact className="xl:col-span-2">
-                <p className="whitespace-pre-wrap text-theme-sm leading-6 text-gray-700 dark:text-gray-300">
+              <ComponentCard
+                title={t("detail.information")}
+                compact
+                className="xl:col-span-2"
+              >
+                <TaskProgressBar progress={task.progress} />
+                <p className="text-theme-sm leading-6 whitespace-pre-wrap text-gray-700 dark:text-gray-300">
                   {task.description || t("detail.noDescription")}
                 </p>
                 <dl className="grid gap-4 border-t border-gray-100 pt-4 sm:grid-cols-2 dark:border-gray-800">
                   {[
                     [t("detail.assignee"), task.assignee.name],
                     [t("detail.creator"), task.creator.name],
-                    [t("detail.department"), task.department?.name ?? t("detail.notAvailable")],
-                    [t("detail.location"), task.location?.name ?? t("detail.notAvailable")],
-                    [t("detail.startDate"), formatDate(task.start_date) ?? t("detail.notAvailable")],
-                    [t("detail.dueDate"), formatDate(task.due_date) ?? t("detail.notAvailable")],
+                    [
+                      t("detail.department"),
+                      task.department?.name ?? t("detail.notAvailable"),
+                    ],
+                    [
+                      t("detail.location"),
+                      task.location?.name ?? t("detail.notAvailable"),
+                    ],
+                    [
+                      t("detail.startDate"),
+                      formatDate(task.start_date) ?? t("detail.notAvailable"),
+                    ],
+                    [
+                      t("detail.dueDate"),
+                      formatDate(task.due_date) ?? t("detail.notAvailable"),
+                    ],
                   ].map(([label, value]) => (
                     <div key={label}>
-                      <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">{label}</dt>
-                      <dd className="mt-1 text-theme-sm font-semibold text-gray-900 dark:text-white">{value}</dd>
+                      <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        {label}
+                      </dt>
+                      <dd className="mt-1 text-theme-sm font-semibold text-gray-900 dark:text-white">
+                        {value}
+                      </dd>
                     </div>
                   ))}
                 </dl>
               </ComponentCard>
 
-              <ComponentCard title={t("detail.statusTitle")} desc={t("detail.statusDescription")} compact>
+              <ComponentCard
+                title={t("detail.statusTitle")}
+                desc={t("detail.statusDescription")}
+                compact
+              >
                 {task.actions.can_update_status ? (
                   <>
                     <Select
                       value={selectedStatus}
-                      onChange={(value) => setSelectedStatus(value as TaskStatus)}
-                      options={(["TODO", "IN_PROGRESS", "BLOCKED", "COMPLETED"] as TaskStatus[]).map(
-                        (status) => ({ value: status, label: t(`status.${status}`) }),
-                      )}
+                      onChange={(value) =>
+                        setSelectedStatus(value as TaskStatus)
+                      }
+                      options={(
+                        [
+                          "TODO",
+                          "IN_PROGRESS",
+                          "BLOCKED",
+                          "COMPLETED",
+                        ] as TaskStatus[]
+                      ).map((status) => ({
+                        value: status,
+                        label: t(`status.${status}`),
+                      }))}
                     />
                     <Button
                       type="button"
@@ -272,15 +343,20 @@ export default function TaskDetail() {
                       className="w-full bg-kps-primary hover:bg-kps-primary-hover disabled:bg-kps-primary"
                       onClick={() => void saveStatus()}
                     >
-                      {isSubmitting ? t("form.saving") : t("detail.updateStatus")}
+                      {isSubmitting
+                        ? t("form.saving")
+                        : t("detail.updateStatus")}
                     </Button>
                   </>
                 ) : (
-                  <p className="text-theme-sm text-gray-500 dark:text-gray-400">{t("detail.statusReadOnly")}</p>
+                  <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                    {t("detail.statusReadOnly")}
+                  </p>
                 )}
               </ComponentCard>
             </div>
           )}
+          {task.progress && <TaskProgressHistory taskId={task.id} />}
         </div>
       )}
     </>

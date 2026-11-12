@@ -242,6 +242,7 @@ class WorkReportService
                     throw ValidationException::withMessages(['items' => 'Đầu việc không thuộc báo cáo đang sửa.']);
                 }
             }
+            $tasks = app(ReportTaskProgress::class)->lock($author, $report->report_date->toDateString(), $items, $existing);
             // Resolve and lock new Page choices before taking any item write locks (same order as sync).
             $selections = [];
             foreach ($items as $index => $item) {
@@ -268,6 +269,7 @@ class WorkReportService
                     DB::table('social_post_sources')->where('daily_report_item_id', $row->id)->delete();
                 }
                 $row->fill($values)->save();
+                app(ReportTaskProgress::class)->apply($author, $report, $row, $item, $tasks);
                 $kept[] = $row->id;
             }
             $report->items()->whereNotIn('id', $kept)->delete();
@@ -384,8 +386,9 @@ class WorkReportService
      */
     private function replaceItems(DailyReport $report, array $items, User $author): void
     {
+        $tasks = app(ReportTaskProgress::class)->lock($author, $report->report_date->toDateString(), $items);
         foreach ($items as $index => $item) {
-            $report->items()->create([
+            $row = $report->items()->create([
                 'content' => $item['content'],
                 'result' => $item['result'] ?? '',
                 'status' => $item['status'],
@@ -395,6 +398,7 @@ class WorkReportService
                 'facebook_selections' => app(ReportFacebookPosts::class)->selections($author, $item, null, $index),
                 'sort_order' => $index + 1,
             ]);
+            app(ReportTaskProgress::class)->apply($author, $report, $row, $item, $tasks);
         }
     }
 

@@ -7,12 +7,20 @@ const source = await readFile(
   new URL("../src/services/workReportDraftStorage.ts", import.meta.url),
   "utf8",
 );
-const transpiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.ES2022,
-    target: ts.ScriptTarget.ES2022,
+const taskSource = await readFile(
+  new URL("../src/utils/taskProgress.ts", import.meta.url),
+  "utf8",
+);
+const taskModule = `data:text/javascript;base64,${Buffer.from(ts.transpileModule(taskSource, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText).toString("base64")}`;
+const transpiled = ts.transpileModule(
+  source.replace('"@/utils/taskProgress"', JSON.stringify(taskModule)),
+  {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
   },
-}).outputText;
+).outputText;
 const drafts = await import(
   `data:text/javascript;base64,${Buffer.from(transpiled).toString("base64")}`
 );
@@ -447,9 +455,15 @@ test("a still-open V1 tab cannot silently overwrite the newer V2 draft", () => {
   assert.deepEqual(adapter.load(context()).draft.data, next);
 });
 
-
 test("Facebook evidence choices survive drafts and malformed choice data is rejected", () => {
-  const selection = { source_url: "https://facebook.com/share/p/Test", selection_token: "application-proof", entry_id: 1, external_id: "100_555", post_url: "https://facebook.com/kps/posts/555", page_name: "KPS" };
+  const selection = {
+    source_url: "https://facebook.com/share/p/Test",
+    selection_token: "application-proof",
+    entry_id: 1,
+    external_id: "100_555",
+    post_url: "https://facebook.com/kps/posts/555",
+    page_name: "KPS",
+  };
   const storage = new MemoryStorage();
   const adapter = new drafts.WorkReportDraftStorage(storage);
   const original = data();
@@ -457,10 +471,15 @@ test("Facebook evidence choices survive drafts and malformed choice data is reje
   original.items[0].facebookSelections = [selection];
   const result = adapter.save(context(), original, saveOptions());
   assert.equal(result.status, "saved");
-  assert.deepEqual(adapter.load(context()).draft.data.items[0].facebookSelections, [selection]);
+  assert.deepEqual(
+    adapter.load(context()).draft.data.items[0].facebookSelections,
+    [selection],
+  );
   const key = drafts.workReportDraftKey(context());
   const stored = JSON.parse(storage.getItem(key));
-  stored.data.items[0].facebookSelections = [{ source_url: selection.source_url }];
+  stored.data.items[0].facebookSelections = [
+    { source_url: selection.source_url },
+  ];
   storage.setItem(key, JSON.stringify(stored));
   assert.equal(adapter.load(context()).status, "invalid");
 });

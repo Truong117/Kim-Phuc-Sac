@@ -17,6 +17,8 @@ const initialValues: TaskFormValues = {
   priority: "MEDIUM",
   startDate: "",
   dueDate: "",
+  targetQuantity: "",
+  quantityUnit: "",
 };
 
 const toInput = (values: TaskFormValues): TaskInput => ({
@@ -26,6 +28,8 @@ const toInput = (values: TaskFormValues): TaskInput => ({
   priority: values.priority,
   start_date: values.startDate || null,
   due_date: values.dueDate,
+  target_quantity: values.targetQuantity ? Number(values.targetQuantity) : null,
+  quantity_unit: values.quantityUnit || null,
 });
 
 export default function TaskCreate() {
@@ -47,7 +51,11 @@ export default function TaskCreate() {
         setError(response.actions.can_create ? null : t("errors.cannotCreate"));
       })
       .catch((nextError: unknown) => {
-        if (nextError instanceof DOMException && nextError.name === "AbortError") return;
+        if (
+          nextError instanceof DOMException &&
+          nextError.name === "AbortError"
+        )
+          return;
         setError(t("errors.loadReferences"));
       })
       .finally(() => {
@@ -85,7 +93,10 @@ export default function TaskCreate() {
 
   return (
     <>
-      <PageMeta title={`${t("create.title")} | KIM PHỤC SẮC`} description={t("create.metaDescription")} />
+      <PageMeta
+        title={`${t("create.title")} | KIM PHỤC SẮC`}
+        description={t("create.metaDescription")}
+      />
       <PageBreadCrumb pageTitle={t("create.title")} />
       <p className="-mt-4 mb-6 text-theme-sm text-gray-500 dark:text-gray-400">
         {t("create.subtitle")}
@@ -95,8 +106,12 @@ export default function TaskCreate() {
         <div className="h-96 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
       ) : error && !references?.actions.can_create ? (
         <section className="rounded-2xl border border-warning-200 bg-white px-6 py-12 text-center dark:border-warning-800 dark:bg-white/3">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{t("errors.title")}</h2>
-          <p className="mt-2 text-theme-sm text-warning-700 dark:text-warning-400">{error}</p>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {t("errors.title")}
+          </h2>
+          <p className="mt-2 text-theme-sm text-warning-700 dark:text-warning-400">
+            {error}
+          </p>
           <Button
             type="button"
             variant="outline"
@@ -111,9 +126,16 @@ export default function TaskCreate() {
           </Button>
         </section>
       ) : references ? (
-        <ComponentCard title={t("create.cardTitle")} desc={t("create.cardDescription")} compact>
+        <ComponentCard
+          title={t("create.cardTitle")}
+          desc={t("create.cardDescription")}
+          compact
+        >
           {error && (
-            <p role="alert" className="rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400">
+            <p
+              role="alert"
+              className="rounded-lg bg-error-50 px-4 py-3 text-theme-sm text-error-700 dark:bg-error-500/10 dark:text-error-400"
+            >
               {error}
             </p>
           )}

@@ -238,6 +238,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_dry_run_before_m23_m24_is_readable_but_apply_requires_both_migrations(): void
     {
+        (require database_path('migrations/2026_11_12_010000_add_daily_task_progress.php'))->down();
         (require database_path('migrations/2026_11_12_000000_create_personal_report_mail_tables.php'))->down();
         (require database_path('migrations/2026_11_10_020000_create_report_automation_tables.php'))->down();
         (require database_path('migrations/2026_11_10_010000_create_facebook_monthly_reports.php'))->down();
@@ -257,7 +258,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         DB::table('migrations')->whereIn('migration', array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 22))->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertFalse($preview['schema_ready']);
-        $this->assertCount(16, $preview['pending_migrations']);
+        $this->assertCount(17, $preview['pending_migrations']);
         $this->expectExceptionMessage('FIXTURE_APPLY_REQUIRES_M23_M24');
         $this->fixture->apply($this->batch, $this->end, $this->store, $preview['fingerprint'], []);
     }
@@ -389,9 +390,10 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_sampling_columns_must_match_the_reviewed_ledger(): void
     {
+        (require database_path('migrations/2026_11_12_010000_add_daily_task_progress.php'))->down();
         (require database_path('migrations/2026_11_12_000000_create_personal_report_mail_tables.php'))->down();
         (require database_path('migrations/2026_11_10_020000_create_report_automation_tables.php'))->down();
-        DB::table('migrations')->whereIn('migration', ['2026_11_12_000000_create_personal_report_mail_tables', '2026_11_10_020000_create_report_automation_tables', '2026_11_09_010000_create_facebook_age_milestones', '2026_11_10_000000_create_facebook_review_plans', '2026_11_10_010000_create_facebook_monthly_reports'])->delete();
+        DB::table('migrations')->whereIn('migration', ['2026_11_12_010000_add_daily_task_progress', '2026_11_12_000000_create_personal_report_mail_tables', '2026_11_10_020000_create_report_automation_tables', '2026_11_09_010000_create_facebook_age_milestones', '2026_11_10_000000_create_facebook_review_plans', '2026_11_10_010000_create_facebook_monthly_reports'])->delete();
         (require database_path('migrations/2026_11_10_010000_create_facebook_monthly_reports.php'))->down();
         (require database_path('migrations/2026_11_10_000000_create_facebook_review_plans.php'))->down();
         (require database_path('migrations/2026_11_09_010000_create_facebook_age_milestones.php'))->down();

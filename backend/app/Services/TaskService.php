@@ -8,6 +8,7 @@ use App\Models\Department;
 use App\Models\Location;
 use App\Models\OrganizationMembership;
 use App\Models\Task;
+use App\Models\TaskOutput;
 use App\Models\User;
 use App\Models\WeeklyPlan;
 use App\Models\WeeklyPlanEntry;
@@ -15,6 +16,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
@@ -48,6 +50,9 @@ class TaskService
             ->orderByDesc('tasks.id')
             ->paginate((int) ($filters['per_page'] ?? 20));
 
+        if (app(ReportTaskProgress::class)->ready()) {
+            $paginator->getCollection()->load('progressOutputs');
+        }
         $paginator->getCollection()->each(
             fn (Task $task): Task => $this->decorate($task, $viewer),
         );
@@ -165,6 +170,14 @@ class TaskService
                 $managerMembership,
                 (int) $attributes['assignee_id'],
             );
+            $target = array_key_exists('target_quantity', $attributes) ? $attributes['target_quantity'] : $task->target_quantity;
+            $unit = array_key_exists('quantity_unit', $attributes) ? $attributes['quantity_unit'] : $task->quantity_unit;
+            if ($target !== null && ! in_array($unit, ReportTaskProgress::UNITS, true)) {
+                throw ValidationException::withMessages(['quantity_unit' => 'Chọn đơn vị cho mục tiêu số lượng.']);
+            }
+            if ($unit !== $task->quantity_unit && Schema::hasTable('task_outputs') && TaskOutput::query()->where('task_id', $task->id)->exists()) {
+                throw ValidationException::withMessages(['quantity_unit' => 'Công việc đã có sản phẩm, hãy giữ đơn vị để bảo toàn tiến độ.']);
+            }
             $assigneeChanged = $task->assignee_id !== $assigneeMembership->user_id;
 
             $task->fill([
@@ -176,6 +189,7 @@ class TaskService
                 'priority' => $attributes['priority'],
                 'start_date' => $attributes['start_date'] ?? null,
                 'due_date' => $attributes['due_date'],
+                ...array_intersect_key($attributes, array_flip(['target_quantity', 'quantity_unit'])),
             ])->save();
 
             if ($assigneeChanged) {
@@ -324,6 +338,7 @@ class TaskService
                 'status' => TaskStatus::TODO,
                 'start_date' => $attributes['start_date'] ?? null,
                 'due_date' => $attributes['due_date'],
+                ...array_intersect_key($attributes, array_flip(['target_quantity', 'quantity_unit'])),
             ]);
 
             $this->notifications->createTaskAssignedNotification($task, $creator, false);
@@ -376,7 +391,8 @@ class TaskService
         return $this->decorate($task, $viewer);
     }
 
-    private function decorate(Task $task, User $viewer): Task
+    /** Decorate an already scoped task; callers must apply TaskScopeService first. */
+    public function decorate(Task $task, User $viewer): Task
     {
         $membership = $this->memberships->activeMembershipFor($viewer);
         $canManage = $membership !== null

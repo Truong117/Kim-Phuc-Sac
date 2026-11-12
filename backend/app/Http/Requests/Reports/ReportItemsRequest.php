@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Reports;
 
 use App\Enums\WorkStatus;
+use App\Services\ReportTaskProgress;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -71,7 +72,17 @@ abstract class ReportItemsRequest extends FormRequest
             'form_version' => ['sometimes', 'integer', Rule::in([3])],
             'next_day_plan' => (int) $this->input('form_version') === 3 ? ['required', 'string', 'max:5000'] : ['sometimes', 'nullable', 'string', 'max:5000'],
             'items' => ['present', 'array', $this->filled('next_day_plan') ? 'min:0' : 'min:1', 'max:50'],
-            'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links,facebook_selections'],
+            'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links,facebook_selections,task_id,task_progress'],
+            'items.*.task_id' => ['required_with:items.*.task_progress', 'nullable', 'integer', 'min:1'],
+            'items.*.task_progress' => ['required_with:items.*.task_id', 'array:expected_revision,status,unit,outputs'],
+            'items.*.task_progress.expected_revision' => ['required_with:items.*.task_progress', 'integer', 'min:0'],
+            'items.*.task_progress.status' => ['required_with:items.*.task_progress', Rule::in(['KEEP', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'])],
+            'items.*.task_progress.unit' => ['nullable', Rule::in(ReportTaskProgress::UNITS)],
+            'items.*.task_progress.outputs' => ['sometimes', 'array', 'max:50'],
+            'items.*.task_progress.outputs.*' => ['array:id,name,completed'],
+            'items.*.task_progress.outputs.*.id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'items.*.task_progress.outputs.*.name' => ['required', 'string', 'max:200'],
+            'items.*.task_progress.outputs.*.completed' => ['required', 'boolean'],
             'items.*.id' => $this->isMethod('POST') ? ['prohibited'] : ['sometimes', 'integer', 'min:1', 'distinct:strict'],
             'items.*.content' => ['required', 'string', 'max:5000'],
             'items.*.result' => [(int) $this->input('form_version') === 3 ? 'required_if:items.*.status,COMPLETED' : 'nullable', 'nullable', 'string', 'max:5000'],

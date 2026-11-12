@@ -21,6 +21,7 @@ import ReportSaveModal, {
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
 import QuickReportEditor from "@/components/reports/QuickReportEditor";
+import AssignedTaskReportPanel from "@/components/reports/AssignedTaskReportPanel";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
 import { useAuthorization } from "@/hooks/useAuthorization";
@@ -96,6 +97,7 @@ const mapReportItems = (report: DailyReport): WorkItemFormData[] =>
     result: item.result,
     status: item.status,
     note: item.note ?? "",
+    ...(item.task_link ? { taskLink: item.task_link } : {}),
   }));
 
 const formatDate = (value: string) =>
@@ -138,6 +140,9 @@ export default function NewReport({
   dateSelection,
 }: { makeupDate?: string; dateSelection?: ReactNode } = {}) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
+  const { t: progressT } = useTranslation("common", {
+    keyPrefix: "taskProgress",
+  });
   const { currentUser } = useAuth();
   const { canNavigate } = useAuthorization();
   const navigate = useNavigate();
@@ -151,6 +156,8 @@ export default function NewReport({
   const [today, setToday] = useState<TodayReportState | null>(null);
   const [nextDayPlan, setNextDayPlan] = useState("");
   const [items, setItems] = useState<WorkItemFormData[]>([]);
+  const [taskDrafts, setTaskDrafts] = useState<WorkItemFormData[]>([]);
+  const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const [editorMode, setEditorMode] = useState<"quick" | "detailed">("quick");
   const [quickDrafts, setQuickDrafts] = useState<QuickReportDrafts>(
     createEmptyQuickReportDrafts,
@@ -193,6 +200,8 @@ export default function NewReport({
     setToday(state);
     setNextDayPlan(state.report?.next_day_plan ?? "");
     setItems(state.report ? mapReportItems(state.report) : []);
+    setTaskDrafts([]);
+    setOpenTaskId(null);
     setEditorMode("quick");
     setQuickDrafts(createEmptyQuickReportDrafts());
     setBatchError(null);
@@ -279,16 +288,19 @@ export default function NewReport({
       quickDrafts: createEmptyQuickReportDrafts(),
       editorMode: "quick",
       nextDayPlan: today?.report?.next_day_plan ?? "",
+      taskDrafts: [],
     }),
     [today],
   );
   const currentDraftData = useMemo<WorkReportDraftData>(
-    () => ({ items, quickDrafts, editorMode, nextDayPlan }),
-    [editorMode, items, quickDrafts, nextDayPlan],
+    () => ({ items, quickDrafts, editorMode, nextDayPlan, taskDrafts }),
+    [editorMode, items, quickDrafts, nextDayPlan, taskDrafts],
   );
   const applyDraftData = useCallback((draftData: WorkReportDraftData) => {
     setNextDayPlan(draftData.nextDayPlan ?? "");
     setItems(draftData.items.map((item) => ({ ...item })));
+    setTaskDrafts(draftData.taskDrafts ?? []);
+    setOpenTaskId(draftData.taskDrafts?.[0]?.taskLink?.task_id ?? null);
     setQuickDrafts({ ...draftData.quickDrafts });
     setEditorMode(draftData.editorMode);
     setBatchError(null);
@@ -530,6 +542,17 @@ export default function NewReport({
 
   const handleSubmit = async () => {
     if (saveInFlightRef.current || saveState.status !== "idle") return;
+    if (taskDrafts.length > 0) {
+      setError(progressT("unapplied"));
+      const id = taskDrafts[0].taskLink?.task_id;
+      if (id) {
+        setOpenTaskId(id);
+        document
+          .getElementById(`assigned-task-${id}`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+      return;
+    }
 
     setSubmitAttempted(true);
     setError(null);
@@ -589,6 +612,21 @@ export default function NewReport({
         result: item.result.trim(),
         status: item.status as WorkStatus,
         note: item.note.trim() || null,
+        ...(item.taskLink
+          ? {
+              task_id: item.taskLink.task_id,
+              task_progress: {
+                ...item.taskLink.progress.input,
+                outputs: item.taskLink.progress.input.outputs.map(
+                  ({ id, name, completed }) => ({
+                    ...(id != null ? { id } : {}),
+                    name: name.trim(),
+                    completed,
+                  }),
+                ),
+              },
+            }
+          : {}),
       })),
     };
 
@@ -932,6 +970,38 @@ export default function NewReport({
                 onSubmit={() => void handleSubmit()}
                 className="space-y-6"
               >
+                {currentUser && canNavigate("tasks") && (
+                  <AssignedTaskReportPanel
+                    date={today.business_date}
+                    userId={Number(currentUser.id)}
+                    disabled={isSaveFlowActive}
+                    items={items}
+                    drafts={taskDrafts}
+                    facebookPages={facebookPages}
+                    openId={openTaskId}
+                    onOpen={setOpenTaskId}
+                    onDraftsChange={setTaskDrafts}
+                    onApply={(item) =>
+                      setItems((current) => {
+                        const existing = current.find(
+                          (row) =>
+                            row.taskLink?.task_id === item.taskLink?.task_id,
+                        );
+                        return existing
+                          ? current.map((row) =>
+                              row.clientId === existing.clientId
+                                ? {
+                                    ...item,
+                                    clientId: existing.clientId,
+                                    id: existing.id,
+                                  }
+                                : row,
+                            )
+                          : [...current, item];
+                      })
+                    }
+                  />
+                )}
                 <section className="rounded-2xl border border-gray-200 bg-white p-2 shadow-theme-xs dark:border-gray-800 dark:bg-white/3">
                   <div
                     role="tablist"
@@ -1017,6 +1087,7 @@ export default function NewReport({
                       onItemChange={handleItemChange}
                       onItemBlur={handleItemBlur}
                       onItemDelete={handleDeleteItem}
+                      onEditTask={setOpenTaskId}
                     />
                   </div>
                 ) : (
@@ -1050,6 +1121,7 @@ export default function NewReport({
                         ])
                       }
                       onItemDelete={handleDeleteItem}
+                      onEditTask={setOpenTaskId}
                     />
                   </div>
                 )}

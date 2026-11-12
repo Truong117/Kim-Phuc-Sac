@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Tasks;
 
 use App\Enums\TaskPriority;
+use App\Services\ReportTaskProgress;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -38,6 +39,8 @@ abstract class TaskPayloadRequest extends FormRequest
             'priority' => ['required', Rule::enum(TaskPriority::class)],
             'start_date' => ['nullable', 'date_format:Y-m-d'],
             'due_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:start_date'],
+            'target_quantity' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:1000000'],
+            'quantity_unit' => ['sometimes', 'nullable', 'required_with:target_quantity', Rule::in(ReportTaskProgress::UNITS)],
         ];
     }
 }

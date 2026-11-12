@@ -7,6 +7,48 @@ export type TaskReference = {
   name: string;
 };
 
+export type TaskQuantityUnit = "video" | "ảnh" | "bài viết" | "sản phẩm";
+export type TaskOutput = {
+  id?: number | null;
+  name: string;
+  unit?: TaskQuantityUnit;
+  completed: boolean;
+  first_completed_on?: string | null;
+};
+export type TaskProgress = {
+  revision: number;
+  target: number | null;
+  unit: TaskQuantityUnit | null;
+  completed: number;
+  counts: Record<string, number>;
+  percent: number | null;
+  outputs: TaskOutput[];
+};
+export type TaskProgressInput = {
+  expected_revision: number;
+  status: "KEEP" | Exclude<TaskStatus, "TODO">;
+  unit: TaskQuantityUnit | null;
+  outputs: TaskOutput[];
+};
+export type ReportTaskLink = {
+  task_id: number;
+  snapshot: {
+    id: number;
+    title: string;
+    description: string | null;
+    due_date: string;
+    target_quantity?: number | null;
+    quantity_unit?: TaskQuantityUnit | null;
+  };
+  progress: {
+    input: TaskProgressInput;
+    source_result?: string;
+    applied?: boolean;
+    outputs?: TaskOutput[];
+  };
+  pending?: boolean;
+};
+
 export type ManagedTask = {
   id: number;
   title: string;
@@ -17,6 +59,9 @@ export type ManagedTask = {
   due_date: string;
   is_overdue: boolean;
   completed_at: string | null;
+  target_quantity?: number | null;
+  quantity_unit?: TaskQuantityUnit | null;
+  progress?: TaskProgress | null;
   creator: TaskReference;
   assignee: TaskReference;
   department: TaskReference | null;
@@ -96,6 +141,8 @@ export type TaskInput = {
   priority: TaskPriority;
   start_date: string | null;
   due_date: string;
+  target_quantity?: number | null;
+  quantity_unit?: TaskQuantityUnit | null;
 };
 
 export type TaskFormValues = {
@@ -105,6 +152,8 @@ export type TaskFormValues = {
   priority: TaskPriority;
   startDate: string;
   dueDate: string;
+  targetQuantity?: string;
+  quantityUnit?: TaskQuantityUnit | "";
 };
 
 export type TaskResponse = { data: ManagedTask };

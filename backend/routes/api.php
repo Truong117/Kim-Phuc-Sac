@@ -14,6 +14,7 @@ use App\Http\Controllers\Integrations\MailController;
 use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\Reports\AssignedReportTasksController;
 use App\Http\Controllers\Reports\MakeupReportController;
 use App\Http\Controllers\Reports\PersonalWeeklyReportController;
 use App\Http\Controllers\Reports\ReportCommentController;
@@ -134,6 +135,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/reports/makeup', [MakeupReportController::class, 'options'])->middleware(['report_participant', 'permission:reports.create']);
     Route::get('/reports/makeup/state', [MakeupReportController::class, 'state'])->middleware(['report_participant', 'permission:reports.create']);
     Route::post('/reports/makeup', [MakeupReportController::class, 'store'])->middleware(['report_participant', 'permission:reports.create']);
+    Route::get('/reports/assigned-tasks', [AssignedReportTasksController::class, 'index'])
+        ->middleware(['permission:reports.create', 'permission:tasks.view']);
     Route::get('/reports/references', ReportReferenceController::class)
         ->middleware('permission:reports.view');
     Route::get('/reports', [ReportController::class, 'index'])
@@ -166,6 +169,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::patch('/tasks/{id}/status', [TaskController::class, 'updateStatus'])
         ->whereNumber('id')
         ->middleware('permission:tasks.view');
+    Route::get('/tasks/{id}/progress', [AssignedReportTasksController::class, 'history'])
+        ->whereNumber('id')->middleware('permission:tasks.view');
     Route::get('/tasks/{id}', [TaskController::class, 'show'])
         ->whereNumber('id')
         ->middleware('permission:tasks.view');

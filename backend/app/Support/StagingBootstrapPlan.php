@@ -50,6 +50,7 @@ final class StagingBootstrapPlan
         '2026_11_10_010000_create_facebook_monthly_reports',
         '2026_11_10_020000_create_report_automation_tables',
         '2026_11_12_000000_create_personal_report_mail_tables',
+        '2026_11_12_010000_add_daily_task_progress',
     ];
 
     /** @var list<string> */

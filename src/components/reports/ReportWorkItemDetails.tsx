@@ -23,6 +23,7 @@ export default function ReportWorkItemDetails({
   const { t } = useTranslation("common", {
     keyPrefix: "reportDetail.items",
   });
+  const { t: taskT } = useTranslation("common", { keyPrefix: "taskProgress" });
 
   return (
     <div className="space-y-4">
@@ -38,6 +39,12 @@ export default function ReportWorkItemDetails({
             </h3>
             <ReportStatusBadge status={item.status} />
           </div>
+          {item.task_link && (
+            <p className="mt-3 text-theme-xs text-kps-primary dark:text-sidebar-selected">
+              {taskT("linked", { id: item.task_link.task_id })} ·{" "}
+              {item.task_link.snapshot.title}
+            </p>
+          )}
           <dl className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div>
               <dt className="text-theme-xs font-medium text-gray-500 dark:text-gray-400">

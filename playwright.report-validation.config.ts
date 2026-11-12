@@ -6,6 +6,7 @@ export default defineConfig({
   testMatch: [
     "spa-ui.spec.ts",
     "report-validation-ui.spec.ts",
+    "task-report-progress-ui.spec.ts",
     "facebook-post-picker-ui.spec.ts",
     "facebook-analytics-ui.spec.ts",
     "daily-document-reader-ui.spec.ts",
