@@ -27,6 +27,8 @@ async function setup(
     actions: { can_create: true },
   };
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/reports/facebook-pages" && assigned === "error") {
       return route.fulfill({ status: 503, json: { message: "Unavailable" } });

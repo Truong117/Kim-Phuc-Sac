@@ -2003,7 +2003,8 @@
   "header": {
     "searchPlaceholder": "Tìm kiếm...",
     "toggleSidebar": "Đóng hoặc mở thanh điều hướng",
-    "closeSidebar": "Đóng thanh điều hướng"
+    "closeSidebar": "Đóng thanh điều hướng",
+    "accountMenu": "Mở menu tài khoản"
   },
   "notifications": {
     "title": "Thông báo",
@@ -3630,6 +3631,20 @@
       "care": "Dự kiến quản lý lịch chăm sóc, người phụ trách và kết quả liên hệ.",
       "reports": "Dự kiến theo dõi lượt phục vụ, công suất, thực thu và nguồn khách.",
       "settings": "Dự kiến cấu hình cơ sở và bộ quyền spa sau khi ma trận được chốt."
+    }
+  },
+  "workspace": {
+    "internal": "KPS · Nội bộ",
+    "spa": "KPS · Spa",
+    "accountMenu": "Tài khoản {name}",
+    "switchTo": {
+      "spa": "Chuyển sang hệ thống Spa",
+      "internal": "Chuyển sang hệ thống nội bộ"
+    },
+    "groups": {
+      "operations": "Vận hành Spa",
+      "customers": "Khách hàng & dịch vụ",
+      "management": "Quản lý"
     }
   }
 }

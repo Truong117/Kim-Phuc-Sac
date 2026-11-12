@@ -31,6 +31,7 @@ use App\Http\Controllers\WeeklyPlanning\GoogleDocsFolderRegistryController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsPreviewController;
 use App\Http\Controllers\WeeklyPlanning\GoogleDocsSourceController;
 use App\Http\Controllers\WeeklyPlanning\WeeklyPlanController;
+use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/health', function () {
@@ -79,6 +80,7 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
 
     Route::get('/navigation', NavigationController::class);
+    Route::get('/workspaces', WorkspaceController::class);
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');
     Route::prefix('social-analytics/facebook')->group(function (): void {

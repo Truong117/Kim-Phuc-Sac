@@ -209,6 +209,8 @@ async function setup(
   let run = sampleRun(options);
   const posts: { path: string; body: unknown }[] = [];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const request = route.request(),
       url = new URL(request.url()),
       path = url.pathname;

@@ -1,3 +1,4 @@
+import WorkspaceEntry from "@/components/auth/WorkspaceEntry";
 import AuthLoadingScreen from "@/components/auth/AuthLoadingScreen";
 import BrandMark from "@/components/common/BrandMark";
 import PageMeta from "@/components/common/PageMeta";
@@ -9,36 +10,15 @@ import { AuthServiceError } from "@/services/authService";
 import type { LoginCredentials } from "@/types/auth";
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Navigate, useLocation, useNavigate } from "react-router";
 
 type FieldErrors = Partial<Record<keyof LoginCredentials, string>>;
-
-type LoginLocationState = {
-  from?: {
-    pathname?: string;
-    search?: string;
-    hash?: string;
-  };
-};
 
 const loginInputFocusClasses =
   "focus:!border-kps-primary focus:!ring-kps-primary/20 dark:focus:!border-kps-primary dark:focus:!ring-kps-primary/30";
 
-const getRedirectPath = (state: LoginLocationState | null) => {
-  const pathname = state?.from?.pathname;
-
-  if (!pathname?.startsWith("/") || pathname.startsWith("//")) {
-    return "/dashboard";
-  }
-
-  return `${pathname}${state?.from?.search ?? ""}${state?.from?.hash ?? ""}`;
-};
-
 export default function Login() {
   const { t } = useTranslation();
   const { isAuthenticated, isInitializing, login } = useAuth();
-  const location = useLocation();
-  const navigate = useNavigate();
   const [credentials, setCredentials] = useState<LoginCredentials>({
     email: "",
     password: "",
@@ -52,7 +32,7 @@ export default function Login() {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    return <WorkspaceEntry />;
   }
 
   const validate = () => {
@@ -87,11 +67,6 @@ export default function Login() {
         email: credentials.email.trim(),
         password: credentials.password,
       });
-
-      navigate(
-        getRedirectPath(location.state as LoginLocationState | null),
-        { replace: true },
-      );
     } catch (error) {
       if (error instanceof AuthServiceError) {
         if ([401, 422].includes(error.status)) {
@@ -139,7 +114,10 @@ export default function Login() {
                     ...current,
                     email: event.target.value,
                   }));
-                  setFieldErrors((current) => ({ ...current, email: undefined }));
+                  setFieldErrors((current) => ({
+                    ...current,
+                    email: undefined,
+                  }));
                   setRequestError(null);
                 }}
                 placeholder={t("auth.login.email.placeholder")}
@@ -153,9 +131,7 @@ export default function Login() {
             </div>
 
             <div>
-              <Label htmlFor="password">
-                {t("auth.login.password.label")}
-              </Label>
+              <Label htmlFor="password">{t("auth.login.password.label")}</Label>
               <Input
                 id="password"
                 name="password"

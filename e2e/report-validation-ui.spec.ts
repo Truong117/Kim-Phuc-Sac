@@ -22,6 +22,8 @@ async function setup(page: Page, makeup: boolean) {
     actions: { can_create: true },
   };
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const path = new URL(route.request().url()).pathname;
     if (
       route.request().method() === "POST" &&

@@ -27,6 +27,36 @@ async function setup(
                 role: { name: "Người xem" },
               },
       });
+    if (path === "/api/workspaces")
+      return route.fulfill({
+        json: {
+          workspaces:
+            options.settings === false
+              ? [{ id: "internal", home: "/", sections: [] }]
+              : [
+                  { id: "internal", home: "/", sections: [] },
+                  {
+                    id: "spa",
+                    home: "/spa",
+                    sections: [
+                      "overview",
+                      "appointments",
+                      "reception",
+                      "customers",
+                      "services",
+                      "treatments",
+                      "cashier",
+                      "technician",
+                      "rooms",
+                      "inventory",
+                      "care",
+                      "reports",
+                      "settings",
+                    ],
+                  },
+                ],
+        },
+      });
     if (path === "/api/navigation")
       return route.fulfill({
         json: { items: options.settings === false ? [] : ["settings"] },
@@ -50,7 +80,7 @@ async function setup(
 test.describe("spa UI preview", () => {
   test.skip(!previewEnabled, "Preview is disabled for this run");
 
-  test("requires KPS login and the existing settings permission", async ({
+  test("requires KPS login and backend Spa workspace access", async ({
     page,
   }) => {
     await setup(page, { authenticated: false });
@@ -79,8 +109,11 @@ test.describe("spa UI preview", () => {
       page.getByRole("heading", { name: "Không gian vận hành spa" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: "Spa · Bản mẫu" }),
+      page.getByRole("complementary", { name: "KPS · Spa" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Báo cáo công việc", exact: true }),
+    ).toHaveCount(0);
     await expect(
       page.getByText("Lịch hẹn còn hiệu lực", { exact: true }).locator(".."),
     ).toContainText("5");
@@ -136,8 +169,12 @@ test.describe("spa UI preview", () => {
     await setup(page);
     await page.goto("/spa");
     await page
-      .getByRole("combobox", { name: "Chức năng spa", exact: true })
-      .selectOption("/spa/technician");
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Chức năng spa" })
+      .getByRole("link", { name: "Công việc KTV", exact: true })
+      .click();
     const tasks = page.getByRole("region", { name: "Danh sách công việc" });
     await expect(tasks.getByRole("button")).toHaveCount(3);
     await expect(tasks.getByText("Trần Ngọc Linh")).toHaveCount(0);
@@ -211,4 +248,132 @@ test("spa UI is absent when preview is disabled", async ({ page }) => {
     page.getByRole("heading", { name: "LỖI 404", exact: true }),
   ).toBeVisible();
   await expect(page.getByText("Nguyễn Minh Anh")).toHaveCount(0);
+});
+
+const internalWorkspace = { id: "internal", home: "/", sections: [] };
+const technicianWorkspace = {
+  id: "spa",
+  home: "/spa/technician",
+  sections: ["technician"],
+};
+
+async function setupWorkspaces(
+  page: Page,
+  workspaces: unknown[],
+  signedIn = true,
+) {
+  await setup(page);
+  let authenticated = signedIn;
+  const user = {
+    id: "workspace-reviewer",
+    name: "Nhân viên mẫu",
+    email: "workspace@example.test",
+    organization: { id: 1, name: "KPS" },
+    department: null,
+    location: null,
+    role: { name: "Tên vai trò không dùng điều hướng" },
+  };
+  await page.route("**/sanctum/csrf-cookie", (route) =>
+    route.fulfill({ status: 204 }),
+  );
+  await page.route("**/api/auth/me", (route) =>
+    route.fulfill({
+      status: authenticated ? 200 : 401,
+      json: authenticated ? user : { message: "Unauthenticated." },
+    }),
+  );
+  await page.route("**/api/auth/login", (route) => {
+    authenticated = true;
+    return route.fulfill({ json: user });
+  });
+  await page.route("**/api/auth/logout", (route) => {
+    authenticated = false;
+    return route.fulfill({ status: 204 });
+  });
+  await page.route("**/api/workspaces", (route) =>
+    route.fulfill({ json: { workspaces } }),
+  );
+}
+async function signIn(page: Page) {
+  await page
+    .getByLabel("Email", { exact: true })
+    .fill("workspace@example.test");
+  await page.getByLabel("Mật khẩu", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "Đăng nhập", exact: true }).click();
+}
+
+test.describe("workspace routing and switching", () => {
+  test.skip(!previewEnabled, "Preview is disabled for this run");
+  test("spa technician login goes straight to own work, hides switch and rejects management links", async ({
+    page,
+  }) => {
+    await setupWorkspaces(page, [technicianWorkspace], false);
+    await page.goto("/login");
+    await signIn(page);
+    await expect(page).toHaveURL("/spa/technician");
+    await page.getByRole("button", { name: "Tài khoản Nhân viên mẫu" }).click();
+    await expect(
+      page.getByRole("link", { name: /Chuyển sang hệ thống/ }),
+    ).toHaveCount(0);
+    await page.goto("/spa/reports");
+    await expect(
+      page.getByRole("heading", { name: "Không có quyền truy cập" }),
+    ).toBeVisible();
+    await page.goto("/employees");
+    await expect(
+      page.getByRole("heading", { name: "Không có quyền truy cập" }),
+    ).toBeVisible();
+  });
+  test("dual access switches without login, keeps Spa profile and remembers last workspace", async ({
+    page,
+  }) => {
+    await setupWorkspaces(page, [internalWorkspace, technicianWorkspace]);
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Tài khoản Nhân viên mẫu" }).click();
+    await page.getByRole("link", { name: "Chuyển sang hệ thống Spa" }).click();
+    await expect(page).toHaveURL("/spa/technician");
+    await page.getByRole("button", { name: "Tài khoản Nhân viên mẫu" }).click();
+    await page.getByRole("link", { name: "Chỉnh sửa hồ sơ" }).click();
+    await expect(page).toHaveURL("/spa/profile");
+    await expect(
+      page.getByRole("complementary", { name: "KPS · Spa" }),
+    ).toBeVisible();
+    await page.goto("/login");
+    await expect(page).toHaveURL("/spa/technician");
+    await page.getByRole("button", { name: "Tài khoản Nhân viên mẫu" }).click();
+    await page
+      .getByRole("link", { name: "Chuyển sang hệ thống nội bộ" })
+      .click();
+    await expect(page).toHaveURL("/");
+    await expect(
+      page.getByRole("navigation", { name: "Chức năng spa" }),
+    ).toHaveCount(0);
+  });
+  test("authorized deep link survives login including query and fragment", async ({
+    page,
+  }) => {
+    await setupWorkspaces(page, [technicianWorkspace], false);
+    await page.goto("/spa/technician?day=today#task");
+    await expect(page).toHaveURL(/\/login$/);
+    await signIn(page);
+    await expect(page).toHaveURL("/spa/technician?day=today#task");
+  });
+  test("stale Spa preference cannot grant office user access or show switch", async ({
+    page,
+  }) => {
+    await setupWorkspaces(page, [internalWorkspace]);
+    await page.addInitScript(() =>
+      localStorage.setItem("kps.workspace.workspace-reviewer", "spa"),
+    );
+    await page.goto("/login");
+    await expect(page).toHaveURL("/");
+    await page.getByRole("button", { name: "Tài khoản Nhân viên mẫu" }).click();
+    await expect(
+      page.getByRole("link", { name: "Chuyển sang hệ thống Spa" }),
+    ).toHaveCount(0);
+    await page.getByRole("button", { name: "Đăng xuất", exact: true }).click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.goto("/spa/technician");
+    await expect(page).toHaveURL(/\/login$/);
+  });
 });

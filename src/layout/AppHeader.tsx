@@ -1,5 +1,7 @@
 "use client";
 
+import { useAuthorization } from "@/hooks/useAuthorization";
+import type { WorkspaceId } from "@/types/workspace";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import BrandMark from "@/components/common/BrandMark";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
@@ -10,8 +12,12 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 
-const AppHeader: React.FC = () => {
+const AppHeader = ({ workspace = "internal" }: { workspace?: WorkspaceId }) => {
   const { t } = useTranslation("common", { keyPrefix: "header" });
+  const { t: tRoot } = useTranslation();
+  const { workspaces } = useAuthorization();
+  const workspaceHome =
+    workspaces.find((item) => item.id === workspace)?.home ?? "/";
   const inputRef = useRef<HTMLInputElement>(null);
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
 
@@ -54,7 +60,7 @@ const AppHeader: React.FC = () => {
       <div className="flex grow flex-col items-center justify-between xl:flex-row xl:px-6">
         <div className="flex w-full items-center justify-between gap-2 border-b border-gray-200 px-3 py-3 sm:gap-4 xl:justify-normal xl:border-b-0 xl:px-0 xl:py-4 dark:border-gray-800">
           <button
-            className={`z-99999 flex h-10 w-10 items-center justify-center rounded-lg border-gray-200 text-gray-500 lg:h-11 lg:w-11 lg:bg-transparent xl:border dark:border-gray-800 dark:text-gray-400 dark:lg:bg-transparent ${
+            className={`z-99999 flex h-11 w-11 items-center justify-center rounded-lg border-gray-200 text-gray-500 lg:h-11 lg:w-11 lg:bg-transparent xl:border dark:border-gray-800 dark:text-gray-400 dark:lg:bg-transparent ${
               isMobileOpen ? "bg-gray-100 dark:bg-white/3" : ""
             }`}
             onClick={handleToggle}
@@ -95,13 +101,15 @@ const AppHeader: React.FC = () => {
             {/* Cross Icon */}
           </button>
 
-          <Link to="/" className="xl:hidden">
-            <BrandMark />
+          <Link to={workspaceHome} className="min-w-0 xl:hidden">
+            <BrandMark subtitle={tRoot(`workspace.${workspace}`)} />
           </Link>
 
           <button
             onClick={toggleApplicationMenu}
-            className="z-99999 flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 xl:hidden dark:text-gray-400 dark:hover:bg-gray-800"
+            aria-label={t("accountMenu")}
+            aria-expanded={isApplicationMenuOpen}
+            className="z-99999 flex h-11 w-11 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100 xl:hidden dark:text-gray-400 dark:hover:bg-gray-800"
           >
             <svg
               width="24"
@@ -164,7 +172,7 @@ const AppHeader: React.FC = () => {
             <ThemeToggleButton />
             {/* <!-- Dark Mode Toggler --> */}
 
-            <NotificationDropdown />
+            {workspace === "internal" && <NotificationDropdown />}
 
             {/* <!-- Notification Menu Area --> */}
           </div>

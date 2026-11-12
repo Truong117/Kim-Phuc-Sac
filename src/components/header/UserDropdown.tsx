@@ -1,3 +1,7 @@
+import { useAuthorization } from "@/hooks/useAuthorization";
+import { workspaceForPath } from "@/utils/workspace";
+import { ArrowRightIcon } from "@/icons";
+import { useLocation } from "react-router";
 import { useLanguage } from "@/context/LanguageContext";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useAuth } from "@/hooks/useAuth";
@@ -19,6 +23,11 @@ export default function UserDropdown() {
   const { currentUser, logout } = useAuth();
   const { language: locale, setLanguage } = useLanguage();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const workspace = workspaceForPath(pathname);
+  const { workspaces } = useAuthorization();
+  const alternate = workspaces.find((item) => item.id !== workspace);
+  const profilePrefix = workspace === "spa" ? "/spa" : "";
   const currentLang = getLanguage(locale);
   const CurrentFlagIcon = currentLang.FlagIcon;
   const nameParts = currentUser?.name.trim().split(/\s+/) ?? [];
@@ -75,6 +84,8 @@ export default function UserDropdown() {
       <button
         type="button"
         onClick={toggleDropdown}
+        aria-expanded={isOpen}
+        aria-label={t("workspace.accountMenu", { name: currentUser.name })}
         className="dropdown-toggle flex items-center text-gray-700 dark:text-gray-400"
       >
         <span
@@ -121,11 +132,25 @@ export default function UserDropdown() {
           </span>
         </div>
 
+        <p className="mt-2 text-theme-xs font-semibold text-kps-primary dark:text-gray-300">
+          {t(`workspace.${workspace}`)}
+        </p>
+        {alternate && (
+          <DropdownItem
+            tag="a"
+            to={alternate.home}
+            onItemClick={closeDropdown}
+            className="mt-3 flex min-h-11 items-center gap-2 rounded-lg bg-kps-primary/10 text-theme-sm font-semibold text-kps-primary hover:bg-kps-primary/20 focus-visible:ring-2 focus-visible:ring-kps-primary dark:bg-kps-primary/20 dark:text-white"
+          >
+            <ArrowRightIcon className="size-5 shrink-0 rtl:rotate-180" />
+            {t(`workspace.switchTo.${alternate.id}`)}
+          </DropdownItem>
+        )}
         <ul className="flex flex-col gap-1 border-b border-gray-200 pt-4 pb-3 dark:border-gray-800">
           <li>
             <DropdownItem
               tag="a"
-              to="/profile"
+              to={`${profilePrefix}/profile`}
               onItemClick={closeDropdown}
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
@@ -150,7 +175,7 @@ export default function UserDropdown() {
           <li>
             <DropdownItem
               tag="a"
-              to="/account"
+              to={`${profilePrefix}/account`}
               onItemClick={closeDropdown}
               className="group flex items-center gap-3 rounded-lg px-3 py-2 text-theme-sm font-medium text-gray-700 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
@@ -267,7 +292,6 @@ export default function UserDropdown() {
                             <FlagIcon className="size-5 shrink-0 overflow-hidden rounded-full" />
                             <span className="truncate">{language.name}</span>
                           </span>
-
                         </button>
                       </li>
                     );
