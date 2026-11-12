@@ -365,7 +365,10 @@ test("an explicit Sunday link retains its exact dates and the calendar permits S
     page.locator("p").filter({ hasText: "Từ 02/11/2026 đến 08/11/2026" }),
   ).toBeVisible();
   await page
-    .getByRole("button", { name: "Ngày kết thúc kỳ 7 ngày", exact: true })
+    .getByRole("button", {
+      name: "Ngày kết thúc kỳ 7 ngày: 08/11/2026",
+      exact: true,
+    })
     .click();
   await expect(page.locator('[data-calendar-date="2026-11-08"]')).toBeEnabled();
 });
