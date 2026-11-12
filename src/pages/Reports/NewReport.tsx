@@ -980,38 +980,39 @@ export default function NewReport({
                 onSubmit={() => void handleSubmit()}
                 className="space-y-6"
               >
-                {currentUser && canNavigate("tasks") && (
-                  <AssignedTaskReportPanel
-                    date={today.business_date}
-                    userId={Number(currentUser.id)}
-                    disabled={isSaveFlowActive}
-                    items={items}
-                    drafts={taskDrafts}
-                    facebookPages={facebookPages}
-                    openId={openTaskId}
-                    onOpen={setOpenTaskId}
-                    onDraftsChange={setTaskDrafts}
-                    onApply={(item) =>
-                      setItems((current) => {
-                        const existing = current.find(
-                          (row) =>
-                            row.taskLink?.task_id === item.taskLink?.task_id,
-                        );
-                        return existing
-                          ? current.map((row) =>
-                              row.clientId === existing.clientId
-                                ? {
-                                    ...item,
-                                    clientId: existing.clientId,
-                                    id: existing.id,
-                                  }
-                                : row,
-                            )
-                          : [...current, item];
-                      })
-                    }
-                  />
-                )}
+                {currentUser &&
+                  (canNavigate("tasks") || taskDrafts.length > 0) && (
+                    <AssignedTaskReportPanel
+                      date={today.business_date}
+                      userId={Number(currentUser.id)}
+                      disabled={isSaveFlowActive}
+                      items={items}
+                      drafts={taskDrafts}
+                      facebookPages={facebookPages}
+                      openId={openTaskId}
+                      onOpen={setOpenTaskId}
+                      onDraftsChange={setTaskDrafts}
+                      onApply={(item) =>
+                        setItems((current) => {
+                          const existing = current.find(
+                            (row) =>
+                              row.taskLink?.task_id === item.taskLink?.task_id,
+                          );
+                          return existing
+                            ? current.map((row) =>
+                                row.clientId === existing.clientId
+                                  ? {
+                                      ...item,
+                                      clientId: existing.clientId,
+                                      id: existing.id,
+                                    }
+                                  : row,
+                              )
+                            : [...current, item];
+                        })
+                      }
+                    />
+                  )}
                 <section className="rounded-2xl border border-gray-200 bg-white p-2 shadow-theme-xs dark:border-gray-800 dark:bg-white/3">
                   <div
                     role="tablist"

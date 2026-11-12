@@ -106,7 +106,8 @@ export default function AssignedTaskReportPanel({
         .getElementById(`assigned-task-${openId}`)
         ?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [extra, openId]);
-  if (forbidden || result?.schema_ready === false) return null;
+  if ((forbidden || result?.schema_ready === false) && drafts.length === 0)
+    return null;
   const tasks = [
     ...(extra &&
     extra.id === openId &&
@@ -144,6 +145,44 @@ export default function AssignedTaskReportPanel({
           {t("loadError")}
         </p>
       )}
+      {(error || forbidden || result?.schema_ready === false) &&
+        drafts
+          .filter(
+            (draft) =>
+              !tasks.some((task) => task.id === draft.taskLink?.task_id),
+          )
+          .map((draft) => (
+            <section
+              key={draft.clientId}
+              className="space-y-2 rounded-lg border border-warning-200 p-3 text-theme-sm dark:border-warning-800"
+            >
+              <p className="font-medium text-gray-900 dark:text-white">
+                {draft.content}
+              </p>
+              <p className="whitespace-pre-wrap text-gray-600 dark:text-gray-300">
+                {draft.result}
+              </p>
+              <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+                {draft.taskLink?.progress.input.outputs
+                  .map((output) => output.name)
+                  .join("; ")}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={disabled}
+                onClick={() => {
+                  onDraftsChange(
+                    drafts.filter((row) => row.clientId !== draft.clientId),
+                  );
+                  if (openId === draft.taskLink?.task_id) onOpen(null);
+                }}
+              >
+                {t("cancel")}
+              </Button>
+            </section>
+          ))}
       {!result && !error && (
         <p className="text-theme-sm text-gray-500 dark:text-gray-400">
           {t("loading")}

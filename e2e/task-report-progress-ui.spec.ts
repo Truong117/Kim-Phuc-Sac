@@ -252,3 +252,38 @@ test("inline products fit a mobile viewport and dark mode", async ({
   ).toBe(true);
   await expect(page.locator("#task-report-result-51")).toBeVisible();
 });
+
+test("a restored update remains readable and cancellable when task access was revoked", async ({
+  page,
+}) => {
+  await setup(page);
+  await fillUpdate(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.values(localStorage).some((value) => value.includes("“ABC”")),
+      ),
+    )
+    .toBe(true);
+  await page.route("**/api/navigation", (route) =>
+    route.fulfill({ json: { items: ["reports.new", "reports.history"] } }),
+  );
+  await page.route("**/api/reports/assigned-tasks?**", (route) =>
+    route.fulfill({ status: 403, json: { message: "Forbidden" } }),
+  );
+  await page.route("**/api/tasks/51", (route) =>
+    route.fulfill({ status: 403, json: { message: "Forbidden" } }),
+  );
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Khôi phục bản nháp", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đã hoàn thành video “ABC” và video “DEF”", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Hủy thay đổi", exact: true }).click();
+  await expect(
+    page.getByText("Đã hoàn thành video “ABC” và video “DEF”", { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator("#quick-draft-completed")).toBeVisible();
+});
