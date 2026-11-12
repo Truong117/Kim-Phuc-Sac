@@ -1,4 +1,4 @@
-// Preview only. Real spa permissions will come from the backend in a later phase.
+// UI preview only; backend workspace capabilities gate screens. Business APIs are not connected.
 export const spaUiPreviewEnabled =
   import.meta.env.VITE_SPA_UI_PREVIEW_ENABLED === "true";
 
@@ -23,3 +23,7 @@ export type SpaSectionKey = Exclude<
   SpaNavigationKey,
   "overview" | "appointments" | "technician"
 >;
+
+// Keep new Spa forms aligned with KPS brown rather than the template's brand focus.
+export const spaFieldClasses =
+  "!text-base focus:!border-kps-primary focus:!ring-kps-primary/20 dark:focus:!border-kps-primary dark:focus:!ring-kps-primary/30 aria-[invalid=true]:focus:!border-error-500 aria-[invalid=true]:focus:!ring-error-500/20 dark:aria-[invalid=true]:focus:!border-error-500 dark:aria-[invalid=true]:focus:!ring-error-500/20";

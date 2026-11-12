@@ -49,6 +49,7 @@ export default function SpaTechnicianDetail({
           </dt>
           <dd className="mt-1 font-medium text-gray-900 dark:text-white">
             {task.room}
+            {task.bedNumber ? ` / ${task.bedNumber}` : ""}
           </dd>
         </div>
         <div>
@@ -68,6 +69,11 @@ export default function SpaTechnicianDetail({
           </dd>
         </div>
       </dl>
+      {task.assignedBy && (
+        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+          {t("spa.flow.dispatchedBy", { name: task.assignedBy.name })}
+        </p>
+      )}
       <h4 className="mt-6 font-semibold text-gray-900 dark:text-white">
         {t("spa.technician.notes")}
       </h4>
