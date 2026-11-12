@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Enums\DataScope;
 use App\Jobs\GenerateDailyReportDocument;
 use App\Models\DailyReport;
 use App\Models\DailyReportAiDocument;
@@ -15,9 +16,11 @@ use App\Services\AI\WorkReportWorkTotals;
 use App\Services\TaskService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
+use Illuminate\Database\MySqlConnection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -276,6 +279,74 @@ class ReportTaskProgressTest extends TestCase
         $prepared = WorkReportEvidence::prepare(['observations' => $facts], $roundTrip);
         $this->assertSame('result', $prepared['observations'][0]['field']);
         Http::assertNothingSent();
+    }
+
+    public function test_a_matching_goal_can_be_added_after_products_were_recorded_without_a_goal(): void
+    {
+        $this->task->update(['target_quantity' => null, 'quantity_unit' => null]);
+        $this->postJson('/api/reports', $this->payload())->assertCreated();
+        $this->acting($this->admin)->patchJson('/api/tasks/'.$this->task->id, [
+            'title' => $this->task->title, 'assignee_id' => $this->staff->id, 'priority' => 'MEDIUM',
+            'due_date' => '2026-11-14', 'target_quantity' => 5, 'quantity_unit' => 'video',
+        ])->assertOk()->assertJsonPath('data.progress.percent', 40);
+    }
+
+    public function test_task_visibility_does_not_grant_access_to_another_employees_report_history(): void
+    {
+        $this->postJson('/api/reports', $this->payload())->assertCreated();
+        $reader = User::factory()->create();
+        $membership = $this->createMembership($reader);
+        $role = $this->createRole('TASK_READER_ONLY');
+        $this->attachRole($membership['membership_id'], $role, true);
+        $this->grantPermission($role, $this->createPermission('tasks.view'), DataScope::ORGANIZATION->value);
+        $this->acting($reader)->getJson('/api/tasks/'.$this->task->id)->assertOk();
+        $this->getJson('/api/tasks/'.$this->task->id.'/progress')->assertOk()->assertJsonCount(0, 'data');
+        $this->getJson('/api/reports/assigned-tasks?report_date=2026-11-12')->assertForbidden();
+    }
+
+    public function test_progress_migration_compiles_for_mysql_without_shared_database_access(): void
+    {
+        $mysql = new class(fn () => throw new \RuntimeException('No shared DB access'), 'compile_only', '', ['driver' => 'mysql', 'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci']) extends MySqlConnection
+        {
+            public function isMaria()
+            {
+                return false;
+            }
+
+            public function getServerVersion(): string
+            {
+                return '8.0.32';
+            }
+        };
+        $original = Schema::getFacadeRoot();
+        try {
+            Schema::swap($mysql->getSchemaBuilder());
+            $migration = require database_path('migrations/2026_11_12_010000_add_daily_task_progress.php');
+            $queries = $mysql->pretend(fn () => $migration->up());
+        } finally {
+            Schema::swap($original);
+        }
+        $sql = implode("\n", array_column($queries, 'query'));
+        $this->assertStringContainsString('create table `task_outputs`', $sql);
+        $this->assertStringContainsString('create table `task_progress_events`', $sql);
+        $this->assertStringContainsString('unique `daily_report_task_once`', $sql);
+        $this->assertStringContainsString('unique `task_output_identity`', $sql);
+        $this->assertStringContainsString('`task_snapshot` json null', $sql);
+        $this->assertStringNotContainsString('drop table', $sql);
+        $this->assertStringNotContainsString('delete from', $sql);
+    }
+
+    public function test_reapplying_a_removed_saved_preview_keeps_its_identity_and_quantity_anchor(): void
+    {
+        $report = $this->postJson('/api/reports', $this->payload())->assertCreated()->json('data');
+        $input = $this->savedInput($report);
+        unset($input['items'][0]['id']);
+        $input['items'][0]['result'] = 'Đã sửa nội dung báo cáo';
+        $updated = $this->patchJson('/api/reports/'.$report['id'], $input)->assertOk()->json('data');
+        $this->assertSame($report['items'][0]['id'], $updated['items'][0]['id']);
+        $this->assertSame(2, $updated['items'][0]['task_link']['progress']['quantity']['quantity']);
+        $this->assertDatabaseCount('daily_report_items', 1);
+        $this->assertDatabaseCount('task_outputs', 2);
     }
 
     public function test_migration_will_not_delete_a_recorded_progress_history(): void

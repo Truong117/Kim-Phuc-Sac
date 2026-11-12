@@ -236,6 +236,20 @@ class WorkReportService
                 && $existing->contains(fn ($item) => filled($item->issue) || ! empty($item->evidence_links))) {
                 throw new ConflictHttpException('Báo cáo có nội dung mới. Hãy tải lại trang trước khi chỉnh sửa.');
             }
+            // Reapplying a removed preview keeps its persisted task link and first-completion anchor.
+            foreach ($items as &$item) {
+                if (! isset($item['id']) && ! empty($item['task_id'])) {
+                    $linked = $existing->first(fn ($row) => (int) $row->task_id === (int) $item['task_id']);
+                    if ($linked !== null) {
+                        $item['id'] = $linked->id;
+                    }
+                }
+            }
+            unset($item);
+            $itemIds = collect($items)->pluck('id')->filter();
+            if ($itemIds->count() !== $itemIds->unique()->count()) {
+                throw ValidationException::withMessages(['items' => 'Một đầu việc chỉ được cập nhật một lần trong báo cáo.']);
+            }
             // Validate every identity before changing anything. IDs from another report are never accepted.
             foreach ($items as $item) {
                 if (isset($item['id']) && ! $existing->has($item['id'])) {

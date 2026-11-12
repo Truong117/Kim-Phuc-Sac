@@ -175,7 +175,7 @@ class TaskService
             if ($target !== null && ! in_array($unit, ReportTaskProgress::UNITS, true)) {
                 throw ValidationException::withMessages(['quantity_unit' => 'Chọn đơn vị cho mục tiêu số lượng.']);
             }
-            if ($unit !== $task->quantity_unit && Schema::hasTable('task_outputs') && TaskOutput::query()->where('task_id', $task->id)->exists()) {
+            if ($unit !== $task->quantity_unit && Schema::hasTable('task_outputs') && TaskOutput::query()->where('task_id', $task->id)->where('unit', '!=', $unit ?? '')->exists()) {
                 throw ValidationException::withMessages(['quantity_unit' => 'Công việc đã có sản phẩm, hãy giữ đơn vị để bảo toàn tiến độ.']);
             }
             $assigneeChanged = $task->assignee_id !== $assigneeMembership->user_id;

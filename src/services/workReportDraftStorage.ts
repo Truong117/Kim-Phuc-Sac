@@ -149,7 +149,9 @@ const isDraftRecord = (value: unknown): value is WorkReportDraftRecord => {
     (data.taskDrafts === undefined ||
       (Array.isArray(data.taskDrafts) &&
         data.taskDrafts.length <= 50 &&
-        data.taskDrafts.every(isWorkItem))) &&
+        data.taskDrafts.every(
+          (row) => isWorkItem(row) && validTaskLink(row.taskLink),
+        ))) &&
     isQuickDrafts(data?.quickDrafts)
   );
 };

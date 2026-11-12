@@ -14,6 +14,13 @@ class NamedWorkOutputsTest extends TestCase
             'result' => $text, 'note' => null, 'status' => 'COMPLETED']]]];
     }
 
+    public function test_uploads_and_other_quoted_titles_are_not_counted_as_production(): void
+    {
+        $this->assertSame([], NamedWorkOutputs::videos('Đã hoàn thành đăng video “ABC” và video “DEF”'));
+        $this->assertSame(['ABC'], NamedWorkOutputs::videos('Đã hoàn thành video “ABC”. Đăng video “DEF”'));
+        $this->assertSame(['ABC', 'DEF'], NamedWorkOutputs::videos('Đã hoàn thành 2 video “ABC” và “DEF”'));
+    }
+
     public function test_named_completed_videos_are_counted_even_when_the_model_returns_no_quantity(): void
     {
         $reports = $this->reports('Đã hoàn thành video “ABC” và video “DEF”');
@@ -48,6 +55,8 @@ class NamedWorkOutputsTest extends TestCase
     public function test_disagreeing_digits_and_names_are_not_published_as_a_certain_total(): void
     {
         $reports = $this->reports('Đã hoàn thành 3 video: video “ABC” và video “DEF”');
-        $this->assertNull(WorkReportWorkTotals::totals(WorkReportWorkTotals::normalize([], $reports))[0]['total']);
+        $totals = WorkReportWorkTotals::totals(WorkReportWorkTotals::normalize([], $reports));
+        $this->assertCount(1, $totals);
+        $this->assertNull($totals[0]['total']);
     }
 }

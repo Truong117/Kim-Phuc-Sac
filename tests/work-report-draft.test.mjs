@@ -483,3 +483,62 @@ test("Facebook evidence choices survive drafts and malformed choice data is reje
   storage.setItem(key, JSON.stringify(stored));
   assert.equal(adapter.load(context()).status, "invalid");
 });
+
+test("inline task drafts survive restore with stable product identities and reject malformed unlinked drafts", () => {
+  const storage = new MemoryStorage();
+  const adapter = new drafts.WorkReportDraftStorage(
+    storage,
+    () => Date.parse("2026-10-22T09:00:00.000Z"),
+    () => "task-revision",
+  );
+  const item = {
+    clientId: "assigned-task-10",
+    content: "Hoàn thiện video",
+    result: "Đã hoàn thành video ABC",
+    status: "IN_PROGRESS",
+    note: "",
+    taskLink: {
+      task_id: 10,
+      snapshot: {
+        id: 10,
+        title: "Video",
+        description: null,
+        due_date: "2026-10-24",
+      },
+      progress: {
+        input: {
+          expected_revision: 4,
+          status: "KEEP",
+          unit: "video",
+          outputs: [{ id: 7, name: "ABC", completed: true }],
+        },
+      },
+    },
+  };
+  adapter.save(
+    context(),
+    data({
+      items: [],
+      quickDrafts: { COMPLETED: "", IN_PROGRESS: "", BLOCKED: "" },
+      taskDrafts: [item],
+    }),
+    saveOptions(),
+  );
+  const loaded = adapter.load(context());
+  assert.equal(loaded.status, "found");
+  assert.equal(
+    loaded.draft.data.taskDrafts[0].taskLink.progress.input.outputs[0].id,
+    7,
+  );
+  assert.equal(drafts.hasMeaningfulDraftData(loaded.draft.data), true);
+  const corrupt = structuredClone(loaded.draft);
+  delete corrupt.data.taskDrafts[0].taskLink;
+  assert.equal(
+    drafts.parseWorkReportDraftValue(
+      JSON.stringify(corrupt),
+      context(),
+      Date.parse("2026-10-22T09:00:00.000Z"),
+    ).status,
+    "invalid",
+  );
+});

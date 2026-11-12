@@ -20,7 +20,7 @@ export function namedVideoSuggestions(text: string): string[] {
   const quoted =
     '(?:"[^"\\r\\n]{1,200}"|“[^”\\r\\n]{1,200}”|‘[^’\\r\\n]{1,200}’)';
   const list = new RegExp(
-    "(?:video|clip)\\s+(" +
+    "(?:hoàn thành|hoàn thiện|đã (?:dựng|edit|biên tập))\\s+(?:xong\\s+)?(?:các\\s+)?(?:\\d+\\s+)?(?:video|clip)\\s*(?::\\s*(?:(?:video|clip)\\s+)?)?(" +
       quoted +
       "(?:\\s*(?:,|;|và|&)\\s*(?:(?:video|clip)\\s*)?" +
       quoted +

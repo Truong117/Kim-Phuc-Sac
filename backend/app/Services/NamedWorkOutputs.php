@@ -19,7 +19,7 @@ final class NamedWorkOutputs
             return [];
         }
         $quoted = '(?:"[^"\r\n]{1,200}"|“[^”\r\n]{1,200}”|\x{2018}[^\x{2019}\r\n]{1,200}\x{2019})';
-        preg_match_all('/(?:video|clip)\s+('.$quoted.'(?:\s*(?:,|;|và|&)\s*(?:(?:video|clip)\s*)?'.$quoted.')*)/iu', $text, $matches);
+        preg_match_all('/(?:hoàn thành|hoàn thiện|đã (?:dựng|edit|biên tập))\s+(?:xong\s+)?(?:các\s+)?(?:\d+\s+)?(?:video|clip)\s*(?::\s*(?:(?:video|clip)\s+)?)?('.$quoted.'(?:\s*(?:,|;|và|&)\s*(?:(?:video|clip)\s*)?'.$quoted.')*)/iu', $text, $matches);
         $names = [];
         foreach ($matches[1] as $list) {
             preg_match_all('/"([^"\r\n]+)"|“([^”\r\n]+)”|\x{2018}([^\x{2019}\r\n]+)\x{2019}/u', $list, $quotedNames, PREG_SET_ORDER);

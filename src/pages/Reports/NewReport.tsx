@@ -327,7 +327,17 @@ export default function NewReport({
     if (reportDraft.dialog?.kind !== "locked") return "";
 
     const draft = reportDraft.dialog.draft.data;
-    const savedItems = serializeWorkItems(draft.items, {
+    const pendingTasks = draft.taskDrafts ?? [];
+    const recoverableItems = [
+      ...draft.items.filter(
+        (item) =>
+          !pendingTasks.some(
+            (pending) => pending.taskLink?.task_id === item.taskLink?.task_id,
+          ),
+      ),
+      ...pendingTasks,
+    ];
+    const savedItems = serializeWorkItems(recoverableItems, {
       note: t("workItem.note.label"),
       issue: t("v3.issueLabel"),
       unselectedStatus: t("recovery.unselectedStatus"),

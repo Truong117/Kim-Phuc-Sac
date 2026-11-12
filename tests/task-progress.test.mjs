@@ -55,6 +55,21 @@ test("named video completion handles omitted units, Unicode quotes and duplicate
   ])
     assert.deepEqual(namedVideoSuggestions(text), []);
 });
+test("uploading or quoting other videos does not inflate completed production", () => {
+  assert.deepEqual(
+    namedVideoSuggestions("Đã hoàn thành đăng video “ABC” và video “DEF”"),
+    [],
+  );
+  assert.deepEqual(
+    namedVideoSuggestions("Đã hoàn thành video “ABC”. Đăng video “DEF”"),
+    ["ABC"],
+  );
+  assert.deepEqual(
+    namedVideoSuggestions("Đã hoàn thành 2 video “ABC” và “DEF”"),
+    ["ABC", "DEF"],
+  );
+});
+
 test("preview counts an existing identity once, preserves unselected products and caps only the percentage", () => {
   const t = task(),
     item = createTaskReportItem(t);

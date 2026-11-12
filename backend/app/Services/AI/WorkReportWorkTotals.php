@@ -82,7 +82,7 @@ final class WorkReportWorkTotals
                     preg_match_all('/(\d+)\s*(?:video|clip)/iu', $text, $numbers);
                     $basis = collect($numbers[1])->contains(fn ($n) => (int) $n !== $quantity) ? 'unclear' : 'incremental';
                     foreach ($accepted as $key => $value) {
-                        if ($value['report_id'] === $report['report_id'] && $value['item_id'] === $item['item_id'] && in_array($value['unit'], ['video', 'clip'], true)) {
+                        if ($value['report_id'] === $report['report_id'] && $value['item_id'] === $item['item_id'] && in_array(mb_strtolower(trim($value['unit'])), ['video', 'clip'], true)) {
                             unset($accepted[$key]);
                         }
                     }
