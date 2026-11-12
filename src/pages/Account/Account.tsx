@@ -2,6 +2,8 @@ import AccountPasswordSection from "@/components/account/AccountPasswordSection"
 import AccountSummary from "@/components/account/AccountSummary";
 import AccountNavigation from "@/components/account/AccountNavigation";
 import AccountEmailSection from "@/components/account/AccountEmailSection";
+import ReportMailSection from "@/components/account/ReportMailSection";
+import { useAuthorization } from "@/hooks/useAuthorization";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import { useAuth } from "@/hooks/useAuth";
@@ -10,6 +12,7 @@ import { useTranslation } from "react-i18next";
 export default function Account() {
   const { t } = useTranslation("common", { keyPrefix: "account" });
   const { currentUser } = useAuth();
+  const { canNavigate } = useAuthorization();
 
   if (!currentUser) return null;
 
@@ -25,6 +28,9 @@ export default function Account() {
         <AccountNavigation />
         <AccountSummary user={currentUser} />
         <AccountEmailSection key={String(currentUser.id)} />
+        {canNavigate("reports.history") && (
+          <ReportMailSection key={`${currentUser.id}:${currentUser.email}`} />
+        )}
         <AccountPasswordSection />
       </div>
     </>

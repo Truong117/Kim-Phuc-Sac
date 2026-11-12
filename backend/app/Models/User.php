@@ -9,11 +9,28 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    protected static function booted(): void
+    {
+        static::updating(function (User $user): void {
+            if ($user->isDirty('email') && Schema::hasTable('report_mail_preferences')) {
+                // Invalidate even an A -> B -> A address change, including administrator edits.
+                DB::table('report_mail_preferences')->where('user_id', $user->id)->update([
+                    'weekly_enabled' => false, 'weekly_enabled_at' => null, 'verified_email_hash' => null, 'verified_at' => null,
+                    'verification_key' => null, 'verification_email_hash' => null, 'verification_token_hash' => null,
+                    'verification_expires_at' => null, 'verification_requested_at' => null, 'verification_mail_message_id' => null,
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+    }
 
     /**
      * The attributes that are mass assignable.

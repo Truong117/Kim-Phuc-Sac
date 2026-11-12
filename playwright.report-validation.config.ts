@@ -11,6 +11,7 @@ export default defineConfig({
     "daily-document-reader-ui.spec.ts",
     "weekly-ai-reader-ui.spec.ts",
     "personal-weekly-report-ui.spec.ts",
+    "personal-report-mail-ui.spec.ts",
     "integrations-persistence-ui.spec.ts",
     "social-metrics-ui.spec.ts",
     "mail-foundation-ui.spec.ts",

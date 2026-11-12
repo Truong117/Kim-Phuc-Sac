@@ -23,7 +23,7 @@ final class WorkReportAcceptanceFixture
         $identity = $this->target->verify();
         $plan = $this->dataset->build($batch, $end);
         $ledger = DB::table('migrations')->orderBy('id')->pluck('migration')->all();
-        if (! in_array(count($ledger), [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
+        if (! in_array(count($ledger), [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38], true) || $ledger !== array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 0, count($ledger))) {
             throw new LogicException('FIXTURE_UNREVIEWED_MIGRATION_LEDGER');
         }
         if (count($ledger) >= 25 && (! Schema::hasColumn('daily_reports', 'next_day_plan')
@@ -37,7 +37,7 @@ final class WorkReportAcceptanceFixture
         if (Schema::hasColumn('daily_reports', 'is_makeup') !== (count($ledger) >= 26)) {
             throw new LogicException('FIXTURE_MAKEUP_REPORT_SCHEMA_DRIFT');
         }
-        foreach (['work_report_analyses' => 23, 'work_report_analysis_units' => 23, 'work_report_analysis_revisions' => 24, 'work_report_regeneration_requests' => 24, 'daily_report_ai_documents' => 27, 'daily_report_ai_units' => 27, 'integration_entries' => 28, 'social_connections' => 29, 'social_posts' => 29, 'social_post_sources' => 29, 'social_metric_snapshots' => 29, 'mail_connections' => 31, 'mail_oauth_attempts' => 31, 'mail_messages' => 31, 'facebook_analytics_states' => 32, 'facebook_analytics_posts' => 32, 'facebook_analytics_samples' => 32, 'facebook_analytics_analyses' => 32, 'facebook_analytics_milestones' => 34, 'facebook_analytics_review_plans' => 35, 'facebook_analytics_monthly_reports' => 36, 'report_automation_cycles' => 37, 'report_automation_deliveries' => 37] as $table => $step) {
+        foreach (['work_report_analyses' => 23, 'work_report_analysis_units' => 23, 'work_report_analysis_revisions' => 24, 'work_report_regeneration_requests' => 24, 'daily_report_ai_documents' => 27, 'daily_report_ai_units' => 27, 'integration_entries' => 28, 'social_connections' => 29, 'social_posts' => 29, 'social_post_sources' => 29, 'social_metric_snapshots' => 29, 'mail_connections' => 31, 'mail_oauth_attempts' => 31, 'mail_messages' => 31, 'facebook_analytics_states' => 32, 'facebook_analytics_posts' => 32, 'facebook_analytics_samples' => 32, 'facebook_analytics_analyses' => 32, 'facebook_analytics_milestones' => 34, 'facebook_analytics_review_plans' => 35, 'facebook_analytics_monthly_reports' => 36, 'report_automation_cycles' => 37, 'report_automation_deliveries' => 37, 'report_mail_preferences' => 38, 'personal_weekly_mail_deliveries' => 38] as $table => $step) {
             if (Schema::hasTable($table) !== (count($ledger) >= $step)) {
                 throw new LogicException('FIXTURE_PARTIAL_SCHEMA_REQUIRES_RECOVERY');
             }
@@ -47,6 +47,11 @@ final class WorkReportAcceptanceFixture
                 if (Schema::hasColumn($table, $column) !== (count($ledger) >= 33)) {
                     throw new LogicException('FIXTURE_FACEBOOK_SAMPLING_SCHEMA_DRIFT');
                 }
+            }
+        }
+        foreach (['personal_mail_next_check_at', 'personal_mail_finished_at'] as $column) {
+            if (Schema::hasColumn('report_automation_cycles', $column) !== (count($ledger) >= 38)) {
+                throw new LogicException('FIXTURE_PERSONAL_REPORT_MAIL_SCHEMA_DRIFT');
             }
         }
         foreach (['objective', 'distribution', 'classified_by', 'classified_at'] as $column) {
@@ -77,7 +82,7 @@ final class WorkReportAcceptanceFixture
             'app/Services/AI/WorkReportAnalysisOutput.php', 'app/Services/AI/WorkReportAnalysisProvider.php',
             'database/migrations/2026_11_02_000000_create_work_report_analyses.php', 'database/migrations/2026_11_02_010000_create_work_report_regeneration_tables.php',
             'database/migrations/2026_11_03_010000_add_daily_report_v3_fields.php', 'database/migrations/2026_11_03_020000_add_makeup_marker_to_daily_reports.php', 'database/migrations/2026_11_03_030000_create_daily_report_ai_documents.php',
-            'database/migrations/2026_11_05_000000_create_integration_entries_table.php', 'database/migrations/2026_11_05_010000_create_social_tracking_tables.php', 'database/migrations/2026_11_07_000000_create_facebook_analytics_tables.php', 'database/migrations/2026_11_09_000000_add_facebook_sampling_schedule.php', 'database/migrations/2026_11_09_010000_create_facebook_age_milestones.php', 'database/migrations/2026_11_10_000000_create_facebook_review_plans.php', 'database/migrations/2026_11_10_010000_create_facebook_monthly_reports.php', 'database/migrations/2026_11_10_020000_create_report_automation_tables.php'];
+            'database/migrations/2026_11_05_000000_create_integration_entries_table.php', 'database/migrations/2026_11_05_010000_create_social_tracking_tables.php', 'database/migrations/2026_11_07_000000_create_facebook_analytics_tables.php', 'database/migrations/2026_11_09_000000_add_facebook_sampling_schedule.php', 'database/migrations/2026_11_09_010000_create_facebook_age_milestones.php', 'database/migrations/2026_11_10_000000_create_facebook_review_plans.php', 'database/migrations/2026_11_10_010000_create_facebook_monthly_reports.php', 'database/migrations/2026_11_10_020000_create_report_automation_tables.php', 'database/migrations/2026_11_12_000000_create_personal_report_mail_tables.php'];
         $hashes = [];
         // Match a Git checkout on Windows and Linux without weakening content binding.
         foreach ($files as $file) {

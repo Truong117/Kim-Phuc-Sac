@@ -29,6 +29,15 @@ final class PersonalWeeklyReport
 
     public function read(User $viewer, string $endDate): array
     {
+        $payload = $this->forMail($viewer, $endDate);
+        unset($payload['_analysis_id']);
+
+        return $payload;
+    }
+
+    /** Server-only delivery selection; read() never exposes the shared run identity. */
+    public function forMail(User $viewer, string $endDate): array
+    {
         $member = $this->memberships->activeMembershipFor($viewer);
         if (! $member || ! $this->authorization->allows($viewer, 'reports.view')) {
             throw new AccessDeniedHttpException;
@@ -69,6 +78,7 @@ final class PersonalWeeklyReport
             }
             $ids = array_column($ownReports, 'report_id');
             $payload = $this->project($viewer, $run, $period, $ownReports);
+            $payload['_analysis_id'] = (int) $run->id;
             $payload['source_changed'] = $current->modelKeys() !== $ids
                 || $current->contains(fn ($r) => $r->updated_at?->greaterThan($run->captured_at))
                 || DailyReportItem::query()->whereIn('daily_report_id', $current->modelKeys())->where('updated_at', '>', $run->captured_at)->exists();

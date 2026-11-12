@@ -4,6 +4,8 @@ return [
     // Separate generation and delivery switches permit a generation-only rollout.
     'enabled' => (bool) env('REPORT_AUTOMATION_ENABLED', false),
     'mail_enabled' => (bool) env('REPORT_AUTOMATION_MAIL_ENABLED', false),
+    'personal_weekly_mail_enabled' => (bool) env('REPORT_PERSONAL_WEEKLY_MAIL_ENABLED', false),
+    'personal_weekly_mail_start_date' => env('REPORT_PERSONAL_WEEKLY_MAIL_START_DATE'),
     'scheduler_mode' => env('REPORT_AUTOMATION_SCHEDULER_MODE', 'off'),
     'actor_user_id' => (int) env('REPORT_AUTOMATION_ACTOR_USER_ID', 0),
     // Explicit activation boundary: never surprise operators with historical mail.
