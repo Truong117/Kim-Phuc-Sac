@@ -150,9 +150,13 @@ export default function ReportMailSection() {
               </p>
             )}
             {token && (
-              <div className="space-y-3 rounded-lg border border-brand-200 bg-brand-50 p-4 dark:border-brand-800 dark:bg-brand-950/30">
+              <div className="space-y-3 rounded-lg border border-kps-primary/20 bg-kps-primary/5 p-4 dark:border-kps-primary/30 dark:bg-kps-primary/10">
                 <p>{t("confirmHint", { email: status.email })}</p>
-                <Button disabled={busy} onClick={() => void action("confirm")}>
+                <Button
+                  disabled={busy}
+                  onClick={() => void action("confirm")}
+                  className="!bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none disabled:!bg-kps-primary dark:!bg-kps-primary dark:hover:!bg-kps-primary-hover"
+                >
                   {t("confirm")}
                 </Button>
               </div>
@@ -164,6 +168,7 @@ export default function ReportMailSection() {
                   <Button
                     disabled={busy || !status.can_request}
                     onClick={() => void action("request")}
+                    className="!bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none disabled:!bg-kps-primary dark:!bg-kps-primary dark:hover:!bg-kps-primary-hover"
                   >
                     {t("request")}
                   </Button>
