@@ -1,8 +1,13 @@
+import { useSearchParams } from "react-router";
+import { useAuthorization } from "@/hooks/useAuthorization";
+import { useSpaPreview } from "@/features/spa/hooks/useSpaPreviewSnapshot";
+import SpaDateFilter from "@/features/spa/components/SpaDateFilter";
+import Select from "@/components/form/Select";
+import Label from "@/components/form/Label";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
 import SpaStatusBadge from "@/features/spa/components/SpaStatusBadge";
 import SpaTechnicianDetail from "@/features/spa/components/SpaTechnicianDetail";
-import useSpaPreviewSnapshot from "@/features/spa/hooks/useSpaPreviewSnapshot";
 import { getSpaTechnicianTasks } from "@/features/spa/selectors";
 import {
   CalenderIcon,
@@ -22,17 +27,27 @@ const views = [
 
 export default function SpaTechnician() {
   const { t } = useTranslation();
-  const snapshot = useSpaPreviewSnapshot();
+  const { snapshot, execute } = useSpaPreview();
+  const { workspaces } = useAuthorization();
+  const [params] = useSearchParams();
+  const [date, setDate] = useState(params.get("date") ?? snapshot.date);
+  const canReviewTeam = workspaces.some(
+    (item) => item.id === "spa" && item.sections.includes("reception"),
+  );
   const [view, setView] = useState<(typeof views)[number]["key"]>("today");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const tasks = getSpaTechnicianTasks(
-    snapshot,
+    { ...snapshot, date },
     snapshot.previewTechnician.id,
   ).filter((task) =>
     view === "history"
       ? task.status === "completed"
       : view === "today"
-        ? task.status !== "completed"
+        ? task.status !== "completed" &&
+          snapshot.appointments.some(
+            (item) =>
+              item.id === task.appointmentId && item.status === "arrived",
+          )
         : view !== "handover",
   );
   const selected = tasks.find((task) => task.id === selectedId) ?? tasks[0];
@@ -44,6 +59,35 @@ export default function SpaTechnician() {
       />
       <PageBreadCrumb pageTitle={t("spa.navigation.technician")} />
       <div className="space-y-4">
+        <div className="flex flex-wrap items-end gap-4">
+          <SpaDateFilter
+            date={date}
+            onChange={(value) => {
+              setDate(value);
+              setSelectedId(null);
+            }}
+          />
+          {canReviewTeam && (
+            <div className="w-full sm:w-60">
+              <Label htmlFor="spa-review-technician">
+                {t("spa.flow.reviewTechnician")}
+              </Label>
+              <Select
+                id="spa-review-technician"
+                placeholder={t("spa.flow.reviewTechnician")}
+                value={snapshot.previewTechnician.id}
+                onChange={(id) => {
+                  execute({ kind: "technician", id });
+                  setSelectedId(null);
+                }}
+                options={snapshot.technicians.map((item) => ({
+                  value: item.id,
+                  label: item.name,
+                }))}
+              />
+            </div>
+          )}
+        </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {t("spa.technician.identity", {
             name: snapshot.previewTechnician.name,

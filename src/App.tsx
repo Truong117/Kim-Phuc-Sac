@@ -43,6 +43,8 @@ const FacebookAnalytics = lazy(
   () => import("./pages/SocialAnalytics/FacebookAnalytics"),
 );
 const SpaLayout = lazy(() => import("./features/spa/components/SpaLayout"));
+const SpaCustomers = lazy(() => import("./pages/Spa/SpaCustomers"));
+const SpaReception = lazy(() => import("./pages/Spa/SpaReception"));
 const SpaOverview = lazy(() => import("./pages/Spa/SpaOverview"));
 const SpaAppointments = lazy(() => import("./pages/Spa/SpaAppointments"));
 const SpaTechnician = lazy(() => import("./pages/Spa/SpaTechnician"));
@@ -75,14 +77,8 @@ export default function App() {
                   <Route path="account" element={<Account />} />
                   <Route path="appointments" element={<SpaAppointments />} />
                   <Route path="technician" element={<SpaTechnician />} />
-                  <Route
-                    path="reception"
-                    element={<SpaSection section="reception" />}
-                  />
-                  <Route
-                    path="customers"
-                    element={<SpaSection section="customers" />}
-                  />
+                  <Route path="reception" element={<SpaReception />} />
+                  <Route path="customers" element={<SpaCustomers />} />
                   <Route
                     path="services"
                     element={<SpaSection section="services" />}

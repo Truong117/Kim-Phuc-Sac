@@ -10,6 +10,7 @@ const colors = {
   booked: "light",
   arrived: "info",
   cancelled: "light",
+  unassigned: "light",
   assigned: "warning",
   in_progress: "info",
   completed: "success",
