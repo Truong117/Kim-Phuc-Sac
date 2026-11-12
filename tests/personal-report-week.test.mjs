@@ -26,17 +26,13 @@ test("default personal report uses the last Saturday across weekdays and month b
   assert.equal(lastReportSaturday("2027-01-01"), "2026-12-26");
 });
 
-test("only valid Saturday links through the current week are accepted, historical weeks remain readable", () => {
-  for (const invalid of [
-    null,
-    "2026-11-04",
-    "2026-02-30",
-    "2026-11-21",
-    "bad",
-  ]) {
+test("saved weekday and Sunday endings are accepted without changing the seven-day range", () => {
+  for (const invalid of [null, "2026-02-30", "2026-11-21", "bad"]) {
     assert.equal(personalReportWeek(invalid, "2026-11-11"), "2026-11-07");
   }
   assert.equal(personalReportWeek("2026-11-14", "2026-11-11"), "2026-11-14");
+  assert.equal(personalReportWeek("2026-11-08", "2026-11-11"), "2026-11-08");
+  assert.equal(personalReportWeek("2026-11-04", "2026-11-11"), "2026-11-04");
   assert.equal(personalReportWeek("2026-10-31", "2026-11-11"), "2026-10-31");
   assert.equal(personalReportWeek("2026-11-14", "2026-11-07"), "2026-11-07");
 });

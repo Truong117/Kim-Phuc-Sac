@@ -6,15 +6,19 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import ComponentCard from "@/components/common/ComponentCard";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Button from "@/components/ui/button/Button";
+import Select from "@/components/form/Select";
+import Label from "@/components/form/Label";
 import PersonalWeeklyReportContent from "@/components/reports/PersonalWeeklyReportContent";
 import { ApiServiceError } from "@/services/apiClient";
-import { getPersonalWeeklyReport } from "@/services/personalWeeklyReportService";
+import {
+  getPersonalWeeklyPeriods,
+  getPersonalWeeklyReport,
+} from "@/services/personalWeeklyReportService";
 import type { PersonalWeeklyReport as Report } from "@/types/personalWeeklyReport";
 import {
   addDaysToDateOnly,
   dateOnlyInTimeZone,
   formatDateOnly,
-  parseDateOnly,
 } from "@/utils/dateOnly";
 import {
   lastReportSaturday,
@@ -24,14 +28,40 @@ import {
 export default function PersonalWeeklyReport() {
   const { t } = useTranslation("common", { keyPrefix: "personalWeeklyReport" });
   const [params, setParams] = useSearchParams();
+  const [periods, setPeriods] = useState<Report["period"][] | null>(null);
+  const [periodError, setPeriodError] = useState(false);
+  const [periodVersion, setPeriodVersion] = useState(0);
   const today = dateOnlyInTimeZone();
-  const endDate = personalReportWeek(params.get("end_date"), today);
+  const endDate = personalReportWeek(
+    params.get("end_date") ?? periods?.[0]?.end_date ?? null,
+    today,
+  );
   const lastSaturday = lastReportSaturday(today);
   const maxWeek = addDaysToDateOnly(
     lastSaturday,
     today === lastSaturday ? 0 : 7,
   );
   const changeWeek = (date: string) => setParams({ end_date: date });
+  const reloadPeriods = () => setPeriodVersion((value) => value + 1);
+  useEffect(() => {
+    const controller = new AbortController();
+    getPersonalWeeklyPeriods(controller.signal)
+      .then((available) => {
+        if (controller.signal.aborted) return;
+        setPeriods(available);
+        setPeriodError(false);
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        if (
+          error instanceof ApiServiceError &&
+          [401, 403].includes(error.status)
+        )
+          setPeriods([]);
+        setPeriodError(true);
+      });
+    return () => controller.abort();
+  }, [periodVersion]);
   return (
     <>
       <PageMeta
@@ -44,6 +74,39 @@ export default function PersonalWeeklyReport() {
           <p className="mb-4 text-sm leading-6 text-gray-600 dark:text-gray-300">
             {t("subtitle")}
           </p>
+          {periods && periods.length > 0 && (
+            <div className="mb-4 max-w-lg">
+              <Label htmlFor="personal-saved-period">{t("savedPeriods")}</Label>
+              <Select
+                id="personal-saved-period"
+                value={
+                  periods.some((period) => period.end_date === endDate)
+                    ? endDate
+                    : ""
+                }
+                placeholder={t("selectPeriod")}
+                onChange={changeWeek}
+                options={periods.map((period) => ({
+                  value: period.end_date,
+                  label: t("period", {
+                    start: formatDateOnly(period.start_date),
+                    end: formatDateOnly(period.end_date),
+                  }),
+                }))}
+              />
+            </div>
+          )}
+          {periodError && (
+            <div
+              role="alert"
+              className="mb-4 space-y-2 text-sm text-warning-700 dark:text-warning-300"
+            >
+              <p>{t("periodsError")}</p>
+              <Button variant="outline" onClick={reloadPeriods}>
+                {t("reloadPeriods")}
+              </Button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="outline"
@@ -58,14 +121,11 @@ export default function PersonalWeeklyReport() {
                 ariaLabel={t("weekEnding")}
                 placeholder={t("weekEnding")}
                 maxDate={maxWeek}
-                isDateDisabled={(date) =>
-                  parseDateOnly(date)?.getUTCDay() !== 6
-                }
               />
             </div>
             <Button
               variant="outline"
-              disabled={endDate >= maxWeek}
+              disabled={addDaysToDateOnly(endDate, 7) > maxWeek}
               onClick={() => changeWeek(addDaysToDateOnly(endDate, 7))}
             >
               {t("next")}
@@ -78,13 +138,29 @@ export default function PersonalWeeklyReport() {
             })}
           </p>
         </ComponentCard>
-        <WeeklyResult key={endDate} endDate={endDate} />
+        {periods === null && !periodError && !params.has("end_date") ? (
+          <p role="status" className="text-sm text-gray-500 dark:text-gray-400">
+            {t("loading")}
+          </p>
+        ) : (
+          <WeeklyResult
+            key={endDate}
+            endDate={endDate}
+            onReloadPeriods={reloadPeriods}
+          />
+        )}
       </div>
     </>
   );
 }
 
-function WeeklyResult({ endDate }: { endDate: string }) {
+function WeeklyResult({
+  endDate,
+  onReloadPeriods,
+}: {
+  endDate: string;
+  onReloadPeriods: () => void;
+}) {
   const { t } = useTranslation("common", { keyPrefix: "personalWeeklyReport" });
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +215,7 @@ function WeeklyResult({ endDate }: { endDate: string }) {
           variant="outline"
           disabled={loading}
           onClick={() => {
+            onReloadPeriods();
             setLoading(true);
             setVersion((value) => value + 1);
           }}

@@ -8,8 +8,9 @@ Nhân viên có `reports.view` và thành viên KPS đang hoạt động truy c�
 
 ## Nguồn và phiên bản
 
-- Tuần dùng đúng kỳ 7 ngày kết thúc thứ Bảy như luồng tự động hiện hữu (Chủ nhật–thứ Bảy; ngày làm việc vẫn theo cấu hình báo cáo).
-- Mặc định hiển thị tuần kết thúc thứ Bảy gần nhất; có thể chọn các thứ Bảy lịch sử hoặc tuần hiện tại. Không tự tạo dữ liệu cho tuần chưa có.
+- Kỳ cá nhân dùng đúng 7 ngày của bản công ty đã lưu, kể cả các bản thủ công trước đây kết thúc Chủ nhật hoặc ngày khác. Không đổi nhãn hoặc trộn nguồn của hai kỳ lệch nhau.
+- Khi mở không có tham số ngày, mặc định chọn kỳ đã có mới nhất của người đăng nhập. Danh sách kỳ được lấy từ tối đa 100 bản 7 ngày gần nhất có unit cá nhân và nguồn hiện còn được phép đọc; gộp các phiên bản cùng kỳ. Nếu chưa có kỳ nào thì dùng thứ Bảy gần nhất để hiển thị trạng thái chờ/chưa có. Liên kết có ngày luôn giữ nguyên ngày đã chọn.
+- Lịch tự động vẫn kết thúc thứ Bảy (Chủ nhật–thứ Bảy; ngày làm việc theo cấu hình báo cáo). Việc đọc các kỳ cũ kết thúc ngày khác không sửa lịch này.
 - Ưu tiên `analysis_id` của `report_automation_cycles` cùng tổ chức/kind `weekly`/ngày kết thúc. Sau đó xét các phân tích toàn công ty cùng kỳ, mới nhất trước. Giới hạn tối đa 100 ứng viên mỗi tuần, tải theo lô 10.
 - Chỉ dùng phân tích cùng tổ chức, phạm vi toàn tổ chức, không lọc phòng ban, `days=7`, ngày bắt đầu/kết thúc khớp. Kiểm tra lại cả scope/period trong snapshot. Không dùng bản 1/30 ngày hay bản giới hạn cá nhân/phòng ban.
 - Chỉ tải các unit `employee:<signed-in-user-id>:*`. Không chờ phần tổng hợp công ty nếu các phần của người này đã hoàn tất.
@@ -21,8 +22,10 @@ Nhân viên có `reports.view` và thành viên KPS đang hoạt động truy c�
 
 `GET /api/reports/my-weekly-summary?end_date=YYYY-MM-DD`
 
+`GET /api/reports/my-weekly-summary/periods` chỉ trả metadata ngày bắt đầu/kết thúc của các kỳ có phần cá nhân; không trả dữ liệu công ty hoặc người khác. Danh sách chỉ gồm kỳ đã chốt nguồn đến ngày hiện tại. Nếu tải danh sách lỗi, vẫn có thể chọn ngày và đọc trực tiếp. Tải lại kết quả cũng cập nhật danh sách kỳ.
+
 - Sanctum + `active_kps_membership` + `permission:reports.view`; service kiểm tra lại thành viên/quyền.
-- Không nhận user ID, tổ chức, phòng ban hoặc analysis ID để chọn người khác. Chỉ ngày kết thúc thứ Bảy hợp lệ, không vượt tuần hiện tại.
+- Không nhận user ID, tổ chức, phòng ban hoặc analysis ID để chọn người khác. Nhận ngày kết thúc hợp lệ cho đúng kỳ 7 ngày, không vượt thứ Bảy của tuần hiện tại.
 - Kiểm tra lại quyền đọc, tổ chức và chủ sở hữu của mọi báo cáo nguồn của người xem trước khi sử dụng snapshot.
 - Kiểm tra nội dung/evidence/số liệu của từng unit chỉ với nguồn của người xem; phần sai bị đánh dấu lỗi và không trả nội dung.
 - Trả allowlist: kỳ, trạng thái cá nhân, dữ liệu của chính nhân viên, nguồn riêng, thời gian chốt, cờ thay đổi/đang cập nhật/mô phỏng. Không trả snapshot toàn công ty, input/góp ý nội bộ, token/chi phí, lỗi kỹ thuật của người khác hoặc quyền chạy lại.

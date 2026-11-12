@@ -14,7 +14,7 @@ export const personalReportWeek = (
     lastReportSaturday(today),
     parseDateOnly(today)?.getUTCDay() === 6 ? 0 : 7,
   );
-  return value && parsed?.getUTCDay() === 6 && value <= maxWeek
+  return value && parsed && value <= maxWeek
     ? value
     : lastReportSaturday(today);
 };

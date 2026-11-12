@@ -236,9 +236,69 @@ class PersonalWeeklyReportTest extends TestCase
         $this->createAnalysis();
         DB::table('daily_reports')->where('id', $this->aliceReport)->update(['user_id' => $this->owner->id]);
         $this->read($this->alice)->assertOk()->assertJsonPath('data.employee', null)->assertJsonPath('data.status', 'no_data');
-        foreach (['2026-11-04', '2026-11-21', '2026-02-30', 'invalid'] as $date) {
+        foreach (['2026-11-21', '2026-02-30', 'invalid'] as $date) {
             $this->getJson('/api/reports/my-weekly-summary?end_date='.$date)->assertUnprocessable()->assertJsonValidationErrors('end_date');
         }
+    }
+
+    public function test_saved_sunday_week_is_discoverable_and_readable_without_relabeling_the_period(): void
+    {
+        $this->createAnalysis('2026-11-07');
+        $this->createAnalysis('2026-11-08');
+        Queue::fake();
+        $counts = [WorkReportAnalysis::count(), DB::table('work_report_analysis_units')->count(), DB::table('mail_messages')->count()];
+        $this->actingAs($this->alice, 'web')->getJson('/api/reports/my-weekly-summary/periods?employee_id='.$this->bob->id)
+            ->assertOk()->assertHeader('Cache-Control', 'no-store, private')->assertExactJson(['data' => [
+                ['start_date' => '2026-11-02', 'end_date' => '2026-11-08', 'days' => 7, 'timezone' => 'Asia/Ho_Chi_Minh'],
+                ['start_date' => '2026-11-01', 'end_date' => '2026-11-07', 'days' => 7, 'timezone' => 'Asia/Ho_Chi_Minh'],
+            ]]);
+        $this->getJson('/api/reports/my-weekly-summary?end_date=2026-11-08')->assertOk()
+            ->assertJsonPath('data.status', 'completed')->assertJsonPath('data.period.start_date', '2026-11-02')
+            ->assertJsonPath('data.period.end_date', '2026-11-08')->assertJsonPath('data.employee.source_report_ids', [$this->aliceReport]);
+        $this->read($this->alice)->assertOk()->assertJsonPath('data.period.end_date', '2026-11-07');
+        config(['work_report_ai.enabled' => false]);
+        $this->getJson('/api/reports/my-weekly-summary/periods')->assertOk()->assertJsonCount(2, 'data');
+        $this->assertSame($counts, [WorkReportAnalysis::count(), DB::table('work_report_analysis_units')->count(), DB::table('mail_messages')->count()]);
+        Queue::assertNothingPushed();
+        Http::assertNothingSent();
+    }
+
+    public function test_period_discovery_deduplicates_revisions_and_excludes_unrelated_tenants_scopes_and_sources(): void
+    {
+        $first = $this->createAnalysis('2026-11-08');
+        config(['work_report_ai.gateway.model' => 'another-version']);
+        $second = $this->createAnalysis('2026-11-08');
+        $this->actingAs($this->alice, 'web')->getJson('/api/reports/my-weekly-summary/periods')
+            ->assertOk()->assertJsonCount(1, 'data');
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($this->owner, 'web')->getJson('/api/reports/my-weekly-summary/periods')
+            ->assertOk()->assertExactJson(['data' => []]);
+        $other = $this->createMembership(User::factory()->create(), organizationCode: 'OTHER');
+        $first->update(['organization_id' => $other['organization_id']]);
+        $second->update(['scope_hash' => str_repeat('0', 64)]);
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($this->alice, 'web')->getJson('/api/reports/my-weekly-summary/periods')->assertOk()->assertExactJson(['data' => []]);
+        $first->update(['organization_id' => $this->alice->defaultOrganizationMembership->organization_id]);
+        DB::table('daily_reports')->where('id', $this->aliceReport)->update(['user_id' => $this->owner->id]);
+        $this->getJson('/api/reports/my-weekly-summary/periods')->assertOk()->assertExactJson(['data' => []]);
+    }
+
+    public function test_period_discovery_requires_active_membership_and_reports_permission(): void
+    {
+        $this->getJson('/api/reports/my-weekly-summary/periods')->assertUnauthorized();
+        $this->actingAs($this->member('NO_PERMISSIONS'), 'web')->getJson('/api/reports/my-weekly-summary/periods')->assertForbidden();
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($this->member('OFFICE_STAFF', 'OTHER'), 'web')->getJson('/api/reports/my-weekly-summary/periods')->assertUnauthorized();
+    }
+
+    public function test_period_discovery_does_not_offer_nonweekly_or_malformed_saved_ranges(): void
+    {
+        $run = $this->createAnalysis('2026-11-08');
+        $this->actingAs($this->alice, 'web');
+        $run->update(['days' => 1]);
+        $this->getJson('/api/reports/my-weekly-summary/periods')->assertOk()->assertExactJson(['data' => []]);
+        $run->update(['days' => 7, 'start_date' => '2026-11-01']);
+        $this->getJson('/api/reports/my-weekly-summary/periods')->assertOk()->assertExactJson(['data' => []]);
     }
 
     public function test_empty_unanalyzed_and_disabled_ai_still_allow_reading_saved_results(): void
