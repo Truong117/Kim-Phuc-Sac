@@ -13,6 +13,8 @@ async function setup(
   let errorCode = options.errorCode ?? null;
   let token: string | null = null;
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/me")
       return route.fulfill({

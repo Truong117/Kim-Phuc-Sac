@@ -5,6 +5,8 @@ async function setup(page: Page, canManage = true) {
   let conflict = false;
   let writes = 0;
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();

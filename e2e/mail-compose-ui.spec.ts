@@ -38,6 +38,8 @@ async function setup(
   const contents = new Map<string, { subject: string; body: string }>();
   let summaryDate = "2026-11-05";
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path.startsWith("/api/ai/")) {

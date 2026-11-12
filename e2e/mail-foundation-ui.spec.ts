@@ -18,6 +18,8 @@ async function setup(
   let submissions = 0;
   const processCalls: string[] = [];
   await page.route("**/api/**", async (route) => {
+    if (new URL(route.request().url()).pathname === "/api/workspaces")
+      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (path === "/api/auth/me")

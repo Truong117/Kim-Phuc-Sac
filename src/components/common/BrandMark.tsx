@@ -2,6 +2,7 @@ import { cn } from "@/utils";
 
 interface BrandMarkProps {
   compact?: boolean;
+  subtitle?: string;
   className?: string;
   inverted?: boolean;
   size?: "default" | "large";
@@ -9,6 +10,7 @@ interface BrandMarkProps {
 
 export default function BrandMark({
   compact = false,
+  subtitle = "Internal System",
   className,
   inverted = false,
   size = "default",
@@ -35,7 +37,9 @@ export default function BrandMark({
       />
 
       {!compact && (
-        <span className={cn("min-w-0", isLarge ? "leading-tight" : "leading-none")}>
+        <span
+          className={cn("min-w-0", isLarge ? "leading-tight" : "leading-none")}
+        >
           <span
             className={cn(
               "block font-bold whitespace-nowrap",
@@ -56,7 +60,7 @@ export default function BrandMark({
               inverted ? "text-white/75" : "text-gray-500 dark:text-gray-400",
             )}
           >
-            Internal System
+            {subtitle}
           </span>
         </span>
       )}

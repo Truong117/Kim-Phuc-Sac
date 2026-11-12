@@ -1,4 +1,6 @@
-import { Link } from "react-router";
+import { useAuthorization } from "@/hooks/useAuthorization";
+import { workspaceForPath } from "@/utils/workspace";
+import { Link, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/utils";
 
@@ -14,6 +16,11 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
   className,
 }) => {
   const { t } = useTranslation();
+  const { pathname } = useLocation();
+  const { workspaces } = useAuthorization();
+  const home =
+    workspaces.find((item) => item.id === workspaceForPath(pathname))?.home ??
+    "/";
   const Heading = headingLevel === 1 ? "h1" : "h2";
 
   return (
@@ -34,7 +41,7 @@ const PageBreadcrumb: React.FC<BreadcrumbProps> = ({
           <li>
             <Link
               className="inline-flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400"
-              to="/"
+              to={home}
             >
               {t("common.home")}
               <svg
