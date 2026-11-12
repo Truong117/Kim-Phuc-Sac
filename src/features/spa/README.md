@@ -7,14 +7,55 @@ database tables, migrations, clinical rules, payment, package redemption or uplo
 ## Open the preview
 
 Set `VITE_SPA_UI_PREVIEW_ENABLED=true` in the local/staging frontend environment,
-then restart Vite or rebuild. The default in `.env.example` is false. Sign in
-through the normal KPS login with a user whose navigation response includes
-`settings`; open `/spa` or the **Spa · Bản mẫu** sidebar item.
+then restart Vite or rebuild. The default in `.env.example` is false. Deploy
+both frontend and backend to staging before checking workspace switching.
 
-The existing settings navigation permission is a temporary review gate only.
-It is checked for both sidebar visibility and direct routes. Do not equate it
-with approved spa RBAC, and do not add real customer data to this preview.
-The technician shown is a fixed fictional persona, not the signed-in user.
+The same KPS login/session is used throughout. `GET /api/workspaces` (Sanctum +
+active KPS membership) returns workspace IDs, validated home paths and Spa screen
+keys. No display role names are read by the frontend. Existing office roles keep
+Internal; existing Spa roles use Spa. Owner/Admin/Executive Assistant receive both
+through their existing Spa grants. The temporary `settings` preview gate and
+Internal sidebar Spa item have been removed.
+
+| Existing role / capability | Workspace | Spa landing |
+| --- | --- | --- |
+| Office roles without Spa grants | Internal | — |
+| Owner / Admin / Executive Assistant with existing Spa grants | Both | `/spa` |
+| KPS Spa manager (`spa.services.manage`) | Spa | `/spa` |
+| Existing KPS Spa staff / appointment management | Spa | `/spa/reception` |
+| Dedicated Spa technician (`spa.technician.view`) | Spa | `/spa/technician` |
+
+For dedicated job roles, run this **additive, idempotent** provisioning command
+against staging through the existing approved DB tooling (no schema migration):
+
+```sh
+php artisan db:seed --class=WorkspacePermissionSeeder --force
+```
+
+It creates `KPS_SPA_TECHNICIAN`, `KPS_SPA_RECEPTION`, `KPS_SPA_DISPATCH` and their
+minimal UI grants; it never assigns users or rewrites existing role grants.
+Assign the appropriate role via existing employee management afterward. Existing
+`KPS_SPA_STAFF` remains a generic reception role; it is not silently relabeled KTV.
+For dual-duty roles, explicitly grant `workspace.internal.access` in addition to
+Spa rights, or assign both existing roles through the membership model. There is
+no new multi-role editing UI in this change.
+
+The workspace preference is device-local and keyed by user ID. It grants no
+rights. Authorized deep links override the preference; first login with both
+workspaces defaults to Internal. Invalid/revoked preferences fall back to an
+allowed workspace. `/workspace` re-runs the resolver. Links and browser history
+continue through the existing navigation safety mechanism. Profile/account have
+Spa aliases so visiting them keeps the Spa shell.
+
+A missing workspace endpoint (404 during a rolling deploy) permits only the
+legacy Internal shell; other errors or invalid capability payloads fail closed.
+The frontend flag must be enabled for Spa to appear. Turning it off removes Spa
+from available workspaces even if the backend returns Spa access.
+
+These are **UI workspace capabilities**, not finalized business RBAC. Existing
+backend business endpoint permissions/scopes remain authoritative. Spa records
+are fictional and read-only; the technician shown is a fixed fictional persona,
+not the signed-in user's real assignments. No real customer data may be added.
 
 ## Structure
 
@@ -50,6 +91,5 @@ with a different flag. Browser tests intercept all API requests, including KPS
 authentication; production source contains no mock login or auth bypass.
 
 Next UI slices are customer/booking forms, reception/dispatch, then technician
-results/images/handover. Before connecting actual data, replace the temporary
-review gate with backend spa permissions and branch/assignment scopes, define
+results/images/handover. Before connecting actual data, complete business spa permissions and branch/assignment scopes, define
 photo and approval rules, and implement authoritative state changes server-side.

@@ -1,7 +1,6 @@
 import BrandMark from "@/components/common/BrandMark";
 import { useSidebar } from "@/context/SidebarContext";
 import { useAuthorization } from "@/hooks/useAuthorization";
-import { spaUiPreviewEnabled } from "@/features/spa/config";
 import {
   AiIcon,
   BoxCubeIcon,
@@ -92,14 +91,6 @@ const navGroups: NavGroup[] = [
   {
     labelKey: "business",
     items: [
-      {
-        navigationKey: "settings",
-        enabled: spaUiPreviewEnabled,
-        nameKey: "spaPreview",
-        icon: <CalenderIcon fontSize={24} />,
-        path: "/spa",
-        matchChildren: true,
-      },
       {
         navigationKey: "customers",
         nameKey: "customers",
@@ -240,8 +231,12 @@ export default function AppSidebar() {
           !isExpanded && !isHovered && "xl:justify-center",
         )}
       >
-        <Link to="/" aria-label="KIM PHỤC SẮC Internal System">
-          <BrandMark compact={!showContent} inverted />
+        <Link to="/" aria-label={t("workspace.internal")}>
+          <BrandMark
+            compact={!showContent}
+            inverted
+            subtitle={t("workspace.internal")}
+          />
         </Link>
 
         {isMobileOpen && (

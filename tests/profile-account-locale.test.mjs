@@ -22,10 +22,10 @@ test("profile and account dropdown destinations are separate self-service routes
   );
 
   assert.ok(profileItem);
-  assert.match(profileItem, /to="\/profile"/);
+  assert.match(profileItem, /to=\{`\$\{profilePrefix\}\/profile`\}/);
   assert.match(profileItem, /onItemClick=\{closeDropdown\}/);
   assert.ok(accountItem);
-  assert.match(accountItem, /to="\/account"/);
+  assert.match(accountItem, /to=\{`\$\{profilePrefix\}\/account`\}/);
   assert.match(accountItem, /onItemClick=\{closeDropdown\}/);
   assert.match(dropdown, /const initials =/);
   assert.match(dropdown, /\{initials\.toUpperCase\(\)\}/);
