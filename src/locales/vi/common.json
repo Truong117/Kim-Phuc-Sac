@@ -3813,7 +3813,7 @@
         "phoneDuplicate": "Số điện thoại đã có trong danh sách. Hãy chọn khách hàng hiện có.",
         "customerRequired": "Chọn khách hàng trước khi lưu lịch.",
         "dateInvalid": "Chọn ngày hẹn hợp lệ.",
-        "timeInvalid": "Chọn giờ hợp lệ; dịch vụ phải kết thúc trong cùng ngày.",
+        "timeInvalid": "Chọn giờ hợp lệ trong giờ hoạt động của cơ sở; dịch vụ phải kết thúc trong cùng ngày.",
         "serviceRequired": "Chọn ít nhất một dịch vụ và điền đủ các dòng dịch vụ.",
         "noteTooLong": "Ghi chú tối đa 1.000 ký tự.",
         "notFound": "Không tìm thấy dữ liệu mẫu cần thao tác.",
@@ -4012,7 +4012,13 @@
       "currentOwner": "KTV chịu trách nhiệm: {name}",
       "notReceived": "Khách chưa được tiếp nhận",
       "historicalNotice": "Kết quả và người tham gia được giữ trong lịch sử lượt khách.",
-      "reportRange": "Từ {from} đến {to}"
+      "reportRange": "Từ {from} đến {to}",
+      "editSettings": "Chỉnh sửa cấu hình",
+      "visitCode": "Mã lượt khách",
+      "nameInvalid": "Nhập tên hoặc tiêu đề hợp lệ, trong giới hạn cho phép.",
+      "timeInvalid": "Kiểm tra thời lượng và giờ hoạt động: giờ mở cửa phải trước giờ đóng cửa; thời lượng dịch vụ từ 15–180 phút, theo bước 15 phút.",
+      "contentTooLong": "Nội dung vượt giới hạn cho phép. Vui lòng rút gọn.",
+      "resultTooLong": "Kết quả tối đa 2.000 ký tự."
     }
   },
   "workspace": {

@@ -77,7 +77,10 @@ export default function SpaTechnicianActions({
 
   return (
     <div className="mt-6 space-y-4">
-      <SpaFormError error={error} />
+      <SpaFormError
+        error={error}
+        messages={{ noteTooLong: t("spa.business.resultTooLong") }}
+      />
       {task.status === "completed" ? (
         <>
           <h4 className="font-semibold text-gray-900 dark:text-white">

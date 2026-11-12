@@ -85,7 +85,7 @@ export default function SpaSettingsView() {
               })
             }
           >
-            {b("save")}
+            {b("editSettings")}
           </SpaAction>
         </div>
         <dl className="mt-5 grid gap-4 text-sm text-gray-700 sm:grid-cols-3 dark:text-gray-300">
@@ -134,7 +134,7 @@ export default function SpaSettingsView() {
       </h2>
       {audit.length ? (
         <SpaTable
-          headers={[b("date"), b("invoice"), b("description"), b("actor")]}
+          headers={[b("date"), b("visitCode"), b("description"), b("actor")]}
           rows={audit.slice(0, 50).map((event) => ({
             id: event.id,
             cells: [

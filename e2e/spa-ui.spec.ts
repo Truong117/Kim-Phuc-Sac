@@ -682,6 +682,12 @@ test.describe("Spa concept one interactive modules", () => {
   test.skip(!previewEnabled, "SPA UI preview flag disabled");
   const nav = (page: Page) =>
     page.getByRole("navigation", { name: "Chức năng spa" });
+  const openSpa = async (page: Page, name: string) => {
+    await nav(page).getByRole("link", { name, exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name, exact: true, level: 2 }),
+    ).toBeVisible();
+  };
   test("completes a service, collects partially and reconciles the receipt in cashbook/report", async ({
     page,
   }) => {
@@ -697,6 +703,11 @@ test.describe("Spa concept one interactive modules", () => {
     await expect(
       page.getByRole("status").filter({ hasText: "Đã lưu nháp trong phiên" }),
     ).toBeVisible();
+    await openSpa(page, "Thu ngân");
+    await openSpa(page, "Công việc KTV");
+    await expect(
+      page.getByLabel("Kết quả thực hiện", { exact: true }),
+    ).toHaveValue("Đã chăm sóc da, hướng dẫn tại nhà theo mẫu.");
     await page
       .getByRole("button", { name: "Hoàn tất dịch vụ", exact: true })
       .click();
@@ -704,9 +715,7 @@ test.describe("Spa concept one interactive modules", () => {
       .getByRole("dialog")
       .getByRole("button", { name: "Lưu mẫu", exact: true })
       .click();
-    await nav(page)
-      .getByRole("link", { name: "Thu ngân", exact: true })
-      .click();
+    await openSpa(page, "Thu ngân");
     const row = page.getByRole("row").filter({ hasText: "INV-SPA-002" });
     await expect(row).toContainText("450.000");
     await row.getByRole("button", { name: "Thu tiền", exact: true }).click();
@@ -720,16 +729,14 @@ test.describe("Spa concept one interactive modules", () => {
     await dialog.getByLabel("Số tiền (₫)", { exact: true }).fill("150000");
     await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
     await expect(row).toContainText("300.000");
-    await nav(page).getByRole("link", { name: "Sổ quỹ", exact: true }).click();
+    await openSpa(page, "Sổ quỹ");
     await expect(
       page.getByRole("row").filter({ hasText: "INV-SPA-002" }),
     ).toContainText("150.000");
     await expect(
       page.getByText("Thực thu", { exact: true }).locator(".."),
     ).toContainText("400.000");
-    await nav(page)
-      .getByRole("link", { name: "Báo cáo spa", exact: true })
-      .click();
+    await openSpa(page, "Báo cáo spa");
     await expect(
       page.getByText("Thực thu", { exact: true }).first().locator(".."),
     ).toContainText("400.000");
@@ -750,9 +757,7 @@ test.describe("Spa concept one interactive modules", () => {
     await booking.getByLabel("Giờ hẹn", { exact: true }).fill("16:00");
     await booking.getByRole("button", { name: "Lưu lịch hẹn mẫu" }).click();
     await expect(pack).toContainText("3/10 buổi");
-    await nav(page)
-      .getByRole("link", { name: "Công việc KTV", exact: true })
-      .click();
+    await openSpa(page, "Công việc KTV");
     await page
       .getByRole("button", { name: "Bàn giao KTV", exact: true })
       .click();
@@ -784,13 +789,9 @@ test.describe("Spa concept one interactive modules", () => {
       .getByRole("dialog")
       .getByRole("button", { name: "Lưu mẫu", exact: true })
       .click();
-    await nav(page)
-      .getByRole("link", { name: "Liệu trình", exact: true })
-      .click();
+    await openSpa(page, "Liệu trình");
     await expect(pack).toContainText("4/10 buổi");
-    await nav(page)
-      .getByRole("link", { name: "Thu ngân", exact: true })
-      .click();
+    await openSpa(page, "Thu ngân");
     await page.getByRole("button", { name: "Tất cả", exact: true }).click();
     await expect(
       page.getByRole("row").filter({ hasText: "INV-SPA-001" }),
@@ -826,7 +827,7 @@ test.describe("Spa concept one interactive modules", () => {
       .selectOption("customer-2");
     await dialog.getByLabel("Số lượng", { exact: true }).fill("2");
     await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
-    await nav(page).getByRole("link", { name: "Kho", exact: true }).click();
+    await openSpa(page, "Kho");
     const product = page
       .getByRole("row")
       .filter({ hasText: "Serum phục hồi" })
@@ -842,9 +843,7 @@ test.describe("Spa concept one interactive modules", () => {
     await dialog.getByLabel("Số lượng", { exact: true }).fill("1");
     await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
     await expect(product.getByRole("cell").nth(2)).toHaveText("15");
-    await nav(page)
-      .getByRole("link", { name: "Thu ngân", exact: true })
-      .click();
+    await openSpa(page, "Thu ngân");
     await expect(
       page.getByRole("row").filter({ hasText: "Bán lẻ" }),
     ).toContainText("840.000");
@@ -892,10 +891,10 @@ test.describe("Spa concept one interactive modules", () => {
     await page
       .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
       .click();
-    await nav(page)
-      .getByRole("link", { name: "Thiết lập spa", exact: true })
+    await openSpa(page, "Thiết lập spa");
+    await page
+      .getByRole("button", { name: "Chỉnh sửa cấu hình", exact: true })
       .click();
-    await page.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
     await dialog
       .getByLabel("Tên cơ sở", { exact: true })
       .fill("KPS Spa thử nghiệm");
@@ -909,6 +908,28 @@ test.describe("Spa concept one interactive modules", () => {
     await expect(
       page.getByText("Quyền xem hiện tại", { exact: true }).first(),
     ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await openSpa(page, "Công việc KTV");
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    await page
+      .getByLabel("Kết quả thực hiện", { exact: true })
+      .fill("Bản nháp cần xóa khi khôi phục mẫu.");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("button", { name: "Khôi phục dữ liệu mẫu", exact: true })
+      .click();
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    await expect(
+      page.getByLabel("Kết quả thực hiện", { exact: true }),
+    ).toHaveValue("");
     expect(requests.every((r) => r.method === "GET")).toBe(true);
   });
 });

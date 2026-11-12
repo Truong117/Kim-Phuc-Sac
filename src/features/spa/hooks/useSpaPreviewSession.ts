@@ -8,8 +8,11 @@ export default function useSpaPreviewSession(): SpaPreviewContext {
   const { currentUser } = useAuth();
   const [snapshot, setSnapshot] = useState(spaPreviewRepository.readSnapshot);
   const current = useRef(snapshot);
+  const [generation, setGeneration] = useState(0);
+  const currentGeneration = useRef(0);
   const execute: SpaPreviewContext["execute"] = (command) => {
-    if (!currentUser) return "invalidTransition";
+    if (!currentUser || generation !== currentGeneration.current)
+      return "invalidTransition";
     const result = applySpaPreviewCommand(
       current.current,
       command,
@@ -23,6 +26,8 @@ export default function useSpaPreviewSession(): SpaPreviewContext {
     return result.error;
   };
   const reset = () => {
+    currentGeneration.current++;
+    setGeneration(currentGeneration.current);
     const fresh = spaPreviewRepository.readSnapshot();
     current.current = fresh;
     setSnapshot(fresh);

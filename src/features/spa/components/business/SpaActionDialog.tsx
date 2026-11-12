@@ -76,7 +76,14 @@ export default function SpaActionDialog({
           else onClose();
         }}
       >
-        <SpaFormError error={error} />
+        <SpaFormError
+          error={error}
+          messages={{
+            nameRequired: t("spa.business.nameInvalid"),
+            timeInvalid: t("spa.business.timeInvalid"),
+            noteTooLong: t("spa.business.contentTooLong"),
+          }}
+        />
         {form.hint && <SpaHint>{form.hint}</SpaHint>}
         {form.fields.map((f) => {
           const id = `spa-action-${f.key}`,
