@@ -19,12 +19,16 @@ import SpaFormError from "./SpaFormError";
 export default function SpaBookingDialog({
   appointment,
   customerId = "",
+  serviceKey = "",
+  packageId,
   date,
   onClose,
   onSaved,
 }: {
   appointment?: SpaAppointment;
   customerId?: string;
+  serviceKey?: string;
+  packageId?: string;
   date: string;
   onClose: () => void;
   onSaved: (id: string, date: string) => void;
@@ -36,7 +40,12 @@ export default function SpaBookingDialog({
     customerId: appointment?.customerId ?? customerId,
     date: appointment?.date ?? date,
     startTime: appointment?.startTime ?? "14:00",
-    serviceKeys: appointment?.tasks.map((task) => task.serviceKey) ?? [""],
+    serviceKeys: appointment?.tasks.map((task) => task.serviceKey) ?? [
+      serviceKey,
+    ],
+    packageIds: appointment?.tasks.map((task) => task.packageId ?? null) ?? [
+      packageId ?? null,
+    ],
     note: appointment?.note ?? "",
   };
   const [values, setValues] = useState(initial);
@@ -118,7 +127,14 @@ export default function SpaBookingDialog({
             id="spa-booking-customer"
             placeholder={t("spa.flow.chooseCustomer")}
             value={values.customerId}
-            onChange={(value) => update("customerId", value)}
+            onChange={(value) => {
+              setValues((v) => ({
+                ...v,
+                customerId: value,
+                packageIds: v.serviceKeys.map(() => null),
+              }));
+              setError(undefined);
+            }}
             options={matches.map((customer) => ({
               value: customer.id,
               label: `${customer.name} · ${customer.phone}`,
@@ -172,49 +188,103 @@ export default function SpaBookingDialog({
             {t("spa.flow.services")}
           </legend>
           {values.serviceKeys.map((key, index) => (
-            <div key={index} className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <Label htmlFor={`spa-service-${index}`}>
-                  {t("spa.flow.serviceNumber", { number: index + 1 })}
+            <div key={index} className="space-y-3">
+              <div className="flex items-end gap-2">
+                <div className="min-w-0 flex-1">
+                  <Label htmlFor={`spa-service-${index}`}>
+                    {t("spa.flow.serviceNumber", { number: index + 1 })}
+                  </Label>
+                  <Select
+                    id={`spa-service-${index}`}
+                    placeholder={t("spa.flow.chooseService")}
+                    value={key}
+                    onChange={(value) => {
+                      setValues((v) => ({
+                        ...v,
+                        serviceKeys: v.serviceKeys.map((old, at) =>
+                          at === index ? value : old,
+                        ),
+                        packageIds: v.serviceKeys.map((_, at) =>
+                          at === index ? null : (v.packageIds?.[at] ?? null),
+                        ),
+                      }));
+                      setError(undefined);
+                    }}
+                    options={snapshot.services.map((service) => ({
+                      value: service.key,
+                      label: `${service.name ?? t(`spa.services.${service.key}`)} · ${t("spa.minutes", { count: service.durationMinutes })}`,
+                    }))}
+                    error={error === "serviceRequired" && !key}
+                    required
+                    className={spaFieldClasses}
+                  />
+                </div>
+                {values.serviceKeys.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setValues((v) => ({
+                        ...v,
+                        serviceKeys: v.serviceKeys.filter(
+                          (_, at) => at !== index,
+                        ),
+                        packageIds: v.serviceKeys
+                          .filter((_, at) => at !== index)
+                          .map(
+                            (_, at) =>
+                              v.packageIds?.[at >= index ? at + 1 : at] ?? null,
+                          ),
+                      }));
+                      setError(undefined);
+                    }}
+                    aria-label={t("spa.flow.removeService", {
+                      number: index + 1,
+                    })}
+                    className="flex size-11 items-center justify-center rounded-lg border border-gray-200 text-error-600 dark:border-gray-700 dark:text-error-400"
+                  >
+                    <TrashBinIcon className="size-5" />
+                  </button>
+                )}
+              </div>
+              <div>
+                <Label htmlFor={`spa-package-${index}`}>
+                  {t("spa.business.packageSelect", { number: index + 1 })}
                 </Label>
                 <Select
-                  id={`spa-service-${index}`}
-                  placeholder={t("spa.flow.chooseService")}
-                  value={key}
-                  onChange={(value) =>
-                    update(
-                      "serviceKeys",
-                      values.serviceKeys.map((old, at) =>
-                        at === index ? value : old,
+                  id={`spa-package-${index}`}
+                  value={values.packageIds?.[index] ?? ""}
+                  placeholder={t("spa.business.packageNone")}
+                  options={[
+                    { value: "", label: t("spa.business.packageNone") },
+                    ...snapshot.packages
+                      .filter(
+                        (p) =>
+                          p.customerId === values.customerId &&
+                          p.serviceKey === key &&
+                          p.expires >= values.date &&
+                          p.used < p.total,
+                      )
+                      .map((p) => ({
+                        value: p.id,
+                        label: t("spa.business.packageBalance", {
+                          name: p.name,
+                          count: p.total - p.used,
+                        }),
+                      })),
+                  ]}
+                  onChange={(value) => {
+                    setValues((v) => ({
+                      ...v,
+                      packageIds: v.serviceKeys.map((_, at) =>
+                        at === index ? value : (v.packageIds?.[at] ?? null),
                       ),
-                    )
-                  }
-                  options={snapshot.services.map((service) => ({
-                    value: service.key,
-                    label: `${t(`spa.services.${service.key}`)} · ${t("spa.minutes", { count: service.durationMinutes })}`,
-                  }))}
-                  error={error === "serviceRequired" && !key}
-                  required
+                    }));
+                    setError(undefined);
+                  }}
+                  error={error === "packageInvalid" || error === "packageEmpty"}
                   className={spaFieldClasses}
                 />
               </div>
-              {values.serviceKeys.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    update(
-                      "serviceKeys",
-                      values.serviceKeys.filter((_, at) => at !== index),
-                    )
-                  }
-                  aria-label={t("spa.flow.removeService", {
-                    number: index + 1,
-                  })}
-                  className="flex size-11 items-center justify-center rounded-lg border border-gray-200 text-error-600 dark:border-gray-700 dark:text-error-400"
-                >
-                  <TrashBinIcon className="size-5" />
-                </button>
-              )}
             </div>
           ))}
           <Button
@@ -222,7 +292,14 @@ export default function SpaBookingDialog({
             variant="outline"
             size="sm"
             startIcon={<PlusIcon className="size-4" />}
-            onClick={() => update("serviceKeys", [...values.serviceKeys, ""])}
+            onClick={() => {
+              setValues((v) => ({
+                ...v,
+                serviceKeys: [...v.serviceKeys, ""],
+                packageIds: [...(v.packageIds ?? []), null],
+              }));
+              setError(undefined);
+            }}
             disabled={values.serviceKeys.length >= 5}
           >
             {t("spa.flow.addService")}

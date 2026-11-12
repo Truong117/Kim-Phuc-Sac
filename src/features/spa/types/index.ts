@@ -1,3 +1,5 @@
+import type { SpaBusinessSnapshot, SpaBusinessCommand } from "./business";
+export type * from "./business";
 export type SpaAppointmentStatus = "booked" | "arrived" | "cancelled";
 export type SpaTaskStatus =
   "unassigned" | "assigned" | "in_progress" | "completed";
@@ -17,6 +19,21 @@ export interface SpaServiceTask {
   status: SpaTaskStatus;
   requiresSkinPhoto: boolean;
   noteKey: string;
+  serviceName?: string;
+  unitPrice?: number;
+  packageId?: string;
+  result?: string;
+  draftResult?: string;
+  completedAt?: string;
+  completedBy?: SpaActor;
+  participants?: string[];
+  handover?: {
+    toId: string;
+    toName: string;
+    reason: string;
+    actor: SpaActor;
+    at: string;
+  };
 }
 
 export interface SpaAppointment {
@@ -34,7 +51,7 @@ export interface SpaAppointment {
   tasks: SpaServiceTask[];
 }
 
-export interface SpaPreviewSnapshot {
+export interface SpaPreviewSnapshot extends SpaBusinessSnapshot {
   date: string;
   customers: SpaCustomer[];
   services: SpaServiceDefinition[];
@@ -52,6 +69,7 @@ export interface SpaPreviewRepository {
 export interface SpaTechnicianTask extends SpaServiceTask {
   customerName: string;
   appointmentId: string;
+  appointmentNote?: string;
 }
 
 export interface SpaActor {
@@ -68,6 +86,10 @@ export interface SpaServiceDefinition {
   key: string;
   durationMinutes: number;
   requiresSkinPhoto: boolean;
+  name?: string;
+  price?: number;
+  group?: string;
+  description?: string;
 }
 export interface SpaBed {
   id: string;
@@ -76,7 +98,17 @@ export interface SpaBed {
 }
 export interface SpaAuditEvent {
   kind:
-    "created" | "updated" | "arrived" | "assigned" | "reassigned" | "cancelled";
+    | "created"
+    | "updated"
+    | "arrived"
+    | "assigned"
+    | "reassigned"
+    | "cancelled"
+    | "started"
+    | "completed"
+    | "handoverRequested"
+    | "handoverAccepted"
+    | "handoverWithdrawn";
   actor: SpaActor;
   at: string;
   detail?: string;
@@ -86,9 +118,11 @@ export interface SpaBookingDraft {
   date: string;
   startTime: string;
   serviceKeys: string[];
+  packageIds?: (string | null)[];
   note: string;
 }
 export type SpaPreviewCommand =
+  | SpaBusinessCommand
   | { kind: "customer"; id: string; customer: Omit<SpaCustomer, "id"> }
   | { kind: "booking"; id: string; draft: SpaBookingDraft; editing?: boolean }
   | { kind: "receive"; id: string }
@@ -118,4 +152,15 @@ export type SpaPreviewError =
   | "bedRequired"
   | "technicianConflict"
   | "bedConflict"
-  | "customerConflict";
+  | "customerConflict"
+  | "amountInvalid"
+  | "quantityInvalid"
+  | "stockInsufficient"
+  | "reasonRequired"
+  | "resultRequired"
+  | "serviceInUse"
+  | "packageInvalid"
+  | "packageEmpty"
+  | "settingsConflict"
+  | "commissionInvalid"
+  | "duplicateOperation";

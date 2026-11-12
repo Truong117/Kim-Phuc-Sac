@@ -17,28 +17,31 @@ import {
   TaskIcon,
   UserCircleIcon,
 } from "@/icons";
+import { canOpenWorkspacePath } from "@/utils/workspace";
 import { cn } from "@/utils";
 import { spaNavigation } from "../config";
 
-const icons = [
-  GridIcon,
-  CalenderIcon,
-  MultiUserIcon,
-  UserCircleIcon,
-  BoxCubeIcon,
-  DocsIcon,
-  CartIcon,
-  TaskIcon,
-  GridIcon,
-  BoxCubeIcon,
-  ChatIcon,
-  DocsIcon,
-  SettingsAltIcon,
-];
+const icons = {
+  overview: GridIcon,
+  appointments: CalenderIcon,
+  reception: MultiUserIcon,
+  customers: UserCircleIcon,
+  services: BoxCubeIcon,
+  treatments: DocsIcon,
+  cashier: CartIcon,
+  technician: TaskIcon,
+  rooms: GridIcon,
+  inventory: BoxCubeIcon,
+  care: ChatIcon,
+  staff: MultiUserIcon,
+  finance: CartIcon,
+  reports: DocsIcon,
+  settings: SettingsAltIcon,
+};
 const groups = [
   {
     key: "operations",
-    sections: ["overview", "appointments", "reception", "technician", "rooms"],
+    sections: ["overview", "appointments", "reception", "technician"],
   },
   {
     key: "customers",
@@ -46,8 +49,9 @@ const groups = [
   },
   {
     key: "management",
-    sections: ["cashier", "inventory", "reports", "settings"],
+    sections: ["cashier", "rooms", "inventory", "staff", "finance", "reports"],
   },
+  { key: "system", sections: ["settings"] },
 ];
 
 export default function SpaSidebar() {
@@ -109,7 +113,7 @@ export default function SpaSidebar() {
           const items = spaNavigation.filter(
             (item) =>
               group.sections.includes(item.key) &&
-              access?.sections.includes(item.key),
+              canOpenWorkspacePath(workspaces, item.path),
           );
           if (!items.length) return null;
           return (
@@ -121,7 +125,7 @@ export default function SpaSidebar() {
               )}
               <ul className="space-y-1">
                 {items.map((item) => {
-                  const Icon = icons[spaNavigation.indexOf(item)];
+                  const Icon = icons[item.key];
                   return (
                     <li key={item.key}>
                       <NavLink

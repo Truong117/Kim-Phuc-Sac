@@ -14,6 +14,8 @@ export const spaNavigation = [
   { key: "rooms", path: "/spa/rooms" },
   { key: "inventory", path: "/spa/inventory" },
   { key: "care", path: "/spa/care" },
+  { key: "staff", path: "/spa/staff" },
+  { key: "finance", path: "/spa/finance" },
   { key: "reports", path: "/spa/reports" },
   { key: "settings", path: "/spa/settings" },
 ] as const;

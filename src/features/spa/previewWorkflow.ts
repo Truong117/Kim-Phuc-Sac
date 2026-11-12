@@ -1,3 +1,7 @@
+import {
+  isSpaBusinessCommand,
+  applySpaBusinessCommand,
+} from "./previewBusiness";
 import type {
   SpaActor,
   SpaAppointment,
@@ -54,6 +58,8 @@ export function applySpaPreviewCommand(
   actor: SpaActor,
   at: string,
 ): { snapshot: SpaPreviewSnapshot; error?: SpaPreviewError } {
+  if (isSpaBusinessCommand(command))
+    return applySpaBusinessCommand(snapshot, command, actor, at);
   const fail = (error: SpaPreviewError) => ({ snapshot, error });
   const next = structuredClone(snapshot);
   if (command.kind === "technician") {
@@ -135,7 +141,12 @@ export function applySpaPreviewCommand(
       (sum, service) => sum + service!.durationMinutes,
       0,
     );
-    if (start === null || start + duration > 1440) return fail("timeInvalid");
+    if (
+      start === null ||
+      start < spaTimeMinutes(next.settings.open)! ||
+      start + duration > spaTimeMinutes(next.settings.close)!
+    )
+      return fail("timeInvalid");
     if (draft.note.length > 1000) return fail("noteTooLong");
     if (
       next.appointments.some(
@@ -155,11 +166,26 @@ export function applySpaPreviewCommand(
       )
     )
       return fail("customerConflict");
+    for (let index = 0; index < services.length; index++) {
+      const packageId = draft.packageIds?.[index];
+      if (!packageId) continue;
+      const pack = next.packages.find(
+        (p) =>
+          p.id === packageId &&
+          p.customerId === customer.id &&
+          p.serviceKey === services[index]!.key,
+      );
+      if (!pack || pack.expires < draft.date) return fail("packageInvalid");
+      if (pack.used >= pack.total) return fail("packageEmpty");
+    }
     let cursor = start;
     const tasks = services.map((service, index) => {
       const task = {
         id: `${command.id}-service-${index + 1}`,
         serviceKey: service!.key,
+        serviceName: service!.name,
+        unitPrice: service!.price,
+        packageId: draft.packageIds?.[index] || undefined,
         technicianId: "",
         technicianName: "",
         room: "",
@@ -232,7 +258,11 @@ export function applySpaPreviewCommand(
     if (!technician) return fail("technicianRequired");
     if (!bed) return fail("bedRequired");
     const start = spaTimeMinutes(command.startTime);
-    if (start === null || start + task.durationMinutes > 1440)
+    if (
+      start === null ||
+      start < spaTimeMinutes(next.settings.open)! ||
+      start + task.durationMinutes > spaTimeMinutes(next.settings.close)!
+    )
       return fail("timeInvalid");
     for (const other of next.appointments.filter(
       (item) => item.status !== "cancelled" && item.date === appointment.date,
@@ -252,7 +282,10 @@ export function applySpaPreviewCommand(
         if (other.customerId === appointment.customerId)
           return fail("customerConflict");
         if (["unassigned", "completed"].includes(occupied.status)) continue;
-        if (occupied.technicianId === technician.id)
+        if (
+          occupied.technicianId === technician.id ||
+          occupied.handover?.toId === technician.id
+        )
           return fail("technicianConflict");
         if (occupied.bedId === bed.id) return fail("bedConflict");
       }
