@@ -15,13 +15,14 @@ use Illuminate\Validation\ValidationException;
 
 final class ReportTaskProgress
 {
-    public const UNITS = ['video', 'ảnh', 'bài viết', 'sản phẩm'];
+    public const UNITS = ['video', 'ảnh', 'bài viết', 'sản phẩm', 'khách hàng', 'lượt chăm sóc'];
 
     public function ready(): bool
     {
         return Schema::hasTable('task_outputs') && Schema::hasTable('task_progress_events')
             && Schema::hasColumns('daily_report_items', ['task_id', 'task_snapshot', 'task_progress'])
-            && Schema::hasColumns('tasks', ['target_quantity', 'quantity_unit', 'progress_revision']);
+            && Schema::hasColumns('tasks', ['target_quantity', 'quantity_unit', 'progress_revision'])
+            && Schema::hasTable('task_progress_imports') && Schema::hasColumn('task_outputs', 'reference');
     }
 
     public function present(Task $task): array
@@ -34,8 +35,8 @@ final class ReportTaskProgress
 
         return ['revision' => (int) $task->progress_revision, 'target' => $task->target_quantity,
             'unit' => $unit, 'completed' => $completed, 'counts' => $counts,
-            'percent' => $task->target_quantity && $task->quantity_unit ? min(100, (int) floor($completed * 100 / $task->target_quantity)) : null,
-            'outputs' => $outputs->map(fn ($output) => ['id' => (int) $output->id, 'name' => $output->name, 'unit' => $output->unit,
+            'percent' => $task->target_quantity && $task->quantity_unit ? min(100, round($completed * 100 / $task->target_quantity, 1)) : null,
+            'outputs' => $outputs->map(fn ($output) => ['id' => (int) $output->id, 'name' => $output->name, 'reference' => $output->reference, 'unit' => $output->unit,
                 'completed' => $output->completed, 'first_completed_on' => $output->first_completed_on?->toDateString()])->all()];
     }
 
@@ -90,33 +91,53 @@ final class ReportTaskProgress
             if (! empty($progress['outputs']) && (! in_array($unit, self::UNITS, true) || ($task->quantity_unit && $unit !== $task->quantity_unit))) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Đơn vị sản phẩm không khớp mục tiêu công việc.']);
             }
-            $keys = [];
-            $outputIds = [];
-            foreach ($progress['outputs'] ?? [] as $output) {
-                if (trim($output['name']) === '') {
-                    throw ValidationException::withMessages(["items.$index.task_progress" => 'Tên sản phẩm không được để trống.']);
-                }
-                if (isset($output['id'])) {
-                    if (isset($outputIds[$output['id']])) {
-                        throw ValidationException::withMessages(["items.$index.task_progress" => 'Một sản phẩm chỉ được cập nhật một lần.']);
-                    }
-                    $outputIds[$output['id']] = true;
-                }
-                $key = NamedWorkOutputs::identity($output['name']);
-                if (isset($keys[$key])) {
-                    throw ValidationException::withMessages(["items.$index.task_progress" => 'Danh sách có tên sản phẩm trùng nhau.']);
-                }
-                $keys[$key] = true;
-                if (isset($output['id']) && ! TaskOutput::query()->where('task_id', $task->id)->where('unit', $unit)->whereKey($output['id'])->exists()) {
-                    throw ValidationException::withMessages(["items.$index.task_progress" => 'Sản phẩm không thuộc công việc này.']);
-                }
-                if (isset($output['id']) && TaskOutput::query()->where('task_id', $task->id)->where('unit', $unit)->where('identity_hash', $key)->where('id', '!=', $output['id'])->exists()) {
-                    throw ValidationException::withMessages(["items.$index.task_progress" => 'Tên này đã thuộc một sản phẩm khác trong công việc.']);
-                }
+            if (self::needsReference($unit) && ! empty($progress['outputs'])
+                && (($task->start_date && $date < $task->start_date->toDateString()) || $date > $task->due_date->toDateString())) {
+                throw ValidationException::withMessages(["items.$index.task_progress" => 'Cập nhật CSKH nằm ngoài kỳ công việc. Hãy chọn công việc của kỳ tương ứng; không cộng vào mục tiêu kỳ cũ.']);
             }
+            $this->validateOutputs($task, $unit, $progress['outputs'] ?? [], "items.$index.task_progress");
         }
 
         return $tasks->all();
+    }
+
+    public static function needsReference(?string $unit): bool
+    {
+        return in_array($unit, ['khách hàng', 'lượt chăm sóc'], true);
+    }
+
+    public static function identity(array $output, ?string $unit): string
+    {
+        return NamedWorkOutputs::identity(self::needsReference($unit) ? ($output['reference'] ?? '') : $output['name']);
+    }
+
+    public function validateOutputs(Task $task, ?string $unit, array $outputs, string $field): void
+    {
+        if ($outputs !== [] && (! in_array($unit, self::UNITS, true) || ($task->quantity_unit && $unit !== $task->quantity_unit))) {
+            throw ValidationException::withMessages([$field => 'Đơn vị không khớp công việc.']);
+        }
+        $keys = [];
+        $ids = [];
+        foreach ($outputs as $output) {
+            if (trim($output['name']) === '' || (self::needsReference($unit) && trim($output['reference'] ?? '') === '')) {
+                throw ValidationException::withMessages([$field => 'Nhập tên và mã khách hàng/mã lượt chăm sóc để đối chiếu, tránh cộng trùng.']);
+            }
+            $key = self::identity($output, $unit);
+            if (isset($keys[$key]) || (isset($output['id']) && isset($ids[$output['id']]))) {
+                throw ValidationException::withMessages([$field => 'Danh sách có mã hoặc sản phẩm trùng nhau.']);
+            }
+            $keys[$key] = true;
+            if (isset($output['id'])) {
+                $ids[$output['id']] = true;
+                $existing = TaskOutput::query()->where('task_id', $task->id)->where('unit', $unit)->find($output['id']);
+                if (! $existing || (self::needsReference($unit) && $existing->identity_hash !== $key)) {
+                    throw ValidationException::withMessages([$field => 'Mã không khớp đối tượng đã ghi nhận trong công việc; hãy chọn lại đúng đối tượng.']);
+                }
+                if (TaskOutput::query()->where('task_id', $task->id)->where('unit', $unit)->where('identity_hash', $key)->where('id', '!=', $existing->id)->exists()) {
+                    throw ValidationException::withMessages([$field => 'Định danh này đã thuộc một đối tượng khác trong công việc.']);
+                }
+            }
+        }
     }
 
     private function sameInput(?array $stored, array $input): bool
@@ -150,21 +171,21 @@ final class ReportTaskProgress
         $unit = $input['unit'] ?? null;
         $recorded = [];
         foreach ($input['outputs'] ?? [] as $output) {
-            $key = NamedWorkOutputs::identity($output['name']);
+            $key = self::identity($output, $unit);
             $existing = isset($output['id']) ? TaskOutput::query()->findOrFail($output['id'])
                 : TaskOutput::query()->where('task_id', $task->id)->where('unit', $unit)->where('identity_hash', $key)->first();
             $firstCompletion = $today && $output['completed'] && $existing?->first_completed_on === null;
             $newlyCompleted = $today && $output['completed'] && ($firstCompletion || (int) $existing?->first_report_item_id === (int) $row->id);
             if ($today) {
                 $existing ??= new TaskOutput(['organization_id' => $task->organization_id, 'task_id' => $task->id, 'unit' => $unit]);
-                $existing->fill(['name' => trim($output['name']), 'identity_hash' => $key, 'completed' => $output['completed']]);
+                $existing->fill(['name' => trim($output['name']), 'reference' => self::needsReference($unit) ? trim($output['reference']) : null, 'identity_hash' => $key, 'completed' => $output['completed']]);
                 if ($firstCompletion) {
                     $existing->first_completed_on = $report->report_date;
                     $existing->first_report_item_id = $row->id;
                 }
                 $existing->save();
             }
-            $recorded[] = ['id' => $existing?->id, 'name' => trim($output['name']), 'unit' => $unit,
+            $recorded[] = ['id' => $existing?->id, 'name' => trim($output['name']), 'reference' => $output['reference'] ?? null, 'unit' => $unit,
                 'completed' => $output['completed'], 'newly_completed' => $newlyCompleted];
         }
         if ($today) {
@@ -182,10 +203,11 @@ final class ReportTaskProgress
         $row->task_id = $task->id;
         $count = count(array_filter($recorded, fn ($output) => $today ? $output['newly_completed'] : $output['completed']));
         $metric = match ($unit) {
+            'khách hàng' => 'Khách hàng đã chăm sóc (công việc #'.$task->id.')', 'lượt chăm sóc' => 'Lượt chăm sóc đã thực hiện',
             'video' => 'Video đã hoàn thiện', 'ảnh' => 'Ảnh đã hoàn thiện', 'bài viết' => 'Bài viết đã hoàn thiện',
             default => 'Sản phẩm đã hoàn thiện',
         };
-        $quote = $unit ? "Hoàn thiện mới trong ngày: $count $unit." : '';
+        $quote = $unit ? (self::needsReference($unit) ? "Ghi nhận mới cho công việc: $count $unit." : "Hoàn thiện mới trong ngày: $count $unit.") : '';
         $names = array_column(array_filter($recorded, fn ($output) => $output['completed']), 'name');
         $summary = $recorded === [] ? '' : "[Cập nhật sản phẩm công việc #$task->id]\n".$quote
             .($names ? "\nSản phẩm cập nhật: ".implode('; ', $names) : '');

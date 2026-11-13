@@ -7,10 +7,12 @@ export type TaskReference = {
   name: string;
 };
 
-export type TaskQuantityUnit = "video" | "ảnh" | "bài viết" | "sản phẩm";
+export type TaskQuantityUnit =
+  "video" | "ảnh" | "bài viết" | "sản phẩm" | "khách hàng" | "lượt chăm sóc";
 export type TaskOutput = {
   id?: number | null;
   name: string;
+  reference?: string | null;
   unit?: TaskQuantityUnit;
   completed: boolean;
   first_completed_on?: string | null;

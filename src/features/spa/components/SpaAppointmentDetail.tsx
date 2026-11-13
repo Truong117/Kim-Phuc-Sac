@@ -46,7 +46,7 @@ export default function SpaAppointmentDetail({
             >
               <div className="flex flex-wrap justify-between gap-2">
                 <span className="font-medium">
-                  {t(`spa.services.${task.serviceKey}`)}
+                  {task.serviceName ?? t(`spa.services.${task.serviceKey}`)}
                 </span>
                 <SpaStatusBadge kind="task" status={task.status} />
               </div>
@@ -59,6 +59,18 @@ export default function SpaAppointmentDetail({
                 {task.room &&
                   ` · ${t("spa.flow.bedLabel", { room: task.room, bed: task.bedNumber ?? "01" })}`}
               </p>
+              {task.result && (
+                <p className="mt-2 whitespace-pre-wrap">
+                  {t("spa.business.resultRead")}: {task.result}
+                </p>
+              )}
+              {task.handover && (
+                <p className="mt-2 text-warning-700 dark:text-warning-400">
+                  {t("spa.business.pendingHandover", {
+                    name: task.handover.toName,
+                  })}
+                </p>
+              )}
               {task.assignedBy && (
                 <p className="mt-2 text-gray-500 dark:text-gray-400">
                   {t("spa.flow.dispatchedBy", { name: task.assignedBy.name })}

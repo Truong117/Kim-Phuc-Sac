@@ -47,7 +47,9 @@ export default function SpaAppointmentList({
                   className="text-sm text-gray-600 dark:text-gray-300"
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span>{t(`spa.services.${task.serviceKey}`)}</span>
+                    <span>
+                      {task.serviceName ?? t(`spa.services.${task.serviceKey}`)}
+                    </span>
                     <SpaStatusBadge kind="task" status={task.status} />
                   </div>
                   <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">

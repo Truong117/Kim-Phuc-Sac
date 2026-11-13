@@ -41,3 +41,15 @@ Migration chỉ thêm dữ liệu; báo cáo và công việc cũ giữ nguyên.
 ## Kiểm tra
 
 Backend bao gồm giao dịch, phân quyền, revision, sản phẩm trùng/ID ngoại, báo cáo bù, lịch sử, migration và đường dữ liệu từ báo cáo sang worker AI ngày rồi nguồn tuần/trích dẫn. Kiểm tra frontend bao gồm phân tích danh sách tên, preview số lượng, bản nháp, nhập tay, áp dụng/sửa/lưu, phản hồi lỗi, mobile và dark mode. Provider và API trong kiểm tra được giả lập; không phát sinh phí AI hoặc mail thật.
+
+## Bổ sung CSKH và đối soát dữ liệu cũ (M40)
+
+Cần thêm migration `2026_11_13_010000_add_task_progress_reconciliation` sau M39. M39 giữ nguyên, nên môi trường đã chạy M39 chỉ cần chạy phần còn thiếu theo quy trình hiện có. Không thêm ENV hoặc lượt gọi AI.
+
+- Mục tiêu có thêm `khách hàng` và `lượt chăm sóc`. Với khách hàng, một mã khách chỉ tính một lần trong cùng công việc; cùng khách qua Facebook/Zalo và nhiều ngày phải sử dụng cùng mã. Tên hiển thị trùng nhau được phép khi mã khác nhau. Hệ thống không tự đoán hai tên/hồ sơ là một người và không tự tạo hồ sơ CRM. Với lượt chăm sóc, mỗi lượt có mã riêng; gửi lại cùng mã không cộng thêm.
+- Kỳ tính theo ngày bắt đầu/hạn của công việc; mục tiêu 80 khách cho tháng 11 cần công việc riêng cho tháng 11, số lượng 80 và đơn vị khách hàng. Mô tả cũ “80 khách/tháng” không tự biến thành mục tiêu có cấu trúc; chỉnh sửa mục tiêu trước hoặc sau đối soát. Kỳ sau tạo công việc mới, không tái sử dụng mã công việc để đặt lại tổng.
+- Chi tiết công việc có `Đối soát báo cáo cũ`. Chọn khoảng ngày trong kỳ, xem các đầu việc hoàn thành từ báo cáo đã khóa của người được giao, chọn nguồn đúng công việc và kiểm tra danh sách. Video được gợi ý theo danh sách tên rõ ràng; số tổng không rõ tên/mã cần bổ sung danh sách thực tế. Không tự tạo 5 khách giả từ câu “đã chăm sóc 5 khách”.
+- Nhập ghi chú căn cứ và xác nhận rõ trước khi ghi nhận. Có thể chọn nhiều nguồn qua phân trang, tối đa 20 nguồn và 200 đối tượng/lần. Hai báo cáo nhắc cùng video/mã khách chỉ làm tăng tiến độ một lần. Gửi lại cùng thao tác không cộng lại, kể cả sau khi kết quả mạng bị mất.
+- Giữ ngày nguồn cho kết quả cũ, lưu người/thời điểm xác nhận và nguồn để xem lại theo quyền. Không thay đổi nội dung, khóa hoặc thời gian báo cáo gốc; không tự tạo/chạy lại bản AI ngày/tuần đã lưu. Đây là đối soát tiến độ, không phải ghi bổ sung kết quả vào báo cáo hôm nay. Nếu cần xem lại AI cũ, dùng luồng tạo phân tích mới; việc đối soát không tự sửa các con số đã tự khai trong báo cáo cũ.
+- Đối soát không đổi trạng thái toàn bộ công việc và không ghi đè trạng thái hiện tại của đối tượng đã có. Nó có thể bổ sung ngày hoàn thành sớm hơn khi tìm được nguồn cũ hơn. Một dòng nguồn đã xác nhận không bị ghi đè bằng danh sách khác; cần xem lịch sử thay vì thử nhập lại khác dữ kiện.
+- Cả xem nguồn và xác nhận đều kiểm tra lại quyền công việc, quyền báo cáo, tổ chức, người được giao, kỳ và hash nguồn. Đổi quyền/đổi người giao/đổi nguồn/revision sẽ bị chặn hoặc yêu cầu đối soát lại; không ghi dở một phần.

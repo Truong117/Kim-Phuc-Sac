@@ -15,13 +15,25 @@ export default function TaskProgressBar({
       <div className="flex flex-wrap justify-between gap-2">
         <span>
           {progress.target && progress.unit
-            ? t("quantity", {
-                done: progress.completed,
-                target: progress.target,
-                unit: progress.unit,
-              })
+            ? t(
+                progress.unit === "khách hàng" ||
+                  progress.unit === "lượt chăm sóc"
+                  ? "careQuantity"
+                  : "quantity",
+                {
+                  done: progress.completed,
+                  target: progress.target,
+                  unit: progress.unit,
+                },
+              )
             : progress.unit
-              ? t("recorded", { done: progress.completed, unit: progress.unit })
+              ? t(
+                  progress.unit === "khách hàng" ||
+                    progress.unit === "lượt chăm sóc"
+                    ? "careRecorded"
+                    : "recorded",
+                  { done: progress.completed, unit: progress.unit },
+                )
               : t("noTarget")}
         </span>
         {progress.percent !== null && <span>{progress.percent}%</span>}

@@ -53,7 +53,9 @@ export default function LinkedTaskReportItem({
       {link.progress.input.outputs.length > 0 && (
         <p className="text-theme-xs text-gray-600 dark:text-gray-300">
           {t("products")}:{" "}
-          {link.progress.input.outputs.map((o) => o.name).join(", ")}
+          {link.progress.input.outputs
+            .map((o) => (o.reference ? `${o.name} (${o.reference})` : o.name))
+            .join(", ")}
         </p>
       )}
       {messages.length > 0 && (

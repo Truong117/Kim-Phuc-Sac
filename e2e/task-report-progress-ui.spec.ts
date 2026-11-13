@@ -2,7 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 
 async function setup(
   page: Page,
-  options: { makeup?: boolean; schema?: boolean } = {},
+  options: {
+    makeup?: boolean;
+    schema?: boolean;
+    unit?: "video" | "khách hàng" | "lượt chăm sóc";
+  } = {},
 ) {
   const task = {
     id: 51,
@@ -20,11 +24,11 @@ async function setup(
     location: null,
     actions: { can_manage: false, can_update_status: true },
     target_quantity: 5,
-    quantity_unit: "video",
+    quantity_unit: options.unit ?? "video",
     progress: {
       revision: 3,
       target: 5,
-      unit: "video",
+      unit: options.unit ?? "video",
       completed: 0,
       counts: {},
       percent: 0,
@@ -286,4 +290,43 @@ test("a restored update remains readable and cancellable when task access was re
     page.getByText("Đã hoàn thành video “ABC” và video “DEF”", { exact: true }),
   ).toHaveCount(0);
   await expect(page.locator("#quick-draft-completed")).toBeVisible();
+});
+
+test("daily care progress retains customer identifiers in the report save payload", async ({
+  page,
+}) => {
+  const submissions = await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  await page
+    .locator("#task-report-result-51")
+    .fill("Đã tư vấn khách hàng qua Facebook");
+  await page
+    .getByRole("button", { name: "+ Thêm khách / lượt chăm sóc", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", {
+      name: "Khách hàng / nội dung chăm sóc 1",
+      exact: true,
+    })
+    .fill("Chị An");
+  await page
+    .getByRole("textbox", { name: "Mã khách hàng 1", exact: true })
+    .fill("KH001");
+  await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "20",
+  );
+  await page.locator("#next-day-plan").fill("Tiếp tục chăm sóc khách hàng");
+  await page.locator('form button[type="submit"]').click();
+  await expect.poll(() => submissions.length).toBe(1);
+  const items = submissions[0].items as {
+    task_progress: { unit: string; outputs: { reference: string }[] };
+  }[];
+  expect(items[0].task_progress.unit).toBe("khách hàng");
+  expect(items[0].task_progress.outputs[0].reference).toBe("KH001");
 });

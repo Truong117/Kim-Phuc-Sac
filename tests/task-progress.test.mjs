@@ -120,3 +120,34 @@ test("there is no invented percentage without a goal; restored links use the ori
   item.taskLink.progress.input.expected_revision = -1;
   assert.equal(validTaskLink(item.taskLink), false);
 });
+
+test("care progress deduplicates shared customer codes but preserves different customers with the same name", () => {
+  const t = task();
+  t.quantity_unit = "khách hàng";
+  t.target_quantity = 80;
+  t.progress = {
+    ...t.progress,
+    unit: "khách hàng",
+    outputs: [
+      {
+        id: 42,
+        name: "Chị An",
+        reference: "KH001",
+        unit: "khách hàng",
+        completed: true,
+      },
+    ],
+    counts: { "khách hàng": 1 },
+  };
+  const item = createTaskReportItem(t);
+  item.taskLink.pending = true;
+  item.taskLink.progress.input.outputs = [
+    { name: "Chị An qua Zalo", reference: " kh001 ", completed: true },
+    { name: "Chị An", reference: "KH002", completed: true },
+  ];
+  assert.equal(previewTaskProgress(t, item).completed, 2);
+  assert.equal(previewTaskProgress(t, item).percent, 2.5);
+  assert.equal(validTaskLink(item.taskLink), true);
+  item.taskLink.progress.input.outputs[0].reference = { bad: true };
+  assert.equal(validTaskLink(item.taskLink), false);
+});

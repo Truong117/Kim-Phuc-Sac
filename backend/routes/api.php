@@ -24,6 +24,7 @@ use App\Http\Controllers\Reports\ReportLinkCheckController;
 use App\Http\Controllers\Reports\ReportMailController;
 use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
+use App\Http\Controllers\Reports\TaskProgressReconciliationController;
 use App\Http\Controllers\Reports\TodayReportController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
@@ -169,6 +170,10 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::patch('/tasks/{id}/status', [TaskController::class, 'updateStatus'])
         ->whereNumber('id')
         ->middleware('permission:tasks.view');
+    Route::get('/tasks/{id}/progress/reconciliation', [TaskProgressReconciliationController::class, 'index'])
+        ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.view']);
+    Route::post('/tasks/{id}/progress/reconciliation', [TaskProgressReconciliationController::class, 'store'])
+        ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.view', 'throttle:20,1']);
     Route::get('/tasks/{id}/progress', [AssignedReportTasksController::class, 'history'])
         ->whereNumber('id')->middleware('permission:tasks.view');
     Route::get('/tasks/{id}', [TaskController::class, 'show'])

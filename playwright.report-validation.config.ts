@@ -7,6 +7,7 @@ export default defineConfig({
     "spa-ui.spec.ts",
     "report-validation-ui.spec.ts",
     "task-report-progress-ui.spec.ts",
+    "task-progress-reconciliation-ui.spec.ts",
     "facebook-post-picker-ui.spec.ts",
     "facebook-analytics-ui.spec.ts",
     "daily-document-reader-ui.spec.ts",
@@ -20,7 +21,7 @@ export default defineConfig({
   ],
   workers: 1,
   // Leave one minute for failure diagnostics before the CI step times out.
-  globalTimeout: process.env.CI ? 6 * 60 * 1000 : undefined,
+  globalTimeout: process.env.CI ? 8 * 60 * 1000 : undefined,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: "list",

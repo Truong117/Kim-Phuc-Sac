@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
-import Input from "@/components/form/input/InputField";
+import TaskOutputEditor from "@/components/tasks/TaskOutputEditor";
 import TextArea from "@/components/form/input/TextArea";
 import Select from "@/components/form/Select";
 import WorkItemExtras from "./WorkItemExtras";
@@ -10,7 +10,12 @@ import {
   hasValidEvidenceLinks,
   parseEvidenceLinks,
 } from "@/utils/reportEvidence";
-import { namedVideoSuggestions, outputIdentity } from "@/utils/taskProgress";
+import {
+  namedVideoSuggestions,
+  outputIdentity,
+  taskOutputIdentity,
+  needsOutputReference,
+} from "@/utils/taskProgress";
 import type {
   ManagedTask,
   TaskQuantityUnit,
@@ -100,11 +105,17 @@ export default function TaskInlineReportEditor({
       setError(t("required"));
       return;
     }
-    const names = input.outputs.map((o) => outputIdentity(o.name));
+    const names = input.outputs.map((o) => taskOutputIdentity(o, input.unit));
     if (
       input.outputs.length > 50 ||
       names.some((n) => !n) ||
-      input.outputs.some((o) => o.name.length > 200) ||
+      input.outputs.some(
+        (o) =>
+          !o.name.trim() ||
+          o.name.length > 200 ||
+          (needsOutputReference(input.unit) &&
+            (!o.reference?.trim() || o.reference.length > 200)),
+      ) ||
       new Set(names).size !== names.length ||
       (input.outputs.length > 0 && !input.unit)
     ) {
@@ -252,7 +263,14 @@ export default function TaskInlineReportEditor({
               value={input.unit ?? ""}
               placeholder={t("chooseUnit")}
               options={(
-                ["video", "ảnh", "bài viết", "sản phẩm"] as TaskQuantityUnit[]
+                [
+                  "video",
+                  "ảnh",
+                  "bài viết",
+                  "sản phẩm",
+                  "khách hàng",
+                  "lượt chăm sóc",
+                ] as TaskQuantityUnit[]
               ).map((unit) => ({ value: unit, label: t(`units.${unit}`) }))}
               onChange={(unit) => progress({ unit: unit as TaskQuantityUnit })}
             />
@@ -261,120 +279,26 @@ export default function TaskInlineReportEditor({
             {t("productHint")}
           </p>
         </div>
-        {input.outputs.map((output, index) => (
-          <div
-            key={output.id ?? `new-${index}`}
-            className="flex flex-wrap items-center gap-3"
-          >
-            <div className="min-w-0 flex-1">
-              <Input
-                aria-label={t("outputName", { number: index + 1 })}
-                value={output.name}
+        <TaskOutputEditor
+          unit={input.unit}
+          outputs={input.outputs}
+          existingOutputs={task.progress?.outputs}
+          disabled={disabled}
+          onChange={(outputs) => progress({ outputs })}
+          extraAction={
+            input.unit === "video" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
                 disabled={disabled}
-                maxLength={200}
-                onChange={(e) =>
-                  progress({
-                    outputs: input.outputs.map((o, i) =>
-                      i === index ? { ...o, name: e.target.value } : o,
-                    ),
-                  })
-                }
-              />
-            </div>
-            <label className="flex items-center gap-2 text-theme-xs text-gray-700 dark:text-gray-300">
-              <input
-                type="checkbox"
-                disabled={disabled}
-                checked={output.completed}
-                onChange={(e) =>
-                  progress({
-                    outputs: input.outputs.map((o, i) =>
-                      i === index ? { ...o, completed: e.target.checked } : o,
-                    ),
-                  })
-                }
-                className="size-4 accent-kps-primary"
-              />
-              {t("outputCompleted")}
-            </label>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={disabled}
-              onClick={() =>
-                progress({
-                  outputs: input.outputs.filter((_, i) => i !== index),
-                })
-              }
-            >
-              {t("deleteOutput")}
-            </Button>
-          </div>
-        ))}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={disabled || input.outputs.length >= 50 || !input.unit}
-            onClick={() =>
-              progress({
-                outputs: [...input.outputs, { name: "", completed: true }],
-              })
-            }
-          >
-            {t("addOutput")}
-          </Button>
-          {input.unit === "video" && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={disabled}
-              onClick={suggest}
-            >
-              {t("detectNames")}
-            </Button>
-          )}
-        </div>
-        {(task.progress?.outputs.length ?? 0) > 0 && (
-          <details className="text-theme-xs text-gray-600 dark:text-gray-300">
-            <summary className="cursor-pointer">
-              {t("existingProducts")}
-            </summary>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {task.progress!.outputs.map((output) => (
-                <Button
-                  key={output.id}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    disabled ||
-                    input.outputs.some((o) => o.id === output.id) ||
-                    Boolean(input.unit && input.unit !== output.unit)
-                  }
-                  onClick={() =>
-                    progress({
-                      unit: output.unit ?? input.unit,
-                      outputs: [
-                        ...input.outputs,
-                        {
-                          id: output.id,
-                          name: output.name,
-                          completed: output.completed,
-                        },
-                      ],
-                    })
-                  }
-                >
-                  {output.name}
-                </Button>
-              ))}
-            </div>
-          </details>
-        )}
+                onClick={suggest}
+              >
+                {t("detectNames")}
+              </Button>
+            ) : undefined
+          }
+        />
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <Button

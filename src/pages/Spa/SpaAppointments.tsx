@@ -1,3 +1,5 @@
+import SpaTeamSchedule from "@/features/spa/components/SpaTeamSchedule";
+import { SpaTabs } from "@/features/spa/components/business/SpaBusinessUi";
 import { spaFieldClasses } from "@/features/spa/config";
 import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
@@ -31,6 +33,7 @@ export default function SpaAppointments() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [view, setView] = useState("list");
   const [notice, setNotice] = useState(false);
   const editor = useModal();
   const appointments = filterSpaAppointments(
@@ -126,52 +129,67 @@ export default function SpaAppointments() {
           >
             {t("spa.appointments.count", { count: appointments.length })}
           </p>
-          <SpaAppointmentList
-            appointments={appointments}
-            renderActions={(appointment) => (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDetailId(appointment.id)}
-                >
-                  {t("spa.flow.details")}
-                </Button>
-                {appointment.status === "booked" && (
+          <SpaTabs
+            value={view}
+            onChange={setView}
+            items={["list", "teamSchedule"].map((key) => ({
+              key,
+              label: t(`spa.business.${key}`),
+            }))}
+          />
+          {view === "teamSchedule" ? (
+            <SpaTeamSchedule
+              appointments={appointments}
+              onDetail={setDetailId}
+            />
+          ) : (
+            <SpaAppointmentList
+              appointments={appointments}
+              renderActions={(appointment) => (
+                <div className="flex flex-wrap gap-2">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setEditingId(appointment.id);
-                      editor.openModal();
-                    }}
+                    onClick={() => setDetailId(appointment.id)}
                   >
-                    {t("spa.flow.editBooking")}
+                    {t("spa.flow.details")}
                   </Button>
-                )}
-                {appointment.status !== "cancelled" &&
-                  !appointment.tasks.some((task) =>
-                    ["in_progress", "completed"].includes(task.status),
-                  ) && (
+                  {appointment.status === "booked" && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setCancelId(appointment.id)}
+                      onClick={() => {
+                        setEditingId(appointment.id);
+                        editor.openModal();
+                      }}
                     >
-                      {t("spa.flow.cancelBooking")}
+                      {t("spa.flow.editBooking")}
                     </Button>
                   )}
-                {appointment.status !== "cancelled" && (
-                  <Link
-                    to={`/spa/reception?date=${date}&appointment=${encodeURIComponent(appointment.id)}`}
-                    className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-kps-primary hover:bg-kps-primary/5 dark:text-gray-200"
-                  >
-                    {t("spa.flow.openReception")}
-                  </Link>
-                )}
-              </div>
-            )}
-          />
+                  {appointment.status !== "cancelled" &&
+                    !appointment.tasks.some((task) =>
+                      ["in_progress", "completed"].includes(task.status),
+                    ) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCancelId(appointment.id)}
+                      >
+                        {t("spa.flow.cancelBooking")}
+                      </Button>
+                    )}
+                  {appointment.status !== "cancelled" && (
+                    <Link
+                      to={`/spa/reception?date=${date}&appointment=${encodeURIComponent(appointment.id)}`}
+                      className="inline-flex min-h-11 items-center rounded-lg px-3 text-sm font-medium text-kps-primary hover:bg-kps-primary/5 dark:text-gray-200"
+                    >
+                      {t("spa.flow.openReception")}
+                    </Link>
+                  )}
+                </div>
+              )}
+            />
+          )}
         </ComponentCard>
       </div>
       {editor.isOpen && (

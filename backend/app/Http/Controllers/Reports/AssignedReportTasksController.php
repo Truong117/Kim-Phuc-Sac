@@ -55,7 +55,7 @@ final class AssignedReportTasksController extends Controller
 
         return response()->json(['data' => $events->map(fn ($event) => ['id' => $event->id, 'report_id' => $event->report_id,
             'report_item_id' => $event->report_item_id, 'report_date' => $event->report_date,
-            'applied' => (bool) $event->applied, 'status_before' => $event->status_before, 'status_after' => $event->status_after,
+            'origin' => $event->origin ?? 'daily_report', 'applied' => (bool) $event->applied, 'status_before' => $event->status_before, 'status_after' => $event->status_after,
             'outputs' => json_decode($event->outputs, true), 'created_at' => CarbonImmutable::parse($event->created_at, 'UTC')->toIso8601String()]),
             'meta' => ['current_page' => $events->currentPage(), 'last_page' => $events->lastPage()]])->header('Cache-Control', 'private, no-store');
     }

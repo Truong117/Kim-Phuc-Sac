@@ -18,6 +18,7 @@ export const getAssignedReportTasks = (
     { signal, cache: "no-store" },
   );
 export type TaskProgressEvent = {
+  origin?: "daily_report" | "historical_import";
   id: number;
   report_id: number;
   report_item_id: number | null;

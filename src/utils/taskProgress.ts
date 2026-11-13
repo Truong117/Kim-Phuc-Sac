@@ -3,11 +3,23 @@ import type {
   ReportTaskLink,
   TaskOutput,
   TaskProgress,
+  TaskQuantityUnit,
 } from "@/types/tasks";
 import type { WorkItemFormData } from "@/types/reports";
 
 export const outputIdentity = (name: string) =>
   name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
+
+export const needsOutputReference = (
+  unit: TaskQuantityUnit | null | undefined,
+) => unit === "khách hàng" || unit === "lượt chăm sóc";
+export const taskOutputIdentity = (
+  output: TaskOutput,
+  unit: TaskQuantityUnit | null | undefined,
+) =>
+  outputIdentity(
+    needsOutputReference(unit) ? (output.reference ?? "") : output.name,
+  );
 
 export function namedVideoSuggestions(text: string): string[] {
   if (
@@ -91,7 +103,7 @@ export function previewTaskProgress(
   const outputs = new Map(
     p.outputs
       .filter((o) => o.unit === unit)
-      .map((o) => [o.id ? `id:${o.id}` : outputIdentity(o.name), o]),
+      .map((o) => [o.id ? `id:${o.id}` : taskOutputIdentity(o, unit), o]),
   );
   for (const output of update.outputs) {
     const previous = p.outputs.find(
@@ -99,10 +111,10 @@ export function previewTaskProgress(
         o.unit === unit &&
         (output.id
           ? output.id === o.id
-          : outputIdentity(output.name) === outputIdentity(o.name)),
+          : taskOutputIdentity(output, unit) === taskOutputIdentity(o, unit)),
     );
     outputs.set(
-      previous?.id ? `id:${previous.id}` : outputIdentity(output.name),
+      previous?.id ? `id:${previous.id}` : taskOutputIdentity(output, unit),
       output,
     );
   }
@@ -112,7 +124,10 @@ export function previewTaskProgress(
   p.completed = p.unit ? (p.counts[p.unit] ?? 0) : 0;
   p.percent =
     task.target_quantity && task.quantity_unit
-      ? Math.min(100, Math.floor((p.completed * 100) / task.target_quantity))
+      ? Math.min(
+          100,
+          Math.round((p.completed * 1000) / task.target_quantity) / 10,
+        )
       : null;
   return p;
 }
@@ -126,7 +141,14 @@ export function validTaskLink(value: unknown): value is ReportTaskLink {
     (link.progress?.source_result === undefined ||
       typeof link.progress.source_result === "string") &&
     (input?.unit === null ||
-      ["video", "ảnh", "bài viết", "sản phẩm"].includes(input?.unit)) &&
+      [
+        "video",
+        "ảnh",
+        "bài viết",
+        "sản phẩm",
+        "khách hàng",
+        "lượt chăm sóc",
+      ].includes(input?.unit)) &&
     Number.isInteger(link.task_id) &&
     link.task_id > 0 &&
     typeof link.snapshot?.title === "string" &&
@@ -139,7 +161,10 @@ export function validTaskLink(value: unknown): value is ReportTaskLink {
     input.outputs.length <= 50 &&
     input.outputs.every(
       (o: TaskOutput) =>
+        Boolean(o) &&
         typeof o.name === "string" &&
+        (o.reference == null ||
+          (typeof o.reference === "string" && o.reference.length <= 200)) &&
         o.name.length <= 200 &&
         typeof o.completed === "boolean" &&
         (o.id == null || (Number.isInteger(o.id) && o.id > 0)),

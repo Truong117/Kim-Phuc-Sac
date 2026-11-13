@@ -9,7 +9,13 @@ import {
 } from "@/services/reportTaskService";
 import { formatDateOnly } from "@/utils/dateOnly";
 
-export default function TaskProgressHistory({ taskId }: { taskId: number }) {
+export default function TaskProgressHistory({
+  taskId,
+  version = 0,
+}: {
+  taskId: number;
+  version?: number;
+}) {
   const { t } = useTranslation("common", { keyPrefix: "taskProgress" });
   const [rows, setRows] = useState<TaskProgressEvent[]>([]),
     [page, setPage] = useState(1),
@@ -32,7 +38,7 @@ export default function TaskProgressHistory({ taskId }: { taskId: number }) {
         }
       });
     return () => controller.abort();
-  }, [taskId, page]);
+  }, [taskId, page, version]);
   return (
     <ComponentCard title={t("historyTitle")}>
       <div className="space-y-4 text-theme-sm text-gray-700 dark:text-gray-300">
@@ -65,6 +71,11 @@ export default function TaskProgressHistory({ taskId }: { taskId: number }) {
                 }).format(new Date(row.created_at))}
               </span>
             </div>
+            {row.origin === "historical_import" && (
+              <p className="text-theme-xs font-medium text-kps-primary dark:text-sidebar-selected">
+                {t("reconciliation.history")}
+              </p>
+            )}
             <p>
               {row.applied
                 ? t("historyState", {

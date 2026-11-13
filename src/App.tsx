@@ -48,7 +48,16 @@ const SpaReception = lazy(() => import("./pages/Spa/SpaReception"));
 const SpaOverview = lazy(() => import("./pages/Spa/SpaOverview"));
 const SpaAppointments = lazy(() => import("./pages/Spa/SpaAppointments"));
 const SpaTechnician = lazy(() => import("./pages/Spa/SpaTechnician"));
-const SpaSection = lazy(() => import("./pages/Spa/SpaSection"));
+const SpaCatalog = lazy(() => import("./pages/Spa/SpaCatalog"));
+const SpaTreatments = lazy(() => import("./pages/Spa/SpaTreatments"));
+const SpaCashier = lazy(() => import("./pages/Spa/SpaCashier"));
+const SpaRooms = lazy(() => import("./pages/Spa/SpaRooms"));
+const SpaInventory = lazy(() => import("./pages/Spa/SpaInventory"));
+const SpaCare = lazy(() => import("./pages/Spa/SpaCare"));
+const SpaStaff = lazy(() => import("./pages/Spa/SpaStaff"));
+const SpaFinance = lazy(() => import("./pages/Spa/SpaFinance"));
+const SpaReports = lazy(() => import("./pages/Spa/SpaReports"));
+const SpaSettings = lazy(() => import("./pages/Spa/SpaSettings"));
 
 const navigationWindow = createWeeklyPlanV3NavigationWindow(window);
 
@@ -79,35 +88,16 @@ export default function App() {
                   <Route path="technician" element={<SpaTechnician />} />
                   <Route path="reception" element={<SpaReception />} />
                   <Route path="customers" element={<SpaCustomers />} />
-                  <Route
-                    path="services"
-                    element={<SpaSection section="services" />}
-                  />
-                  <Route
-                    path="treatments"
-                    element={<SpaSection section="treatments" />}
-                  />
-                  <Route
-                    path="cashier"
-                    element={<SpaSection section="cashier" />}
-                  />
-                  <Route
-                    path="rooms"
-                    element={<SpaSection section="rooms" />}
-                  />
-                  <Route
-                    path="inventory"
-                    element={<SpaSection section="inventory" />}
-                  />
-                  <Route path="care" element={<SpaSection section="care" />} />
-                  <Route
-                    path="reports"
-                    element={<SpaSection section="reports" />}
-                  />
-                  <Route
-                    path="settings"
-                    element={<SpaSection section="settings" />}
-                  />
+                  <Route path="services" element={<SpaCatalog />} />
+                  <Route path="treatments" element={<SpaTreatments />} />
+                  <Route path="cashier" element={<SpaCashier />} />
+                  <Route path="rooms" element={<SpaRooms />} />
+                  <Route path="inventory" element={<SpaInventory />} />
+                  <Route path="staff" element={<SpaStaff />} />
+                  <Route path="finance" element={<SpaFinance />} />
+                  <Route path="care" element={<SpaCare />} />
+                  <Route path="reports" element={<SpaReports />} />
+                  <Route path="settings" element={<SpaSettings />} />
                 </Route>
               </Route>
             )}

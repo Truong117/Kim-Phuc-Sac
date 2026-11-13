@@ -178,6 +178,14 @@ class TaskService
             if ($unit !== $task->quantity_unit && Schema::hasTable('task_outputs') && TaskOutput::query()->where('task_id', $task->id)->where('unit', '!=', $unit ?? '')->exists()) {
                 throw ValidationException::withMessages(['quantity_unit' => 'Công việc đã có sản phẩm, hãy giữ đơn vị để bảo toàn tiến độ.']);
             }
+            if (Schema::hasTable('task_outputs')) {
+                $dates = TaskOutput::query()->where('task_id', $task->id)->whereNotNull('first_completed_on');
+                $first = (clone $dates)->min('first_completed_on');
+                $last = (clone $dates)->max('first_completed_on');
+                if (($first && ($attributes['start_date'] ?? null) && $attributes['start_date'] > $first) || ($last && $attributes['due_date'] < $last)) {
+                    throw ValidationException::withMessages(['due_date' => 'Kỳ mới không bao gồm kết quả đã ghi nhận. Giữ kỳ này hoặc tạo công việc mới cho kỳ tiếp theo.']);
+                }
+            }
             $assigneeChanged = $task->assignee_id !== $assigneeMembership->user_id;
 
             $task->fill([

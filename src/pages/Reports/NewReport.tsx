@@ -628,9 +628,12 @@ export default function NewReport({
               task_progress: {
                 ...item.taskLink.progress.input,
                 outputs: item.taskLink.progress.input.outputs.map(
-                  ({ id, name, completed }) => ({
+                  ({ id, name, reference, completed }) => ({
                     ...(id != null ? { id } : {}),
                     name: name.trim(),
+                    ...(reference != null
+                      ? { reference: reference.trim() }
+                      : {}),
                     completed,
                   }),
                 ),

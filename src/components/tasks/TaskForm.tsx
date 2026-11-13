@@ -253,7 +253,14 @@ export default function TaskForm({
               error={Boolean(fieldError("quantityUnit", "quantity_unit"))}
               hint={fieldError("quantityUnit", "quantity_unit")}
               options={(
-                ["video", "ảnh", "bài viết", "sản phẩm"] as TaskQuantityUnit[]
+                [
+                  "video",
+                  "ảnh",
+                  "bài viết",
+                  "sản phẩm",
+                  "khách hàng",
+                  "lượt chăm sóc",
+                ] as TaskQuantityUnit[]
               ).map((unit) => ({
                 value: unit,
                 label: progressT(`units.${unit}`),

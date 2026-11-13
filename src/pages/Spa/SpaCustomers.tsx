@@ -1,3 +1,4 @@
+import SpaCustomerBusinessSummary from "@/features/spa/components/SpaCustomerBusinessSummary";
 import { spaFieldClasses } from "@/features/spa/config";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -159,6 +160,7 @@ export default function SpaCustomers() {
                       {selected.note}
                     </p>
                   )}
+                  <SpaCustomerBusinessSummary customerId={selected.id} />
                   <h4 className="font-medium text-gray-900 dark:text-white">
                     {t("spa.flow.customerHistory")}
                   </h4>
@@ -178,8 +180,10 @@ export default function SpaCustomers() {
                           />
                           <p className="mt-2">
                             {item.tasks
-                              .map((task) =>
-                                t(`spa.services.${task.serviceKey}`),
+                              .map(
+                                (task) =>
+                                  task.serviceName ??
+                                  t(`spa.services.${task.serviceKey}`),
                               )
                               .join(" · ")}
                           </p>

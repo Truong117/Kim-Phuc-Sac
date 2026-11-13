@@ -7,6 +7,7 @@ import TaskPriorityBadge from "@/components/tasks/TaskPriorityBadge";
 import TaskStatusBadge from "@/components/tasks/TaskStatusBadge";
 import TaskProgressBar from "@/components/tasks/TaskProgressBar";
 import TaskProgressHistory from "@/components/tasks/TaskProgressHistory";
+import TaskProgressReconciliation from "@/components/tasks/TaskProgressReconciliation";
 import Button from "@/components/ui/button/Button";
 import { ApiServiceError, type ValidationErrors } from "@/services/apiClient";
 import {
@@ -356,7 +357,22 @@ export default function TaskDetail() {
               </ComponentCard>
             </div>
           )}
-          {task.progress && <TaskProgressHistory taskId={task.id} />}
+          {!isEditing &&
+            task.progress &&
+            (task.actions.can_update_status || task.actions.can_manage) && (
+              <TaskProgressReconciliation
+                key={task.id}
+                task={task}
+                onImported={() => setRequestVersion((version) => version + 1)}
+              />
+            )}
+          {task.progress && (
+            <TaskProgressHistory
+              key={task.id}
+              taskId={task.id}
+              version={requestVersion}
+            />
+          )}
         </div>
       )}
     </>

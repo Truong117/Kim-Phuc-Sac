@@ -55,7 +55,7 @@ export default function SpaReceptionCard({
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-medium text-gray-900 dark:text-white">
-                {t(`spa.services.${task.serviceKey}`)}
+                {task.serviceName ?? t(`spa.services.${task.serviceKey}`)}
               </p>
               <SpaStatusBadge kind="task" status={task.status} />
             </div>
