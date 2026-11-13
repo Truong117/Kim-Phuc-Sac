@@ -1,3 +1,4 @@
+import SpaSkinPhotos from "./SpaSkinPhotos";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
 import SpaTechnicianActions from "./SpaTechnicianActions";
@@ -95,9 +96,11 @@ export default function SpaTechnicianDetail({
           )}
         </Badge>
       </div>
-      <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
-        {t("spa.business.photoHint")}
-      </p>
+      <SpaSkinPhotos
+        key={task.id}
+        appointmentId={task.appointmentId}
+        task={task}
+      />
       <SpaTechnicianActions
         key={`${task.id}-${task.technicianId}-${task.status}`}
         task={task}

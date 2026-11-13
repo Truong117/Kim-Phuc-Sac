@@ -3937,7 +3937,9 @@
         "completed": "Hoàn tất dịch vụ",
         "handoverRequested": "Yêu cầu bàn giao",
         "handoverAccepted": "Đã nhận bàn giao",
-        "handoverWithdrawn": "Rút bàn giao"
+        "handoverWithdrawn": "Rút bàn giao",
+        "photoAdded": "Thêm ảnh tình trạng da",
+        "photoRemoved": "Gỡ ảnh tình trạng da"
       },
       "errors": {
         "nameRequired": "Nhập tên khách hàng từ 1 đến 100 ký tự.",
@@ -3966,7 +3968,16 @@
         "packageEmpty": "Gói đã hết buổi.",
         "settingsConflict": "Giờ hoạt động mới không bao gồm toàn bộ các lịch đang có.",
         "commissionInvalid": "Tỷ lệ hoa hồng phải từ 0 đến 100%.",
-        "duplicateOperation": "Thao tác đã được ghi nhận, không thể tạo trùng."
+        "duplicateOperation": "Thao tác đã được ghi nhận, không thể tạo trùng.",
+        "customerNoteTooLong": "Ghi chú khách hàng tối đa 1.000 ký tự.",
+        "photoForbidden": "Trạng thái buổi hoặc quyền hiện tại không cho phép thao tác ảnh này.",
+        "photoInvalid": "Thông tin ảnh không hợp lệ. Vui lòng chọn lại ảnh.",
+        "photoLimit": "Mỗi nhóm trước/sau được tối đa 6 ảnh; cả lượt chọn phải nằm trong giới hạn.",
+        "photoSessionLimit": "Phiên thử đã đạt giới hạn 24 MB ảnh. Hãy gỡ bớt ảnh hoặc khôi phục dữ liệu mẫu.",
+        "photoTypeInvalid": "Chọn ảnh JPEG, PNG hoặc WebP. Với HEIC/HEIF, hãy xuất sang JPEG trước khi chọn.",
+        "photoFileTooLarge": "Ảnh phải nhỏ hơn hoặc bằng 10 MB và bản xem thử không vượt 2 MB.",
+        "photoCaptionTooLong": "Ghi chú ảnh tối đa 500 ký tự.",
+        "photoUnreadable": "Không thể đọc ảnh. Hãy chọn một ảnh JPEG, PNG hoặc WebP khác."
       },
       "optionalNote": "Nhập ghi chú (không bắt buộc)"
     },
@@ -4116,7 +4127,7 @@
       "withdrawTitle": "Rút yêu cầu bàn giao",
       "participants": "KTV đã tham gia: {names}",
       "resultRead": "Kết quả đã ghi nhận",
-      "photoHint": "Ảnh da: vị trí dự kiến cho bước tích hợp lưu ảnh sau; bản mẫu chưa tải ảnh.",
+      "photoHint": "Ảnh tình trạng da được ghi nhận ngay trong buổi dịch vụ ở bản UI thử.",
       "noPending": "Chưa có yêu cầu bàn giao.",
       "list": "Danh sách lịch",
       "teamSchedule": "Lịch theo nhân viên",
@@ -4151,6 +4162,49 @@
       "timeInvalid": "Kiểm tra thời lượng và giờ hoạt động: giờ mở cửa phải trước giờ đóng cửa; thời lượng dịch vụ từ 15–180 phút, theo bước 15 phút.",
       "contentTooLong": "Nội dung vượt giới hạn cho phép. Vui lòng rút gọn.",
       "resultTooLong": "Kết quả tối đa 2.000 ký tự."
+    },
+    "booking": {
+      "customerType": "Loại khách hàng",
+      "existing": "Khách hàng cũ",
+      "new": "Khách hàng mới",
+      "atomicHint": "Nhập thông tin ngay tại đây. Khách mới được tạo khi lưu lịch hẹn thành công.",
+      "noExisting": "Chưa tìm thấy khách. Có thể chuyển sang Khách hàng mới để tạo ngay tại đây.",
+      "duplicateHint": "Số này đã thuộc về {name} · {phone}. Hãy chọn hồ sơ có sẵn để tránh tạo trùng.",
+      "useExisting": "Dùng khách hàng này",
+      "saveNew": "Tạo khách và lưu lịch mẫu"
+    },
+    "photos": {
+      "title": "Ảnh tình trạng da",
+      "before": "Trước dịch vụ",
+      "after": "Sau dịch vụ",
+      "count": "{count} ảnh trong phiên",
+      "previewHint": "Ảnh chỉ được giữ trong phiên thử trên thiết bị này, chưa tải lên máy chủ. Tải lại trang, rời Spa hoặc khôi phục dữ liệu mẫu sẽ xóa ảnh.",
+      "camera": "Chụp ảnh",
+      "library": "Chọn ảnh",
+      "cameraInput": "Ảnh từ camera",
+      "libraryInput": "Ảnh từ thiết bị",
+      "caption": "Ghi chú ảnh (không bắt buộc)",
+      "captionHint": "Ví dụ: vùng má, ánh sáng tự nhiên… Tối đa 500 ký tự.",
+      "limits": "JPEG, PNG hoặc WebP; tối đa 10 MB/ảnh và 6 ảnh mỗi nhóm. Ảnh xem thử được chuẩn hóa, giảm kích thước và bỏ siêu dữ liệu.",
+      "processing": "Đang xử lý ảnh…",
+      "added": "Đã thêm ảnh vào phiên thử.",
+      "empty": "Chưa có ảnh ở nhóm này.",
+      "readOnly": "Chế độ xem: việc thêm ảnh phụ thuộc trạng thái buổi dịch vụ và người phụ trách.",
+      "alt": "Ảnh {stage} · {date} · {visit}",
+      "open": "Xem ảnh {stage}: {name}",
+      "zoom": "Xem lớn",
+      "compare": "Đối chiếu ảnh",
+      "viewer": "Đối chiếu ảnh tình trạng da",
+      "compareHint": "Chọn hai ảnh cùng khách hàng, có thể từ các buổi khác nhau được quyền xem.",
+      "first": "Ảnh thứ nhất",
+      "second": "Ảnh thứ hai",
+      "chooseComparison": "Chọn ảnh để đối chiếu",
+      "collapse": "Thu gọn ảnh",
+      "backCompare": "Quay lại đối chiếu",
+      "remove": "Gỡ ảnh",
+      "removeReason": "Lý do gỡ ảnh",
+      "reasonHint": "Nhập lý do từ 1 đến 500 ký tự.",
+      "confirmRemove": "Xác nhận gỡ ảnh"
     }
   },
   "workspace": {
