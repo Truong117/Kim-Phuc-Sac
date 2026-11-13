@@ -4,6 +4,7 @@ import type {
   TaskOutput,
   TaskProgress,
   TaskQuantityUnit,
+  CareCustomerSelection,
 } from "@/types/tasks";
 import type { WorkItemFormData } from "@/types/reports";
 
@@ -83,6 +84,20 @@ export function createTaskReportItem(
         status: "KEEP",
         unit: task.quantity_unit ?? task.progress?.unit ?? "video",
         outputs: [],
+        ...((task.quantity_unit ?? task.progress?.unit) === "khách hàng"
+          ? {
+              care_work_items: [
+                {
+                  client_key: crypto.randomUUID(),
+                  services: [],
+                  customers: [],
+                  result: "",
+                  evidence_links: [],
+                  attachment_ids: [],
+                },
+              ],
+            }
+          : {}),
       },
     },
   };
@@ -158,6 +173,43 @@ export function validTaskLink(value: unknown): value is ReportTaskLink {
     input.expected_revision >= 0 &&
     ["KEEP", "IN_PROGRESS", "COMPLETED", "BLOCKED"].includes(input.status) &&
     Array.isArray(input.outputs) &&
+    (input.care_entries === undefined ||
+      (Array.isArray(input.care_entries) &&
+        input.care_entries.length <= 20 &&
+        input.care_entries.every(
+          (e) =>
+            validCareCustomer(e) &&
+            Array.isArray(e.activities) &&
+            e.activities.length <= 10 &&
+            e.activities.every(
+              (a) =>
+                a &&
+                typeof a.service === "string" &&
+                typeof a.result === "string",
+            ) &&
+            validCareFiles(e),
+        ))) &&
+    (input.care_work_items === undefined ||
+      (Array.isArray(input.care_work_items) &&
+        input.care_work_items.length <= 20 &&
+        input.care_work_items.every(
+          (w) =>
+            w &&
+            typeof w.client_key === "string" &&
+            typeof w.result === "string" &&
+            Array.isArray(w.services) &&
+            w.services.length <= 10 &&
+            w.services.every(
+              (s) =>
+                s &&
+                typeof s.name === "string" &&
+                (s.id == null || (Number.isInteger(s.id) && s.id > 0)),
+            ) &&
+            Array.isArray(w.customers) &&
+            w.customers.length <= 20 &&
+            w.customers.every(validCareCustomer) &&
+            validCareFiles(w),
+        ))) &&
     input.outputs.length <= 50 &&
     input.outputs.every(
       (o: TaskOutput) =>
@@ -169,5 +221,50 @@ export function validTaskLink(value: unknown): value is ReportTaskLink {
         typeof o.completed === "boolean" &&
         (o.id == null || (Number.isInteger(o.id) && o.id > 0)),
     )
+  );
+}
+
+function validCareCustomer(value: unknown): value is CareCustomerSelection {
+  if (!value || typeof value !== "object") return false;
+  const c = value as CareCustomerSelection;
+  return (
+    typeof c.client_key === "string" &&
+    (c.customer_id === undefined ||
+      (Number.isInteger(c.customer_id) && c.customer_id > 0)) &&
+    (c.name === undefined || typeof c.name === "string") &&
+    (c.note === undefined || typeof c.note === "string") &&
+    (!c.new_customer ||
+      (typeof c.new_customer.request_key === "string" &&
+        typeof c.new_customer.name === "string" &&
+        typeof c.new_customer.channel === "string" &&
+        (c.new_customer.contact === undefined ||
+          typeof c.new_customer.contact === "string"))) &&
+    (!c.contact_update ||
+      (typeof c.contact_update.channel === "string" &&
+        typeof c.contact_update.value === "string")) &&
+    (c.legacy_output_id === undefined ||
+      (Number.isInteger(c.legacy_output_id) && c.legacy_output_id > 0))
+  );
+}
+function validCareFiles(value: {
+  evidence_links?: unknown;
+  attachment_ids?: unknown;
+  attachment_names?: unknown;
+}): boolean {
+  return (
+    Array.isArray(value.evidence_links) &&
+    value.evidence_links.length <= 3 &&
+    value.evidence_links.every((v: unknown) => typeof v === "string") &&
+    Array.isArray(value.attachment_ids) &&
+    value.attachment_ids.length <= 3 &&
+    value.attachment_ids.every(
+      (v: unknown) => Number.isInteger(v) && Number(v) > 0,
+    ) &&
+    (value.attachment_names === undefined ||
+      (value.attachment_names !== null &&
+        typeof value.attachment_names === "object" &&
+        Object.values(value.attachment_names).every(
+          (v) => typeof v === "string",
+        )))
   );
 }

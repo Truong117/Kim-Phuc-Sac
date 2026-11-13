@@ -56,6 +56,54 @@ async function setup(
         },
       });
     }
+    if (path.endsWith("/care-services"))
+      return route.fulfill({
+        json: {
+          data: [
+            { id: 11, name: "Hướng dẫn chăm sóc da tại nhà" },
+            { id: 12, name: "Theo dõi sau điều trị" },
+            { id: 13, name: "Tư vấn sản phẩm" },
+          ],
+          meta: { current_page: 1, last_page: 1 },
+        },
+      });
+    if (path.endsWith("/care-customers"))
+      return route.fulfill({
+        json: {
+          data: [
+            {
+              id: 701,
+              name: "Khách A",
+              code: "KH-701",
+              contacts: [{ channel: "Zalo", value: "0901234567" }],
+              task_output_id: null,
+              counted: false,
+            },
+            {
+              id: 702,
+              name: "Khách B",
+              code: "KH-702",
+              contacts: [
+                {
+                  channel: "Messenger",
+                  value: "https://facebook.com/customer.b",
+                },
+              ],
+              task_output_id: null,
+              counted: false,
+            },
+            {
+              id: 703,
+              name: "Khách C",
+              code: "KH-703",
+              contacts: [{ channel: "Zalo", value: "0901234569" }],
+              task_output_id: null,
+              counted: false,
+            },
+          ],
+          meta: { current_page: 1, last_page: 1 },
+        },
+      });
     const json =
       path === "/api/workspaces"
         ? { workspaces: [{ id: "internal", home: "/", sections: [] }] }
@@ -292,7 +340,150 @@ test("a restored update remains readable and cancellable when task access was re
   await expect(page.locator("#quick-draft-completed")).toBeVisible();
 });
 
-test("daily care progress retains customer identifiers in the report save payload", async ({
+async function selectWorkContents(page: Page, number: number, names: string[]) {
+  const work = page.getByRole("article", {
+    name: `Công việc ${number}`,
+    exact: true,
+  });
+  for (const name of names)
+    await work.getByRole("checkbox", { name, exact: true }).check();
+  return work;
+}
+async function selectWorkCustomers(
+  page: Page,
+  number: number,
+  names: string[],
+) {
+  const work = page.getByRole("article", {
+    name: `Công việc ${number}`,
+    exact: true,
+  });
+  await work.getByRole("button", { name: "Chọn khách", exact: true }).click();
+  for (const name of names)
+    await work.getByRole("checkbox", { name: new RegExp(name) }).check();
+  await work
+    .getByRole("button", { name: "Đóng danh sách", exact: true })
+    .click();
+  return work;
+}
+
+test("two work items preserve multiple selected contents and shared customers count once", async ({
+  page,
+}) => {
+  const submissions = await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const first = await selectWorkContents(page, 1, [
+    "Hướng dẫn chăm sóc da tại nhà",
+    "Theo dõi sau điều trị",
+  ]);
+  const serviceColumn = await first
+    .getByRole("region", { name: "Nội dung hỗ trợ", exact: true })
+    .boundingBox();
+  const customerColumn = await first
+    .getByRole("region", { name: "Khách hàng", exact: true })
+    .boundingBox();
+  expect(serviceColumn).not.toBeNull();
+  expect(customerColumn).not.toBeNull();
+  expect(customerColumn!.x).toBeGreaterThan(serviceColumn!.x);
+  expect(Math.abs(customerColumn!.y - serviceColumn!.y)).toBeLessThan(2);
+  await selectWorkCustomers(page, 1, ["Khách A", "Khách B"]);
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Đã hướng dẫn quy trình");
+  await page
+    .getByRole("button", { name: "Thêm công việc", exact: true })
+    .click();
+  const second = await selectWorkContents(page, 2, ["Tư vấn sản phẩm"]);
+  await selectWorkCustomers(page, 2, ["Khách B", "Khách C"]);
+  await second
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Đã tư vấn sản phẩm");
+  await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "60",
+  );
+  await expect(page.locator("#linked-task-51")).toContainText(
+    "Công việc 1 — Hướng dẫn chăm sóc da tại nhà; Theo dõi sau điều trị",
+  );
+  await expect(page.locator("#linked-task-51")).toContainText(
+    "Công việc 2 — Tư vấn sản phẩm",
+  );
+  await page.locator("#next-day-plan").fill("Theo dõi phản hồi");
+  await page.locator('form button[type="submit"]').click();
+  await expect.poll(() => submissions.length).toBe(1);
+  const items = submissions[0].items as {
+    task_progress: {
+      care_entries?: unknown;
+      outputs: unknown[];
+      care_work_items: {
+        services: { name: string }[];
+        customers: { customer_id: number }[];
+      }[];
+    };
+  }[];
+  expect(items[0].task_progress.care_entries).toBeUndefined();
+  expect(items[0].task_progress.outputs).toHaveLength(3);
+  expect(items[0].task_progress.care_work_items).toHaveLength(2);
+  expect(items[0].task_progress.care_work_items[0].services).toHaveLength(2);
+  expect(
+    items[0].task_progress.care_work_items.map((w) =>
+      w.customers.map((c) => c.customer_id),
+    ),
+  ).toEqual([
+    [701, 702],
+    [702, 703],
+  ]);
+});
+
+test("removing a populated work requires confirmation and never clears another work", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const first = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Nội dung cần giữ");
+  await page
+    .getByRole("button", { name: "Thêm công việc", exact: true })
+    .click();
+  await first
+    .getByRole("button", { name: "Bỏ công việc 1", exact: true })
+    .click();
+  await expect(
+    first.getByText("Bỏ công việc này sẽ bỏ nội dung", { exact: false }),
+  ).toBeVisible();
+  await first.getByRole("button", { name: "Giữ lại", exact: true }).click();
+  await expect(
+    first.getByRole("textbox", {
+      name: "Kết quả chung",
+      exact: true,
+    }),
+  ).toHaveValue("Nội dung cần giữ");
+  await first
+    .getByRole("button", { name: "Bỏ công việc 1", exact: true })
+    .click();
+  await first
+    .getByRole("button", { name: "Bỏ công việc này", exact: true })
+    .click();
+  await expect(
+    page.getByRole("article", { name: "Công việc 2", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("article", { name: "Công việc 1", exact: true })
+      .getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toHaveValue("");
+});
+
+test("inline new content and customer can be reused across independent work items with a source choice", async ({
   page,
 }) => {
   const submissions = await setup(page, { unit: "khách hàng" });
@@ -300,20 +491,60 @@ test("daily care progress retains customer identifiers in the report save payloa
     .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
     .click();
   await page
-    .locator("#task-report-result-51")
-    .fill("Đã tư vấn khách hàng qua Facebook");
-  await page
-    .getByRole("button", { name: "+ Thêm khách / lượt chăm sóc", exact: true })
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
     .click();
-  await page
+  await expect(
+    page.getByRole("article", { name: "Công việc 1", exact: true }),
+  ).toBeFocused();
+  const first = page.getByRole("article", { name: "Công việc 1", exact: true });
+  await first
+    .getByRole("textbox", { name: "Tìm hoặc tạo nội dung", exact: true })
+    .fill("Hỗ trợ sau mua");
+  await first
+    .getByRole("button", { name: "Tạo nội dung mới", exact: true })
+    .click();
+  await first.getByRole("button", { name: "Chọn khách", exact: true }).click();
+  await first
+    .getByRole("button", { name: "+ Tạo khách mới", exact: true })
+    .click();
+  await first
+    .getByRole("textbox", { name: "Tên khách hàng", exact: true })
+    .fill("Chị An");
+  await expect(
+    first.getByRole("combobox", { name: "Kênh liên hệ", exact: true }),
+  ).toHaveValue("");
+  await first
+    .getByRole("combobox", { name: "Kênh liên hệ", exact: true })
+    .selectOption("other");
+  await first
+    .getByRole("textbox", { name: "Nguồn khác", exact: true })
+    .fill("Messenger · Page mới");
+  await first
     .getByRole("textbox", {
-      name: "Khách hàng / nội dung chăm sóc 1",
+      name: "Số điện thoại / liên kết hồ sơ (không bắt buộc)",
       exact: true,
     })
-    .fill("Chị An");
+    .fill("0905555555");
+  await first
+    .getByRole("button", { name: "Tạo và chọn khách", exact: true })
+    .click();
+  await expect(
+    first.getByRole("textbox", { name: "Tên khách hàng", exact: true }),
+  ).toHaveCount(0);
+  await first
+    .getByRole("button", { name: "Đóng danh sách", exact: true })
+    .click();
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Đã hỗ trợ");
   await page
-    .getByRole("textbox", { name: "Mã khách hàng 1", exact: true })
-    .fill("KH001");
+    .getByRole("button", { name: "Thêm công việc", exact: true })
+    .click();
+  const second = await selectWorkContents(page, 2, ["Hỗ trợ sau mua"]);
+  await selectWorkCustomers(page, 2, ["Chị An"]);
+  await second
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Đã hẹn theo dõi");
   await page
     .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
     .click();
@@ -321,12 +552,154 @@ test("daily care progress retains customer identifiers in the report save payloa
     "aria-valuenow",
     "20",
   );
-  await page.locator("#next-day-plan").fill("Tiếp tục chăm sóc khách hàng");
+  await page.locator("#next-day-plan").fill("Theo dõi khách");
   await page.locator('form button[type="submit"]').click();
   await expect.poll(() => submissions.length).toBe(1);
-  const items = submissions[0].items as {
-    task_progress: { unit: string; outputs: { reference: string }[] };
-  }[];
-  expect(items[0].task_progress.unit).toBe("khách hàng");
-  expect(items[0].task_progress.outputs[0].reference).toBe("KH001");
+  const input = (
+    submissions[0].items as {
+      task_progress: {
+        care_work_items: {
+          customers: {
+            new_customer: { request_key: string; channel: string };
+          }[];
+        }[];
+      };
+    }[]
+  )[0].task_progress;
+  expect(input.care_work_items[0].customers[0].new_customer.channel).toBe(
+    "Messenger · Page mới",
+  );
+  expect(input.care_work_items[0].customers[0].new_customer.request_key).toBe(
+    input.care_work_items[1].customers[0].new_customer.request_key,
+  );
+});
+
+test("unapplied work item groups recover after reload without losing selected contents and results", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const first = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
+  await selectWorkCustomers(page, 1, ["Khách A"]);
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Nội dung bản nháp cần giữ");
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Khôi phục bản nháp", exact: true })
+    .click();
+  await expect(
+    page
+      .getByRole("article", { name: "Công việc 1", exact: true })
+      .getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toHaveValue("Nội dung bản nháp cần giữ");
+  await expect(
+    page.getByRole("article", { name: "Công việc 1", exact: true }),
+  ).toContainText("Tư vấn sản phẩm");
+});
+
+test("customer work groups fit mobile dark mode", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page, { unit: "khách hàng" });
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  await selectWorkContents(page, 1, [
+    "Hướng dẫn chăm sóc da tại nhà",
+    "Theo dõi sau điều trị",
+  ]);
+  await selectWorkCustomers(page, 1, ["Khách A", "Khách B"]);
+  const work = page.getByRole("article", { name: "Công việc 1", exact: true });
+  const services = await work
+    .getByRole("region", { name: "Nội dung hỗ trợ", exact: true })
+    .boundingBox();
+  const customers = await work
+    .getByRole("region", { name: "Khách hàng", exact: true })
+    .boundingBox();
+  expect(customers!.y).toBeGreaterThan(services!.y + services!.height);
+  await expect(
+    page.getByRole("article", { name: "Công việc 1", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("collapsed care work preserves selections, result and the unfinished inline customer form", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const work = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
+  await selectWorkCustomers(page, 1, ["Khách A"]);
+  await work
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Đã hướng dẫn sử dụng");
+  await work.getByRole("button", { name: "Chọn khách", exact: true }).click();
+  await work
+    .getByRole("button", { name: "+ Tạo khách mới", exact: true })
+    .click();
+  await work
+    .getByRole("textbox", { name: "Tên khách hàng", exact: true })
+    .fill("Chị Lan đang nhập");
+  await work.getByRole("button", { name: "Thu gọn", exact: true }).click();
+  await expect(
+    work.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toBeHidden();
+  await expect(work).toContainText("1 nội dung · 1 khách");
+  await work.getByRole("button", { name: "Mở chi tiết", exact: true }).click();
+  await expect(
+    work.getByRole("checkbox", { name: "Tư vấn sản phẩm", exact: true }),
+  ).toBeChecked();
+  await expect(
+    work.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toHaveValue("Đã hướng dẫn sử dụng");
+  await expect(
+    work.getByRole("textbox", { name: "Tên khách hàng", exact: true }),
+  ).toHaveValue("Chị Lan đang nhập");
+  await expect(
+    work.getByRole("button", { name: "Bỏ khách Khách A", exact: true }),
+  ).toBeVisible();
+});
+
+test("apply reveals and focuses an invalid collapsed care work without discarding another work", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const first = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
+  await selectWorkCustomers(page, 1, ["Khách A"]);
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Nội dung hợp lệ cần giữ");
+  await first.getByRole("button", { name: "Thu gọn", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Thêm công việc", exact: true })
+    .click();
+  const second = page.getByRole("article", {
+    name: "Công việc 2",
+    exact: true,
+  });
+  await second.getByRole("button", { name: "Thu gọn", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(second).toBeFocused();
+  await expect(second).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    second.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toBeVisible();
+  await first.getByRole("button", { name: "Mở chi tiết", exact: true }).click();
+  await expect(
+    first.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toHaveValue("Nội dung hợp lệ cần giữ");
 });

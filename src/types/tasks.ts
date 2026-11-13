@@ -13,6 +13,7 @@ export type TaskOutput = {
   id?: number | null;
   name: string;
   reference?: string | null;
+  care_customer_id?: number | null;
   unit?: TaskQuantityUnit;
   completed: boolean;
   first_completed_on?: string | null;
@@ -31,6 +32,48 @@ export type TaskProgressInput = {
   status: "KEEP" | Exclude<TaskStatus, "TODO">;
   unit: TaskQuantityUnit | null;
   outputs: TaskOutput[];
+  care_entries?: CareReportEntry[];
+  care_work_items?: CareWorkItem[];
+};
+
+export type CareActivity = { service: string; result: string };
+export type CareCustomerSelection = {
+  client_key: string;
+  customer_id?: number;
+  name?: string;
+  new_customer?: {
+    request_key: string;
+    name: string;
+    channel: string;
+    contact?: string;
+  };
+  contact_update?: { channel: string; value: string };
+  legacy_output_id?: number;
+  note?: string;
+};
+export type CareReportEntry = CareCustomerSelection & {
+  activities: CareActivity[];
+  evidence_links: string[];
+  attachment_ids: number[];
+  attachment_names?: Record<string, string>;
+};
+export type CareServiceOption = { id?: number | null; name: string };
+export type CareWorkItem = {
+  client_key: string;
+  services: CareServiceOption[];
+  customers: CareCustomerSelection[];
+  result: string;
+  evidence_links: string[];
+  attachment_ids: number[];
+  attachment_names?: Record<string, string>;
+};
+export type CareCustomer = {
+  id: number;
+  name: string;
+  code: string;
+  contacts: { channel: string; value: string | null }[];
+  task_output_id: number | null;
+  counted: boolean;
 };
 export type ReportTaskLink = {
   task_id: number;

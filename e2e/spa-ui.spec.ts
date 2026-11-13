@@ -4,7 +4,11 @@ const previewEnabled = process.env.SPA_UI_TEST_ENABLED !== "false";
 
 async function setup(
   page: Page,
-  options: { settings?: boolean; authenticated?: boolean } = {},
+  options: {
+    settings?: boolean;
+    authenticated?: boolean;
+    userName?: string;
+  } = {},
 ) {
   const requests: { path: string; method: string }[] = [];
   await page.route("**/api/**", async (route) => {
@@ -19,7 +23,7 @@ async function setup(
             ? {}
             : {
                 id: "spa-ui-reviewer",
-                name: "Người xem UI",
+                name: options.userName ?? "Người xem UI",
                 email: "spa-ui@example.test",
                 organization: { id: 1, name: "KPS" },
                 department: null,
@@ -115,7 +119,10 @@ test.describe("spa UI preview", () => {
       page.getByRole("link", { name: "Báo cáo công việc", exact: true }),
     ).toHaveCount(0);
     await expect(
-      page.getByText("Lịch hẹn còn hiệu lực", { exact: true }).locator(".."),
+      page
+        .getByText("Lịch hẹn trong ngày", { exact: true })
+        .first()
+        .locator(".."),
     ).toContainText("5");
     const nav = page.getByRole("navigation", { name: "Chức năng spa" });
     const links = await nav.getByRole("link").evaluateAll((items) =>
@@ -144,9 +151,14 @@ test.describe("spa UI preview", () => {
   }) => {
     await setup(page);
     await page.goto("/spa/appointments");
+    await page
+      .getByRole("button", { name: "Danh sách lịch", exact: true })
+      .click();
     await page.getByLabel("Tìm khách hoặc mã lịch").fill("minh anh");
     await expect(
-      page.getByText("Nguyễn Minh Anh", { exact: true }),
+      page
+        .getByRole("region", { name: "Danh sách lịch hẹn mẫu", exact: true })
+        .getByText("Nguyễn Minh Anh", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Trần Ngọc Linh", { exact: true })).toHaveCount(
       0,
@@ -186,7 +198,10 @@ test.describe("spa UI preview", () => {
       detail.getByText("Dịch vụ yêu cầu ảnh tình trạng da"),
     ).toBeVisible();
     await expect(detail).not.toContainText(/điện thoại|công nợ|doanh thu/i);
-    await expect(page.locator("main input[type=file]")).toHaveCount(0);
+    await expect(page.locator("main input[type=file]")).toHaveCount(2);
+    await expect(
+      page.locator("main input[type=file][capture]"),
+    ).toHaveAttribute("capture", "environment");
     await detail.getByRole("button", { name: "Quay lại danh sách" }).click();
     await expect(tasks).toBeVisible();
     await page.getByRole("button", { name: "Đã làm", exact: true }).click();
@@ -931,5 +946,404 @@ test.describe("Spa concept one interactive modules", () => {
       page.getByLabel("Kết quả thực hiện", { exact: true }),
     ).toHaveValue("");
     expect(requests.every((r) => r.method === "GET")).toBe(true);
+  });
+});
+
+const beforePng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAmUlEQVR4nO3PMQ2AUBTFUOyiAAEowAkK0IaB/wam0qTJHTvcs93nvtxzHcv9rd/+digAfSgAfSgAfegzwHJ06gPQfQC6D0D3foDl6NQHoPsAdB+A7v0Ay9GpD0D3Aeg+AN37AZajUx+A7gPQfQC69wMsR6c+AN0HoPsAdO8HWI5OfQC6D0D3AejeD7AcnfoAdB+A7gPQvR7wAuP0EZaHDwA5AAAAAElFTkSuQmCC",
+  "base64",
+);
+const afterPng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAmUlEQVR4nO3PMQ2AUBTFUPwvKMABChCBAsRg4L+BqTRpcscO92z3uS/3XMdyf+u3vx0KQB8KQB8KQB/6DLAcnfoAdB+A7gPQvR9gOTr1Aeg+AN0HoHs/wHJ06gPQfQC6D0D3foDl6NQHoPsAdB+A7v0Ay9GpD0D3Aeg+AN37AZajUx+A7gPQfQC69wMsR6c+AN0HoPsAdK8HvAXQ4fA0zIORAAAAAElFTkSuQmCC",
+  "base64",
+);
+
+test.describe("Spa inline booking and skin photos", () => {
+  test.skip(!previewEnabled, "SPA UI preview flag disabled");
+  const navigate = async (page: Page, name: string) => {
+    await page
+      .getByRole("navigation", { name: "Chức năng spa" })
+      .getByRole("link", { name, exact: true })
+      .click();
+    await expect(
+      page.getByRole("heading", { name, exact: true, level: 2 }),
+    ).toBeVisible();
+  };
+  test("phone creates new customer in the booking form and resolves duplicate phone without losing schedule", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const requests = await setup(page);
+    await page.goto("/spa/appointments");
+    await page
+      .getByRole("button", { name: "Tạo lịch hẹn mẫu", exact: true })
+      .click();
+    const form = page.getByRole("dialog");
+    await form.getByLabel("Giờ hẹn", { exact: true }).fill("16:00");
+    await form
+      .getByLabel("Dịch vụ 1", { exact: true })
+      .selectOption("skinRecovery");
+    await form
+      .getByRole("button", { name: "Khách hàng mới", exact: true })
+      .click();
+    await form
+      .getByLabel("Tên khách hàng", { exact: true })
+      .fill("Khách tại form mẫu");
+    await form
+      .getByLabel("Số điện thoại mẫu", { exact: true })
+      .fill("0000000001");
+    await form
+      .getByRole("button", { name: "Tạo khách và lưu lịch mẫu" })
+      .click();
+    await expect(form.getByRole("alert")).toContainText(
+      "đã có trong danh sách",
+    );
+    await expect(
+      form.getByLabel("Số điện thoại mẫu", { exact: true }),
+    ).toBeFocused();
+    await form.getByRole("button", { name: "Dùng khách hàng này" }).click();
+    await expect(
+      form.getByLabel("Chọn khách hàng", { exact: true }),
+    ).toHaveValue("customer-1");
+    await expect(form.getByLabel("Giờ hẹn", { exact: true })).toHaveValue(
+      "16:00",
+    );
+    await expect(form.getByLabel("Dịch vụ 1", { exact: true })).toHaveValue(
+      "skinRecovery",
+    );
+    await form
+      .getByRole("button", { name: "Khách hàng mới", exact: true })
+      .click();
+    await form
+      .getByLabel("Số điện thoại mẫu", { exact: true })
+      .fill("0900000129");
+    await form.getByLabel("Giờ hẹn", { exact: true }).fill("23:30");
+    await form
+      .getByRole("button", { name: "Tạo khách và lưu lịch mẫu" })
+      .click();
+    await expect(form.getByRole("alert")).toBeVisible();
+    await expect(
+      form.getByRole("button", { name: "Dùng khách hàng này" }),
+    ).toHaveCount(0);
+    await form.getByLabel("Giờ hẹn", { exact: true }).fill("16:00");
+    await form
+      .getByRole("button", { name: "Tạo khách và lưu lịch mẫu" })
+      .click();
+    await expect(form).toBeHidden();
+    await expect(
+      page.getByRole("listitem").filter({ hasText: "Khách tại form mẫu" }),
+    ).toHaveCount(1);
+    await page
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await navigate(page, "Khách hàng");
+    await page
+      .getByLabel("Tìm khách theo tên hoặc số điện thoại")
+      .fill("0900000129");
+    await expect(
+      page.getByRole("article", { name: "Khách tại form mẫu" }),
+    ).toHaveCount(1);
+    expect(requests.every((r) => r.method === "GET")).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+  test("photos decode locally, compare, survive navigation and revoke preview URLs after removal/reset", async ({
+    page,
+  }) => {
+    const requests = await setup(page);
+    await page.goto("/spa/technician");
+    const section = page.getByRole("region", {
+      name: "Ảnh tình trạng da",
+      exact: true,
+    });
+    await section.getByLabel("Ảnh từ thiết bị", { exact: true }).setInputFiles({
+      name: "invalid.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+    });
+    await expect(section.getByRole("alert")).toContainText("JPEG");
+    await section
+      .getByLabel("Ghi chú ảnh (không bắt buộc)", { exact: true })
+      .fill("Ảnh trước buổi mẫu");
+    await section.getByLabel("Ảnh từ thiết bị", { exact: true }).setInputFiles({
+      name: "skin-before.png",
+      mimeType: "image/png",
+      buffer: beforePng,
+    });
+    await expect(section.locator("img")).toHaveCount(1);
+    await section
+      .getByRole("button", { name: "Sau dịch vụ", exact: true })
+      .click();
+    await section.getByLabel("Ảnh từ camera", { exact: true }).setInputFiles({
+      name: "skin-after.png",
+      mimeType: "image/png",
+      buffer: afterPng,
+    });
+    await expect(section.locator("img")).toHaveCount(2);
+    await expect(section).toContainText("Người xem UI");
+    const url = await section.locator("img").first().getAttribute("src");
+    expect(url).toMatch(/^blob:/);
+    await section
+      .getByRole("button", { name: "Đối chiếu ảnh", exact: true })
+      .click();
+    const viewer = page.getByRole("region", {
+      name: "Đối chiếu ảnh tình trạng da",
+      exact: true,
+    });
+    await expect(viewer.locator("img")).toHaveCount(2);
+    await viewer
+      .getByRole("button", { name: "Xem lớn", exact: true })
+      .first()
+      .click();
+    await expect(viewer.locator("img")).toHaveCount(1);
+    await viewer
+      .getByRole("button", { name: "Quay lại đối chiếu", exact: true })
+      .click();
+    await viewer
+      .getByRole("button", { name: "Thu gọn ảnh", exact: true })
+      .click();
+    await navigate(page, "Khách hàng");
+    await page
+      .getByRole("article", { name: "Nguyễn Minh Anh", exact: true })
+      .getByRole("button", { name: "Hồ sơ khách hàng", exact: true })
+      .click();
+    await page
+      .locator("aside")
+      .filter({ hasText: "Ảnh tình trạng da" })
+      .getByRole("button", { name: "Đối chiếu ảnh", exact: true })
+      .click();
+    await expect(viewer.locator("img")).toHaveCount(2);
+    await navigate(page, "Công việc KTV");
+    await expect(section.locator("img")).toHaveCount(2);
+    await section
+      .getByRole("button", { name: "Gỡ ảnh", exact: true })
+      .first()
+      .click();
+    await section
+      .getByRole("button", { name: "Xác nhận gỡ ảnh", exact: true })
+      .click();
+    await expect(section.getByRole("alert")).toBeVisible();
+    await section
+      .getByLabel("Lý do gỡ ảnh", { exact: true })
+      .fill("Ảnh thử cần thay góc");
+    await section
+      .getByRole("button", { name: "Xác nhận gỡ ảnh", exact: true })
+      .click();
+    await expect(section.locator("img")).toHaveCount(1);
+    expect(
+      await page.evaluate(async (url) => {
+        try {
+          await fetch(url!);
+          return false;
+        } catch {
+          return true;
+        }
+      }, url),
+    ).toBe(true);
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("button", { name: "Khôi phục dữ liệu mẫu", exact: true })
+      .click();
+    await expect(section.locator("img")).toHaveCount(0);
+    expect(requests.every((r) => r.method === "GET")).toBe(true);
+  });
+  test("KTV phone keeps photo history after completion and locks removal of completed records", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setupWorkspaces(page, [technicianWorkspace]);
+    await page.goto("/spa/technician");
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    const section = page.getByRole("region", {
+      name: "Ảnh tình trạng da",
+      exact: true,
+    });
+    await section.getByLabel("Ảnh từ thiết bị", { exact: true }).setInputFiles({
+      name: "before.png",
+      mimeType: "image/png",
+      buffer: beforePng,
+    });
+    await expect(section.locator("img")).toHaveCount(1);
+    await section
+      .getByRole("button", { name: "Sau dịch vụ", exact: true })
+      .click();
+    await section.getByLabel("Ảnh từ thiết bị", { exact: true }).setInputFiles({
+      name: "after.png",
+      mimeType: "image/png",
+      buffer: afterPng,
+    });
+    await expect(section.locator("img")).toHaveCount(2);
+    await page
+      .getByLabel("Kết quả thực hiện", { exact: true })
+      .fill("Hoàn tất buổi chăm sóc mẫu.");
+    await page
+      .getByRole("button", { name: "Hoàn tất dịch vụ", exact: true })
+      .click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Lưu mẫu", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Đã làm", exact: true }).click();
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    await expect(section.locator("img")).toHaveCount(2);
+    await expect(
+      section.getByRole("button", { name: "Gỡ ảnh", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      section.getByRole("button", { name: "Trước dịch vụ", exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.reload();
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    await expect(section.locator("img")).toHaveCount(0);
+  });
+});
+
+test.describe("Spa concept one layout", () => {
+  test.skip(!previewEnabled, "SPA UI preview flag disabled");
+  test("overview opens booking in place and header search finds an existing customer", async ({
+    page,
+  }) => {
+    const requests = await setup(page);
+    await page.goto("/spa");
+    await expect(
+      page.getByRole("img", { name: "Biểu đồ số lượt hẹn theo giờ" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Không gian phục vụ", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Tạo lịch hẹn mẫu", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page
+      .getByRole("searchbox", {
+        name: "Tìm khách, số điện thoại…",
+        exact: true,
+      })
+      .fill("0000000002");
+    await page
+      .getByRole("searchbox", {
+        name: "Tìm khách, số điện thoại…",
+        exact: true,
+      })
+      .press("Enter");
+    await expect(
+      page.getByRole("heading", { name: "Khách hàng", exact: true, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("article", { name: "Trần Ngọc Linh", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("article", { name: "Nguyễn Minh Anh", exact: true }),
+    ).toHaveCount(0);
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+  });
+  test("timeline opens the correct visit and reception moves it between board columns", async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto("/spa/appointments");
+    const timeline = page.getByRole("region", {
+      name: "Lịch phục vụ theo kỹ thuật viên",
+      exact: true,
+    });
+    await expect(timeline).toBeVisible();
+    const event = timeline.getByRole("button", {
+      name: "09:00 – 10:00 · Nguyễn Minh Anh · Chăm sóc phục hồi da",
+      exact: true,
+    });
+    await event.click();
+    await expect(page.getByRole("dialog")).toContainText(
+      "Nguyễn Minh Anh · SPA-001",
+    );
+    await page
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Chức năng spa" })
+      .getByRole("link", { name: "Tiếp nhận và điều phối", exact: true })
+      .click();
+    const booked = page.getByRole("region", {
+      name: "Đã đặt lịch",
+      exact: true,
+    });
+    const waiting = page.getByRole("region", {
+      name: "Chờ phục vụ",
+      exact: true,
+    });
+    await expect(booked.getByRole("article")).toHaveCount(1);
+    await expect(waiting.getByRole("article")).toHaveCount(2);
+    await booked
+      .getByRole("button", { name: "Xác nhận khách đến", exact: true })
+      .click();
+    await expect(booked.getByRole("article")).toHaveCount(0);
+    await expect(waiting.getByRole("article")).toHaveCount(3);
+    await expect(
+      waiting.getByRole("article", {
+        name: "SPA-004 · Phạm Bảo Ngọc",
+        exact: true,
+      }),
+    ).toContainText("Tiếp nhận: Người xem UI");
+  });
+  test("phone keeps timeline scrolling inside the calendar and customer cards inside the viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page, {
+      userName:
+        "KPS Staging Executive Assistant (Fake) · Tên dài kiểm tra giao diện",
+    });
+    await page.goto("/spa/appointments");
+    const grid = page.getByRole("region", {
+      name: "Lưới giờ và nhân viên, có thể cuộn",
+      exact: true,
+    });
+    await expect(grid).toBeVisible();
+    expect(
+      await grid.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Chức năng spa" })
+      .getByRole("link", { name: "Khách hàng", exact: true })
+      .click();
+    await expect(
+      page.getByRole("article", { name: "Nguyễn Minh Anh", exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
   });
 });

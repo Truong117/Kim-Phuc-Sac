@@ -1,7 +1,7 @@
+import SpaBookingCustomerFields from "./SpaBookingCustomerFields";
 import { spaFieldClasses } from "@/features/spa/config";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useLocation } from "react-router";
 import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Label from "@/components/form/Label";
 import Select from "@/components/form/Select";
@@ -11,7 +11,6 @@ import Button from "@/components/ui/button/Button";
 import { TrashBinIcon, PlusIcon } from "@/icons";
 import useSpaForm from "../hooks/useSpaForm";
 import { useSpaPreview } from "../hooks/useSpaPreviewSnapshot";
-import { normalizeSpaText } from "../previewWorkflow";
 import type { SpaAppointment, SpaBookingDraft } from "../types";
 import SpaDialog from "./SpaDialog";
 import SpaFormError from "./SpaFormError";
@@ -34,7 +33,6 @@ export default function SpaBookingDialog({
   onSaved: (id: string, date: string) => void;
 }) {
   const { t } = useTranslation();
-  const { pathname } = useLocation();
   const { snapshot, execute } = useSpaPreview();
   const initial: SpaBookingDraft = {
     customerId: appointment?.customerId ?? customerId,
@@ -50,13 +48,26 @@ export default function SpaBookingDialog({
   };
   const [values, setValues] = useState(initial);
   const [query, setQuery] = useState("");
+  const [customerMode, setCustomerMode] = useState<"existing" | "new">(
+    "existing",
+  );
+  const [newCustomer, setNewCustomer] = useState({
+    name: "",
+    phone: "",
+    note: "",
+  });
   const {
     ref: formRef,
     error,
     setError,
     fail,
     close,
-  } = useSpaForm(JSON.stringify(values) !== JSON.stringify(initial), onClose);
+  } = useSpaForm(
+    JSON.stringify(values) !== JSON.stringify(initial) ||
+      customerMode === "new" ||
+      Object.values(newCustomer).some(Boolean),
+    onClose,
+  );
   const update = <K extends keyof SpaBookingDraft>(
     key: K,
     value: SpaBookingDraft[K],
@@ -64,13 +75,6 @@ export default function SpaBookingDialog({
     setValues((current) => ({ ...current, [key]: value }));
     setError(undefined);
   };
-  const matches = snapshot.customers.filter(
-    (customer) =>
-      customer.id === values.customerId ||
-      normalizeSpaText(`${customer.name} ${customer.phone}`).includes(
-        normalizeSpaText(query),
-      ),
-  );
   return (
     <SpaDialog
       title={t(appointment ? "spa.flow.editBooking" : "spa.flow.newBooking")}
@@ -94,7 +98,15 @@ export default function SpaBookingDialog({
           const error = execute({
             kind: "booking",
             id,
-            draft: values,
+            draft:
+              customerMode === "new"
+                ? {
+                    ...values,
+                    customerId: crypto.randomUUID(),
+                    newCustomer,
+                    packageIds: values.serviceKeys.map(() => null),
+                  }
+                : values,
             editing: Boolean(appointment),
           });
           if (error) fail(error);
@@ -107,51 +119,35 @@ export default function SpaBookingDialog({
             {t("spa.flow.editBookingHint")}
           </p>
         )}
-        <div>
-          <Label htmlFor="spa-booking-search">
-            {t("spa.flow.findCustomer")}
-          </Label>
-          <Input
-            id="spa-booking-search"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className={spaFieldClasses}
-          />
-        </div>
-        <div>
-          <Label htmlFor="spa-booking-customer">
-            {t("spa.flow.chooseCustomer")}
-          </Label>
-          <Select
-            id="spa-booking-customer"
-            placeholder={t("spa.flow.chooseCustomer")}
-            value={values.customerId}
-            onChange={(value) => {
+        <SpaBookingCustomerFields
+          mode={customerMode}
+          onMode={(mode) => {
+            setCustomerMode(mode);
+            if (mode === "new")
               setValues((v) => ({
                 ...v,
-                customerId: value,
                 packageIds: v.serviceKeys.map(() => null),
               }));
-              setError(undefined);
-            }}
-            options={matches.map((customer) => ({
-              value: customer.id,
-              label: `${customer.name} · ${customer.phone}`,
-            }))}
-            required
-            error={error === "customerRequired"}
-            className={spaFieldClasses}
-          />
-          {pathname !== "/spa/customers" && (
-            <Link
-              to="/spa/customers"
-              className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-kps-primary dark:text-gray-200"
-            >
-              {t("spa.flow.manageCustomers")}
-            </Link>
-          )}
-        </div>
+            setError(undefined);
+          }}
+          customerId={values.customerId}
+          onSelect={(id) => {
+            setValues((v) => ({
+              ...v,
+              customerId: id,
+              packageIds: v.serviceKeys.map(() => null),
+            }));
+            setError(undefined);
+          }}
+          query={query}
+          onQuery={setQuery}
+          customer={newCustomer}
+          onCustomer={(customer) => {
+            setNewCustomer(customer);
+            setError(undefined);
+          }}
+          error={error}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label htmlFor="spa-booking-date">{t("spa.flow.date")}</Label>
@@ -259,6 +255,7 @@ export default function SpaBookingDialog({
                     ...snapshot.packages
                       .filter(
                         (p) =>
+                          customerMode === "existing" &&
                           p.customerId === values.customerId &&
                           p.serviceKey === key &&
                           p.expires >= values.date &&
@@ -335,7 +332,11 @@ export default function SpaBookingDialog({
             type="submit"
             className="!bg-kps-primary hover:!bg-kps-primary-hover"
           >
-            {t("spa.flow.saveBooking")}
+            {t(
+              customerMode === "new"
+                ? "spa.booking.saveNew"
+                : "spa.flow.saveBooking",
+            )}
           </Button>
         </div>
       </form>

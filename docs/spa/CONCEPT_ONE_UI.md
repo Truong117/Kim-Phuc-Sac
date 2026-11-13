@@ -48,3 +48,24 @@ Staff UI reuses the existing `settings` capability; cashbook reuses `cashier`. B
 ## Deliberate next-stage integrations
 
 Persistent data and business APIs, facility/tenant isolation, server enforcement of final permissions, real KTV identity binding, skin-photo storage/consent, notifications/SMS/Zalo, financial reconciliation/refunds, tax invoices and payroll calculations remain backend/integration work. The UI labels these as a preview; the settings table does not edit access rights. Attendance and commission are operational illustrations, not HR/payroll records.
+
+## Inline customer booking and skin-photo UI
+
+Booking offers existing/new customer modes. New-customer fields stay inside the booking form; the profile and appointment are committed together only after all fields pass. Phones use the same normalization and uniqueness rules as customer management. A duplicate offers the existing profile in place, preserving date, services and notes. Cancelling or a failed booking creates no orphan customer.
+
+Skin photos live in each service detail and are accessible from the customer profile for authorized preview viewers. The UI supports device-file selection and a mobile camera input, before/after groups, captions, enlargement and side-by-side comparison of photos from permitted sessions for the same customer. It records the operator, capture path and time. Uploading is not a new completion prerequisite in this iteration.
+
+This remains a local preview, without a media API or persistent storage. The browser decodes JPEG/PNG/WebP, resizes the longest edge to at most 1600 pixels and re-encodes JPEG to discard source metadata. Limits: source 10 MB, preview 2 MB, 6 images per phase, 24 MB active images per session. HEIC/HEIF needs prior export to JPEG. No photos enter local/session storage or IndexedDB. Blob URLs are revoked on removal, reset and leaving the Spa workspace; in-flight work cannot repopulate a reset session.
+
+Existing managers (`settings` capability) can manage photo records; a KTV can add to their assigned, checked-in service while not awaiting handover, and can remove their own images before completion with a reason. After completion KTV additions are restricted to the after group, and removal requires a manager. Previous participants retain access to their service history. Removal preserves operator, time and reason in the preview audit. These client checks demonstrate the intended UI; real storage and enforcement belong to the later backend integration. No role or database changes are introduced.
+
+## Concept-one visual alignment (2026-11-13)
+
+- Keep the existing KPS sidebar, logo block, workspace switching and backend capability gates. No design-studio variant picker or fake role selector in the application header.
+- Spa-only header and heading composition; shared internal shell defaults remain unchanged. Global customer search routes to the customer list and query is preserved in the URL.
+- Overview: four capability-filtered KPIs, hourly appointment chart, current in-progress bed occupancy, visit table and actionable care/stock/handover links. Selected day drives operational metrics; cumulative unpaid invoices are calculated as of that day.
+- Calendar defaults to a time-by-technician grid with scroll contained inside the grid, variable service durations, overlap lanes and incoming handover reservations. Cancelled visits remain available in list/filter mode; create/edit returns to the list so the saved visit and edit/cancel actions are clear.
+- Reception uses four columns; waiting combines unassigned and assigned tasks without losing the original six stage filters or per-service assignment buttons. State transitions retain the same pure command handlers.
+- Customer cards use real preview session values for visits, receipts and active packages. Do not fabricate VIP tiers, acquisition sources or historical spend that the current Spa model does not contain. Expanded profile/history/photos remain available below the grid.
+- KTV: summary counts, split list/detail on tablet, touch cards/back navigation on phone and a fixed four-item bottom bar that respects the existing sidebar on desktop. Photo controls, result drafts and handover confirmations are retained.
+- No dependencies, backend changes, real KTV role, migration or environment changes. Synthetic customer data and images remain memory-only.

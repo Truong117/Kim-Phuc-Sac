@@ -1,3 +1,4 @@
+import SpaSkinPhotos from "./SpaSkinPhotos";
 import { useTranslation } from "react-i18next";
 import type { SpaAppointment } from "../types";
 import SpaDialog from "./SpaDialog";
@@ -76,6 +77,7 @@ export default function SpaAppointmentDetail({
                   {t("spa.flow.dispatchedBy", { name: task.assignedBy.name })}
                 </p>
               )}
+              <SpaSkinPhotos appointmentId={appointment.id} task={task} />
             </li>
           ))}
         </ul>

@@ -15,6 +15,7 @@ use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Reports\AssignedReportTasksController;
+use App\Http\Controllers\Reports\CustomerCareController;
 use App\Http\Controllers\Reports\MakeupReportController;
 use App\Http\Controllers\Reports\PersonalWeeklyReportController;
 use App\Http\Controllers\Reports\ReportCommentController;
@@ -170,6 +171,14 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::patch('/tasks/{id}/status', [TaskController::class, 'updateStatus'])
         ->whereNumber('id')
         ->middleware('permission:tasks.view');
+    Route::get('/tasks/{id}/care-customers', [CustomerCareController::class, 'index'])
+        ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.create', 'throttle:60,1']);
+    Route::get('/tasks/{id}/care-services', [CustomerCareController::class, 'services'])
+        ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.create', 'throttle:60,1']);
+    Route::post('/tasks/{id}/care-attachments', [CustomerCareController::class, 'upload'])
+        ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.create', 'throttle:20,1']);
+    Route::get('/tasks/{id}/care-attachments/{file}', [CustomerCareController::class, 'download'])
+        ->whereNumber('id')->whereNumber('file')->middleware('permission:tasks.view');
     Route::get('/tasks/{id}/progress/reconciliation', [TaskProgressReconciliationController::class, 'index'])
         ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.view']);
     Route::post('/tasks/{id}/progress/reconciliation', [TaskProgressReconciliationController::class, 'store'])

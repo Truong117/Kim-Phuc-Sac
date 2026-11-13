@@ -52,6 +52,8 @@ final class StagingBootstrapPlan
         '2026_11_12_000000_create_personal_report_mail_tables',
         '2026_11_12_010000_add_daily_task_progress',
         '2026_11_13_010000_add_task_progress_reconciliation',
+        '2026_11_13_020000_create_customer_care_reporting',
+        '2026_11_13_030000_create_care_service_catalog',
     ];
 
     /** @var list<string> */

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { spaFieldClasses } from "../../config";
 export const spaPanel =
-  "rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900";
+  "rounded-xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900";
 export function SpaAction({
   children,
   onClick,
@@ -148,14 +148,17 @@ export function SpaTabs({
   onChange: (key: string) => void;
 }) {
   return (
-    <div role="group" className="flex flex-wrap gap-2">
+    <div
+      role="group"
+      className="inline-flex flex-wrap gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800"
+    >
       {items.map((i) => (
         <button
           key={i.key}
           type="button"
           aria-pressed={i.key === value}
           onClick={() => onChange(i.key)}
-          className={`min-h-11 rounded-lg border px-4 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-kps-primary focus-visible:outline-none ${i.key === value ? "border-kps-primary bg-kps-primary text-white" : "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"}`}
+          className={`min-h-11 rounded-lg border px-4 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:ring-kps-primary focus-visible:outline-none ${i.key === value ? "border-gray-200 bg-white text-kps-primary-hover shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200" : "border-transparent text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"}`}
         >
           {i.label}
         </button>

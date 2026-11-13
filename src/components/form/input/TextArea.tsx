@@ -5,6 +5,7 @@ interface TextareaProps {
   name?: string;
   placeholder?: string; // Placeholder text
   rows?: number; // Number of rows
+  maxLength?: number;
   value?: string; // Current value
   onChange?: (value: string) => void; // Change handler
   onBlur?: React.FocusEventHandler<HTMLTextAreaElement>;
@@ -21,6 +22,7 @@ const TextArea: React.FC<TextareaProps> = ({
   name,
   placeholder = "Enter your message", // Default placeholder
   rows = 3, // Default number of rows
+  maxLength,
   value = "", // Default value
   onChange, // Callback for changes
   onBlur,
@@ -54,6 +56,7 @@ const TextArea: React.FC<TextareaProps> = ({
         name={name}
         placeholder={placeholder}
         rows={rows}
+        maxLength={maxLength}
         value={value}
         onChange={handleChange}
         onBlur={onBlur}

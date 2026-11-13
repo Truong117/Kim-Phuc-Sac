@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import PageMeta from "@/components/common/PageMeta";
-import PageBreadCrumb from "@/components/common/PageBreadCrumb";
+import SpaPageHeading from "@/features/spa/components/SpaPageHeading";
 import SpaReportsView from "@/features/spa/components/business/SpaReportsView";
 export default function SpaReports() {
   const { t } = useTranslation();
@@ -11,7 +11,7 @@ export default function SpaReports() {
         title={`${title} | KIM PHỤC SẮC`}
         description={t("spa.meta.description")}
       />
-      <PageBreadCrumb pageTitle={title} />
+      <SpaPageHeading section="reports" />
       <SpaReportsView />
     </>
   );

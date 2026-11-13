@@ -1,9 +1,11 @@
+import { careEvidenceEntries } from "@/utils/careReports";
 import { isEvidenceUrl } from "@/utils/reportEvidence";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import type { ReportWorkItem } from "@/types/reports";
 import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { useLocation } from "react-router";
+import CustomerCareEvidence from "./CustomerCareEvidence";
 
 interface ReportWorkItemDetailsProps {
   items: ReportWorkItem[];
@@ -133,6 +135,14 @@ export default function ReportWorkItemDetails({
               </div>
             )}
           </dl>
+          {item.task_link &&
+            (item.task_link.progress.input.care_entries ||
+              item.task_link.progress.input.care_work_items) && (
+              <CustomerCareEvidence
+                taskId={item.task_link.task_id}
+                entries={careEvidenceEntries(item.task_link.progress.input)}
+              />
+            )}
         </article>
       ))}
     </div>

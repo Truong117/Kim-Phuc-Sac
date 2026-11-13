@@ -1,3 +1,5 @@
+import type { SpaPhotoCommand, SpaSkinPhoto } from "./photos";
+export type * from "./photos";
 import type { SpaBusinessSnapshot, SpaBusinessCommand } from "./business";
 export type * from "./business";
 export type SpaAppointmentStatus = "booked" | "arrived" | "cancelled";
@@ -53,6 +55,7 @@ export interface SpaAppointment {
 
 export interface SpaPreviewSnapshot extends SpaBusinessSnapshot {
   date: string;
+  skinPhotos: SpaSkinPhoto[];
   customers: SpaCustomer[];
   services: SpaServiceDefinition[];
   technicians: SpaActor[];
@@ -108,13 +111,16 @@ export interface SpaAuditEvent {
     | "completed"
     | "handoverRequested"
     | "handoverAccepted"
-    | "handoverWithdrawn";
+    | "handoverWithdrawn"
+    | "photoAdded"
+    | "photoRemoved";
   actor: SpaActor;
   at: string;
   detail?: string;
 }
 export interface SpaBookingDraft {
   customerId: string;
+  newCustomer?: Omit<SpaCustomer, "id">;
   date: string;
   startTime: string;
   serviceKeys: string[];
@@ -123,6 +129,7 @@ export interface SpaBookingDraft {
 }
 export type SpaPreviewCommand =
   | SpaBusinessCommand
+  | SpaPhotoCommand
   | { kind: "customer"; id: string; customer: Omit<SpaCustomer, "id"> }
   | { kind: "booking"; id: string; draft: SpaBookingDraft; editing?: boolean }
   | { kind: "receive"; id: string }
@@ -163,4 +170,13 @@ export type SpaPreviewError =
   | "packageEmpty"
   | "settingsConflict"
   | "commissionInvalid"
-  | "duplicateOperation";
+  | "duplicateOperation"
+  | "customerNoteTooLong"
+  | "photoForbidden"
+  | "photoInvalid"
+  | "photoLimit"
+  | "photoSessionLimit"
+  | "photoTypeInvalid"
+  | "photoFileTooLarge"
+  | "photoCaptionTooLong"
+  | "photoUnreadable";

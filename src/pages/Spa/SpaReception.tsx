@@ -3,7 +3,10 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router";
 import PageMeta from "@/components/common/PageMeta";
-import PageBreadCrumb from "@/components/common/PageBreadCrumb";
+import SpaPageHeading from "@/features/spa/components/SpaPageHeading";
+import SpaBookingDialog from "@/features/spa/components/SpaBookingDialog";
+import Button from "@/components/ui/button/Button";
+import { PlusIcon } from "@/icons";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { useAuthorization } from "@/hooks/useAuthorization";
@@ -44,6 +47,7 @@ export default function SpaReception() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [error, setError] = useState<SpaPreviewError>();
   const [notice, setNotice] = useState(false);
+  const [booking, setBooking] = useState(false);
   const day = snapshot.appointments.filter(
     (item) => item.date === date && item.status !== "cancelled",
   );
@@ -63,21 +67,47 @@ export default function SpaReception() {
         title={t("spa.meta.section", { name: t("spa.navigation.reception") })}
         description={t("spa.meta.description")}
       />
-      <PageBreadCrumb pageTitle={t("spa.navigation.reception")} />
+      <SpaPageHeading
+        section="reception"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to={`/spa/appointments?date=${date}`}
+              className="inline-flex min-h-11 items-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+            >
+              {t("spa.business.teamSchedule")}
+            </Link>
+            <Button
+              size="sm"
+              className="!bg-kps-primary hover:!bg-kps-primary-hover"
+              startIcon={<PlusIcon className="size-4" />}
+              onClick={() => setBooking(true)}
+            >
+              {t("spa.flow.newBooking")}
+            </Button>
+          </div>
+        }
+      />
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <SpaDateFilter date={date} onChange={setDate} />
-          <Link
-            to="/spa/appointments"
-            className="inline-flex min-h-11 items-center rounded-lg bg-kps-primary px-4 py-3 text-sm font-semibold text-white hover:bg-kps-primary-hover"
-          >
-            {t("spa.flow.manageBookings")}
-          </Link>
+          <div className="w-full sm:max-w-xs">
+            <Label htmlFor="spa-reception-search">
+              {t("spa.appointments.search")}
+            </Label>
+            <Input
+              id="spa-reception-search"
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className={spaFieldClasses}
+            />
+          </div>
         </div>
         <div
           role="group"
           aria-label={t("spa.flow.queueFilter")}
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
+          className="flex flex-wrap gap-2"
         >
           {stages.map((key) => (
             <button
@@ -85,12 +115,12 @@ export default function SpaReception() {
               key={key}
               aria-pressed={stage === key}
               onClick={() => setStage(key)}
-              className={`min-h-20 rounded-xl border p-3 text-start focus-visible:ring-2 focus-visible:ring-kps-primary ${stage === key ? "border-kps-primary bg-kps-primary/5 dark:bg-kps-primary/15" : "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"}`}
+              className={`min-h-11 rounded-lg border px-3 py-2 text-start focus-visible:ring-2 focus-visible:ring-kps-primary ${stage === key ? "border-kps-primary bg-kps-primary/5 dark:bg-kps-primary/15" : "border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"}`}
             >
               <span className="text-sm text-gray-600 dark:text-gray-300">
                 {t(`spa.flow.stages.${key}`)}
               </span>
-              <span className="mt-2 block text-xl font-semibold text-gray-900 dark:text-white">
+              <span className="ms-2 inline-flex min-w-5 justify-center rounded bg-gray-100 px-1 text-theme-xs font-semibold text-gray-600 dark:bg-gray-800 dark:text-gray-300">
                 {key === "all"
                   ? day.length
                   : day.filter((item) => spaReceptionStage(item) === key)
@@ -98,18 +128,6 @@ export default function SpaReception() {
               </span>
             </button>
           ))}
-        </div>
-        <div className="sm:max-w-sm">
-          <Label htmlFor="spa-reception-search">
-            {t("spa.appointments.search")}
-          </Label>
-          <Input
-            id="spa-reception-search"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className={spaFieldClasses}
-          />
         </div>
         <SpaFormError error={error} />
         {notice && (
@@ -122,44 +140,88 @@ export default function SpaReception() {
         )}
         <section
           aria-label={t("spa.flow.queue")}
-          className="grid items-start gap-4 lg:grid-cols-2"
+          className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4"
         >
-          {visible.map((appointment) => (
-            <SpaReceptionCard
-              key={appointment.id}
-              appointment={appointment}
-              onDetails={() => setDetailId(appointment.id)}
-              onAssign={(taskId) =>
-                setSelection({ appointmentId: appointment.id, taskId })
-              }
-              onReceive={() => {
-                const error = execute({ kind: "receive", id: appointment.id });
-                setError(error);
-                if (!error) {
-                  setNotice(true);
-                  setStage("all");
-                }
-              }}
-              onOpenTechnician={
-                canOpenTechnician
-                  ? (id) => {
-                      execute({ kind: "technician", id });
-                      navigate(`/spa/technician?date=${date}`);
-                    }
-                  : undefined
-              }
-            />
-          ))}
-          {!visible.length && (
-            <p
-              role="status"
-              className="col-span-full rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400"
-            >
-              {t("spa.flow.noQueue")}
-            </p>
+          {(["booked", "waiting", "serving", "completed"] as const).map(
+            (column) => {
+              const cards = visible.filter((appointment) => {
+                const state = spaReceptionStage(appointment);
+                return column === "waiting"
+                  ? state === "waiting" || state === "assigned"
+                  : state === column;
+              });
+              return (
+                <section
+                  key={column}
+                  aria-label={t(`spa.concept.board.${column}`)}
+                  className="min-w-0 rounded-xl bg-gray-100 p-3 dark:bg-gray-800/50"
+                >
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <h3 className="text-theme-xs font-semibold text-gray-700 dark:text-gray-200">
+                      {t(`spa.concept.board.${column}`)}
+                    </h3>
+                    <span className="text-theme-xs text-gray-500 dark:text-gray-400">
+                      {cards.length}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {cards.map((appointment) => (
+                      <SpaReceptionCard
+                        key={appointment.id}
+                        appointment={appointment}
+                        onDetails={() => setDetailId(appointment.id)}
+                        onAssign={(taskId) =>
+                          setSelection({
+                            appointmentId: appointment.id,
+                            taskId,
+                          })
+                        }
+                        onReceive={() => {
+                          const error = execute({
+                            kind: "receive",
+                            id: appointment.id,
+                          });
+                          setError(error);
+                          if (!error) {
+                            setNotice(true);
+                            setStage("all");
+                          }
+                        }}
+                        onOpenTechnician={
+                          canOpenTechnician
+                            ? (id) => {
+                                execute({ kind: "technician", id });
+                                navigate(`/spa/technician?date=${date}`);
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                    {!cards.length && (
+                      <p className="py-8 text-center text-theme-xs text-gray-500 dark:text-gray-400">
+                        {t("spa.flow.noQueue")}
+                      </p>
+                    )}
+                  </div>
+                </section>
+              );
+            },
           )}
         </section>
       </div>
+      {booking && (
+        <SpaBookingDialog
+          date={date}
+          onClose={() => setBooking(false)}
+          onSaved={(_, nextDate) => {
+            setBooking(false);
+            setDate(nextDate);
+            setQuery("");
+            setStage("all");
+            setNotice(true);
+          }}
+        />
+      )}
       {selected && selectedTask && (
         <SpaAssignmentDialog
           key={selectedTask.id}
