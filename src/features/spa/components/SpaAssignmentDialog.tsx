@@ -69,7 +69,7 @@ export default function SpaAssignmentDialog({
             {appointment.customerName} · {appointment.id}
           </p>
           <p className="mt-2">
-            {t(`spa.services.${task.serviceKey}`)} ·{" "}
+            {task.serviceName ?? t(`spa.services.${task.serviceKey}`)} ·{" "}
             {t("spa.minutes", { count: task.durationMinutes })}
           </p>
           <p className="mt-2">

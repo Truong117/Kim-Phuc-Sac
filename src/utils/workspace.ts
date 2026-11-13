@@ -49,9 +49,15 @@ export const canOpenWorkspacePath = (
   if (!access || ["/login", "/workspace"].includes(pathname)) return false;
   if (access.id === "internal") return true; // Per-page AuthorizationRoute still applies.
   const section = pathname.split("/")[2] || "overview";
+  const spaCapability =
+    section === "staff"
+      ? "settings"
+      : section === "finance"
+        ? "cashier"
+        : section;
   return (
     ["profile", "account"].includes(section) ||
-    access.sections.includes(section)
+    access.sections.includes(spaCapability)
   );
 };
 
