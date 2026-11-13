@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Services\Social\Analytics\FacebookAnalyticsAccess;
 
 /** UI workspace capabilities only; business endpoints retain their own permission checks. */
 class WorkspaceAccessService
@@ -36,8 +37,9 @@ class WorkspaceAccessService
             fn ($code) => str_starts_with($code, 'spa.'),
         );
         $result = [];
-        if ($internal) {
-            $result[] = ['id' => 'internal', 'home' => '/', 'sections' => []];
+        if ($internal || app(FacebookAnalyticsAccess::class)->hasAssignedChannel($user)) {
+            // Assignment opens analytics without granting unrelated office permissions.
+            $result[] = ['id' => 'internal', 'home' => $internal ? '/' : '/social-analytics/facebook', 'sections' => []];
         }
         if ($spa) {
             $manager = $permissions->contains('spa.services.manage');

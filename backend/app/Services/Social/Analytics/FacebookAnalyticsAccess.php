@@ -32,11 +32,14 @@ class FacebookAnalyticsAccess
 
     public function entries(User $user): Builder
     {
-        $auth = new AuthorizationService(new KpsMembershipResolver);
-
         return IntegrationEntry::query()->where('organization_id', $this->organization($user))->where('kind', 'social')
             ->where('platform', 'facebook')->where('enabled', true)
-            ->when(! $this->broad($user), fn ($q) => $q->where('responsible_user_id', $auth->allows($user, 'reports.view') ? $user->id : -1));
+            ->when(! $this->broad($user), fn ($q) => $q->where('responsible_user_id', $user->id));
+    }
+
+    public function hasAssignedChannel(User $user): bool
+    {
+        return $this->enabled() && $this->entries($user)->where('responsible_user_id', $user->id)->exists();
     }
 
     public function visible(User $user): bool

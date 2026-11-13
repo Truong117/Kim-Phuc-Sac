@@ -88,7 +88,7 @@ export const parseWorkspaces = (payload: unknown): WorkspaceAccess[] => {
     };
     const validHome =
       access.id === "internal"
-        ? access.home === "/"
+        ? ["/", "/social-analytics/facebook"].includes(access.home)
         : access.home === "/spa" || /^\/spa\/[a-z-]+$/.test(access.home);
     if (validHome && canOpenWorkspacePath([access], access.home))
       result.push(access);
