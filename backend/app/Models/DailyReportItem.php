@@ -17,6 +17,9 @@ class DailyReportItem extends Model
         'evidence_links',
         'facebook_selections',
         'sort_order',
+        'task_id',
+        'task_snapshot',
+        'task_progress',
     ];
 
     protected function casts(): array
@@ -26,6 +29,8 @@ class DailyReportItem extends Model
             'sort_order' => 'integer',
             'evidence_links' => 'array',
             'facebook_selections' => 'array',
+            'task_snapshot' => 'array',
+            'task_progress' => 'array',
         ];
     }
 

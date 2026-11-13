@@ -7,9 +7,20 @@ use App\Enums\TaskStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class Task extends Model
 {
+    protected static function booted(): void
+    {
+        static::updating(function (Task $task): void {
+            if (! $task->isDirty('progress_revision') && Schema::hasColumn('tasks', 'progress_revision')) {
+                $task->progress_revision = (int) $task->getOriginal('progress_revision') + 1;
+            }
+        });
+    }
+
     protected $fillable = [
         'organization_id',
         'creator_id',
@@ -24,6 +35,8 @@ class Task extends Model
         'start_date',
         'due_date',
         'completed_at',
+        'target_quantity',
+        'quantity_unit',
     ];
 
     protected function casts(): array
@@ -34,7 +47,14 @@ class Task extends Model
             'start_date' => 'immutable_date:Y-m-d',
             'due_date' => 'immutable_date:Y-m-d',
             'completed_at' => 'immutable_datetime',
+            'target_quantity' => 'integer',
+            'progress_revision' => 'integer',
         ];
+    }
+
+    public function progressOutputs(): HasMany
+    {
+        return $this->hasMany(TaskOutput::class)->orderBy('id');
     }
 
     public function organization(): BelongsTo

@@ -11,8 +11,10 @@ import type {
 } from "@/types/reports";
 import { useTranslation } from "react-i18next";
 import WorkItemForm from "./WorkItemForm";
+import LinkedTaskReportItem from "./LinkedTaskReportItem";
 
 interface WorkItemListProps {
+  onEditTask?: (id: number) => void;
   reportDate?: string;
   facebookPages?: FacebookReportPage[];
   disabled?: boolean;
@@ -39,6 +41,7 @@ export default function WorkItemList({
   onItemBlur,
   onItemAdd,
   onItemDelete,
+  onEditTask,
 }: WorkItemListProps) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
   const hasReachedLimit = items.length >= 50;
@@ -65,21 +68,32 @@ export default function WorkItemList({
                   item.status === status ||
                   (!item.status && status === "COMPLETED"),
               )
-              .map((item) => (
-                <WorkItemForm
-                  facebookPages={facebookPages}
-                  reportDate={reportDate}
-                  disabled={disabled}
-                  key={item.clientId}
-                  index={items.indexOf(item)}
-                  item={item}
-                  errors={errors[item.clientId]}
-                  canDelete
-                  onChange={onItemChange}
-                  onBlur={onItemBlur}
-                  onDelete={onItemDelete}
-                />
-              ))}
+              .map((item) =>
+                item.taskLink ? (
+                  <LinkedTaskReportItem
+                    key={item.clientId}
+                    item={item}
+                    disabled={disabled}
+                    errors={errors[item.clientId]}
+                    onEdit={onEditTask}
+                    onDelete={onItemDelete}
+                  />
+                ) : (
+                  <WorkItemForm
+                    facebookPages={facebookPages}
+                    reportDate={reportDate}
+                    disabled={disabled}
+                    key={item.clientId}
+                    index={items.indexOf(item)}
+                    item={item}
+                    errors={errors[item.clientId]}
+                    canDelete
+                    onChange={onItemChange}
+                    onBlur={onItemBlur}
+                    onDelete={onItemDelete}
+                  />
+                ),
+              )}
             <Button
               type="button"
               variant="outline"

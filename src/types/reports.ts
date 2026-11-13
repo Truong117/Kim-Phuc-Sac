@@ -1,3 +1,5 @@
+import type { ReportTaskLink, TaskProgressInput } from "./tasks";
+
 export type FacebookReportPage = { id: number; name: string };
 
 export type FacebookSelection = {
@@ -27,6 +29,7 @@ export type ReportEntity = { id: number; name: string };
 export type ReportEmployee = ReportEntity & { email?: string };
 
 export type ReportWorkItem = {
+  task_link?: ReportTaskLink | null;
   id: number;
   content: string;
   result: string;
@@ -123,6 +126,8 @@ export type ReportReferences = {
 };
 
 export type WorkItemInput = {
+  task_id?: number;
+  task_progress?: TaskProgressInput;
   id?: number;
   issue?: string | null;
   evidence_links?: string[];
@@ -143,6 +148,7 @@ export type SaveReportInput = {
 };
 
 export type WorkItemFormData = {
+  taskLink?: ReportTaskLink;
   clientId: string;
   id?: number;
   issue?: string;

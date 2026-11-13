@@ -47,6 +47,8 @@ class DailyReportResource extends JsonResource
                 'evidence_links' => $item->evidence_links ?? [],
                 'facebook_selections' => app(ReportFacebookPosts::class)->present($request->user(), $item->facebook_selections ?? [], (bool) $this->getAttribute('can_edit')),
                 'sort_order' => $item->sort_order,
+                'task_link' => $item->task_id ? ['task_id' => (int) $item->task_id, 'snapshot' => $item->task_snapshot,
+                    'progress' => $item->task_progress] : null,
             ])->values(),
             'comments' => ReportCommentResource::collection($this->whenLoaded('comments')),
             'comment_count' => $this->comments->count(),

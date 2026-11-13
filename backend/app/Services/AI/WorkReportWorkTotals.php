@@ -2,6 +2,7 @@
 
 namespace App\Services\AI;
 
+use App\Services\NamedWorkOutputs;
 use RuntimeException;
 
 final class WorkReportWorkTotals
@@ -16,6 +17,11 @@ final class WorkReportWorkTotals
         }
         $accepted = [];
         foreach ($observations as $observation) {
+            $typed = $source[($observation['report_id'] ?? '').':'.($observation['item_id'] ?? '')]['task_quantity'] ?? null;
+            if (is_array($typed)) {
+                // This source has server-bound product identities; model-selected counts never override them.
+                continue;
+            }
             if (! is_array($observation) || ! is_string($observation['metric'] ?? null)
                 || ! is_string($observation['unit'] ?? null) || trim($observation['metric']) === '' || trim($observation['unit']) === ''
                 || strlen($observation['metric']) > 300 || strlen($observation['unit']) > 100
@@ -29,7 +35,8 @@ final class WorkReportWorkTotals
             $item = $source[$observation['report_id'].':'.$observation['item_id']] ?? null;
             if ($item === null || ! collect(['content', 'result', 'note'])->contains(
                 fn ($key) => is_string($item[$key] ?? null) && str_contains($item[$key], $observation['quote']),
-            ) || ! self::hasQuantity($observation['quote'], (float) $observation['quantity'])) {
+            ) || (! self::hasQuantity($observation['quote'], (float) $observation['quantity'])
+                && ! self::hasNamedQuantity($observation['quote'], $observation['unit'], (float) $observation['quantity']))) {
                 throw new RuntimeException('AI_INVALID_EVIDENCE');
             }
             // Do not let a shortened quotation hide cumulative/repeated/planned work.
@@ -37,7 +44,8 @@ final class WorkReportWorkTotals
             if (preg_match('/lũy kế|luỹ kế|cộng dồn|tính đến|tính từ|cả tuần|tổng tuần|nhắc lại|đã báo cáo|dự kiến|mục tiêu|chỉ tiêu/iu', $context)) {
                 $observation['basis'] = 'unclear';
             }
-            if (! self::hasQuantityWithUnit($observation['quote'], (float) $observation['quantity'], $observation['unit'])) {
+            if (! self::hasQuantityWithUnit($observation['quote'], (float) $observation['quantity'], $observation['unit'])
+                && ! self::hasNamedQuantity($observation['quote'], $observation['unit'], (float) $observation['quantity'])) {
                 $observation['basis'] = 'unclear';
             }
             $observation['metric'] = trim($observation['metric']);
@@ -50,7 +58,50 @@ final class WorkReportWorkTotals
             $accepted[$key] = $observation;
         }
 
+        foreach ($reports as $report) {
+            foreach ($report['items'] as $item) {
+                $typed = $item['task_quantity'] ?? null;
+                if (is_array($typed)) {
+                    if (($typed['quantity'] ?? 0) > 0 && str_contains($item['result'] ?? '', $typed['quote'] ?? "\0")) {
+                        $accepted[] = [...$typed, 'report_id' => $report['report_id'], 'item_id' => $item['item_id']];
+                    }
+
+                    continue;
+                }
+                if (($item['status'] ?? '') !== 'COMPLETED') {
+                    continue;
+                }
+                foreach (['result', 'content'] as $field) {
+                    $text = $item[$field] ?? '';
+                    $names = NamedWorkOutputs::videos($text);
+                    if ($names === [] || strlen($text) > 1500) {
+                        continue;
+                    }
+                    $quantity = count($names);
+                    // Explicit digits that disagree with the enumeration require review, not an invented total.
+                    preg_match_all('/(\d+)\s*(?:video|clip)/iu', $text, $numbers);
+                    $basis = collect($numbers[1])->contains(fn ($n) => (int) $n !== $quantity) ? 'unclear' : 'incremental';
+                    foreach ($accepted as $key => $value) {
+                        if ($value['report_id'] === $report['report_id'] && $value['item_id'] === $item['item_id'] && in_array(mb_strtolower(trim($value['unit'])), ['video', 'clip'], true)) {
+                            unset($accepted[$key]);
+                        }
+                    }
+                    $accepted[] = ['metric' => 'Video đã hoàn thiện', 'unit' => 'video', 'quantity' => $quantity,
+                        'basis' => $basis, 'report_id' => $report['report_id'], 'item_id' => $item['item_id'], 'quote' => $text,
+                        'named_outputs' => array_map(NamedWorkOutputs::identity(...), $names)];
+                    break;
+                }
+            }
+        }
+
         return array_values($accepted);
+    }
+
+    private static function hasNamedQuantity(string $quote, string $unit, float $quantity): bool
+    {
+        return in_array(mb_strtolower(trim($unit)), ['video', 'clip'], true)
+            && count(NamedWorkOutputs::videos($quote)) > 0
+            && count(NamedWorkOutputs::videos($quote)) === (int) $quantity && $quantity === (float) (int) $quantity;
     }
 
     private static function hasQuantity(string $quote, float $quantity): bool
@@ -95,6 +146,9 @@ final class WorkReportWorkTotals
             }
             foreach ($groups[$key]['entries'] as $previous) {
                 if ($previous['report_id'] === $observation['report_id'] && $previous['item_id'] === $observation['item_id']) {
+                    $groups[$key]['status'] = 'needs_confirmation';
+                }
+                if (array_intersect($previous['named_outputs'] ?? [], $observation['named_outputs'] ?? [])) {
                     $groups[$key]['status'] = 'needs_confirmation';
                 }
             }
