@@ -1,3 +1,11 @@
+import { useAuthorization } from "@/hooks/useAuthorization";
+import { canOpenWorkspacePath } from "@/utils/workspace";
+import { SpaStats } from "@/features/spa/components/business/SpaBusinessUi";
+import {
+  spaMoney,
+  spaReport,
+  spaInvoiceBalance,
+} from "@/features/spa/businessSelectors";
 import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import PageMeta from "@/components/common/PageMeta";
@@ -11,6 +19,7 @@ import { Link } from "react-router";
 
 export default function SpaOverview() {
   const { t } = useTranslation();
+  const { workspaces } = useAuthorization();
   const snapshot = useSpaPreviewSnapshot();
   const appointments = filterSpaAppointments(
     snapshot.appointments,
@@ -29,6 +38,7 @@ export default function SpaOverview() {
       <div className="space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-gray-500 dark:text-gray-400">
+            {snapshot.settings.facilityName} ·{" "}
             {t("spa.sampleDate", { date: snapshot.date })}
           </p>
           <Link
@@ -43,6 +53,37 @@ export default function SpaOverview() {
           </Link>
         </div>
         <SpaOverviewStats snapshot={snapshot} />
+        {canOpenWorkspacePath(workspaces, "/spa/cashier") && (
+          <SpaStats
+            items={[
+              {
+                label: t("spa.business.moneyToday"),
+                value: spaMoney(
+                  spaReport(snapshot, snapshot.date, snapshot.date).collected,
+                ),
+              },
+              {
+                label: t("spa.business.outstanding"),
+                value: spaMoney(
+                  snapshot.invoices.reduce(
+                    (s, i) => s + spaInvoiceBalance(snapshot, i.id),
+                    0,
+                  ),
+                ),
+              },
+              {
+                label: t("spa.business.careOpen"),
+                value: snapshot.careTasks.filter((j) => !j.done).length,
+              },
+              {
+                label: t("spa.business.lowStock"),
+                value: snapshot.products.filter((p) => p.stock < p.minStock)
+                  .length,
+              },
+            ]}
+          />
+        )}
+
         <div className="grid gap-6 xl:grid-cols-3">
           <ComponentCard
             title={t("spa.overview.schedule")}
@@ -63,21 +104,23 @@ export default function SpaOverview() {
           </ComponentCard>
           <ComponentCard title={t("spa.overview.quickLinks")} compact>
             <div className="space-y-3">
-              {(
-                ["reception", "customers", "treatments", "cashier"] as const
-              ).map((key) => (
-                <Link
-                  key={key}
-                  to={`/spa/${key}`}
-                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-gray-200 p-4 text-sm font-medium text-gray-800 hover:border-kps-primary/40 focus-visible:ring-2 focus-visible:ring-kps-primary dark:border-gray-700 dark:text-gray-200 dark:hover:border-kps-primary-hover"
-                >
-                  {t(`spa.navigation.${key}`)}
-                  <ArrowRightIcon
-                    className="size-4 shrink-0 rtl:rotate-180"
-                    aria-hidden="true"
-                  />
-                </Link>
-              ))}
+              {(["reception", "customers", "treatments", "cashier"] as const)
+                .filter((key) =>
+                  canOpenWorkspacePath(workspaces, `/spa/${key}`),
+                )
+                .map((key) => (
+                  <Link
+                    key={key}
+                    to={`/spa/${key}`}
+                    className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-gray-200 p-4 text-sm font-medium text-gray-800 hover:border-kps-primary/40 focus-visible:ring-2 focus-visible:ring-kps-primary dark:border-gray-700 dark:text-gray-200 dark:hover:border-kps-primary-hover"
+                  >
+                    {t(`spa.navigation.${key}`)}
+                    <ArrowRightIcon
+                      className="size-4 shrink-0 rtl:rotate-180"
+                      aria-hidden="true"
+                    />
+                  </Link>
+                ))}
             </div>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {t("spa.overview.statusNote")}

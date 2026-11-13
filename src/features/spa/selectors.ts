@@ -59,11 +59,17 @@ export function getSpaTechnicianTasks(
     )
     .flatMap((appointment) =>
       appointment.tasks
-        .filter((task) => task.technicianId === technicianId)
+        .filter(
+          (task) =>
+            task.technicianId === technicianId ||
+            task.handover?.toId === technicianId ||
+            task.participants?.includes(technicianId),
+        )
         .map((task) => ({
           ...task,
           customerName: appointment.customerName,
           appointmentId: appointment.id,
+          appointmentNote: appointment.note,
         })),
     )
     .toSorted((a, b) => a.startTime.localeCompare(b.startTime));

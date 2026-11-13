@@ -44,11 +44,15 @@ export default function SpaTechnician() {
       ? task.status === "completed"
       : view === "today"
         ? task.status !== "completed" &&
+          task.technicianId === snapshot.previewTechnician.id &&
           snapshot.appointments.some(
             (item) =>
               item.id === task.appointmentId && item.status === "arrived",
           )
-        : view !== "handover",
+        : view === "handover"
+          ? Boolean(task.handover)
+          : task.technicianId === snapshot.previewTechnician.id ||
+            task.handover?.toId === snapshot.previewTechnician.id,
   );
   const selected = tasks.find((task) => task.id === selectedId) ?? tasks[0];
   return (
@@ -58,7 +62,7 @@ export default function SpaTechnician() {
         description={t("spa.meta.description")}
       />
       <PageBreadCrumb pageTitle={t("spa.navigation.technician")} />
-      <div className="space-y-4">
+      <div className="space-y-4 pb-24 md:pb-0">
         <div className="flex flex-wrap items-end gap-4">
           <SpaDateFilter
             date={date}
@@ -94,7 +98,7 @@ export default function SpaTechnician() {
           })}
         </p>
         <div
-          className="grid grid-cols-4 gap-1 rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-800 dark:bg-gray-900"
+          className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 gap-1 border-t border-gray-200 bg-white p-1 shadow-theme-sm md:static md:rounded-xl md:border md:shadow-none dark:border-gray-800 dark:bg-gray-900"
           role="group"
           aria-label={t("spa.technician.viewsLabel")}
         >
@@ -138,7 +142,7 @@ export default function SpaTechnician() {
                     {task.customerName}
                   </p>
                   <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {t(`spa.services.${task.serviceKey}`)}
+                    {task.serviceName ?? t(`spa.services.${task.serviceKey}`)}
                   </p>
                   <p className="mt-3 text-theme-xs text-gray-500 dark:text-gray-400">
                     {t("spa.technician.roomLabel", { room: task.room })}
@@ -151,6 +155,7 @@ export default function SpaTechnician() {
             >
               {selected ? (
                 <SpaTechnicianDetail
+                  key={selected.id}
                   task={selected}
                   onBack={() => setSelectedId(null)}
                 />
@@ -164,7 +169,7 @@ export default function SpaTechnician() {
           >
             {t(
               view === "handover"
-                ? "spa.technician.handoverPlanned"
+                ? "spa.business.noPending"
                 : "spa.technician.empty",
             )}
           </p>

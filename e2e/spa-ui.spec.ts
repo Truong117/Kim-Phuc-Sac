@@ -124,7 +124,7 @@ test.describe("spa UI preview", () => {
         name: item.textContent!.trim(),
       })),
     );
-    expect(links).toHaveLength(13);
+    expect(links).toHaveLength(15);
     for (const link of links) {
       await nav.getByRole("link", { name: link.name, exact: true }).click();
       await expect(page).toHaveURL(link.href);
@@ -192,7 +192,7 @@ test.describe("spa UI preview", () => {
     await page.getByRole("button", { name: "Đã làm", exact: true }).click();
     await expect(tasks.getByText("Võ Thu Hương")).toBeVisible();
     await page.getByRole("button", { name: "Bàn giao", exact: true }).click();
-    await expect(page.getByText(/Chưa có yêu cầu bàn giao mẫu/)).toBeVisible();
+    await expect(page.getByText(/Chưa có yêu cầu bàn giao/)).toBeVisible();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -675,5 +675,261 @@ test.describe("spa reception workflow preview", () => {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
+  });
+});
+
+test.describe("Spa concept one interactive modules", () => {
+  test.skip(!previewEnabled, "SPA UI preview flag disabled");
+  const nav = (page: Page) =>
+    page.getByRole("navigation", { name: "Chức năng spa" });
+  const openSpa = async (page: Page, name: string) => {
+    await nav(page).getByRole("link", { name, exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name, exact: true, level: 2 }),
+    ).toBeVisible();
+  };
+  test("completes a service, collects partially and reconciles the receipt in cashbook/report", async ({
+    page,
+  }) => {
+    const requests = await setup(page);
+    await page.goto("/spa/technician");
+    await page.getByLabel("Chọn KTV để xem dữ liệu mẫu").selectOption("tech-2");
+    await page
+      .getByRole("button", { name: "Bắt đầu dịch vụ", exact: true })
+      .click();
+    await page
+      .getByLabel("Kết quả thực hiện", { exact: true })
+      .fill("Đã chăm sóc da, hướng dẫn tại nhà theo mẫu.");
+    await expect(
+      page.getByRole("status").filter({ hasText: "Đã lưu nháp trong phiên" }),
+    ).toBeVisible();
+    await openSpa(page, "Thu ngân");
+    await openSpa(page, "Công việc KTV");
+    await expect(
+      page.getByLabel("Kết quả thực hiện", { exact: true }),
+    ).toHaveValue("Đã chăm sóc da, hướng dẫn tại nhà theo mẫu.");
+    await page
+      .getByRole("button", { name: "Hoàn tất dịch vụ", exact: true })
+      .click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Lưu mẫu", exact: true })
+      .click();
+    await openSpa(page, "Thu ngân");
+    const row = page.getByRole("row").filter({ hasText: "INV-SPA-002" });
+    await expect(row).toContainText("450.000");
+    await row.getByRole("button", { name: "Thu tiền", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Số tiền (₫)", { exact: true }).fill("450001");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await expect(
+      dialog.getByLabel("Số tiền (₫)", { exact: true }),
+    ).toBeFocused();
+    await dialog.getByLabel("Số tiền (₫)", { exact: true }).fill("150000");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await expect(row).toContainText("300.000");
+    await openSpa(page, "Sổ quỹ");
+    await expect(
+      page.getByRole("row").filter({ hasText: "INV-SPA-002" }),
+    ).toContainText("150.000");
+    await expect(
+      page.getByText("Thực thu", { exact: true }).locator(".."),
+    ).toContainText("400.000");
+    await openSpa(page, "Báo cáo spa");
+    await expect(
+      page.getByText("Thực thu", { exact: true }).first().locator(".."),
+    ).toContainText("400.000");
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Xuất CSV mẫu" }).click();
+    expect((await download).suggestedFilename()).toContain("bao-cao");
+    expect(requests.every((r) => r.method === "GET")).toBe(true);
+  });
+  test("package booking retains balance; handover requires recipient acceptance before one completion", async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto("/spa/treatments");
+    const pack = page.getByRole("article").filter({ hasText: "PKG-001" });
+    await expect(pack).toContainText("3/10 buổi");
+    await pack.getByRole("button", { name: "Đặt buổi tiếp theo" }).click();
+    const booking = page.getByRole("dialog");
+    await booking.getByLabel("Giờ hẹn", { exact: true }).fill("16:00");
+    await booking.getByRole("button", { name: "Lưu lịch hẹn mẫu" }).click();
+    await expect(pack).toContainText("3/10 buổi");
+    await openSpa(page, "Công việc KTV");
+    await page
+      .getByRole("button", { name: "Bàn giao KTV", exact: true })
+      .click();
+    const handover = page.getByRole("dialog");
+    await handover.getByLabel("KTV nhận bàn giao").selectOption("tech-3");
+    await handover.getByLabel("Lý do / diễn giải").fill("Đổi ca mẫu");
+    await handover
+      .getByRole("button", { name: "Lưu mẫu", exact: true })
+      .click();
+    await expect(
+      page.getByText("Đang chờ Bích Ngọc nhận bàn giao"),
+    ).toBeVisible();
+    await expect(
+      page.getByText("KTV chịu trách nhiệm: Lan Anh", { exact: false }),
+    ).toBeVisible();
+    await page.getByLabel("Chọn KTV để xem dữ liệu mẫu").selectOption("tech-3");
+    await page.getByRole("button", { name: "Bàn giao", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Nhận bàn giao", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Hôm nay", exact: true }).click();
+    await page
+      .getByLabel("Kết quả thực hiện", { exact: true })
+      .fill("Đã nhận ca và hoàn tất chăm sóc mẫu.");
+    await page
+      .getByRole("button", { name: "Hoàn tất dịch vụ", exact: true })
+      .click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Lưu mẫu", exact: true })
+      .click();
+    await openSpa(page, "Liệu trình");
+    await expect(pack).toContainText("4/10 buổi");
+    await openSpa(page, "Thu ngân");
+    await page.getByRole("button", { name: "Tất cả", exact: true }).click();
+    await expect(
+      page.getByRole("row").filter({ hasText: "INV-SPA-001" }),
+    ).toHaveCount(0);
+  });
+  test("catalog and inventory share retail stock, with no automatic cash receipt", async ({
+    page,
+  }) => {
+    const requests = await setup(page);
+    await page.goto("/spa/services");
+    await page
+      .getByRole("button", { name: "Thêm dịch vụ", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByLabel("Tên dịch vụ", { exact: true })
+      .fill("Chăm sóc mới mẫu");
+    await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("120000");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "Chăm sóc mới mẫu", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Sản phẩm bán lẻ", exact: true })
+      .click();
+    await page
+      .getByRole("article")
+      .filter({ hasText: "Serum phục hồi" })
+      .getByRole("button", { name: "Bán sản phẩm" })
+      .click();
+    await dialog
+      .getByLabel("Khách hàng", { exact: true })
+      .selectOption("customer-2");
+    await dialog.getByLabel("Số lượng", { exact: true }).fill("2");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await openSpa(page, "Kho");
+    const product = page
+      .getByRole("row")
+      .filter({ hasText: "Serum phục hồi" })
+      .first();
+    await expect(product.getByRole("cell").nth(2)).toHaveText("16");
+    await product
+      .getByRole("button", { name: "Xuất kho", exact: true })
+      .click();
+    await dialog.getByLabel("Số lượng", { exact: true }).fill("17");
+    await dialog.getByLabel("Lý do / diễn giải").fill("Dùng nội bộ mẫu");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toContainText("Không đủ tồn kho");
+    await dialog.getByLabel("Số lượng", { exact: true }).fill("1");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await expect(product.getByRole("cell").nth(2)).toHaveText("15");
+    await openSpa(page, "Thu ngân");
+    await expect(
+      page.getByRole("row").filter({ hasText: "Bán lẻ" }),
+    ).toContainText("840.000");
+    expect(requests.every((r) => r.method === "GET")).toBe(true);
+  });
+  test("phone supports care forms and manager settings without page overflow or permission writes", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const requests = await setup(page);
+    await page.goto("/spa/care");
+    await page
+      .getByRole("button", { name: "Tạo việc chăm sóc", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByLabel("Khách hàng", { exact: true })
+      .selectOption("customer-6");
+    await dialog
+      .getByLabel("Nội dung chăm sóc", { exact: true })
+      .fill("Hỏi thăm khách mẫu");
+    await dialog
+      .getByLabel("Người phụ trách", { exact: true })
+      .selectOption("sample-reception");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    const job = page
+      .getByRole("article")
+      .filter({ hasText: "Hỏi thăm khách mẫu" });
+    await job
+      .getByRole("button", { name: "Ghi nhận kết quả", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Kết quả thực hiện")
+      .fill("Khách đã phản hồi theo mẫu.");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Đã hoàn thành", exact: true })
+      .click();
+    await expect(job).toContainText("Khách đã phản hồi");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await openSpa(page, "Thiết lập spa");
+    await page
+      .getByRole("button", { name: "Chỉnh sửa cấu hình", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Tên cơ sở", { exact: true })
+      .fill("KPS Spa thử nghiệm");
+    await dialog
+      .getByLabel("Tỷ lệ hoa hồng mẫu (%)", { exact: true })
+      .fill("8");
+    await dialog.getByRole("button", { name: "Lưu mẫu", exact: true }).click();
+    await expect(
+      page.getByText("KPS Spa thử nghiệm", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Quyền xem hiện tại", { exact: true }).first(),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await openSpa(page, "Công việc KTV");
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    await page
+      .getByLabel("Kết quả thực hiện", { exact: true })
+      .fill("Bản nháp cần xóa khi khôi phục mẫu.");
+    page.once("dialog", (dialog) => dialog.accept());
+    await page
+      .getByRole("button", { name: "Khôi phục dữ liệu mẫu", exact: true })
+      .click();
+    await page
+      .getByRole("region", { name: "Danh sách công việc" })
+      .getByRole("button", { name: /Nguyễn Minh Anh/ })
+      .click();
+    await expect(
+      page.getByLabel("Kết quả thực hiện", { exact: true }),
+    ).toHaveValue("");
+    expect(requests.every((r) => r.method === "GET")).toBe(true);
   });
 });

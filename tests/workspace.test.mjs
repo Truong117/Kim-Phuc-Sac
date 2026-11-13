@@ -84,3 +84,28 @@ test("untrusted workspace payloads cannot add external home paths", () => {
   ])
     assert.deepEqual(parseWorkspaces(payload), []);
 });
+
+test("new Spa manager UI sections reuse existing capabilities without granting KTV/reception access", () => {
+  const manager = {
+    id: "spa",
+    home: "/spa",
+    sections: ["overview", "settings", "cashier"],
+  };
+  const reception = {
+    id: "spa",
+    home: "/spa/reception",
+    sections: ["reception", "rooms", "care", "customers", "appointments"],
+  };
+  assert.equal(canOpenWorkspacePath([manager], "/spa/staff"), true);
+  assert.equal(canOpenWorkspacePath([manager], "/spa/finance"), true);
+  for (const access of [technician, reception])
+    for (const path of ["/spa/staff", "/spa/finance"])
+      assert.equal(canOpenWorkspacePath([access], path), false);
+  assert.equal(
+    canOpenWorkspacePath(
+      [{ ...manager, sections: ["staff", "finance"] }],
+      "/spa/staff",
+    ),
+    false,
+  );
+});

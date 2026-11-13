@@ -1,5 +1,6 @@
-import Button from "@/components/ui/button/Button";
 import Badge from "@/components/ui/badge/Badge";
+import Button from "@/components/ui/button/Button";
+import SpaTechnicianActions from "./SpaTechnicianActions";
 import { useTranslation } from "react-i18next";
 import type { SpaTechnicianTask } from "../types";
 import SpaStatusBadge from "./SpaStatusBadge";
@@ -32,7 +33,7 @@ export default function SpaTechnicianDetail({
         {task.customerName}
       </h3>
       <p className="mt-2 text-kps-primary-hover dark:text-gray-200">
-        {t(`spa.services.${task.serviceKey}`)}
+        {task.serviceName ?? t(`spa.services.${task.serviceKey}`)}
       </p>
       <dl className="mt-5 grid grid-cols-2 gap-4 rounded-xl bg-gray-50 p-4 text-sm dark:bg-gray-800">
         <div>
@@ -80,7 +81,12 @@ export default function SpaTechnicianDetail({
       <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
         {t(`spa.notes.${task.noteKey}`)}
       </p>
-      <div className="mt-6 rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-700">
+      {task.appointmentNote && (
+        <p className="mt-3 text-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300">
+          {task.appointmentNote}
+        </p>
+      )}
+      <div className="mt-4">
         <Badge color={task.requiresSkinPhoto ? "warning" : "light"}>
           {t(
             task.requiresSkinPhoto
@@ -88,13 +94,14 @@ export default function SpaTechnicianDetail({
               : "spa.technician.photoOptional",
           )}
         </Badge>
-        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-          {t("spa.technician.photoPlanned")}
-        </p>
       </div>
-      <p className="mt-6 text-sm text-gray-500 dark:text-gray-400">
-        {t("spa.technician.readOnly")}
+      <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+        {t("spa.business.photoHint")}
       </p>
+      <SpaTechnicianActions
+        key={`${task.id}-${task.technicianId}-${task.status}`}
+        task={task}
+      />
     </article>
   );
 }
