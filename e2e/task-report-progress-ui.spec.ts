@@ -345,10 +345,8 @@ async function selectWorkContents(page: Page, number: number, names: string[]) {
     name: `Công việc ${number}`,
     exact: true,
   });
-  await work.locator('button[id^="care-service-"][id$="-toggle"]').click();
   for (const name of names)
     await work.getByRole("checkbox", { name, exact: true }).check();
-  await work.getByRole("button", { name: "Xong", exact: true }).click();
   return work;
 }
 async function selectWorkCustomers(
@@ -360,12 +358,12 @@ async function selectWorkCustomers(
     name: `Công việc ${number}`,
     exact: true,
   });
-  await work
-    .getByRole("button", { name: "Chọn / thêm khách", exact: true })
-    .click();
+  await work.getByRole("button", { name: "Chọn khách", exact: true }).click();
   for (const name of names)
     await work.getByRole("checkbox", { name: new RegExp(name) }).check();
-  await work.getByRole("button", { name: "Xong", exact: true }).click();
+  await work
+    .getByRole("button", { name: "Đóng danh sách", exact: true })
+    .click();
   return work;
 }
 
@@ -380,17 +378,27 @@ test("two work items preserve multiple selected contents and shared customers co
     "Hướng dẫn chăm sóc da tại nhà",
     "Theo dõi sau điều trị",
   ]);
+  const serviceColumn = await first
+    .getByRole("region", { name: "Nội dung hỗ trợ", exact: true })
+    .boundingBox();
+  const customerColumn = await first
+    .getByRole("region", { name: "Khách hàng", exact: true })
+    .boundingBox();
+  expect(serviceColumn).not.toBeNull();
+  expect(customerColumn).not.toBeNull();
+  expect(customerColumn!.x).toBeGreaterThan(serviceColumn!.x);
+  expect(Math.abs(customerColumn!.y - serviceColumn!.y)).toBeLessThan(2);
   await selectWorkCustomers(page, 1, ["Khách A", "Khách B"]);
   await first
-    .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true })
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
     .fill("Đã hướng dẫn quy trình");
   await page
-    .getByRole("button", { name: "+ Thêm công việc", exact: true })
+    .getByRole("button", { name: "Thêm công việc", exact: true })
     .click();
   const second = await selectWorkContents(page, 2, ["Tư vấn sản phẩm"]);
   await selectWorkCustomers(page, 2, ["Khách B", "Khách C"]);
   await second
-    .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true })
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
     .fill("Đã tư vấn sản phẩm");
   await page
     .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
@@ -441,13 +449,13 @@ test("removing a populated work requires confirmation and never clears another w
     .click();
   const first = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
   await first
-    .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true })
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
     .fill("Nội dung cần giữ");
   await page
-    .getByRole("button", { name: "+ Thêm công việc", exact: true })
+    .getByRole("button", { name: "Thêm công việc", exact: true })
     .click();
   await first
-    .getByRole("button", { name: "Bỏ công việc", exact: true })
+    .getByRole("button", { name: "Bỏ công việc 1", exact: true })
     .click();
   await expect(
     first.getByText("Bỏ công việc này sẽ bỏ nội dung", { exact: false }),
@@ -455,12 +463,12 @@ test("removing a populated work requires confirmation and never clears another w
   await first.getByRole("button", { name: "Giữ lại", exact: true }).click();
   await expect(
     first.getByRole("textbox", {
-      name: "Kết quả / ghi chú chung",
+      name: "Kết quả chung",
       exact: true,
     }),
   ).toHaveValue("Nội dung cần giữ");
   await first
-    .getByRole("button", { name: "Bỏ công việc", exact: true })
+    .getByRole("button", { name: "Bỏ công việc 1", exact: true })
     .click();
   await first
     .getByRole("button", { name: "Bỏ công việc này", exact: true })
@@ -471,7 +479,7 @@ test("removing a populated work requires confirmation and never clears another w
   await expect(
     page
       .getByRole("article", { name: "Công việc 1", exact: true })
-      .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true }),
+      .getByRole("textbox", { name: "Kết quả chung", exact: true }),
   ).toHaveValue("");
 });
 
@@ -486,22 +494,18 @@ test("inline new content and customer can be reused across independent work item
     .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
     .click();
   await expect(
-    page.locator("[data-report-error-summary]").first(),
+    page.getByRole("article", { name: "Công việc 1", exact: true }),
   ).toBeFocused();
   const first = page.getByRole("article", { name: "Công việc 1", exact: true });
-  await first.locator('button[id^="care-service-"][id$="-toggle"]').click();
   await first
     .getByRole("textbox", { name: "Tìm hoặc tạo nội dung", exact: true })
     .fill("Hỗ trợ sau mua");
   await first
-    .getByRole("button", { name: "+ Tạo nội dung mới", exact: true })
+    .getByRole("button", { name: "Tạo nội dung mới", exact: true })
     .click();
-  await first.getByRole("button", { name: "Xong", exact: true }).click();
+  await first.getByRole("button", { name: "Chọn khách", exact: true }).click();
   await first
-    .getByRole("button", { name: "Chọn / thêm khách", exact: true })
-    .click();
-  await first
-    .getByRole("button", { name: "+ Tạo khách mới tại đây", exact: true })
+    .getByRole("button", { name: "+ Tạo khách mới", exact: true })
     .click();
   await first
     .getByRole("textbox", { name: "Tên khách hàng", exact: true })
@@ -527,17 +531,19 @@ test("inline new content and customer can be reused across independent work item
   await expect(
     first.getByRole("textbox", { name: "Tên khách hàng", exact: true }),
   ).toHaveCount(0);
-  await first.getByRole("button", { name: "Xong", exact: true }).click();
   await first
-    .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true })
+    .getByRole("button", { name: "Đóng danh sách", exact: true })
+    .click();
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
     .fill("Đã hỗ trợ");
   await page
-    .getByRole("button", { name: "+ Thêm công việc", exact: true })
+    .getByRole("button", { name: "Thêm công việc", exact: true })
     .click();
   const second = await selectWorkContents(page, 2, ["Hỗ trợ sau mua"]);
   await selectWorkCustomers(page, 2, ["Chị An"]);
   await second
-    .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true })
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
     .fill("Đã hẹn theo dõi");
   await page
     .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
@@ -578,7 +584,7 @@ test("unapplied work item groups recover after reload without losing selected co
   const first = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
   await selectWorkCustomers(page, 1, ["Khách A"]);
   await first
-    .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true })
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
     .fill("Nội dung bản nháp cần giữ");
   await page.reload();
   await page
@@ -587,7 +593,7 @@ test("unapplied work item groups recover after reload without losing selected co
   await expect(
     page
       .getByRole("article", { name: "Công việc 1", exact: true })
-      .getByRole("textbox", { name: "Kết quả / ghi chú chung", exact: true }),
+      .getByRole("textbox", { name: "Kết quả chung", exact: true }),
   ).toHaveValue("Nội dung bản nháp cần giữ");
   await expect(
     page.getByRole("article", { name: "Công việc 1", exact: true }),
@@ -606,6 +612,14 @@ test("customer work groups fit mobile dark mode", async ({ page }) => {
     "Theo dõi sau điều trị",
   ]);
   await selectWorkCustomers(page, 1, ["Khách A", "Khách B"]);
+  const work = page.getByRole("article", { name: "Công việc 1", exact: true });
+  const services = await work
+    .getByRole("region", { name: "Nội dung hỗ trợ", exact: true })
+    .boundingBox();
+  const customers = await work
+    .getByRole("region", { name: "Khách hàng", exact: true })
+    .boundingBox();
+  expect(customers!.y).toBeGreaterThan(services!.y + services!.height);
   await expect(
     page.getByRole("article", { name: "Công việc 1", exact: true }),
   ).toBeVisible();
@@ -614,4 +628,78 @@ test("customer work groups fit mobile dark mode", async ({ page }) => {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("collapsed care work preserves selections, result and the unfinished inline customer form", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const work = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
+  await selectWorkCustomers(page, 1, ["Khách A"]);
+  await work
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Đã hướng dẫn sử dụng");
+  await work.getByRole("button", { name: "Chọn khách", exact: true }).click();
+  await work
+    .getByRole("button", { name: "+ Tạo khách mới", exact: true })
+    .click();
+  await work
+    .getByRole("textbox", { name: "Tên khách hàng", exact: true })
+    .fill("Chị Lan đang nhập");
+  await work.getByRole("button", { name: "Thu gọn", exact: true }).click();
+  await expect(
+    work.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toBeHidden();
+  await expect(work).toContainText("1 nội dung · 1 khách");
+  await work.getByRole("button", { name: "Mở chi tiết", exact: true }).click();
+  await expect(
+    work.getByRole("checkbox", { name: "Tư vấn sản phẩm", exact: true }),
+  ).toBeChecked();
+  await expect(
+    work.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toHaveValue("Đã hướng dẫn sử dụng");
+  await expect(
+    work.getByRole("textbox", { name: "Tên khách hàng", exact: true }),
+  ).toHaveValue("Chị Lan đang nhập");
+  await expect(
+    work.getByRole("button", { name: "Bỏ khách Khách A", exact: true }),
+  ).toBeVisible();
+});
+
+test("apply reveals and focuses an invalid collapsed care work without discarding another work", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  const first = await selectWorkContents(page, 1, ["Tư vấn sản phẩm"]);
+  await selectWorkCustomers(page, 1, ["Khách A"]);
+  await first
+    .getByRole("textbox", { name: "Kết quả chung", exact: true })
+    .fill("Nội dung hợp lệ cần giữ");
+  await first.getByRole("button", { name: "Thu gọn", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Thêm công việc", exact: true })
+    .click();
+  const second = page.getByRole("article", {
+    name: "Công việc 2",
+    exact: true,
+  });
+  await second.getByRole("button", { name: "Thu gọn", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(second).toBeFocused();
+  await expect(second).toHaveAttribute("aria-invalid", "true");
+  await expect(
+    second.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toBeVisible();
+  await first.getByRole("button", { name: "Mở chi tiết", exact: true }).click();
+  await expect(
+    first.getByRole("textbox", { name: "Kết quả chung", exact: true }),
+  ).toHaveValue("Nội dung hợp lệ cần giữ");
 });

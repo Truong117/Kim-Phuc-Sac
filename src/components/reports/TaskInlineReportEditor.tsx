@@ -341,6 +341,11 @@ export default function TaskInlineReportEditor({
         </div>
         {customerForm ? (
           <CustomerCareReportEditor
+            errorWorkKey={
+              error
+                ? careWorks.find((work) => careWorkError([work]))?.client_key
+                : undefined
+            }
             task={task}
             value={careWorks}
             disabled={disabled}

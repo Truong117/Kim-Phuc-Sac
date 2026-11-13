@@ -8,6 +8,8 @@ Mỗi cập nhật có 1–20 đầu việc báo cáo độc lập. Mỗi đầu
 
 Thêm đầu việc không tự gán nội dung/khách của đầu việc khác. Một nội dung có thể được chọn ở nhiều đầu việc. Khách trùng giữa các đầu việc chỉ tăng một lần vào tiến độ. Ví dụ đầu việc 1 chọn Hướng dẫn chăm sóc da + Theo dõi, khách A/B; đầu việc 2 chọn Tư vấn, khách B/C: có 2 đầu việc và 3 khách duy nhất. Giữ nguyên từng kết quả, ghi chú và minh chứng theo đầu việc.
 
+Giao diện dùng header nâu/be, hai cột nội dung hỗ trợ và khách hàng trên máy tính; trên điện thoại xếp thành một cột. Kết quả chung nằm dưới hai cột, ghi chú riêng và minh chứng thu gọn. Có thể thu gọn từng công việc mà vẫn giữ ô đang nhập, kể cả form tạo khách chưa hoàn tất. Khi áp dụng, công việc có dữ liệu không hợp lệ tự mở và nhận focus. Đây chỉ là thay đổi giao diện, không bổ sung migration, ENV hay thay đổi cấu trúc dữ liệu của M42.
+
 Nội dung hỗ trợ có danh mục dùng chung trong tổ chức; tìm/chọn nhiều hoặc tạo ngay trong ô chọn. Nội dung mới chỉ được lưu khi lưu báo cáo, chuẩn hóa Unicode/khoảng trắng/hoa thường để tái sử dụng tên đã có. Không gộp hai đầu việc vì chọn cùng nội dung. GET danh mục chỉ đọc, có phân trang; không tạo dữ liệu qua GET. Chỉ nhân viên có quyền cập nhật công việc đang được giao được truy cập.
 
 Trong mỗi đầu việc, chọn khách đã có hoặc thêm khách tại chỗ; hồ sơ mới gồm tên, nguồn/kênh liên hệ (danh sách chọn rõ ràng, có Khác), số điện thoại **hoặc** link hồ sơ không bắt buộc. Mã nội bộ do máy chủ cấp. Hồ sơ mới trong bản nháp có thể dùng lại ở đầu việc khác bằng cùng mã yêu cầu, chỉ tạo một hồ sơ khi lưu. Giảm/bỏ đầu việc đã nhập cần xác nhận.
