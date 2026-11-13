@@ -173,6 +173,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         ->middleware('permission:tasks.view');
     Route::get('/tasks/{id}/care-customers', [CustomerCareController::class, 'index'])
         ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.create', 'throttle:60,1']);
+    Route::get('/tasks/{id}/care-services', [CustomerCareController::class, 'services'])
+        ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.create', 'throttle:60,1']);
     Route::post('/tasks/{id}/care-attachments', [CustomerCareController::class, 'upload'])
         ->whereNumber('id')->middleware(['permission:tasks.view', 'permission:reports.create', 'throttle:20,1']);
     Route::get('/tasks/{id}/care-attachments/{file}', [CustomerCareController::class, 'download'])

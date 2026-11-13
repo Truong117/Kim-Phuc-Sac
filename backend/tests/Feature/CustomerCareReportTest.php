@@ -83,6 +83,28 @@ class CustomerCareReportTest extends TestCase
         return $p;
     }
 
+    private function selection(array $entry): array
+    {
+        unset($entry['activities'], $entry['evidence_links'], $entry['attachment_ids']);
+
+        return $entry;
+    }
+
+    private function workPayload(array $works): array
+    {
+        $payload = $this->payload([]);
+        unset($payload['items'][0]['task_progress']['care_entries']);
+        $payload['items'][0]['task_progress']['care_work_items'] = $works;
+
+        return $payload;
+    }
+
+    private function work(array $customers, array $services = ['Hướng dẫn chăm sóc da tại nhà']): array
+    {
+        return ['client_key' => (string) Str::uuid(), 'services' => array_map(fn ($name) => ['name' => $name], $services),
+            'customers' => array_map($this->selection(...), $customers), 'result' => 'Đã hỗ trợ, hẹn theo dõi', 'evidence_links' => [], 'attachment_ids' => []];
+    }
+
     public function test_two_customers_repeat_on_another_day_stay_two_but_keep_different_activities(): void
     {
         $a = $this->entry('Khách A', '0901234567');
@@ -235,5 +257,91 @@ class CustomerCareReportTest extends TestCase
         unset($payload['items'][0]['task_progress']['care_entries']);
         $this->patchJson('/api/reports/'.$report['id'], $payload)->assertUnprocessable();
         $this->assertDatabaseCount('care_report_entries', 1);
+    }
+
+    public function test_independent_work_items_can_select_multiple_services_and_count_shared_customers_once(): void
+    {
+        $a = $this->entry('Khách A');
+        $b = $this->entry('Khách B');
+        $c = $this->entry('Khách C');
+        $first = $this->work([$a, $b], ['Hướng dẫn chăm sóc da tại nhà', 'Theo dõi sau điều trị']);
+        $second = $this->work([$b, $c], ['Tư vấn sản phẩm']);
+        $second['customers'][0]['note'] = 'Khách B hẹn phản hồi riêng';
+        $report = $this->postJson('/api/reports', $this->workPayload([$first, $second]))->assertCreated()->json('data');
+        $saved = $report['items'][0]['task_link']['progress']['input'];
+        $this->assertCount(2, $saved['care_work_items']);
+        $this->assertCount(2, $saved['care_work_items'][0]['services']);
+        $this->assertSame('Khách B hẹn phản hồi riêng', $saved['care_work_items'][1]['customers'][0]['note']);
+        $this->assertArrayNotHasKey('care_entries', $saved);
+        $this->assertDatabaseCount('care_customers', 3);
+        $this->assertDatabaseCount('task_outputs', 3);
+        $this->assertDatabaseCount('care_report_entries', 3);
+        $this->assertDatabaseCount('care_services', 3);
+        $this->assertSame(3, $report['items'][0]['task_link']['progress']['quantity']['quantity']);
+        $this->assertSame(1, substr_count($report['items'][0]['result'], 'Công việc 1 —'));
+        $this->assertSame(1, substr_count($report['items'][0]['result'], 'Công việc 2 —'));
+        $bId = $saved['care_work_items'][0]['customers'][1]['customer_id'];
+        $entry = DB::table('care_report_entries')->where('customer_id', $bId)->first();
+        $this->assertCount(3, json_decode($entry->activities, true));
+        $again = $this->workPayload($saved['care_work_items']);
+        $again['items'][0]['id'] = $report['items'][0]['id'];
+        $again['items'][0]['task_progress'] = $saved;
+        $this->patchJson('/api/reports/'.$report['id'], $again)->assertOk();
+        $this->assertDatabaseCount('task_progress_events', 1);
+        $this->travelTo(CarbonImmutable::parse('2026-11-14 14:00:00', 'Asia/Ho_Chi_Minh'));
+        $this->postJson('/api/reports', $this->workPayload($saved['care_work_items']))->assertCreated()->assertJsonPath('data.items.0.task_link.progress.quantity.quantity', 0);
+        $this->assertDatabaseCount('care_report_entries', 6);
+        $this->assertDatabaseCount('task_outputs', 3);
+    }
+
+    public function test_service_catalog_reuses_names_and_old_customer_reports_can_be_converted_without_recounting(): void
+    {
+        $report = $this->postJson('/api/reports', $this->payload([$this->entry('Khách A')]))->assertCreated()->json('data');
+        $entry = $report['items'][0]['task_link']['progress']['input']['care_entries'][0];
+        $work = $this->work([$entry], ['Nội dung mới']);
+        $payload = $this->workPayload([$work]);
+        $payload['items'][0]['id'] = $report['items'][0]['id'];
+        $saved = $this->patchJson('/api/reports/'.$report['id'], $payload)->assertOk()->json('data');
+        $this->assertDatabaseCount('task_outputs', 1);
+        $catalog = $this->getJson('/api/tasks/'.$this->task->id.'/care-services')->assertOk()->json('data');
+        $this->assertContains('Nội dung mới', array_column($catalog, 'name'));
+        $work['services'][0]['name'] = '  NỘI DUNG  MỚI ';
+        $payload = $this->workPayload([$work]);
+        $payload['items'][0]['id'] = $report['items'][0]['id'];
+        $this->patchJson('/api/reports/'.$report['id'], $payload)->assertOk();
+        $this->assertDatabaseCount('care_services', 1);
+        $old = $this->replay($report);
+        $old['items'][0]['task_progress']['expected_revision'] = $this->task->fresh()->progress_revision;
+        $this->patchJson('/api/reports/'.$report['id'], $old)->assertUnprocessable();
+        $this->assertArrayHasKey('care_work_items', $saved['items'][0]['task_link']['progress']['input']);
+    }
+
+    public function test_duplicate_customers_within_one_work_invalid_catalog_and_stale_revision_roll_back_catalog_and_profiles(): void
+    {
+        $a = $this->entry('Khách A');
+        $this->postJson('/api/reports', $this->workPayload([$this->work([$a, $a])]))->assertUnprocessable();
+        $this->assertDatabaseCount('care_services', 0);
+        $this->assertDatabaseCount('care_customers', 0);
+        $work = $this->work([$a]);
+        $work['services'][0]['id'] = 99999;
+        $this->postJson('/api/reports', $this->workPayload([$work]))->assertUnprocessable();
+        $work = $this->work([$a], ['Tư vấn', ' TƯ VẤN ']);
+        $this->postJson('/api/reports', $this->workPayload([$work]))->assertUnprocessable();
+        $payload = $this->workPayload([$this->work([$a])]);
+        $payload['items'][0]['task_progress']['expected_revision'] = 99;
+        $this->postJson('/api/reports', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('care_services', 0);
+        $this->assertDatabaseCount('care_customers', 0);
+    }
+
+    public function test_work_items_reject_media_units_and_the_catalog_never_grants_cross_assignment_access(): void
+    {
+        $this->task->update(['quantity_unit' => 'video']);
+        $payload = $this->workPayload([$this->work([$this->entry('Khách A')])]);
+        $payload['items'][0]['task_progress']['unit'] = 'video';
+        $this->postJson('/api/reports', $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('care_services', 0);
+        $this->task->update(['quantity_unit' => 'khách hàng']);
+        $this->acting($this->other)->getJson('/api/tasks/'.$this->task->id.'/care-services')->assertNotFound();
     }
 }

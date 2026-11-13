@@ -33,10 +33,11 @@ export type TaskProgressInput = {
   unit: TaskQuantityUnit | null;
   outputs: TaskOutput[];
   care_entries?: CareReportEntry[];
+  care_work_items?: CareWorkItem[];
 };
 
 export type CareActivity = { service: string; result: string };
-export type CareReportEntry = {
+export type CareCustomerSelection = {
   client_key: string;
   customer_id?: number;
   name?: string;
@@ -48,7 +49,20 @@ export type CareReportEntry = {
   };
   contact_update?: { channel: string; value: string };
   legacy_output_id?: number;
+  note?: string;
+};
+export type CareReportEntry = CareCustomerSelection & {
   activities: CareActivity[];
+  evidence_links: string[];
+  attachment_ids: number[];
+  attachment_names?: Record<string, string>;
+};
+export type CareServiceOption = { id?: number | null; name: string };
+export type CareWorkItem = {
+  client_key: string;
+  services: CareServiceOption[];
+  customers: CareCustomerSelection[];
+  result: string;
   evidence_links: string[];
   attachment_ids: number[];
   attachment_names?: Record<string, string>;

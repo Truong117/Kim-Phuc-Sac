@@ -326,10 +326,12 @@ class ReportTaskProgressTest extends TestCase
             $migration = require database_path('migrations/2026_11_12_010000_add_daily_task_progress.php');
             $reconciliation = require database_path('migrations/2026_11_13_010000_add_task_progress_reconciliation.php');
             $care = require database_path('migrations/2026_11_13_020000_create_customer_care_reporting.php');
-            $queries = $mysql->pretend(function () use ($migration, $reconciliation, $care): void {
+            $catalog = require database_path('migrations/2026_11_13_030000_create_care_service_catalog.php');
+            $queries = $mysql->pretend(function () use ($migration, $reconciliation, $care, $catalog): void {
                 $migration->up();
                 $reconciliation->up();
                 $care->up();
+                $catalog->up();
             });
         } finally {
             Schema::swap($original);
@@ -339,6 +341,8 @@ class ReportTaskProgressTest extends TestCase
         $this->assertStringContainsString('create table `task_progress_events`', $sql);
         $this->assertStringContainsString('create table `task_progress_imports`', $sql);
         $this->assertStringContainsString('create table `care_customers`', $sql);
+        $this->assertStringContainsString('create table `care_services`', $sql);
+        $this->assertStringContainsString('unique `care_service_name_once`', $sql);
         $this->assertStringContainsString('`contents` mediumtext', $sql);
         $this->assertStringContainsString('unique `task_customer_once`', $sql);
         $this->assertStringContainsString('`reference` varchar(200) null', $sql);

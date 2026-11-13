@@ -1,5 +1,5 @@
 import { apiDownload, apiRequest } from "./apiClient";
-import type { CareCustomer } from "@/types/tasks";
+import type { CareCustomer, CareServiceOption } from "@/types/tasks";
 
 export type CareCustomerPage = {
   data: CareCustomer[];
@@ -13,6 +13,21 @@ export const getCareCustomers = (
 ) =>
   apiRequest<CareCustomerPage>(
     `/api/tasks/${taskId}/care-customers?${new URLSearchParams({ search, page: String(page) })}`,
+    { signal, cache: "no-store" },
+  );
+
+export type CareServicePage = {
+  data: CareServiceOption[];
+  meta: { current_page: number; last_page: number };
+};
+export const getCareServices = (
+  taskId: number,
+  search: string,
+  page: number,
+  signal?: AbortSignal,
+) =>
+  apiRequest<CareServicePage>(
+    `/api/tasks/${taskId}/care-services?${new URLSearchParams({ search, page: String(page) })}`,
     { signal, cache: "no-store" },
   );
 

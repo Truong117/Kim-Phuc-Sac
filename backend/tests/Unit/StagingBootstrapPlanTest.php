@@ -12,8 +12,8 @@ class StagingBootstrapPlanTest extends TestCase
     {
         $manifest = StagingBootstrapPlan::migrationManifest(dirname(__DIR__, 2).'/database/migrations');
 
-        $this->assertCount(41, $manifest['ordered']);
-        $this->assertSame('2026_11_13_020000_create_customer_care_reporting', $manifest['ordered'][40]);
+        $this->assertCount(42, $manifest['ordered']);
+        $this->assertSame('2026_11_13_030000_create_care_service_catalog', $manifest['ordered'][41]);
         $this->assertSame('2026_11_12_010000_add_daily_task_progress', $manifest['ordered'][38]);
         $this->assertSame('2026_11_12_000000_create_personal_report_mail_tables', $manifest['ordered'][37]);
         $this->assertSame('2026_11_10_020000_create_report_automation_tables', $manifest['ordered'][36]);
