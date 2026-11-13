@@ -4,6 +4,7 @@ import type { ReportWorkItem } from "@/types/reports";
 import { useTranslation } from "react-i18next";
 import { useEffect } from "react";
 import { useLocation } from "react-router";
+import CustomerCareEvidence from "./CustomerCareEvidence";
 
 interface ReportWorkItemDetailsProps {
   items: ReportWorkItem[];
@@ -133,6 +134,12 @@ export default function ReportWorkItemDetails({
               </div>
             )}
           </dl>
+          {item.task_link?.progress.input.care_entries && (
+            <CustomerCareEvidence
+              taskId={item.task_link.task_id}
+              entries={item.task_link.progress.input.care_entries}
+            />
+          )}
         </article>
       ))}
     </div>

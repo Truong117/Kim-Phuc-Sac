@@ -6,6 +6,14 @@ import TaskOutputEditor from "@/components/tasks/TaskOutputEditor";
 import TextArea from "@/components/form/input/TextArea";
 import Select from "@/components/form/Select";
 import WorkItemExtras from "./WorkItemExtras";
+import CustomerCareReportEditor from "./CustomerCareReportEditor";
+import {
+  blankCareEntry,
+  careEntryName,
+  careEntryOutputs,
+  careReportText,
+  validCareContact,
+} from "@/utils/careReports";
 import {
   hasValidEvidenceLinks,
   parseEvidenceLinks,
@@ -31,7 +39,7 @@ export default function TaskInlineReportEditor({
   task,
   value,
   canSync,
-  disabled,
+  disabled: externallyDisabled,
   reportDate,
   facebookPages,
   onChange,
@@ -51,7 +59,14 @@ export default function TaskInlineReportEditor({
   const { t } = useTranslation("common", { keyPrefix: "taskProgress" });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [countPending, setCountPending] = useState(false);
+  const disabled = externallyDisabled || uploading;
   const input = value.taskLink!.progress.input;
+  const customerForm =
+    input.unit === "khách hàng" &&
+    (input.care_entries !== undefined || input.outputs.length === 0);
+  const careEntries = input.care_entries ?? [];
   const change = (changes: Partial<WorkItemFormData>) => {
     setError("");
     setNotice("");
@@ -93,6 +108,55 @@ export default function TaskInlineReportEditor({
     );
   }
   function apply() {
+    if (disabled) return;
+    if (customerForm && countPending) {
+      setError(t("careCountPending"));
+      return;
+    }
+    if (
+      customerForm &&
+      careEntries.some(
+        (e) =>
+          !validCareContact(e.new_customer?.contact ?? "") ||
+          !validCareContact(e.contact_update?.value ?? ""),
+      )
+    ) {
+      setError(t("careInvalidContact"));
+      return;
+    }
+    if (
+      customerForm &&
+      (careEntries.length === 0 ||
+        careEntries.length > 20 ||
+        careEntries.some(
+          (e) =>
+            !careEntryName(e) ||
+            careEntryName(e).length > 200 ||
+            (!e.customer_id && !e.new_customer) ||
+            !e.activities.length ||
+            e.activities.length > 10 ||
+            e.activities.some(
+              (a) =>
+                !a.service.trim() ||
+                !a.result.trim() ||
+                a.service.length > 200 ||
+                a.result.length > 1000,
+            ) ||
+            e.evidence_links.filter(Boolean).length > 3 ||
+            !hasValidEvidenceLinks(
+              e.evidence_links.filter(Boolean).join("\n"),
+            ) ||
+            e.attachment_ids.length > 3 ||
+            (e.contact_update &&
+              (e.contact_update.channel.trim() ||
+                e.contact_update.value.trim()) &&
+              (!e.contact_update.channel.trim() ||
+                !e.contact_update.value.trim())),
+        ))
+    ) {
+      setError(t("careRequired"));
+      return;
+    }
     if (
       !value.content.trim() ||
       !value.status ||
@@ -176,28 +240,34 @@ export default function TaskInlineReportEditor({
           {notice}
         </p>
       )}
-      <div>
-        <Label htmlFor={`task-report-title-${task.id}`}>{t("todayWork")}</Label>
-        <TextArea
-          id={`task-report-title-${task.id}`}
-          rows={2}
-          value={value.content}
-          disabled={disabled}
-          onChange={(content) => change({ content })}
-        />
-      </div>
-      <div>
-        <Label htmlFor={`task-report-result-${task.id}`}>
-          {t("todayResult")}
-        </Label>
-        <TextArea
-          id={`task-report-result-${task.id}`}
-          rows={3}
-          value={value.result}
-          disabled={disabled}
-          onChange={(result) => change({ result })}
-        />
-      </div>
+      {!customerForm && (
+        <>
+          <div>
+            <Label htmlFor={`task-report-title-${task.id}`}>
+              {t("todayWork")}
+            </Label>
+            <TextArea
+              id={`task-report-title-${task.id}`}
+              rows={2}
+              value={value.content}
+              disabled={disabled}
+              onChange={(content) => change({ content })}
+            />
+          </div>
+          <div>
+            <Label htmlFor={`task-report-result-${task.id}`}>
+              {t("todayResult")}
+            </Label>
+            <TextArea
+              id={`task-report-result-${task.id}`}
+              rows={3}
+              value={value.result}
+              disabled={disabled}
+              onChange={(result) => change({ result })}
+            />
+          </div>
+        </>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label htmlFor={`task-report-status-${task.id}`}>
@@ -272,33 +342,79 @@ export default function TaskInlineReportEditor({
                   "lượt chăm sóc",
                 ] as TaskQuantityUnit[]
               ).map((unit) => ({ value: unit, label: t(`units.${unit}`) }))}
-              onChange={(unit) => progress({ unit: unit as TaskQuantityUnit })}
+              onChange={(unit) =>
+                progress({
+                  unit: unit as TaskQuantityUnit,
+                  ...(unit === "khách hàng"
+                    ? { care_entries: [blankCareEntry()] }
+                    : { care_entries: undefined }),
+                })
+              }
             />
           </div>
           <p className="self-end text-theme-xs text-gray-500 dark:text-gray-400">
-            {t("productHint")}
+            {t(customerForm ? "careProductHint" : "productHint")}
           </p>
         </div>
-        <TaskOutputEditor
-          unit={input.unit}
-          outputs={input.outputs}
-          existingOutputs={task.progress?.outputs}
-          disabled={disabled}
-          onChange={(outputs) => progress({ outputs })}
-          extraAction={
-            input.unit === "video" ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={disabled}
-                onClick={suggest}
-              >
-                {t("detectNames")}
-              </Button>
-            ) : undefined
-          }
-        />
+        {customerForm ? (
+          <CustomerCareReportEditor
+            task={task}
+            value={careEntries}
+            disabled={disabled}
+            onBusy={setUploading}
+            onCountPending={setCountPending}
+            onChange={(entries) => {
+              change({
+                result: careReportText(entries),
+                taskLink: {
+                  ...value.taskLink!,
+                  progress: {
+                    ...value.taskLink!.progress,
+                    input: {
+                      ...input,
+                      care_entries: entries,
+                      outputs: careEntryOutputs(entries, task),
+                    },
+                  },
+                },
+              });
+            }}
+          />
+        ) : (
+          <TaskOutputEditor
+            unit={input.unit}
+            outputs={input.outputs}
+            existingOutputs={task.progress?.outputs}
+            disabled={disabled}
+            onChange={(outputs) => progress({ outputs })}
+            extraAction={
+              input.unit === "video" ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={suggest}
+                >
+                  {t("detectNames")}
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+        {input.unit === "khách hàng" && !customerForm && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() =>
+              progress({ care_entries: [blankCareEntry()], outputs: [] })
+            }
+          >
+            {t("useCustomerForm")}
+          </Button>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <Button

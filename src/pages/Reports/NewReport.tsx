@@ -1,3 +1,4 @@
+import { careEntryPayload } from "@/utils/careReports";
 import { normalizeNextDayPlan } from "@/utils/nextDayPlan";
 import {
   focusFirstReportError,
@@ -628,15 +629,23 @@ export default function NewReport({
               task_progress: {
                 ...item.taskLink.progress.input,
                 outputs: item.taskLink.progress.input.outputs.map(
-                  ({ id, name, reference, completed }) => ({
+                  ({ id, name, reference, care_customer_id, completed }) => ({
                     ...(id != null ? { id } : {}),
                     name: name.trim(),
                     ...(reference != null
                       ? { reference: reference.trim() }
                       : {}),
                     completed,
+                    ...(care_customer_id ? { care_customer_id } : {}),
                   }),
                 ),
+                ...(item.taskLink.progress.input.care_entries
+                  ? {
+                      care_entries: careEntryPayload(
+                        item.taskLink.progress.input.care_entries,
+                      ),
+                    }
+                  : {}),
               },
             }
           : {}),

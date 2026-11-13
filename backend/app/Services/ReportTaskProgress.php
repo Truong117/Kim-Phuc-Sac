@@ -36,12 +36,12 @@ final class ReportTaskProgress
         return ['revision' => (int) $task->progress_revision, 'target' => $task->target_quantity,
             'unit' => $unit, 'completed' => $completed, 'counts' => $counts,
             'percent' => $task->target_quantity && $task->quantity_unit ? min(100, round($completed * 100 / $task->target_quantity, 1)) : null,
-            'outputs' => $outputs->map(fn ($output) => ['id' => (int) $output->id, 'name' => $output->name, 'reference' => $output->reference, 'unit' => $output->unit,
+            'outputs' => $outputs->map(fn ($output) => ['id' => (int) $output->id, 'name' => $output->name, 'reference' => $output->reference, 'care_customer_id' => $output->care_customer_id, 'unit' => $output->unit,
                 'completed' => $output->completed, 'first_completed_on' => $output->first_completed_on?->toDateString()])->all()];
     }
 
     /** Called in the report transaction, before any item writes. */
-    public function lock(User $actor, string $date, array $items, $existing = null): array
+    public function lock(User $actor, string $date, array &$items, $existing = null): array
     {
         $ids = collect($items)->pluck('task_id')->filter()->map(fn ($id) => (int) $id);
         if ($ids->isEmpty()) {
@@ -52,7 +52,7 @@ final class ReportTaskProgress
             throw ValidationException::withMessages(['items' => 'Một công việc chỉ được liên kết một lần trong cùng báo cáo.']);
         }
         $tasks = Task::query()->whereIn('id', $ids)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
-        foreach ($items as $index => $item) {
+        foreach ($items as $index => &$item) {
             if (empty($item['task_id'])) {
                 continue;
             }
@@ -72,6 +72,9 @@ final class ReportTaskProgress
                 throw ValidationException::withMessages(["items.$index.task_id" => 'Công việc không còn được giao cho bạn hoặc bạn không có quyền cập nhật.']);
             }
             $progress = $item['task_progress'] ?? [];
+            if (! empty($previous?->task_progress['input']['care_entries']) && ! array_key_exists('care_entries', $progress)) {
+                throw ValidationException::withMessages(["items.$index.task_progress" => 'Báo cáo có dữ liệu khách hàng mới. Hãy tải lại form, không được bỏ lịch sử hỗ trợ.']);
+            }
             if (! isset($progress['expected_revision'], $progress['status'])) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Thiếu phiên bản cập nhật công việc.']);
             }
@@ -91,12 +94,20 @@ final class ReportTaskProgress
             if (! empty($progress['outputs']) && (! in_array($unit, self::UNITS, true) || ($task->quantity_unit && $unit !== $task->quantity_unit))) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Đơn vị sản phẩm không khớp mục tiêu công việc.']);
             }
-            if (self::needsReference($unit) && ! empty($progress['outputs'])
+            if (self::needsReference($unit) && (! empty($progress['outputs']) || ! empty($progress['care_entries']))
                 && (($task->start_date && $date < $task->start_date->toDateString()) || $date > $task->due_date->toDateString())) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Cập nhật CSKH nằm ngoài kỳ công việc. Hãy chọn công việc của kỳ tương ứng; không cộng vào mục tiêu kỳ cũ.']);
             }
+            if (array_key_exists('care_entries', $progress)) {
+                $item['result'] = app(CustomerCare::class)->prepare($actor, $task, $progress, "items.$index.task_progress");
+                $item['task_progress'] = $progress;
+            } elseif (collect($progress['outputs'] ?? [])->contains(fn ($o) => ! empty($o['care_customer_id']))
+                || (app(CustomerCare::class)->ready() && TaskOutput::query()->where('task_id', $task->id)->whereNotNull('care_customer_id')->whereIn('id', collect($progress['outputs'] ?? [])->pluck('id')->filter())->exists())) {
+                throw ValidationException::withMessages(["items.$index.task_progress" => 'Khách hàng phải được chọn từ form CSKH.']);
+            }
             $this->validateOutputs($task, $unit, $progress['outputs'] ?? [], "items.$index.task_progress");
         }
+        unset($item);
 
         return $tasks->all();
     }
@@ -142,7 +153,24 @@ final class ReportTaskProgress
 
     private function sameInput(?array $stored, array $input): bool
     {
-        return ($stored['input'] ?? null) === $input;
+        $previous = $stored['input'] ?? null;
+
+        return is_array($previous) && $this->canonicalInput($previous) === $this->canonicalInput($input);
+    }
+
+    private function canonicalInput(array $input): array
+    {
+        foreach ($input as &$value) {
+            if (is_array($value)) {
+                $value = $this->canonicalInput($value);
+            }
+        }
+        unset($value);
+        if (! array_is_list($input)) {
+            ksort($input);
+        }
+
+        return $input;
     }
 
     /** The row and its original task identity have already been validated. */
@@ -162,6 +190,9 @@ final class ReportTaskProgress
             throw ValidationException::withMessages(['items' => 'Không thể đổi công việc gốc của một đầu việc đã lưu.']);
         }
         if ($row->task_id && $this->sameInput($row->task_progress, $input)) {
+            if (! empty($input['care_entries'])) {
+                $row->result = CustomerCare::text($input['care_entries']);
+            }
             $this->writeResult($row, $row->task_progress['summary'] ?? '', $row->task_progress);
 
             return;
@@ -170,7 +201,7 @@ final class ReportTaskProgress
         $before = $task->status->value;
         $unit = $input['unit'] ?? null;
         $recorded = [];
-        foreach ($input['outputs'] ?? [] as $output) {
+        foreach ($input['outputs'] ?? [] as $index => $output) {
             $key = self::identity($output, $unit);
             $existing = isset($output['id']) ? TaskOutput::query()->findOrFail($output['id'])
                 : TaskOutput::query()->where('task_id', $task->id)->where('unit', $unit)->where('identity_hash', $key)->first();
@@ -179,14 +210,24 @@ final class ReportTaskProgress
             if ($today) {
                 $existing ??= new TaskOutput(['organization_id' => $task->organization_id, 'task_id' => $task->id, 'unit' => $unit]);
                 $existing->fill(['name' => trim($output['name']), 'reference' => self::needsReference($unit) ? trim($output['reference']) : null, 'identity_hash' => $key, 'completed' => $output['completed']]);
+                if (isset($output['care_customer_id'])) {
+                    $existing->care_customer_id = $output['care_customer_id'];
+                }
                 if ($firstCompletion) {
                     $existing->first_completed_on = $report->report_date;
                     $existing->first_report_item_id = $row->id;
                 }
                 $existing->save();
             }
+            if ($existing?->id) {
+                $input['outputs'][$index]['id'] = $existing->id;
+            } else {
+                unset($input['outputs'][$index]['id']);
+            }
             $recorded[] = ['id' => $existing?->id, 'name' => trim($output['name']), 'reference' => $output['reference'] ?? null, 'unit' => $unit,
-                'completed' => $output['completed'], 'newly_completed' => $newlyCompleted];
+                'completed' => $output['completed'], 'newly_completed' => $newlyCompleted,
+                ...(! empty($input['care_entries']) ? ['care_customer_id' => $output['care_customer_id'],
+                    'care' => collect($input['care_entries'])->firstWhere('customer_id', $output['care_customer_id'])] : [])];
         }
         if ($today) {
             if (($input['status'] ?? 'KEEP') !== 'KEEP') {
@@ -201,6 +242,9 @@ final class ReportTaskProgress
         $row->task_snapshot ??= ['id' => (int) $task->id, 'title' => $task->title, 'description' => $task->description,
             'due_date' => $task->due_date->toDateString(), 'target_quantity' => $task->target_quantity, 'quantity_unit' => $task->quantity_unit];
         $row->task_id = $task->id;
+        if (array_key_exists('care_entries', $input)) {
+            app(CustomerCare::class)->saveEntries($row, $input);
+        }
         $count = count(array_filter($recorded, fn ($output) => $today ? $output['newly_completed'] : $output['completed']));
         $metric = match ($unit) {
             'khách hàng' => 'Khách hàng đã chăm sóc (công việc #'.$task->id.')', 'lượt chăm sóc' => 'Lượt chăm sóc đã thực hiện',
@@ -211,6 +255,11 @@ final class ReportTaskProgress
         $names = array_column(array_filter($recorded, fn ($output) => $output['completed']), 'name');
         $summary = $recorded === [] ? '' : "[Cập nhật sản phẩm công việc #$task->id]\n".$quote
             .($names ? "\nSản phẩm cập nhật: ".implode('; ', $names) : '');
+        if (! empty($input['care_entries'])) {
+            $activities = array_sum(array_map(fn ($e) => count($e['activities']), $input['care_entries']));
+            $summary = '[Cập nhật CSKH công việc #'.$task->id."]\n".$quote
+                ."\nĐã hỗ trợ trong ngày: ".count($input['care_entries'])." khách; $activities nội dung hỗ trợ. Số liệu nhân viên tự báo cáo.";
+        }
         $row->task_progress = ['input' => $input, 'outputs' => $recorded, 'applied' => $today,
             'summary' => $summary, 'quantity' => $recorded === [] ? null : ['metric' => $metric, 'unit' => $unit,
                 'quantity' => $count, 'basis' => $today ? 'incremental' : 'unclear', 'quote' => $quote]];
