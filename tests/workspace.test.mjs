@@ -85,6 +85,21 @@ test("untrusted workspace payloads cannot add external home paths", () => {
     assert.deepEqual(parseWorkspaces(payload), []);
 });
 
+test("channel-only internal workspace lands on analytics using an explicit allowed home", () => {
+  const assigned = { ...internal, home: "/social-analytics/facebook" };
+  assert.deepEqual(parseWorkspaces({ workspaces: [assigned] }), [assigned]);
+  assert.equal(defaultWorkspacePath([assigned], null), assigned.home);
+  for (const home of [
+    "/employees",
+    "/social-analytics/facebook/other",
+    "/social-analytics/facebook?admin=1",
+  ])
+    assert.deepEqual(
+      parseWorkspaces({ workspaces: [{ ...assigned, home }] }),
+      [],
+    );
+});
+
 test("new Spa manager UI sections reuse existing capabilities without granting KTV/reception access", () => {
   const manager = {
     id: "spa",

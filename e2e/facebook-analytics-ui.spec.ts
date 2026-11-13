@@ -17,6 +17,7 @@ async function setup(
     review?: "ready" | "blocked" | "conflict";
     contributionPages?: boolean;
     monthly?: boolean;
+    assigned?: boolean;
   } = {},
 ) {
   await page.clock.setFixedTime(new Date("2026-11-07T03:00:00Z"));
@@ -161,7 +162,17 @@ async function setup(
   let syncReads = 0;
   await page.route("**/api/**", async (route) => {
     if (new URL(route.request().url()).pathname === "/api/workspaces")
-      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
+      return route.fulfill({
+        json: {
+          workspaces: [
+            {
+              id: "internal",
+              home: options.assigned ? "/social-analytics/facebook" : "/",
+              sections: [],
+            },
+          ],
+        },
+      });
     const req = route.request(),
       url = new URL(req.url()),
       path = url.pathname;
@@ -171,9 +182,9 @@ async function setup(
       return route.fulfill({
         json: {
           id: 10001,
-          name: "Test Admin",
+          name: options.assigned ? "Nhân viên mẫu" : "Test Admin",
           email: "test@example.test",
-          role: { name: "Admin" },
+          role: { name: options.assigned ? "Nhân viên" : "Admin" },
           department: null,
           organization: { id: 1, name: "KPS" },
           location: null,
@@ -181,7 +192,11 @@ async function setup(
       });
     if (path === "/api/navigation")
       return route.fulfill({
-        json: { items: ["dashboard", "social.analytics", "integrations"] },
+        json: {
+          items: options.assigned
+            ? ["social.analytics"]
+            : ["dashboard", "social.analytics", "integrations"],
+        },
       });
     if (path.endsWith("/facebook/pages"))
       return route.fulfill({
@@ -201,8 +216,8 @@ async function setup(
                   responsible_name: "Nhân viên hai",
                   status: "connected",
                 },
-              ],
-          can_manage: true,
+              ].filter((entry) => !options.assigned || entry.id === 1),
+          can_manage: !options.assigned,
         },
       });
     if (path.endsWith("/sync")) {
@@ -424,7 +439,7 @@ async function setup(
             to_date: url.searchParams.get("to_date"),
             connection_status: "connected",
             principal_available: true,
-            can_manage: true,
+            can_manage: !options.assigned,
             ai_enabled: true,
             milestones_enabled: !!(options.age || options.review),
             reviews_enabled: !!options.review,
@@ -518,7 +533,9 @@ async function setup(
       json: { data: [], items: [], unread_count: 0, meta: { total: 0 } },
     });
   });
-  await page.goto("/social-analytics/facebook");
+  await page.goto(
+    options.assigned ? "/workspace" : "/social-analytics/facebook",
+  );
   await expect(
     page.getByRole("heading", {
       name: "Phân tích Facebook",
@@ -528,6 +545,36 @@ async function setup(
   ).toBeVisible();
   return requests;
 }
+
+test("assigned employees can enter analytics without office permissions and only select their assigned Page", async ({
+  page,
+}) => {
+  const requests = await setup(page, { assigned: true });
+  await expect(page).toHaveURL(/\/social-analytics\/facebook/);
+  const sidebar = page.locator("aside");
+  await expect(
+    sidebar.getByRole("link", { name: "Phân tích MXH", exact: true }),
+  ).toBeVisible();
+  await expect(sidebar.locator('a[href="/integrations"]')).toHaveCount(0);
+  await expect(
+    sidebar.getByRole("link", { name: "Tổng quan", exact: true }),
+  ).toHaveCount(0);
+  const selector = page.getByRole("combobox", { name: "Page đang phân tích" });
+  await expect(selector.locator("option")).toHaveText(["KPS Page"]);
+  await expect(page.getByText("Người phụ trách: Nhân viên mẫu")).toBeVisible();
+  await page.getByRole("tab", { name: "Hiệu quả bài", exact: true }).click();
+  await expect(
+    page.getByText("Routine tối giản cho làn da", { exact: true }).first(),
+  ).toBeVisible();
+  await page.goto("/social-analytics/facebook?page=999");
+  await expect(
+    page.getByRole("combobox", { name: "Page đang phân tích" }),
+  ).toHaveValue("1");
+  await expect(page.getByText("Người phụ trách: Nhân viên mẫu")).toBeVisible();
+  expect(
+    requests.some((request) => /\/facebook\/(999|2)([/?]|$)/.test(request)),
+  ).toBe(false);
+});
 
 test("Facebook analytics uses real API state, shared calendar, filters, post evidence and scoped topic edits", async ({
   page,
