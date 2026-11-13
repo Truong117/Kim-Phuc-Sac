@@ -2,9 +2,16 @@ import SpaCustomerBusinessSummary from "@/features/spa/components/SpaCustomerBus
 import { spaFieldClasses } from "@/features/spa/config";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import PageMeta from "@/components/common/PageMeta";
-import PageBreadCrumb from "@/components/common/PageBreadCrumb";
+import SpaPageHeading from "@/features/spa/components/SpaPageHeading";
+import SpaAvatar from "@/features/spa/components/SpaAvatar";
+import Select from "@/components/form/Select";
+import { useAuthorization } from "@/hooks/useAuthorization";
+import { canOpenWorkspacePath } from "@/utils/workspace";
+import { spaMoney, spaInvoiceBalance } from "@/features/spa/businessSelectors";
+import { downloadSpaCsv } from "@/features/spa/csv";
+import { PlusIcon, ArrowRightIcon } from "@/icons";
 import ComponentCard from "@/components/common/ComponentCard";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
@@ -20,7 +27,21 @@ export default function SpaCustomers() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { snapshot } = useSpaPreview();
-  const [query, setQuery] = useState("");
+  const [params, setParams] = useSearchParams();
+  const query = params.get("q") ?? "";
+  const setQuery = (value: string) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (value) next.set("q", value);
+        else next.delete("q");
+        return next;
+      },
+      { replace: true },
+    );
+  const { workspaces } = useAuthorization();
+  const canSeeMoney = canOpenWorkspacePath(workspaces, "/spa/cashier");
+  const [filter, setFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [bookingId, setBookingId] = useState<string | null>(null);
@@ -29,17 +50,32 @@ export default function SpaCustomers() {
   const profileRef = useRef<HTMLElement>(null);
   const revealProfile = () =>
     requestAnimationFrame(() => {
-      if (window.innerWidth < 1280)
-        profileRef.current?.scrollIntoView({
-          block: "start",
-          behavior: "smooth",
-        });
+      profileRef.current?.scrollIntoView({
+        block: "start",
+        behavior: "smooth",
+      });
     });
   const selected = snapshot.customers.find((item) => item.id === selectedId);
   const customers = snapshot.customers.filter((item) =>
     normalizeSpaText(`${item.name} ${item.phone}`).includes(
       normalizeSpaText(query),
     ),
+  );
+  const filteredCustomers = customers.filter(
+    (customer) =>
+      filter === "all" ||
+      (filter === "packages"
+        ? snapshot.packages.some(
+            (p) =>
+              p.customerId === customer.id &&
+              p.used < p.total &&
+              p.expires >= snapshot.date,
+          )
+        : snapshot.invoices.some(
+            (i) =>
+              i.customerId === customer.id &&
+              spaInvoiceBalance(snapshot, i.id) > 0,
+          )),
   );
   const history = snapshot.appointments
     .filter((item) => item.customerId === selected?.id)
@@ -52,9 +88,41 @@ export default function SpaCustomers() {
         title={t("spa.meta.section", { name: t("spa.navigation.customers") })}
         description={t("spa.meta.description")}
       />
-      <PageBreadCrumb pageTitle={t("spa.navigation.customers")} />
+      <SpaPageHeading
+        section="customers"
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                downloadSpaCsv("khach-hang", [
+                  [t("spa.business.customer"), t("spa.concept.phone")],
+                  ...filteredCustomers.map((customer) => [
+                    customer.name,
+                    customer.phone,
+                  ]),
+                ])
+              }
+            >
+              {t("spa.concept.exportCustomers")}
+            </Button>
+            <Button
+              size="sm"
+              className="!bg-kps-primary hover:!bg-kps-primary-hover"
+              startIcon={<PlusIcon className="size-4" />}
+              onClick={() => {
+                setEditingId(null);
+                editor.openModal();
+              }}
+            >
+              {t("spa.flow.newCustomer")}
+            </Button>
+          </div>
+        }
+      />
       <div className="space-y-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900">
           <div className="w-full sm:max-w-sm">
             <Label htmlFor="spa-customer-search">
               {t("spa.flow.findCustomer")}
@@ -67,15 +135,28 @@ export default function SpaCustomers() {
               className={spaFieldClasses}
             />
           </div>
-          <Button
-            onClick={() => {
-              setEditingId(null);
-              editor.openModal();
-            }}
-            className="!bg-kps-primary hover:!bg-kps-primary-hover"
-          >
-            {t("spa.flow.newCustomer")}
-          </Button>
+          <div className="w-full sm:w-56">
+            <Label htmlFor="spa-customer-filter">
+              {t("spa.concept.customerFilter")}
+            </Label>
+            <Select
+              id="spa-customer-filter"
+              placeholder={t("spa.concept.customerFilter")}
+              value={filter}
+              onChange={setFilter}
+              options={[
+                "all",
+                "packages",
+                ...(canSeeMoney ? ["debt"] : []),
+              ].map((value) => ({
+                value,
+                label: t(`spa.concept.customerFilters.${value}`),
+              }))}
+            />
+          </div>
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+            {t("spa.flow.customerCount", { count: filteredCustomers.length })}
+          </p>
         </div>
         {notice && (
           <p
@@ -85,66 +166,116 @@ export default function SpaCustomers() {
             {t("spa.flow.saved")}
           </p>
         )}
-        <div className="grid items-start gap-5 xl:grid-cols-3">
-          <ComponentCard
-            title={t("spa.flow.customerList")}
-            className="xl:col-span-2"
-            desc={t("spa.flow.customerCount", { count: customers.length })}
-          >
-            <div className="space-y-3">
-              {customers.map((customer) => (
-                <article
-                  key={customer.id}
-                  aria-label={customer.name}
-                  className="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
-                >
-                  <h3 className="font-semibold text-gray-900 dark:text-white">
-                    {customer.name}
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {customer.phone}
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedId(customer.id);
-                        revealProfile();
-                      }}
-                    >
-                      {t("spa.flow.profile")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEditingId(customer.id);
-                        editor.openModal();
-                      }}
-                    >
-                      {t("spa.flow.editCustomer")}
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="!bg-kps-primary hover:!bg-kps-primary-hover"
-                      onClick={() => setBookingId(customer.id)}
-                    >
-                      {t("spa.flow.bookForCustomer")}
-                    </Button>
+        <section
+          aria-label={t("spa.flow.customerList")}
+          className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
+          {filteredCustomers.map((customer) => {
+            const visits = snapshot.appointments.filter(
+              (a) => a.customerId === customer.id && a.status === "arrived",
+            ).length;
+            const invoiceIds = new Set(
+              snapshot.invoices
+                .filter((i) => i.customerId === customer.id)
+                .map((i) => i.id),
+            );
+            const collected = snapshot.payments
+              .filter((payment) => invoiceIds.has(payment.invoiceId))
+              .reduce((sum, payment) => sum + payment.amount, 0);
+            const packages = snapshot.packages.filter(
+              (p) =>
+                p.customerId === customer.id &&
+                p.used < p.total &&
+                p.expires >= snapshot.date,
+            ).length;
+            return (
+              <article
+                key={customer.id}
+                aria-label={customer.name}
+                className="rounded-xl border border-gray-200 bg-white p-5 shadow-theme-xs dark:border-gray-800 dark:bg-gray-900"
+              >
+                <div className="flex items-center gap-3">
+                  <SpaAvatar name={customer.name} />
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                      {customer.name}
+                    </h3>
+                    <p className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+                      {customer.id}
+                    </p>
                   </div>
-                </article>
-              ))}
-              {!customers.length && (
-                <p
-                  role="status"
-                  className="text-sm text-gray-500 dark:text-gray-400"
-                >
-                  {t("spa.flow.noCustomers")}
+                </div>
+                <dl className="my-5 grid grid-cols-2 gap-3 border-b border-gray-100 pb-5 dark:border-gray-800">
+                  <div>
+                    <dd className="text-xl font-semibold text-gray-900 dark:text-white">
+                      {visits}
+                    </dd>
+                    <dt className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+                      {t("spa.concept.customerVisits")}
+                    </dt>
+                  </div>
+                  {canSeeMoney && (
+                    <div>
+                      <dd className="text-xl font-semibold text-gray-900 dark:text-white">
+                        {spaMoney(collected)}
+                      </dd>
+                      <dt className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
+                        {t("spa.concept.customerCollected")}
+                      </dt>
+                    </div>
+                  )}
+                </dl>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  {customer.phone}
                 </p>
-              )}
-            </div>
-          </ComponentCard>
+                <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                  {t("spa.concept.activePackages", { count: packages })}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    endIcon={
+                      <ArrowRightIcon className="size-4 rtl:rotate-180" />
+                    }
+                    onClick={() => {
+                      setSelectedId(customer.id);
+                      revealProfile();
+                    }}
+                  >
+                    {t("spa.flow.profile")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingId(customer.id);
+                      editor.openModal();
+                    }}
+                  >
+                    {t("spa.flow.editCustomer")}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="!bg-kps-primary hover:!bg-kps-primary-hover"
+                    onClick={() => setBookingId(customer.id)}
+                  >
+                    {t("spa.flow.bookForCustomer")}
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
+          {!filteredCustomers.length && (
+            <p
+              role="status"
+              className="text-sm text-gray-500 dark:text-gray-400"
+            >
+              {t("spa.flow.noCustomers")}
+            </p>
+          )}
+        </section>
+        {selected && (
           <aside ref={profileRef} className="scroll-mt-24">
             <ComponentCard title={t("spa.flow.profile")}>
               {selected ? (
@@ -203,7 +334,7 @@ export default function SpaCustomers() {
               )}
             </ComponentCard>
           </aside>
-        </div>
+        )}
       </div>
       {editor.isOpen && (
         <SpaCustomerDialog
@@ -227,7 +358,7 @@ export default function SpaCustomers() {
           onSaved={(_, date) => {
             setBookingId(null);
             navigate(
-              `/spa/appointments?customer=${encodeURIComponent(bookingId)}&date=${date}`,
+              `/spa/appointments?customer=${encodeURIComponent(bookingId)}&date=${date}&view=list`,
             );
           }}
         />

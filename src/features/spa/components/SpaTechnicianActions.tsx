@@ -182,7 +182,7 @@ export default function SpaTechnicianActions({
                   {b(saved ? "draftSaved" : "draftSaving")}
                 </p>
               </div>
-              <div className="sticky bottom-24 z-10 flex flex-wrap gap-2 border-t border-gray-100 bg-white py-3 md:bottom-0 dark:border-gray-800 dark:bg-gray-900">
+              <div className="sticky bottom-24 z-10 flex flex-wrap gap-2 border-t border-gray-100 bg-white py-3 md:bottom-20 dark:border-gray-800 dark:bg-gray-900">
                 <SpaAction
                   onClick={() =>
                     setForm({

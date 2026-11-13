@@ -1,26 +1,25 @@
 import { useState } from "react";
 import useSpaPreviewSession from "../hooks/useSpaPreviewSession";
 import AppLayout from "@/layout/AppLayout";
-import Badge from "@/components/ui/badge/Badge";
+import SpaHeader from "./SpaHeader";
 import { useTranslation } from "react-i18next";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router";
 
 export default function SpaLayout() {
   const { t } = useTranslation();
+  const { pathname } = useLocation();
   const session = useSpaPreviewSession();
   const [resetEpoch, setResetEpoch] = useState(0);
   return (
-    <AppLayout workspace="spa">
+    <AppLayout workspace="spa" header={<SpaHeader />}>
       <div className="min-w-0 space-y-6">
-        <section
-          className="rounded-2xl border border-kps-primary/20 bg-kps-primary/5 p-4 dark:border-kps-primary/50 dark:bg-kps-primary/10"
-          aria-label={t("spa.preview.title")}
+        <Outlet key={resetEpoch} context={session} />
+        <footer
+          className={`mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4 text-theme-xs text-gray-500 dark:border-gray-800 dark:text-gray-400 ${pathname === "/spa/technician" ? "pb-24" : ""}`}
         >
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge color="light">{t("spa.preview.badge")}</Badge>
-            <h1 className="font-semibold text-gray-900 dark:text-white">
-              {t("spa.preview.title")}
-            </h1>
+          <div>
+            <h1 className="font-medium">{t("spa.preview.title")}</h1>
+            <p className="mt-1">{t("spa.preview.description")}</p>
           </div>
           <button
             type="button"
@@ -30,15 +29,11 @@ export default function SpaLayout() {
                 setResetEpoch((v) => v + 1);
               }
             }}
-            className="mt-3 inline-flex min-h-11 items-center rounded-lg border border-kps-primary/30 px-3 text-sm font-medium text-kps-primary-hover hover:bg-kps-primary/10 dark:text-gray-200"
+            className="min-h-11 shrink-0 rounded-lg px-3 font-medium text-kps-primary-hover hover:bg-kps-primary/5 dark:text-gray-200"
           >
             {t("spa.flow.reset")}
           </button>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            {t("spa.preview.description")}
-          </p>
-        </section>
-        <Outlet key={resetEpoch} context={session} />
+        </footer>
       </div>
     </AppLayout>
   );

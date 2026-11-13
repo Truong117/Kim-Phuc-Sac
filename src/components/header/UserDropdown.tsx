@@ -13,7 +13,11 @@ import { useNavigate } from "react-router";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 
-export default function UserDropdown() {
+export default function UserDropdown({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubDropdownOpen, setIsSubDropdownOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -86,16 +90,25 @@ export default function UserDropdown() {
         onClick={toggleDropdown}
         aria-expanded={isOpen}
         aria-label={t("workspace.accountMenu", { name: currentUser.name })}
-        className="dropdown-toggle flex items-center text-gray-700 dark:text-gray-400"
+        className={cn(
+          "dropdown-toggle flex items-center text-gray-700 dark:text-gray-400",
+          compact && "max-w-60 min-w-0",
+        )}
       >
         <span
-          className="me-3 flex size-11 items-center justify-center rounded-full bg-kps-primary text-theme-sm font-semibold text-white"
+          className="me-3 flex size-11 shrink-0 items-center justify-center rounded-full bg-kps-primary text-theme-sm font-semibold text-white"
           aria-hidden="true"
         >
           {initials.toUpperCase()}
         </span>
 
-        <span className="me-1 block text-theme-sm font-medium">
+        <span
+          title={compact ? currentUser.name : undefined}
+          className={cn(
+            "me-1 text-theme-sm font-medium",
+            compact ? "hidden max-w-40 truncate sm:block" : "block",
+          )}
+        >
           {currentUser.name}
         </span>
         <svg

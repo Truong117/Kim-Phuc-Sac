@@ -1,3 +1,4 @@
+import SpaAvatar from "./SpaAvatar";
 import SpaSkinPhotos from "./SpaSkinPhotos";
 import Badge from "@/components/ui/badge/Badge";
 import Button from "@/components/ui/button/Button";
@@ -16,7 +17,7 @@ export default function SpaTechnicianDetail({
   const { t } = useTranslation();
   return (
     <article
-      className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900"
+      className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900"
       aria-label={t("spa.technician.detail")}
     >
       <div className="mb-4 md:hidden">
@@ -30,7 +31,8 @@ export default function SpaTechnicianDetail({
         </span>
         <SpaStatusBadge kind="task" status={task.status} />
       </div>
-      <h3 className="mt-4 text-xl font-semibold text-gray-900 dark:text-white">
+      <h3 className="mt-4 flex items-center gap-3 text-title-sm font-semibold text-gray-900 dark:text-white">
+        <SpaAvatar name={task.customerName} />
         {task.customerName}
       </h3>
       <p className="mt-2 text-kps-primary-hover dark:text-gray-200">
@@ -76,25 +78,27 @@ export default function SpaTechnicianDetail({
           {t("spa.flow.dispatchedBy", { name: task.assignedBy.name })}
         </p>
       )}
-      <h4 className="mt-6 font-semibold text-gray-900 dark:text-white">
-        {t("spa.technician.notes")}
-      </h4>
-      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-        {t(`spa.notes.${task.noteKey}`)}
-      </p>
-      {task.appointmentNote && (
-        <p className="mt-3 text-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300">
-          {task.appointmentNote}
+      <div className="mt-5 rounded-xl border border-kps-primary/15 bg-kps-primary/5 p-4 dark:border-kps-primary/30 dark:bg-kps-primary/10">
+        <h4 className="font-semibold text-gray-900 dark:text-white">
+          {t("spa.technician.notes")}
+        </h4>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          {t(`spa.notes.${task.noteKey}`)}
         </p>
-      )}
-      <div className="mt-4">
-        <Badge color={task.requiresSkinPhoto ? "warning" : "light"}>
-          {t(
-            task.requiresSkinPhoto
-              ? "spa.technician.photoRequired"
-              : "spa.technician.photoOptional",
-          )}
-        </Badge>
+        {task.appointmentNote && (
+          <p className="mt-3 text-sm whitespace-pre-wrap text-gray-600 dark:text-gray-300">
+            {task.appointmentNote}
+          </p>
+        )}
+        <div className="mt-4">
+          <Badge color={task.requiresSkinPhoto ? "warning" : "light"}>
+            {t(
+              task.requiresSkinPhoto
+                ? "spa.technician.photoRequired"
+                : "spa.technician.photoOptional",
+            )}
+          </Badge>
+        </div>
       </div>
       <SpaSkinPhotos
         key={task.id}
