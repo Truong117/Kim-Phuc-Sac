@@ -7,6 +7,7 @@ export const spaTime = (minutes: number) =>
 export function spaScheduleItems(
   appointments: SpaAppointment[],
   technicianId: string,
+  minimumMinutes = 0,
 ) {
   const items = appointments
     .filter((a) => a.status !== "cancelled")
@@ -30,7 +31,7 @@ export function spaScheduleItems(
   const placed = items.map((item) => {
     let lane = ends.findIndex((end) => end <= item.start);
     if (lane < 0) lane = ends.length;
-    ends[lane] = item.start + item.durationMinutes;
+    ends[lane] = item.start + Math.max(item.durationMinutes, minimumMinutes);
     return { ...item, lane };
   });
   // Each connected overlap group shares its width, including nested intervals.
@@ -48,7 +49,10 @@ export function spaScheduleItems(
       groupEnd = -1;
     }
     group.push(item);
-    groupEnd = Math.max(groupEnd, item.start + item.durationMinutes);
+    groupEnd = Math.max(
+      groupEnd,
+      item.start + Math.max(item.durationMinutes, minimumMinutes),
+    );
   }
   flush();
   return result;

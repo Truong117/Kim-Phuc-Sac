@@ -73,3 +73,17 @@ test("hourly chart counts each appointment once, even with multiple services, an
   assert.equal(hours.find((h) => h.label === "09:00").count, 2);
   assert.equal(hours.find((h) => h.label === "10:00").count, 0);
 });
+
+test("short adjacent services keep separate visual lanes for touch targets without changing booked durations", () => {
+  const visits = [
+    visit("one", [task("a", "09:00", 15), task("b", "09:15", 15)]),
+  ];
+  const items = spaScheduleItems(visits, "tech-1", 44 / 1.5);
+  assert.deepEqual(
+    items.map((i) => [i.lane, i.lanes, i.durationMinutes]),
+    [
+      [0, 2, 15],
+      [1, 2, 15],
+    ],
+  );
+});

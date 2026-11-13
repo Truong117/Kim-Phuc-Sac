@@ -4,7 +4,11 @@ const previewEnabled = process.env.SPA_UI_TEST_ENABLED !== "false";
 
 async function setup(
   page: Page,
-  options: { settings?: boolean; authenticated?: boolean } = {},
+  options: {
+    settings?: boolean;
+    authenticated?: boolean;
+    userName?: string;
+  } = {},
 ) {
   const requests: { path: string; method: string }[] = [];
   await page.route("**/api/**", async (route) => {
@@ -19,7 +23,7 @@ async function setup(
             ? {}
             : {
                 id: "spa-ui-reviewer",
-                name: "Người xem UI",
+                name: options.userName ?? "Người xem UI",
                 email: "spa-ui@example.test",
                 organization: { id: 1, name: "KPS" },
                 department: null,
@@ -1306,7 +1310,10 @@ test.describe("Spa concept one layout", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await setup(page);
+    await setup(page, {
+      userName:
+        "KPS Staging Executive Assistant (Fake) · Tên dài kiểm tra giao diện",
+    });
     await page.goto("/spa/appointments");
     const grid = page.getByRole("region", {
       name: "Lưới giờ và nhân viên, có thể cuộn",

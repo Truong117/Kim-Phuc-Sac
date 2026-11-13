@@ -94,7 +94,7 @@ export default function SpaHeader() {
               <BellIcon className="size-5" aria-hidden="true" />
             </Link>
           )}
-          <UserDropdown />
+          <UserDropdown compact />
         </div>
       </div>
     </header>

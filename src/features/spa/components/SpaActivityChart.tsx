@@ -13,7 +13,15 @@ export default function SpaActivityChart({
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
+    let disposed = false;
     const draw = () => {
+      if (
+        disposed ||
+        !canvas.isConnected ||
+        !canvas.parentElement ||
+        canvas.clientWidth <= 0
+      )
+        return;
       const context = canvas.getContext("2d");
       if (!context) return;
       const width = canvas.clientWidth,
@@ -24,6 +32,7 @@ export default function SpaActivityChart({
       context.scale(ratio, ratio);
       const style = getComputedStyle(canvas),
         text = getComputedStyle(canvas.parentElement!).color;
+      if (!style.color) return;
       const top = 16,
         bottom = 32,
         start = 28,
@@ -85,7 +94,10 @@ export default function SpaActivityChart({
     const resize = new ResizeObserver(draw);
     resize.observe(canvas);
     draw();
-    return () => resize.disconnect();
+    return () => {
+      disposed = true;
+      resize.disconnect();
+    };
   }, [points, theme]);
   return (
     <figure className="text-gray-500 dark:text-gray-400">

@@ -96,36 +96,38 @@ export default function SpaTeamSchedule({
                   style={{ top: row * 30 * scale }}
                 />
               ))}
-              {spaScheduleItems(appointments, tech.id).map((task) => (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => onDetail(task.appointmentId)}
-                  aria-label={`${task.startTime} – ${spaTime(task.start + task.durationMinutes)} · ${task.customerName} · ${spaTaskName(snapshot, task)}${task.incoming ? ` · ${t("spa.concept.incoming")}` : ""}`}
-                  title={`${task.customerName} · ${spaTaskName(snapshot, task)} · ${task.technicianName} · ${t(`spa.status.task.${task.status}`)}`}
-                  className={`absolute overflow-hidden rounded-lg border border-s-3 p-2 text-start focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-kps-primary focus-visible:outline-none ${palette[index % palette.length]} ${task.incoming ? "border-dashed" : ""}`}
-                  style={{
-                    top: (task.start - start) * scale + 2,
-                    height: Math.max(44, task.durationMinutes * scale - 4),
-                    insetInlineStart: `calc(${(task.lane * 100) / task.lanes}% + 4px)`,
-                    width: `calc(${100 / task.lanes}% - 8px)`,
-                  }}
-                >
-                  <span className="block truncate text-theme-xs">
-                    {task.startTime} –{" "}
-                    {spaTime(task.start + task.durationMinutes)} ·{" "}
-                    {task.room || t("spa.business.unassigned")}
-                  </span>
-                  <span className="mt-1 block truncate text-theme-xs font-semibold">
-                    {task.customerName}
-                  </span>
-                  <span className="mt-1 block truncate text-theme-xs">
-                    {task.incoming
-                      ? t("spa.concept.incoming")
-                      : spaTaskName(snapshot, task)}
-                  </span>
-                </button>
-              ))}
+              {spaScheduleItems(appointments, tech.id, 44 / scale).map(
+                (task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onDetail(task.appointmentId)}
+                    aria-label={`${task.startTime} – ${spaTime(task.start + task.durationMinutes)} · ${task.customerName} · ${spaTaskName(snapshot, task)}${task.incoming ? ` · ${t("spa.concept.incoming")}` : ""}`}
+                    title={`${task.customerName} · ${spaTaskName(snapshot, task)} · ${task.technicianName} · ${t(`spa.status.task.${task.status}`)}`}
+                    className={`absolute overflow-hidden rounded-lg border border-s-3 p-2 text-start focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-kps-primary focus-visible:outline-none ${palette[index % palette.length]} ${task.incoming ? "border-dashed" : ""}`}
+                    style={{
+                      top: (task.start - start) * scale + 2,
+                      height: Math.max(44, task.durationMinutes * scale - 4),
+                      insetInlineStart: `calc(${(task.lane * 100) / task.lanes}% + 4px)`,
+                      width: `calc(${100 / task.lanes}% - 8px)`,
+                    }}
+                  >
+                    <span className="block truncate text-theme-xs">
+                      {task.startTime} –{" "}
+                      {spaTime(task.start + task.durationMinutes)} ·{" "}
+                      {task.room || t("spa.business.unassigned")}
+                    </span>
+                    <span className="mt-1 block truncate text-theme-xs font-semibold">
+                      {task.customerName}
+                    </span>
+                    <span className="mt-1 block truncate text-theme-xs">
+                      {task.incoming
+                        ? t("spa.concept.incoming")
+                        : spaTaskName(snapshot, task)}
+                    </span>
+                  </button>
+                ),
+              )}
             </div>
           ))}
         </div>
