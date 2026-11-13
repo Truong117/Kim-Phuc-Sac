@@ -83,6 +83,18 @@ export function createTaskReportItem(
         status: "KEEP",
         unit: task.quantity_unit ?? task.progress?.unit ?? "video",
         outputs: [],
+        ...((task.quantity_unit ?? task.progress?.unit) === "khách hàng"
+          ? {
+              care_entries: [
+                {
+                  client_key: crypto.randomUUID(),
+                  activities: [{ service: "", result: "" }],
+                  evidence_links: [],
+                  attachment_ids: [],
+                },
+              ],
+            }
+          : {}),
       },
     },
   };
@@ -158,6 +170,47 @@ export function validTaskLink(value: unknown): value is ReportTaskLink {
     input.expected_revision >= 0 &&
     ["KEEP", "IN_PROGRESS", "COMPLETED", "BLOCKED"].includes(input.status) &&
     Array.isArray(input.outputs) &&
+    (input.care_entries === undefined ||
+      (Array.isArray(input.care_entries) &&
+        input.care_entries.length <= 20 &&
+        input.care_entries.every(
+          (e) =>
+            e &&
+            typeof e.client_key === "string" &&
+            (e.customer_id === undefined ||
+              (Number.isInteger(e.customer_id) && e.customer_id > 0)) &&
+            (e.name === undefined || typeof e.name === "string") &&
+            (!e.new_customer ||
+              (typeof e.new_customer.request_key === "string" &&
+                typeof e.new_customer.name === "string" &&
+                typeof e.new_customer.channel === "string" &&
+                (e.new_customer.contact === undefined ||
+                  typeof e.new_customer.contact === "string"))) &&
+            (!e.contact_update ||
+              (typeof e.contact_update.channel === "string" &&
+                typeof e.contact_update.value === "string")) &&
+            (e.legacy_output_id === undefined ||
+              (Number.isInteger(e.legacy_output_id) &&
+                e.legacy_output_id > 0)) &&
+            (e.attachment_names === undefined ||
+              (e.attachment_names !== null &&
+                typeof e.attachment_names === "object" &&
+                Object.values(e.attachment_names).every(
+                  (v) => typeof v === "string",
+                ))) &&
+            Array.isArray(e.activities) &&
+            e.activities.length <= 10 &&
+            e.activities.every(
+              (a) =>
+                a &&
+                typeof a.service === "string" &&
+                typeof a.result === "string",
+            ) &&
+            Array.isArray(e.evidence_links) &&
+            e.evidence_links.every((v) => typeof v === "string") &&
+            Array.isArray(e.attachment_ids) &&
+            e.attachment_ids.every((v) => Number.isInteger(v) && v > 0),
+        ))) &&
     input.outputs.length <= 50 &&
     input.outputs.every(
       (o: TaskOutput) =>

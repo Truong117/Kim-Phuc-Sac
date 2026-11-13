@@ -56,6 +56,35 @@ async function setup(
         },
       });
     }
+    if (path.endsWith("/care-customers"))
+      return route.fulfill({
+        json: {
+          data: [
+            {
+              id: 701,
+              name: "Khách A",
+              code: "KH-701",
+              contacts: [{ channel: "Zalo", value: "0901234567" }],
+              task_output_id: null,
+              counted: false,
+            },
+            {
+              id: 702,
+              name: "Khách B",
+              code: "KH-702",
+              contacts: [
+                {
+                  channel: "Messenger",
+                  value: "https://facebook.com/customer.b",
+                },
+              ],
+              task_output_id: null,
+              counted: false,
+            },
+          ],
+          meta: { current_page: 1, last_page: 1 },
+        },
+      });
     const json =
       path === "/api/workspaces"
         ? { workspaces: [{ id: "internal", home: "/", sections: [] }] }
@@ -292,28 +321,151 @@ test("a restored update remains readable and cancellable when task access was re
   await expect(page.locator("#quick-draft-completed")).toBeVisible();
 });
 
-test("daily care progress retains customer identifiers in the report save payload", async ({
+test("daily customer form saves individual activities and canonical identities without manual reference codes", async ({
   page,
 }) => {
   const submissions = await setup(page, { unit: "khách hàng" });
   await page
     .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
     .click();
+  await expect(page.locator("#task-report-result-51")).toHaveCount(0);
+  await page.getByLabel("Số lượng khách", { exact: true }).fill("2");
   await page
-    .locator("#task-report-result-51")
-    .fill("Đã tư vấn khách hàng qua Facebook");
+    .getByRole("button", { name: "Cập nhật danh sách", exact: true })
+    .click();
+  const selects = page.locator('select[id^="care-51-"][id$="-customer"]');
+  await selects.nth(0).selectOption("701");
+  await selects.nth(1).selectOption("702");
   await page
-    .getByRole("button", { name: "+ Thêm khách / lượt chăm sóc", exact: true })
+    .getByLabel("Dịch vụ / việc hỗ trợ", { exact: true })
+    .nth(0)
+    .fill("Hướng dẫn chăm sóc da tại nhà");
+  await page
+    .getByRole("textbox", { name: "Kết quả / hẹn theo dõi", exact: true })
+    .nth(0)
+    .fill("Đã hướng dẫn quy trình");
+  await page
+    .getByLabel("Dịch vụ / việc hỗ trợ", { exact: true })
+    .nth(1)
+    .fill("Tư vấn sản phẩm");
+  await page
+    .getByRole("textbox", { name: "Kết quả / hẹn theo dõi", exact: true })
+    .nth(1)
+    .fill("Khách theo dõi thêm");
+  await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(page.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuenow",
+    "40",
+  );
+  await expect(page.locator("#linked-task-51")).toContainText(
+    "Khách B — Tư vấn sản phẩm: Khách theo dõi thêm",
+  );
+  await page.locator("#next-day-plan").fill("Theo dõi phản hồi");
+  await page.locator('form button[type="submit"]').click();
+  await expect.poll(() => submissions.length).toBe(1);
+  const items = submissions[0].items as {
+    task_progress: {
+      unit: string;
+      care_entries: {
+        customer_id: number;
+        activities: { service: string; result: string }[];
+      }[];
+    };
+  }[];
+  expect(items[0].task_progress.unit).toBe("khách hàng");
+  expect(items[0].task_progress.care_entries.map((e) => e.customer_id)).toEqual(
+    [701, 702],
+  );
+  expect(items[0].task_progress.care_entries[1].activities[0].service).toBe(
+    "Tư vấn sản phẩm",
+  );
+});
+
+test("customer count reduction confirms before discarding entered rows and blocks duplicate customers", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  await page.getByLabel("Số lượng khách", { exact: true }).fill("2");
+  await page
+    .getByRole("button", { name: "Cập nhật danh sách", exact: true })
+    .click();
+  const selects = page.locator('select[id^="care-51-"][id$="-customer"]');
+  await selects.nth(0).selectOption("701");
+  await selects.nth(1).selectOption("701");
+  await expect(
+    page.getByText("Có khách bị chọn trùng.", { exact: false }),
+  ).toBeVisible();
+  await page.getByLabel("Số lượng khách", { exact: true }).fill("1");
+  await page
+    .getByRole("button", { name: "Cập nhật danh sách", exact: true })
+    .click();
+  await expect(selects).toHaveCount(2);
+  await page
+    .getByRole("button", { name: "Giữ danh sách", exact: true })
+    .click();
+  await expect(page.getByLabel("Số lượng khách", { exact: true })).toHaveValue(
+    "2",
+  );
+  await page.getByLabel("Số lượng khách", { exact: true }).fill("1");
+  await page
+    .getByRole("button", { name: "Cập nhật danh sách", exact: true })
     .click();
   await page
-    .getByRole("textbox", {
-      name: "Khách hàng / nội dung chăm sóc 1",
-      exact: true,
-    })
+    .getByRole("button", { name: "Bỏ các dòng cuối", exact: true })
+    .click();
+  await expect(selects).toHaveCount(1);
+});
+
+test("quick-create customer accepts contact entry and multiple activities inside the daily report", async ({
+  page,
+}) => {
+  await setup(page, { unit: "khách hàng" });
+  await page
+    .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(
+    page.locator("[data-report-error-summary]").first(),
+  ).toBeFocused();
+  await page
+    .locator('select[id^="care-51-"][id$="-customer"]')
+    .selectOption("new");
+  await page
+    .getByRole("textbox", { name: "Tên khách hàng", exact: true })
     .fill("Chị An");
   await page
-    .getByRole("textbox", { name: "Mã khách hàng 1", exact: true })
-    .fill("KH001");
+    .getByRole("textbox", {
+      name: "Số điện thoại / liên kết hồ sơ (không bắt buộc)",
+      exact: true,
+    })
+    .fill("0901234567");
+  await page
+    .getByLabel("Dịch vụ / việc hỗ trợ", { exact: true })
+    .fill("Hướng dẫn chăm sóc da");
+  await page
+    .getByRole("textbox", { name: "Kết quả / hẹn theo dõi", exact: true })
+    .fill("Đã hướng dẫn");
+  await page
+    .getByRole("button", {
+      name: "+ Thêm việc hỗ trợ cho khách này",
+      exact: true,
+    })
+    .click();
+  await page
+    .getByLabel("Dịch vụ / việc hỗ trợ", { exact: true })
+    .nth(1)
+    .fill("Tư vấn sản phẩm");
+  await page
+    .getByRole("textbox", { name: "Kết quả / hẹn theo dõi", exact: true })
+    .nth(1)
+    .fill("Hẹn phản hồi");
   await page
     .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
     .click();
@@ -321,12 +473,7 @@ test("daily care progress retains customer identifiers in the report save payloa
     "aria-valuenow",
     "20",
   );
-  await page.locator("#next-day-plan").fill("Tiếp tục chăm sóc khách hàng");
-  await page.locator('form button[type="submit"]').click();
-  await expect.poll(() => submissions.length).toBe(1);
-  const items = submissions[0].items as {
-    task_progress: { unit: string; outputs: { reference: string }[] };
-  }[];
-  expect(items[0].task_progress.unit).toBe("khách hàng");
-  expect(items[0].task_progress.outputs[0].reference).toBe("KH001");
+  await expect(page.locator("#linked-task-51")).toContainText(
+    "Chị An — Hướng dẫn chăm sóc da: Đã hướng dẫn; Tư vấn sản phẩm: Hẹn phản hồi",
+  );
 });

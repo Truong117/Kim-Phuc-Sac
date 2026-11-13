@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import Button from "@/components/ui/button/Button";
+import CustomerCareEvidence from "./CustomerCareEvidence";
 import type {
   WorkItemFormData,
   WorkItemValidationErrors,
@@ -52,7 +53,12 @@ export default function LinkedTaskReportItem({
       )}
       {link.progress.input.outputs.length > 0 && (
         <p className="text-theme-xs text-gray-600 dark:text-gray-300">
-          {t("products")}:{" "}
+          {t(
+            link.progress.input.unit === "khách hàng"
+              ? "customers"
+              : "products",
+          )}
+          :{" "}
           {link.progress.input.outputs
             .map((o) => (o.reference ? `${o.name} (${o.reference})` : o.name))
             .join(", ")}
@@ -67,6 +73,12 @@ export default function LinkedTaskReportItem({
         >
           {messages.join(" ")}
         </p>
+      )}
+      {link.progress.input.care_entries && (
+        <CustomerCareEvidence
+          taskId={link.task_id}
+          entries={link.progress.input.care_entries}
+        />
       )}
       <div className="flex flex-wrap gap-2">
         <Button
