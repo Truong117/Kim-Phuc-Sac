@@ -21,6 +21,14 @@ export const mapReportFieldErrors = (
       mapped.plan = message;
       continue;
     }
+    const taskMatch = /^items\.(\d+)\.(task_id|task_progress)(?:\..*)?$/.exec(
+      path,
+    );
+    if (taskMatch) {
+      const row = submittedItems[Number(taskMatch[1])];
+      if (row) (mapped.items[row.clientId] ??= {}).content ??= message;
+      continue;
+    }
     const match =
       /^items\.(\d+)\.(content|result|status|note|issue|evidence_links|facebook_selections)(?:\.\d+(?:\.[a-z_]+)?)?$/.exec(
         path,

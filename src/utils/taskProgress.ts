@@ -1,0 +1,226 @@
+import type {
+  ManagedTask,
+  ReportTaskLink,
+  TaskOutput,
+  TaskProgress,
+  TaskQuantityUnit,
+} from "@/types/tasks";
+import type { WorkItemFormData } from "@/types/reports";
+
+export const outputIdentity = (name: string) =>
+  name.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi");
+
+export const needsOutputReference = (
+  unit: TaskQuantityUnit | null | undefined,
+) => unit === "khách hàng" || unit === "lượt chăm sóc";
+export const taskOutputIdentity = (
+  output: TaskOutput,
+  unit: TaskQuantityUnit | null | undefined,
+) =>
+  outputIdentity(
+    needsOutputReference(unit) ? (output.reference ?? "") : output.name,
+  );
+
+export function namedVideoSuggestions(text: string): string[] {
+  if (
+    !/hoàn thành|hoàn thiện|đã (dựng|edit|biên tập)/iu.test(text) ||
+    /chưa|không|dự kiến|kế hoạch|sẽ |đang |cần |chờ |nhắc lại|đã báo cáo|lũy kế|luỹ kế/iu.test(
+      text,
+    )
+  )
+    return [];
+  const quoted =
+    '(?:"[^"\\r\\n]{1,200}"|“[^”\\r\\n]{1,200}”|‘[^’\\r\\n]{1,200}’)';
+  const list = new RegExp(
+    "(?:hoàn thành|hoàn thiện|đã (?:dựng|edit|biên tập))\\s+(?:xong\\s+)?(?:các\\s+)?(?:\\d+\\s+)?(?:video|clip)\\s*(?::\\s*(?:(?:video|clip)\\s+)?)?(" +
+      quoted +
+      "(?:\\s*(?:,|;|và|&)\\s*(?:(?:video|clip)\\s*)?" +
+      quoted +
+      ")*)",
+    "giu",
+  );
+  const names = new Map<string, string>();
+  for (const match of text.matchAll(list)) {
+    for (const name of match[1].matchAll(
+      /"([^"\r\n]+)"|“([^”\r\n]+)”|‘([^’\r\n]+)’/gu,
+    )) {
+      const value = (name[1] || name[2] || name[3]).trim();
+      if (value && !/https?:\/\//iu.test(value))
+        names.set(outputIdentity(value), value);
+    }
+  }
+  return [...names.values()];
+}
+
+export function createTaskReportItem(
+  task: ManagedTask,
+  existing?: WorkItemFormData,
+): WorkItemFormData {
+  const item = existing
+    ? structuredClone(existing)
+    : {
+        clientId: `assigned-task-${task.id}`,
+        content: task.title,
+        result: "",
+        status: "IN_PROGRESS" as const,
+        note: "",
+        issue: "",
+        evidenceLinks: "",
+      };
+  const link: ReportTaskLink = item.taskLink ?? {
+    task_id: task.id,
+    snapshot: {
+      id: task.id,
+      title: task.title,
+      description: task.description,
+      due_date: task.due_date,
+      target_quantity: task.target_quantity,
+      quantity_unit: task.quantity_unit,
+    },
+    progress: {
+      input: {
+        expected_revision: task.progress?.revision ?? 0,
+        status: "KEEP",
+        unit: task.quantity_unit ?? task.progress?.unit ?? "video",
+        outputs: [],
+        ...((task.quantity_unit ?? task.progress?.unit) === "khách hàng"
+          ? {
+              care_entries: [
+                {
+                  client_key: crypto.randomUUID(),
+                  activities: [{ service: "", result: "" }],
+                  evidence_links: [],
+                  attachment_ids: [],
+                },
+              ],
+            }
+          : {}),
+      },
+    },
+  };
+  item.result = link.progress.source_result ?? item.result;
+  item.taskLink = structuredClone(link);
+  return item;
+}
+
+export function previewTaskProgress(
+  task: ManagedTask,
+  item?: WorkItemFormData,
+): TaskProgress | null {
+  if (!task.progress) return null;
+  const p = structuredClone(task.progress);
+  if (!item?.taskLink?.pending) return p;
+  const update = item.taskLink.progress.input;
+  const unit = update.unit;
+  const outputs = new Map(
+    p.outputs
+      .filter((o) => o.unit === unit)
+      .map((o) => [o.id ? `id:${o.id}` : taskOutputIdentity(o, unit), o]),
+  );
+  for (const output of update.outputs) {
+    const previous = p.outputs.find(
+      (o) =>
+        o.unit === unit &&
+        (output.id
+          ? output.id === o.id
+          : taskOutputIdentity(output, unit) === taskOutputIdentity(o, unit)),
+    );
+    outputs.set(
+      previous?.id ? `id:${previous.id}` : taskOutputIdentity(output, unit),
+      output,
+    );
+  }
+  if (unit)
+    p.counts[unit] = [...outputs.values()].filter((o) => o.completed).length;
+  p.unit = task.quantity_unit ?? unit;
+  p.completed = p.unit ? (p.counts[p.unit] ?? 0) : 0;
+  p.percent =
+    task.target_quantity && task.quantity_unit
+      ? Math.min(
+          100,
+          Math.round((p.completed * 1000) / task.target_quantity) / 10,
+        )
+      : null;
+  return p;
+}
+
+export function validTaskLink(value: unknown): value is ReportTaskLink {
+  if (!value || typeof value !== "object") return false;
+  const link = value as ReportTaskLink;
+  const input = link.progress?.input;
+  return (
+    (link.pending === undefined || typeof link.pending === "boolean") &&
+    (link.progress?.source_result === undefined ||
+      typeof link.progress.source_result === "string") &&
+    (input?.unit === null ||
+      [
+        "video",
+        "ảnh",
+        "bài viết",
+        "sản phẩm",
+        "khách hàng",
+        "lượt chăm sóc",
+      ].includes(input?.unit)) &&
+    Number.isInteger(link.task_id) &&
+    link.task_id > 0 &&
+    typeof link.snapshot?.title === "string" &&
+    link.snapshot.id === link.task_id &&
+    Boolean(input) &&
+    Number.isInteger(input.expected_revision) &&
+    input.expected_revision >= 0 &&
+    ["KEEP", "IN_PROGRESS", "COMPLETED", "BLOCKED"].includes(input.status) &&
+    Array.isArray(input.outputs) &&
+    (input.care_entries === undefined ||
+      (Array.isArray(input.care_entries) &&
+        input.care_entries.length <= 20 &&
+        input.care_entries.every(
+          (e) =>
+            e &&
+            typeof e.client_key === "string" &&
+            (e.customer_id === undefined ||
+              (Number.isInteger(e.customer_id) && e.customer_id > 0)) &&
+            (e.name === undefined || typeof e.name === "string") &&
+            (!e.new_customer ||
+              (typeof e.new_customer.request_key === "string" &&
+                typeof e.new_customer.name === "string" &&
+                typeof e.new_customer.channel === "string" &&
+                (e.new_customer.contact === undefined ||
+                  typeof e.new_customer.contact === "string"))) &&
+            (!e.contact_update ||
+              (typeof e.contact_update.channel === "string" &&
+                typeof e.contact_update.value === "string")) &&
+            (e.legacy_output_id === undefined ||
+              (Number.isInteger(e.legacy_output_id) &&
+                e.legacy_output_id > 0)) &&
+            (e.attachment_names === undefined ||
+              (e.attachment_names !== null &&
+                typeof e.attachment_names === "object" &&
+                Object.values(e.attachment_names).every(
+                  (v) => typeof v === "string",
+                ))) &&
+            Array.isArray(e.activities) &&
+            e.activities.length <= 10 &&
+            e.activities.every(
+              (a) =>
+                a &&
+                typeof a.service === "string" &&
+                typeof a.result === "string",
+            ) &&
+            Array.isArray(e.evidence_links) &&
+            e.evidence_links.every((v) => typeof v === "string") &&
+            Array.isArray(e.attachment_ids) &&
+            e.attachment_ids.every((v) => Number.isInteger(v) && v > 0),
+        ))) &&
+    input.outputs.length <= 50 &&
+    input.outputs.every(
+      (o: TaskOutput) =>
+        Boolean(o) &&
+        typeof o.name === "string" &&
+        (o.reference == null ||
+          (typeof o.reference === "string" && o.reference.length <= 200)) &&
+        o.name.length <= 200 &&
+        typeof o.completed === "boolean" &&
+        (o.id == null || (Number.isInteger(o.id) && o.id > 0)),
+    )
+  );
+}

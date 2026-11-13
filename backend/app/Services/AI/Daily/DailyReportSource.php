@@ -28,6 +28,7 @@ final class DailyReportSource
                 'content' => $item->content, 'result' => $item->result ?? '', 'note' => $item->note ?? '',
                 'issue' => $item->issue ?? '', 'evidence_links' => $item->evidence_links ?? [],
                 'evidence_status' => 'unverified',
+                ...($item->task_id ? ['task_quantity' => $item->task_progress['quantity'] ?? null] : []),
             ])->all(),
         ];
         if (strlen(json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > config('daily_report_ai.max_snapshot_bytes')) {
