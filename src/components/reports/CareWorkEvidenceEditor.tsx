@@ -34,7 +34,7 @@ export default function CareWorkEvidenceEditor({
         file.type,
       )
     ) {
-      setError(t("fileLimit"));
+      setError(t("works.fileLimit"));
       return;
     }
     setError("");
@@ -59,7 +59,7 @@ export default function CareWorkEvidenceEditor({
   }
   return (
     <details className="border-t border-gray-200 pt-3 dark:border-gray-700">
-      <summary className="cursor-pointer text-theme-xs text-kps-primary dark:text-sidebar-selected">
+      <summary className="cursor-pointer text-theme-xs text-kps-primary dark:text-brand-200">
         {t("works.evidence")}
       </summary>
       <div className="mt-3 space-y-3">
@@ -71,6 +71,7 @@ export default function CareWorkEvidenceEditor({
             id={`care-work-links-${value.client_key}`}
             value={value.evidence_links.join("\n")}
             rows={2}
+            placeholder={t("works.proofPlaceholder")}
             disabled={disabled}
             onChange={(text) =>
               onChange({ ...value, evidence_links: text.split(/\r?\n/) })
@@ -86,7 +87,7 @@ export default function CareWorkEvidenceEditor({
             type="file"
             accept="image/jpeg,image/png,image/webp,application/pdf"
             disabled={disabled || value.attachment_ids.length >= 3}
-            hint={t("fileLimit")}
+            hint={t("works.fileLimit")}
             onChange={(e) => {
               void upload(e.target.files?.[0]);
               e.target.value = "";
@@ -98,7 +99,7 @@ export default function CareWorkEvidenceEditor({
             <button
               type="button"
               disabled={disabled}
-              className="text-theme-xs text-kps-primary underline dark:text-sidebar-selected"
+              className="text-theme-xs text-kps-primary underline dark:text-brand-200"
               onClick={() => {
                 onBusy(true);
                 void downloadCareEvidence(
