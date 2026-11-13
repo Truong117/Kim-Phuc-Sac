@@ -131,6 +131,7 @@ const date = "2026-11-11";
 export const spaPreviewFixture: SpaPreviewSnapshot = {
   ...spaBusinessFixture,
   date,
+  skinPhotos: [],
   previewTechnician: { id: "tech-1", name: "Lan Anh" },
   customers: appointments.map((item, index) => ({
     id: `customer-${index + 1}`,

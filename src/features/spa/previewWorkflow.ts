@@ -1,3 +1,7 @@
+import { applySpaPhotoCommand } from "./skinPhotos";
+import type { SpaPhotoAccess } from "./types";
+import { normalizeSpaPhone, validateSpaCustomer } from "./customerValidation";
+export { normalizeSpaPhone } from "./customerValidation";
 import {
   isSpaBusinessCommand,
   applySpaBusinessCommand,
@@ -17,14 +21,6 @@ export const normalizeSpaText = (value: string) =>
     .replace(/đ/gi, "d")
     .toLowerCase()
     .trim();
-export const normalizeSpaPhone = (value: string) => {
-  const phone = value.replace(/[\s().-]/g, "");
-  return phone.startsWith("+84")
-    ? `0${phone.slice(3)}`
-    : phone.startsWith("84") && phone.length === 11
-      ? `0${phone.slice(2)}`
-      : phone;
-};
 export const spaTimeMinutes = (value: string): number | null =>
   /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
     ? Number(value.slice(0, 2)) * 60 + Number(value.slice(3))
@@ -57,7 +53,10 @@ export function applySpaPreviewCommand(
   command: SpaPreviewCommand,
   actor: SpaActor,
   at: string,
+  photoAccess: SpaPhotoAccess = { manage: false, technicianId: null },
 ): { snapshot: SpaPreviewSnapshot; error?: SpaPreviewError } {
+  if (command.kind === "photo-add" || command.kind === "photo-remove")
+    return applySpaPhotoCommand(snapshot, command, actor, at, photoAccess);
   if (isSpaBusinessCommand(command))
     return applySpaBusinessCommand(snapshot, command, actor, at);
   const fail = (error: SpaPreviewError) => ({ snapshot, error });
@@ -69,18 +68,10 @@ export function applySpaPreviewCommand(
     return { snapshot: next };
   }
   if (command.kind === "customer") {
+    const error = validateSpaCustomer(next, command.customer, command.id);
+    if (error) return fail(error);
     const name = command.customer.name.trim();
     const phone = normalizeSpaPhone(command.customer.phone);
-    if (!name || name.length > 100) return fail("nameRequired");
-    if (!/^\d{10,15}$/.test(phone)) return fail("phoneInvalid");
-    if (command.customer.note.length > 1000) return fail("noteTooLong");
-    if (
-      next.customers.some(
-        (item) =>
-          item.id !== command.id && normalizeSpaPhone(item.phone) === phone,
-      )
-    )
-      return fail("phoneDuplicate");
     const customer = {
       id: command.id,
       name,
@@ -120,6 +111,23 @@ export function applySpaPreviewCommand(
     )
       return fail("invalidTransition");
     const draft = command.draft;
+    if (draft.newCustomer) {
+      if (next.customers.some((c) => c.id === draft.customerId))
+        return fail("duplicateOperation");
+      const error = validateSpaCustomer(
+        next,
+        draft.newCustomer,
+        draft.customerId,
+      );
+      if (error)
+        return fail(error === "noteTooLong" ? "customerNoteTooLong" : error);
+      next.customers.push({
+        id: draft.customerId,
+        name: draft.newCustomer.name.trim(),
+        phone: normalizeSpaPhone(draft.newCustomer.phone),
+        note: draft.newCustomer.note.trim(),
+      });
+    }
     const customer = next.customers.find(
       (item) => item.id === draft.customerId,
     );

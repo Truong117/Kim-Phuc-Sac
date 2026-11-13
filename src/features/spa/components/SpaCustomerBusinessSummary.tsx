@@ -1,3 +1,4 @@
+import SpaCustomerPhotos from "./SpaCustomerPhotos";
 import { Link } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useAuthorization } from "@/hooks/useAuthorization";
@@ -28,6 +29,7 @@ export default function SpaCustomerBusinessSummary({
       ) : (
         <p>{t("spa.business.empty")}</p>
       )}
+      <SpaCustomerPhotos key={customerId} customerId={customerId} />
       {canOpenWorkspacePath(workspaces, "/spa/cashier") && (
         <>
           <p>
