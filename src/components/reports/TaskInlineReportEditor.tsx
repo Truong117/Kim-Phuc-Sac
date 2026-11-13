@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { focusFirstReportError } from "@/utils/reportValidation";
 import { useTranslation } from "react-i18next";
 import Button from "@/components/ui/button/Button";
 import Label from "@/components/form/Label";
@@ -57,7 +58,12 @@ export default function TaskInlineReportEditor({
   onCancel: () => void;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "taskProgress" });
-  const [error, setError] = useState("");
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [error, setErrorMessage] = useState("");
+  const setError = (message: string) => {
+    setErrorMessage(message);
+    if (message) focusFirstReportError(editorRef.current);
+  };
   const [notice, setNotice] = useState("");
   const [uploading, setUploading] = useState(false);
   const [countPending, setCountPending] = useState(false);
@@ -212,7 +218,10 @@ export default function TaskInlineReportEditor({
     });
   }
   return (
-    <div className="mt-4 space-y-4 rounded-xl bg-kps-primary/5 p-4 dark:bg-kps-primary/10">
+    <div
+      ref={editorRef}
+      className="mt-4 space-y-4 rounded-xl bg-kps-primary/5 p-4 dark:bg-kps-primary/10"
+    >
       <details className="text-theme-xs text-gray-600 dark:text-gray-300">
         <summary className="cursor-pointer font-medium text-kps-primary dark:text-sidebar-selected">
           {t("requirements")}

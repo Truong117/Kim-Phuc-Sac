@@ -429,6 +429,12 @@ test("quick-create customer accepts contact entry and multiple activities inside
     .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
     .click();
   await page
+    .getByRole("button", { name: "Áp dụng vào báo cáo", exact: true })
+    .click();
+  await expect(
+    page.locator("[data-report-error-summary]").first(),
+  ).toBeFocused();
+  await page
     .locator('select[id^="care-51-"][id$="-customer"]')
     .selectOption("new");
   await page
