@@ -115,7 +115,10 @@ test.describe("spa UI preview", () => {
       page.getByRole("link", { name: "Báo cáo công việc", exact: true }),
     ).toHaveCount(0);
     await expect(
-      page.getByText("Lịch hẹn còn hiệu lực", { exact: true }).locator(".."),
+      page
+        .getByText("Lịch hẹn trong ngày", { exact: true })
+        .first()
+        .locator(".."),
     ).toContainText("5");
     const nav = page.getByRole("navigation", { name: "Chức năng spa" });
     const links = await nav.getByRole("link").evaluateAll((items) =>
@@ -144,9 +147,14 @@ test.describe("spa UI preview", () => {
   }) => {
     await setup(page);
     await page.goto("/spa/appointments");
+    await page
+      .getByRole("button", { name: "Danh sách lịch", exact: true })
+      .click();
     await page.getByLabel("Tìm khách hoặc mã lịch").fill("minh anh");
     await expect(
-      page.getByText("Nguyễn Minh Anh", { exact: true }),
+      page
+        .getByRole("region", { name: "Danh sách lịch hẹn mẫu", exact: true })
+        .getByText("Nguyễn Minh Anh", { exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Trần Ngọc Linh", { exact: true })).toHaveCount(
       0,
@@ -1200,5 +1208,135 @@ test.describe("Spa inline booking and skin photos", () => {
       .getByRole("button", { name: /Nguyễn Minh Anh/ })
       .click();
     await expect(section.locator("img")).toHaveCount(0);
+  });
+});
+
+test.describe("Spa concept one layout", () => {
+  test.skip(!previewEnabled, "SPA UI preview flag disabled");
+  test("overview opens booking in place and header search finds an existing customer", async ({
+    page,
+  }) => {
+    const requests = await setup(page);
+    await page.goto("/spa");
+    await expect(
+      page.getByRole("img", { name: "Biểu đồ số lượt hẹn theo giờ" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Không gian phục vụ", exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Tạo lịch hẹn mẫu", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page
+      .getByRole("searchbox", {
+        name: "Tìm khách, số điện thoại…",
+        exact: true,
+      })
+      .fill("0000000002");
+    await page
+      .getByRole("searchbox", {
+        name: "Tìm khách, số điện thoại…",
+        exact: true,
+      })
+      .press("Enter");
+    await expect(
+      page.getByRole("heading", { name: "Khách hàng", exact: true, level: 2 }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("article", { name: "Trần Ngọc Linh", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("article", { name: "Nguyễn Minh Anh", exact: true }),
+    ).toHaveCount(0);
+    expect(requests.every((request) => request.method === "GET")).toBe(true);
+  });
+  test("timeline opens the correct visit and reception moves it between board columns", async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.goto("/spa/appointments");
+    const timeline = page.getByRole("region", {
+      name: "Lịch phục vụ theo kỹ thuật viên",
+      exact: true,
+    });
+    await expect(timeline).toBeVisible();
+    const event = timeline.getByRole("button", {
+      name: "09:00 – 10:00 · Nguyễn Minh Anh · Chăm sóc phục hồi da",
+      exact: true,
+    });
+    await event.click();
+    await expect(page.getByRole("dialog")).toContainText(
+      "Nguyễn Minh Anh · SPA-001",
+    );
+    await page
+      .getByRole("button", { name: "Đóng biểu mẫu", exact: true })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Chức năng spa" })
+      .getByRole("link", { name: "Tiếp nhận và điều phối", exact: true })
+      .click();
+    const booked = page.getByRole("region", {
+      name: "Đã đặt lịch",
+      exact: true,
+    });
+    const waiting = page.getByRole("region", {
+      name: "Chờ phục vụ",
+      exact: true,
+    });
+    await expect(booked.getByRole("article")).toHaveCount(1);
+    await expect(waiting.getByRole("article")).toHaveCount(2);
+    await booked
+      .getByRole("button", { name: "Xác nhận khách đến", exact: true })
+      .click();
+    await expect(booked.getByRole("article")).toHaveCount(0);
+    await expect(waiting.getByRole("article")).toHaveCount(3);
+    await expect(
+      waiting.getByRole("article", {
+        name: "SPA-004 · Phạm Bảo Ngọc",
+        exact: true,
+      }),
+    ).toContainText("Tiếp nhận: Người xem UI");
+  });
+  test("phone keeps timeline scrolling inside the calendar and customer cards inside the viewport", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page);
+    await page.goto("/spa/appointments");
+    const grid = page.getByRole("region", {
+      name: "Lưới giờ và nhân viên, có thể cuộn",
+      exact: true,
+    });
+    await expect(grid).toBeVisible();
+    expect(
+      await grid.evaluate(
+        (element) => element.scrollWidth > element.clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "Đóng hoặc mở thanh điều hướng" })
+      .click();
+    await page
+      .getByRole("navigation", { name: "Chức năng spa" })
+      .getByRole("link", { name: "Khách hàng", exact: true })
+      .click();
+    await expect(
+      page.getByRole("article", { name: "Nguyễn Minh Anh", exact: true }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
   });
 });

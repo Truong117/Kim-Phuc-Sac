@@ -9,13 +9,25 @@ import SpaSidebar from "@/features/spa/components/SpaSidebar";
 import AppSidebar from "./AppSidebar";
 import Backdrop from "./Backdrop";
 
-type LayoutProps = React.PropsWithChildren<{ workspace?: WorkspaceId }>;
+type LayoutProps = React.PropsWithChildren<{
+  workspace?: WorkspaceId;
+  header?: React.ReactNode;
+}>;
 
-const LayoutContent = ({ workspace = "internal", children }: LayoutProps) => {
+const LayoutContent = ({
+  workspace = "internal",
+  header,
+  children,
+}: LayoutProps) => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
   return (
-    <div className="min-h-screen xl:flex">
+    <div
+      className={cn(
+        "min-h-screen xl:flex",
+        workspace === "spa" && "bg-gray-50 dark:bg-gray-950",
+      )}
+    >
       {workspace === "spa" ? <SpaSidebar /> : <AppSidebar />}
       <Backdrop />
       {workspace === "internal" && <KpsChatBubble />}
@@ -27,7 +39,7 @@ const LayoutContent = ({ workspace = "internal", children }: LayoutProps) => {
           isMobileOpen ? "ms-0" : "",
         )}
       >
-        <AppHeader workspace={workspace} />
+        {header ?? <AppHeader workspace={workspace} />}
         <main className="mx-auto w-full max-w-375 p-4 md:p-6">
           {children ?? <Outlet />}
         </main>
@@ -36,11 +48,13 @@ const LayoutContent = ({ workspace = "internal", children }: LayoutProps) => {
   );
 };
 
-const AppLayout = ({ workspace, children }: LayoutProps) => {
+const AppLayout = ({ workspace, header, children }: LayoutProps) => {
   return (
     <NotificationProvider>
       <SidebarProvider>
-        <LayoutContent workspace={workspace}>{children}</LayoutContent>
+        <LayoutContent workspace={workspace} header={header}>
+          {children}
+        </LayoutContent>
       </SidebarProvider>
     </NotificationProvider>
   );
