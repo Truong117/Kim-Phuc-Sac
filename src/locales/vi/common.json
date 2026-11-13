@@ -3179,7 +3179,12 @@
     "careCountPending": "Hãy bấm Cập nhật danh sách để áp dụng số lượng khách vừa nhập.",
     "careInvalidContact": "Số điện thoại hoặc liên kết hồ sơ chưa hợp lệ. Nhập số điện thoại đầy đủ hoặc link http/https của khách.",
     "customers": "Khách hàng",
-    "careProductHint": "Mỗi khách một dòng; nhiều việc hỗ trợ được ghi trong cùng dòng khách. Số lượng nhập chỉ tạo form, không tự cộng tiến độ."
+    "careProductHint": "Mỗi đầu việc chọn được nhiều nội dung hỗ trợ và nhiều khách. Khách trùng giữa các đầu việc chỉ tính một lần vào tiến độ.",
+    "careWorkError": {
+      "required": "Chọn nội dung hỗ trợ, chọn khách và nhập kết quả cho từng công việc. Tối đa 20 đầu việc, 10 nội dung/đầu việc, 20 khách/đầu việc và 50 khách duy nhất.",
+      "contact": "Kiểm tra nguồn khách, số điện thoại hoặc liên kết hồ sơ trong các công việc.",
+      "duplicate": "Một đầu việc có nội dung hoặc khách bị chọn trùng. Kiểm tra danh sách trước khi áp dụng."
+    }
   },
   "reportMail": {
     "title": "Nhận báo cáo tuần qua email",
@@ -4391,6 +4396,46 @@
     "savedEvidence": "Minh chứng theo khách hàng",
     "downloading": "Đang tải minh chứng…",
     "existingContact": "Đã có hồ sơ phù hợp với thông tin liên hệ này. Hãy kiểm tra trước khi tạo mới.",
-    "useExisting": "Dùng hồ sơ {name}"
+    "useExisting": "Dùng hồ sơ {name}",
+    "works": {
+      "title": "Công việc báo cáo hôm nay",
+      "workCount": "{count} công việc",
+      "work": "Công việc {number}",
+      "workSummary": "{services} nội dung · {customers} khách",
+      "services": "Nội dung công việc / hỗ trợ",
+      "selectedServices": "Đã chọn {count} nội dung",
+      "chooseServices": "Chọn một hoặc nhiều nội dung",
+      "serviceSearch": "Tìm hoặc tạo nội dung",
+      "search": "Tìm / tải lại",
+      "serviceRequired": "Nhập tên nội dung hỗ trợ, tối đa 200 ký tự.",
+      "serviceReused": "Đã chọn nội dung có sẵn cho công việc này.",
+      "serviceDraft": "Đã thêm nội dung vào đầu việc; nội dung mới được lưu cùng báo cáo.",
+      "serviceLoadError": "Chưa tải được danh mục. Kiểm tra migration M42 và quyền cập nhật, rồi bấm Tìm / tải lại.",
+      "removeService": "Bỏ nội dung {name}",
+      "createService": "+ Tạo nội dung mới",
+      "previous": "Trang trước",
+      "next": "Trang sau",
+      "done": "Xong",
+      "customers": "Khách hàng của công việc này",
+      "chooseCustomers": "Chọn / thêm khách",
+      "removeCustomer": "Bỏ khách {name}",
+      "customerScope": "Các nội dung đã chọn áp dụng cho danh sách khách của công việc này.",
+      "chooseSource": "Chọn nguồn khách",
+      "otherSource": "Nguồn khác",
+      "createAndSelect": "Tạo và chọn khách",
+      "newCustomerRequired": "Nhập tên khách, chọn nguồn và kiểm tra số điện thoại hoặc link hồ sơ.",
+      "customerNotes": "Ghi chú / đối chiếu riêng theo khách · nếu có",
+      "notePlaceholder": "Chỉ ghi khi khác với kết quả chung",
+      "result": "Kết quả / ghi chú chung",
+      "evidence": "Minh chứng của công việc · không bắt buộc",
+      "removeWork": "Bỏ công việc",
+      "removeWarning": "Bỏ công việc này sẽ bỏ nội dung và danh sách khách đang nhập của công việc.",
+      "confirmRemove": "Bỏ công việc này",
+      "keepWork": "Giữ lại",
+      "addWork": "+ Thêm công việc",
+      "uniqueCustomers": "{count} khách duy nhất",
+      "addedCustomers": "+{count} khách được tính thêm",
+      "uniqueRule": "Khách xuất hiện ở nhiều công việc hoặc nhiều nội dung vẫn chỉ tính một lần vào tiến độ trong kỳ. Đây là số liệu nhân viên tự báo cáo."
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { careEvidenceEntries } from "@/utils/careReports";
 import { useTranslation } from "react-i18next";
 import Button from "@/components/ui/button/Button";
 import CustomerCareEvidence from "./CustomerCareEvidence";
@@ -74,10 +75,11 @@ export default function LinkedTaskReportItem({
           {messages.join(" ")}
         </p>
       )}
-      {link.progress.input.care_entries && (
+      {(link.progress.input.care_entries ||
+        link.progress.input.care_work_items) && (
         <CustomerCareEvidence
           taskId={link.task_id}
-          entries={link.progress.input.care_entries}
+          entries={careEvidenceEntries(link.progress.input)}
         />
       )}
       <div className="flex flex-wrap gap-2">

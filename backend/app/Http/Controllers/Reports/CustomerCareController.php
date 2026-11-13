@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Models\Task;
+use App\Services\CareServiceCatalog;
 use App\Services\CustomerCare;
 use App\Services\KpsMembershipResolver;
 use App\Services\ReportScopeService;
@@ -54,6 +55,13 @@ final class CustomerCareController extends Controller
             'contacts' => ($contacts[$customer->id] ?? collect())->map(fn ($c) => ['channel' => $c->channel, 'value' => $c->value])->values(),
             'task_output_id' => $outputs[$customer->id]->id ?? null, 'counted' => (bool) ($outputs[$customer->id]->completed ?? false)]),
             'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage()]])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function services(int $id, Request $request, CareServiceCatalog $catalog)
+    {
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:200'], 'page' => ['nullable', 'integer', 'min:1']]);
+
+        return response()->json($catalog->options($this->writable($request, $id), trim($data['search'] ?? '')))->header('Cache-Control', 'private, no-store');
     }
 
     public function upload(int $id, Request $request)

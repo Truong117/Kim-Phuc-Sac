@@ -72,7 +72,8 @@ final class ReportTaskProgress
                 throw ValidationException::withMessages(["items.$index.task_id" => 'Công việc không còn được giao cho bạn hoặc bạn không có quyền cập nhật.']);
             }
             $progress = $item['task_progress'] ?? [];
-            if (! empty($previous?->task_progress['input']['care_entries']) && ! array_key_exists('care_entries', $progress)) {
+            if (($previous && CustomerCare::structured($previous->task_progress['input'] ?? []) && ! CustomerCare::structured($progress))
+                || (! empty($previous?->task_progress['input']['care_work_items']) && ! array_key_exists('care_work_items', $progress))) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Báo cáo có dữ liệu khách hàng mới. Hãy tải lại form, không được bỏ lịch sử hỗ trợ.']);
             }
             if (! isset($progress['expected_revision'], $progress['status'])) {
@@ -94,11 +95,11 @@ final class ReportTaskProgress
             if (! empty($progress['outputs']) && (! in_array($unit, self::UNITS, true) || ($task->quantity_unit && $unit !== $task->quantity_unit))) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Đơn vị sản phẩm không khớp mục tiêu công việc.']);
             }
-            if (self::needsReference($unit) && (! empty($progress['outputs']) || ! empty($progress['care_entries']))
+            if (self::needsReference($unit) && (! empty($progress['outputs']) || CustomerCare::structured($progress))
                 && (($task->start_date && $date < $task->start_date->toDateString()) || $date > $task->due_date->toDateString())) {
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Cập nhật CSKH nằm ngoài kỳ công việc. Hãy chọn công việc của kỳ tương ứng; không cộng vào mục tiêu kỳ cũ.']);
             }
-            if (array_key_exists('care_entries', $progress)) {
+            if (CustomerCare::structured($progress)) {
                 $item['result'] = app(CustomerCare::class)->prepare($actor, $task, $progress, "items.$index.task_progress");
                 $item['task_progress'] = $progress;
             } elseif (collect($progress['outputs'] ?? [])->contains(fn ($o) => ! empty($o['care_customer_id']))
@@ -190,8 +191,8 @@ final class ReportTaskProgress
             throw ValidationException::withMessages(['items' => 'Không thể đổi công việc gốc của một đầu việc đã lưu.']);
         }
         if ($row->task_id && $this->sameInput($row->task_progress, $input)) {
-            if (! empty($input['care_entries'])) {
-                $row->result = CustomerCare::text($input['care_entries']);
+            if (CustomerCare::structured($input)) {
+                $row->result = CustomerCare::reportText($input);
             }
             $this->writeResult($row, $row->task_progress['summary'] ?? '', $row->task_progress);
 
@@ -201,6 +202,7 @@ final class ReportTaskProgress
         $before = $task->status->value;
         $unit = $input['unit'] ?? null;
         $recorded = [];
+        $careEntries = CustomerCare::entries($input);
         foreach ($input['outputs'] ?? [] as $index => $output) {
             $key = self::identity($output, $unit);
             $existing = isset($output['id']) ? TaskOutput::query()->findOrFail($output['id'])
@@ -226,8 +228,8 @@ final class ReportTaskProgress
             }
             $recorded[] = ['id' => $existing?->id, 'name' => trim($output['name']), 'reference' => $output['reference'] ?? null, 'unit' => $unit,
                 'completed' => $output['completed'], 'newly_completed' => $newlyCompleted,
-                ...(! empty($input['care_entries']) ? ['care_customer_id' => $output['care_customer_id'],
-                    'care' => collect($input['care_entries'])->firstWhere('customer_id', $output['care_customer_id'])] : [])];
+                ...($careEntries ? ['care_customer_id' => $output['care_customer_id'],
+                    'care' => collect($careEntries)->firstWhere('customer_id', $output['care_customer_id'])] : [])];
         }
         if ($today) {
             if (($input['status'] ?? 'KEEP') !== 'KEEP') {
@@ -242,7 +244,7 @@ final class ReportTaskProgress
         $row->task_snapshot ??= ['id' => (int) $task->id, 'title' => $task->title, 'description' => $task->description,
             'due_date' => $task->due_date->toDateString(), 'target_quantity' => $task->target_quantity, 'quantity_unit' => $task->quantity_unit];
         $row->task_id = $task->id;
-        if (array_key_exists('care_entries', $input)) {
+        if (CustomerCare::structured($input)) {
             app(CustomerCare::class)->saveEntries($row, $input);
         }
         $count = count(array_filter($recorded, fn ($output) => $today ? $output['newly_completed'] : $output['completed']));
@@ -255,10 +257,11 @@ final class ReportTaskProgress
         $names = array_column(array_filter($recorded, fn ($output) => $output['completed']), 'name');
         $summary = $recorded === [] ? '' : "[Cập nhật sản phẩm công việc #$task->id]\n".$quote
             .($names ? "\nSản phẩm cập nhật: ".implode('; ', $names) : '');
-        if (! empty($input['care_entries'])) {
-            $activities = array_sum(array_map(fn ($e) => count($e['activities']), $input['care_entries']));
+        if ($careEntries) {
+            $activities = isset($input['care_work_items']) ? array_sum(array_map(fn ($w) => count($w['services']), $input['care_work_items']))
+                : array_sum(array_map(fn ($e) => count($e['activities']), $careEntries));
             $summary = '[Cập nhật CSKH công việc #'.$task->id."]\n".$quote
-                ."\nĐã hỗ trợ trong ngày: ".count($input['care_entries'])." khách; $activities nội dung hỗ trợ. Số liệu nhân viên tự báo cáo.";
+                ."\nĐã hỗ trợ trong ngày: ".count($careEntries).' khách; '.(isset($input['care_work_items']) ? count($input['care_work_items']).' đầu việc; ' : '')."$activities nội dung hỗ trợ. Số liệu nhân viên tự báo cáo.";
         }
         $row->task_progress = ['input' => $input, 'outputs' => $recorded, 'applied' => $today,
             'summary' => $summary, 'quantity' => $recorded === [] ? null : ['metric' => $metric, 'unit' => $unit,

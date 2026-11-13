@@ -1,4 +1,4 @@
-import { careEntryPayload } from "@/utils/careReports";
+import { careEntryPayload, careWorkPayload } from "@/utils/careReports";
 import { normalizeNextDayPlan } from "@/utils/nextDayPlan";
 import {
   focusFirstReportError,
@@ -639,7 +639,16 @@ export default function NewReport({
                     ...(care_customer_id ? { care_customer_id } : {}),
                   }),
                 ),
-                ...(item.taskLink.progress.input.care_entries
+                ...(item.taskLink.progress.input.care_work_items
+                  ? {
+                      care_entries: undefined,
+                      care_work_items: careWorkPayload(
+                        item.taskLink.progress.input.care_work_items,
+                      ),
+                    }
+                  : {}),
+                ...(item.taskLink.progress.input.care_entries &&
+                !item.taskLink.progress.input.care_work_items
                   ? {
                       care_entries: careEntryPayload(
                         item.taskLink.progress.input.care_entries,

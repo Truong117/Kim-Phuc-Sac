@@ -61,7 +61,7 @@ abstract class ReportItemsRequest extends FormRequest
     /** @return array<string, mixed> */
     public function rules(): array
     {
-        return [
+        $rules = [
             'organization_id' => ['prohibited'],
             'user_id' => ['prohibited'],
             'department_id' => ['prohibited'],
@@ -74,7 +74,7 @@ abstract class ReportItemsRequest extends FormRequest
             'items' => ['present', 'array', $this->filled('next_day_plan') ? 'min:0' : 'min:1', 'max:50'],
             'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links,facebook_selections,task_id,task_progress'],
             'items.*.task_id' => ['required_with:items.*.task_progress', 'nullable', 'integer', 'min:1'],
-            'items.*.task_progress' => ['required_with:items.*.task_id', 'array:expected_revision,status,unit,outputs,care_entries'],
+            'items.*.task_progress' => ['required_with:items.*.task_id', 'array:expected_revision,status,unit,outputs,care_entries,care_work_items'],
             'items.*.task_progress.expected_revision' => ['required_with:items.*.task_progress', 'integer', 'min:0'],
             'items.*.task_progress.status' => ['required_with:items.*.task_progress', Rule::in(['KEEP', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'])],
             'items.*.task_progress.unit' => ['nullable', Rule::in(ReportTaskProgress::UNITS)],
@@ -129,5 +129,7 @@ abstract class ReportItemsRequest extends FormRequest
                 }
             }],
         ];
+
+        return array_merge($rules, CareReportRules::workItems('items.*.task_progress.care_work_items'));
     }
 }

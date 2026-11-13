@@ -9,11 +9,11 @@ import Select from "@/components/form/Select";
 import WorkItemExtras from "./WorkItemExtras";
 import CustomerCareReportEditor from "./CustomerCareReportEditor";
 import {
-  blankCareEntry,
-  careEntryName,
-  careEntryOutputs,
-  careReportText,
-  validCareContact,
+  blankCareWork,
+  careWorksFromLegacy,
+  careWorkOutputs,
+  careWorkText,
+  careWorkError,
 } from "@/utils/careReports";
 import {
   hasValidEvidenceLinks,
@@ -66,13 +66,15 @@ export default function TaskInlineReportEditor({
   };
   const [notice, setNotice] = useState("");
   const [uploading, setUploading] = useState(false);
-  const [countPending, setCountPending] = useState(false);
   const disabled = externallyDisabled || uploading;
   const input = value.taskLink!.progress.input;
   const customerForm =
     input.unit === "khách hàng" &&
-    (input.care_entries !== undefined || input.outputs.length === 0);
-  const careEntries = input.care_entries ?? [];
+    (input.care_work_items !== undefined ||
+      input.care_entries !== undefined ||
+      input.outputs.length === 0);
+  const careWorks =
+    input.care_work_items ?? careWorksFromLegacy(input.care_entries ?? []);
   const change = (changes: Partial<WorkItemFormData>) => {
     setError("");
     setNotice("");
@@ -115,59 +117,27 @@ export default function TaskInlineReportEditor({
   }
   function apply() {
     if (disabled) return;
-    if (customerForm && countPending) {
-      setError(t("careCountPending"));
-      return;
-    }
-    if (
-      customerForm &&
-      careEntries.some(
-        (e) =>
-          !validCareContact(e.new_customer?.contact ?? "") ||
-          !validCareContact(e.contact_update?.value ?? ""),
-      )
-    ) {
-      setError(t("careInvalidContact"));
-      return;
-    }
-    if (
-      customerForm &&
-      (careEntries.length === 0 ||
-        careEntries.length > 20 ||
-        careEntries.some(
-          (e) =>
-            !careEntryName(e) ||
-            careEntryName(e).length > 200 ||
-            (!e.customer_id && !e.new_customer) ||
-            !e.activities.length ||
-            e.activities.length > 10 ||
-            e.activities.some(
-              (a) =>
-                !a.service.trim() ||
-                !a.result.trim() ||
-                a.service.length > 200 ||
-                a.result.length > 1000,
-            ) ||
-            e.evidence_links.filter(Boolean).length > 3 ||
-            !hasValidEvidenceLinks(
-              e.evidence_links.filter(Boolean).join("\n"),
-            ) ||
-            e.attachment_ids.length > 3 ||
-            (e.contact_update &&
-              (e.contact_update.channel.trim() ||
-                e.contact_update.value.trim()) &&
-              (!e.contact_update.channel.trim() ||
-                !e.contact_update.value.trim())),
-        ))
-    ) {
-      setError(t("careRequired"));
-      return;
+    const result = customerForm ? careWorkText(careWorks) : value.result;
+    const nextInput = customerForm
+      ? {
+          ...input,
+          care_entries: undefined,
+          care_work_items: careWorks,
+          outputs: careWorkOutputs(careWorks, task),
+        }
+      : input;
+    if (customerForm) {
+      const error = careWorkError(careWorks);
+      if (error) {
+        setError(t(`careWorkError.${error}`));
+        return;
+      }
     }
     if (
       !value.content.trim() ||
       !value.status ||
       (value.status === "COMPLETED" &&
-        (!value.result.trim() ||
+        (!result.trim() ||
           !hasValidEvidenceLinks(value.evidenceLinks ?? ""))) ||
       ((value.status === "BLOCKED" || input.status === "BLOCKED") &&
         !value.issue?.trim())
@@ -194,7 +164,7 @@ export default function TaskInlineReportEditor({
     }
     if (
       value.content.length > 5000 ||
-      value.result.length > 5000 ||
+      result.length > 5000 ||
       parseEvidenceLinks(value.evidenceLinks ?? "").length > 10
     ) {
       setError(t("tooLong"));
@@ -202,14 +172,15 @@ export default function TaskInlineReportEditor({
     }
     onApply({
       ...value,
+      result,
       taskLink: {
         ...value.taskLink!,
         pending: true,
         progress: {
           ...value.taskLink!.progress,
-          source_result: value.result,
+          source_result: result,
           input: {
-            ...input,
+            ...nextInput,
             expected_revision: task.progress!.revision,
             status: canSync ? input.status : "KEEP",
           },
@@ -355,8 +326,11 @@ export default function TaskInlineReportEditor({
                 progress({
                   unit: unit as TaskQuantityUnit,
                   ...(unit === "khách hàng"
-                    ? { care_entries: [blankCareEntry()] }
-                    : { care_entries: undefined }),
+                    ? {
+                        care_work_items: [blankCareWork()],
+                        care_entries: undefined,
+                      }
+                    : { care_entries: undefined, care_work_items: undefined }),
                 })
               }
             />
@@ -368,21 +342,21 @@ export default function TaskInlineReportEditor({
         {customerForm ? (
           <CustomerCareReportEditor
             task={task}
-            value={careEntries}
+            value={careWorks}
             disabled={disabled}
             onBusy={setUploading}
-            onCountPending={setCountPending}
-            onChange={(entries) => {
+            onChange={(works) => {
               change({
-                result: careReportText(entries),
+                result: careWorkText(works),
                 taskLink: {
                   ...value.taskLink!,
                   progress: {
                     ...value.taskLink!.progress,
                     input: {
                       ...input,
-                      care_entries: entries,
-                      outputs: careEntryOutputs(entries, task),
+                      care_entries: undefined,
+                      care_work_items: works,
+                      outputs: careWorkOutputs(works, task),
                     },
                   },
                 },
@@ -418,7 +392,11 @@ export default function TaskInlineReportEditor({
             variant="outline"
             disabled={disabled}
             onClick={() =>
-              progress({ care_entries: [blankCareEntry()], outputs: [] })
+              progress({
+                care_work_items: [blankCareWork()],
+                care_entries: undefined,
+                outputs: [],
+              })
             }
           >
             {t("useCustomerForm")}
