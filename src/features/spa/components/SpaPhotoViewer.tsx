@@ -38,6 +38,9 @@ export default function SpaPhotoViewer({
     `${p.date} · ${snapshot.appointments.find((a) => a.id === p.appointmentId)?.tasks.find((task) => task.id === p.taskId)?.serviceName ?? p.taskId} · ${p.appointmentId} · ${t(`spa.photos.${p.stage}`)} · ${p.name}`;
   const image = (p: SpaSkinPhoto) => (
     <figure className="min-w-0 space-y-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+      <p className="text-sm font-semibold text-kps-primary dark:text-gray-200">
+        {t(`spa.photos.${p.stage}`)}
+      </p>
       <img
         src={p.url}
         alt={t("spa.photos.alt", {

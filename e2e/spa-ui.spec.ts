@@ -1061,7 +1061,7 @@ test.describe("Spa inline booking and skin photos", () => {
       mimeType: "image/png",
       buffer: beforePng,
     });
-    await expect(section.getByRole("img")).toHaveCount(1);
+    await expect(section.locator("img")).toHaveCount(1);
     await section
       .getByRole("button", { name: "Sau dịch vụ", exact: true })
       .click();
@@ -1070,9 +1070,9 @@ test.describe("Spa inline booking and skin photos", () => {
       mimeType: "image/png",
       buffer: afterPng,
     });
-    await expect(section.getByRole("img")).toHaveCount(2);
+    await expect(section.locator("img")).toHaveCount(2);
     await expect(section).toContainText("Người xem UI");
-    const url = await section.getByRole("img").first().getAttribute("src");
+    const url = await section.locator("img").first().getAttribute("src");
     expect(url).toMatch(/^blob:/);
     await section
       .getByRole("button", { name: "Đối chiếu ảnh", exact: true })
@@ -1081,12 +1081,12 @@ test.describe("Spa inline booking and skin photos", () => {
       name: "Đối chiếu ảnh tình trạng da",
       exact: true,
     });
-    await expect(viewer.getByRole("img")).toHaveCount(2);
+    await expect(viewer.locator("img")).toHaveCount(2);
     await viewer
       .getByRole("button", { name: "Xem lớn", exact: true })
       .first()
       .click();
-    await expect(viewer.getByRole("img")).toHaveCount(1);
+    await expect(viewer.locator("img")).toHaveCount(1);
     await viewer
       .getByRole("button", { name: "Quay lại đối chiếu", exact: true })
       .click();
@@ -1103,9 +1103,9 @@ test.describe("Spa inline booking and skin photos", () => {
       .filter({ hasText: "Ảnh tình trạng da" })
       .getByRole("button", { name: "Đối chiếu ảnh", exact: true })
       .click();
-    await expect(viewer.getByRole("img")).toHaveCount(2);
+    await expect(viewer.locator("img")).toHaveCount(2);
     await navigate(page, "Công việc KTV");
-    await expect(section.getByRole("img")).toHaveCount(2);
+    await expect(section.locator("img")).toHaveCount(2);
     await section
       .getByRole("button", { name: "Gỡ ảnh", exact: true })
       .first()
@@ -1120,7 +1120,7 @@ test.describe("Spa inline booking and skin photos", () => {
     await section
       .getByRole("button", { name: "Xác nhận gỡ ảnh", exact: true })
       .click();
-    await expect(section.getByRole("img")).toHaveCount(1);
+    await expect(section.locator("img")).toHaveCount(1);
     expect(
       await page.evaluate(async (url) => {
         try {
@@ -1135,7 +1135,7 @@ test.describe("Spa inline booking and skin photos", () => {
     await page
       .getByRole("button", { name: "Khôi phục dữ liệu mẫu", exact: true })
       .click();
-    await expect(section.getByRole("img")).toHaveCount(0);
+    await expect(section.locator("img")).toHaveCount(0);
     expect(requests.every((r) => r.method === "GET")).toBe(true);
   });
   test("KTV phone keeps photo history after completion and locks removal of completed records", async ({
@@ -1157,7 +1157,7 @@ test.describe("Spa inline booking and skin photos", () => {
       mimeType: "image/png",
       buffer: beforePng,
     });
-    await expect(section.getByRole("img")).toHaveCount(1);
+    await expect(section.locator("img")).toHaveCount(1);
     await section
       .getByRole("button", { name: "Sau dịch vụ", exact: true })
       .click();
@@ -1166,7 +1166,7 @@ test.describe("Spa inline booking and skin photos", () => {
       mimeType: "image/png",
       buffer: afterPng,
     });
-    await expect(section.getByRole("img")).toHaveCount(2);
+    await expect(section.locator("img")).toHaveCount(2);
     await page
       .getByLabel("Kết quả thực hiện", { exact: true })
       .fill("Hoàn tất buổi chăm sóc mẫu.");
@@ -1182,7 +1182,7 @@ test.describe("Spa inline booking and skin photos", () => {
       .getByRole("region", { name: "Danh sách công việc" })
       .getByRole("button", { name: /Nguyễn Minh Anh/ })
       .click();
-    await expect(section.getByRole("img")).toHaveCount(2);
+    await expect(section.locator("img")).toHaveCount(2);
     await expect(
       section.getByRole("button", { name: "Gỡ ảnh", exact: true }),
     ).toHaveCount(0);
@@ -1199,6 +1199,6 @@ test.describe("Spa inline booking and skin photos", () => {
       .getByRole("region", { name: "Danh sách công việc" })
       .getByRole("button", { name: /Nguyễn Minh Anh/ })
       .click();
-    await expect(section.getByRole("img")).toHaveCount(0);
+    await expect(section.locator("img")).toHaveCount(0);
   });
 });

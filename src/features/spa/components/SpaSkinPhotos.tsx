@@ -1,3 +1,4 @@
+import SpaPhotoRemoval from "./SpaPhotoRemoval";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -43,8 +44,7 @@ export default function SpaSkinPhotos({
     [error, setError] = useState<SpaPreviewError>(),
     [busy, setBusy] = useState(false),
     [viewer, setViewer] = useState<string>(),
-    [remove, setRemove] = useState<string>(),
-    [reason, setReason] = useState("");
+    [remove, setRemove] = useState<string>();
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -55,7 +55,7 @@ export default function SpaSkinPhotos({
   const working = useRef(false);
   const [notice, setNotice] = useState(false);
   useWeeklyPlanV3NavigationSafety(
-    Boolean(caption || remove || busy),
+    Boolean(caption || busy),
     t("spa.flow.discard"),
   );
   const appointment = snapshot.appointments.find((a) => a.id === appointmentId);
@@ -249,7 +249,7 @@ export default function SpaSkinPhotos({
                   .map((p) => (
                     <figure
                       key={p.id}
-                      className="min-w-0 space-y-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700"
+                      className={`min-w-0 space-y-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700 ${remove === p.id ? "col-span-2" : ""}`}
                     >
                       <button
                         type="button"
@@ -292,12 +292,19 @@ export default function SpaSkinPhotos({
                           disabled={busy}
                           onClick={() => {
                             setRemove(p.id);
-                            setReason("");
+                            setNotice(false);
                             setError(undefined);
                           }}
                         >
                           {t("spa.photos.remove")}
                         </SpaAction>
+                      )}
+                      {remove === p.id && (
+                        <SpaPhotoRemoval
+                          appointmentId={appointmentId}
+                          photoId={p.id}
+                          onClose={() => setRemove(undefined)}
+                        />
                       )}
                     </figure>
                   ))}
@@ -323,57 +330,6 @@ export default function SpaSkinPhotos({
           initialId={viewer}
           onClose={() => setViewer(undefined)}
         />
-      )}
-      {remove && (
-        <form
-          className="space-y-3 rounded-xl border border-error-200 p-3 dark:border-error-800"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const error = execute({
-              kind: "photo-remove",
-              id: appointmentId,
-              photoId: remove,
-              reason,
-            });
-            setError(error);
-            if (!error) {
-              setRemove(undefined);
-              setReason("");
-              setNotice(false);
-            }
-          }}
-        >
-          <Label htmlFor={`${id}-reason`}>{t("spa.photos.removeReason")}</Label>
-          <TextArea
-            id={`${id}-reason`}
-            value={reason}
-            onChange={(v) => {
-              setReason(v);
-              setError(undefined);
-            }}
-            placeholder={t("spa.photos.reasonHint")}
-            error={error === "reasonRequired"}
-            className={spaFieldClasses}
-          />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              className="min-h-11 rounded-lg bg-error-600 px-4 py-3 text-sm font-semibold text-white hover:bg-error-700 dark:bg-error-600"
-            >
-              {t("spa.photos.confirmRemove")}
-            </button>
-            <SpaAction
-              secondary
-              onClick={() => {
-                setRemove(undefined);
-                setError(undefined);
-                setReason("");
-              }}
-            >
-              {t("spa.business.cancel")}
-            </SpaAction>
-          </div>
-        </form>
       )}
     </section>
   );
