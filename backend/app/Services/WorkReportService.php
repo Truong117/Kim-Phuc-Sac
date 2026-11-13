@@ -236,12 +236,27 @@ class WorkReportService
                 && $existing->contains(fn ($item) => filled($item->issue) || ! empty($item->evidence_links))) {
                 throw new ConflictHttpException('Báo cáo có nội dung mới. Hãy tải lại trang trước khi chỉnh sửa.');
             }
+            // Reapplying a removed preview keeps its persisted task link and first-completion anchor.
+            foreach ($items as &$item) {
+                if (! isset($item['id']) && ! empty($item['task_id'])) {
+                    $linked = $existing->first(fn ($row) => (int) $row->task_id === (int) $item['task_id']);
+                    if ($linked !== null) {
+                        $item['id'] = $linked->id;
+                    }
+                }
+            }
+            unset($item);
+            $itemIds = collect($items)->pluck('id')->filter();
+            if ($itemIds->count() !== $itemIds->unique()->count()) {
+                throw ValidationException::withMessages(['items' => 'Một đầu việc chỉ được cập nhật một lần trong báo cáo.']);
+            }
             // Validate every identity before changing anything. IDs from another report are never accepted.
             foreach ($items as $item) {
                 if (isset($item['id']) && ! $existing->has($item['id'])) {
                     throw ValidationException::withMessages(['items' => 'Đầu việc không thuộc báo cáo đang sửa.']);
                 }
             }
+            $tasks = app(ReportTaskProgress::class)->lock($author, $report->report_date->toDateString(), $items, $existing);
             // Resolve and lock new Page choices before taking any item write locks (same order as sync).
             $selections = [];
             foreach ($items as $index => $item) {
@@ -268,6 +283,7 @@ class WorkReportService
                     DB::table('social_post_sources')->where('daily_report_item_id', $row->id)->delete();
                 }
                 $row->fill($values)->save();
+                app(ReportTaskProgress::class)->apply($author, $report, $row, $item, $tasks);
                 $kept[] = $row->id;
             }
             $report->items()->whereNotIn('id', $kept)->delete();
@@ -384,8 +400,9 @@ class WorkReportService
      */
     private function replaceItems(DailyReport $report, array $items, User $author): void
     {
+        $tasks = app(ReportTaskProgress::class)->lock($author, $report->report_date->toDateString(), $items);
         foreach ($items as $index => $item) {
-            $report->items()->create([
+            $row = $report->items()->create([
                 'content' => $item['content'],
                 'result' => $item['result'] ?? '',
                 'status' => $item['status'],
@@ -395,6 +412,7 @@ class WorkReportService
                 'facebook_selections' => app(ReportFacebookPosts::class)->selections($author, $item, null, $index),
                 'sort_order' => $index + 1,
             ]);
+            app(ReportTaskProgress::class)->apply($author, $report, $row, $item, $tasks);
         }
     }
 

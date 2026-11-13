@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Task;
+use App\Services\ReportTaskProgress;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -13,6 +14,12 @@ class TaskResource extends JsonResource
     public function toArray(Request $request): array
     {
         $businessDate = (string) $this->getAttribute('business_date');
+        $progress = app(ReportTaskProgress::class);
+        $ready = $request->attributes->get('task_progress_schema_ready');
+        if ($ready === null) {
+            $ready = $progress->ready();
+            $request->attributes->set('task_progress_schema_ready', $ready);
+        }
 
         return [
             'id' => $this->id,
@@ -24,6 +31,10 @@ class TaskResource extends JsonResource
             'due_date' => $this->due_date->toDateString(),
             'is_overdue' => $this->isOverdue($businessDate),
             'completed_at' => $this->completed_at?->utc()->toIso8601String(),
+            'target_quantity' => $this->target_quantity,
+            'quantity_unit' => $this->quantity_unit,
+            'progress' => app(ReportTaskProgress::class)->ready()
+                ? app(ReportTaskProgress::class)->present($this->resource) : null,
             'creator' => [
                 'id' => $this->creator->id,
                 'name' => $this->creator->name,

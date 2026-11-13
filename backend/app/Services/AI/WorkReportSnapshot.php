@@ -161,6 +161,7 @@ class WorkReportSnapshot
                         'item_id' => (int) $item->id, 'status' => $status,
                         'content' => $this->redact($item->content, $identities),
                         'result' => $item->result === null ? null : $this->redact($item->result, $identities),
+                        ...($item->task_id ? ['task_quantity' => $item->task_progress['quantity'] ?? null] : []),
                         'note' => filled($item->issue) ? $this->redact(implode("\n", array_filter([$item->note, 'Vướng mắc / cần hỗ trợ: '.$item->issue])), $identities) : ($item->note === null ? null : $this->redact($item->note, $identities)),
                     ];
                 }
@@ -197,7 +198,7 @@ class WorkReportSnapshot
         $this->membership($viewer);
         $identities = User::query()->whereIn('id', [$viewer->id, $source['employee_id']])->get(['id', 'name', 'email']);
         $items = array_map(function ($item) use ($identities): array {
-            $entry = array_intersect_key($item, array_flip(['item_id', 'status', 'content', 'result', 'note', 'issue']));
+            $entry = array_intersect_key($item, array_flip(['item_id', 'status', 'content', 'result', 'note', 'issue', 'task_quantity']));
             foreach (['content', 'result', 'note', 'issue'] as $field) {
                 $entry[$field] = $this->redact($entry[$field], $identities);
             }

@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import ReportFieldRow from "./ReportFieldRow";
 import WorkItemExtras from "./WorkItemExtras";
+import LinkedTaskReportItem from "./LinkedTaskReportItem";
 import ReportIssueSummary from "./ReportIssueSummary";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
@@ -28,6 +29,7 @@ import { cn } from "@/utils";
 import { useTranslation } from "react-i18next";
 
 interface QuickReportEditorProps {
+  onEditTask?: (id: number) => void;
   reportDate?: string;
   facebookPages?: FacebookReportPage[];
   planSection?: ReactNode;
@@ -62,6 +64,7 @@ export default function QuickReportEditor({
   onItemChange,
   onItemBlur,
   onItemDelete,
+  onEditTask,
 }: QuickReportEditorProps) {
   const { t } = useTranslation("common", {
     keyPrefix: "dailyReport.quick",
@@ -192,92 +195,108 @@ export default function QuickReportEditor({
 
               {groupItems.length > 0 ? (
                 <div className="mt-5 custom-scrollbar max-h-96 space-y-3 overflow-y-auto pe-1">
-                  {groupItems.map((item, index) => (
-                    <article
-                      key={item.clientId}
-                      className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-theme-xs font-semibold text-gray-500 dark:text-gray-400">
-                          {t("itemTitle", { number: index + 1 })}
-                        </p>
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => onItemDelete(item.clientId)}
-                          aria-label={t("deleteItem", { number: index + 1 })}
-                          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-error-600 transition-colors hover:bg-error-50 focus-visible:ring-2 focus-visible:ring-error-500/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:text-error-400 dark:hover:bg-error-500/10"
-                        >
-                          <TrashBinIcon className="size-4" aria-hidden="true" />
-                        </button>
-                      </div>
-                      <ReportFieldRow className="mt-2 gap-3">
-                        <div>
-                          <Label htmlFor={`quick-content-${item.clientId}`}>
-                            {t("contentLabel")}
-                          </Label>
-                          <TextArea
-                            id={`quick-content-${item.clientId}`}
-                            rows={2}
-                            value={item.content}
+                  {groupItems.map((item, index) =>
+                    item.taskLink ? (
+                      <LinkedTaskReportItem
+                        key={item.clientId}
+                        item={item}
+                        disabled={disabled}
+                        errors={errors[item.clientId]}
+                        onEdit={onEditTask}
+                        onDelete={onItemDelete}
+                      />
+                    ) : (
+                      <article
+                        key={item.clientId}
+                        className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-theme-xs font-semibold text-gray-500 dark:text-gray-400">
+                            {t("itemTitle", { number: index + 1 })}
+                          </p>
+                          <button
+                            type="button"
                             disabled={disabled}
-                            error={Boolean(errors[item.clientId]?.content)}
-                            hint={errors[item.clientId]?.content}
-                            onChange={(content) =>
-                              onItemChange(item.clientId, { content })
-                            }
-                            onBlur={() => onItemBlur(item.clientId, "content")}
+                            onClick={() => onItemDelete(item.clientId)}
+                            aria-label={t("deleteItem", { number: index + 1 })}
+                            className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-error-600 transition-colors hover:bg-error-50 focus-visible:ring-2 focus-visible:ring-error-500/30 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:text-error-400 dark:hover:bg-error-500/10"
+                          >
+                            <TrashBinIcon
+                              className="size-4"
+                              aria-hidden="true"
+                            />
+                          </button>
+                        </div>
+                        <ReportFieldRow className="mt-2 gap-3">
+                          <div>
+                            <Label htmlFor={`quick-content-${item.clientId}`}>
+                              {t("contentLabel")}
+                            </Label>
+                            <TextArea
+                              id={`quick-content-${item.clientId}`}
+                              rows={2}
+                              value={item.content}
+                              disabled={disabled}
+                              error={Boolean(errors[item.clientId]?.content)}
+                              hint={errors[item.clientId]?.content}
+                              onChange={(content) =>
+                                onItemChange(item.clientId, { content })
+                              }
+                              onBlur={() =>
+                                onItemBlur(item.clientId, "content")
+                              }
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`quick-result-${item.clientId}`}>
+                              {t(
+                                item.status === "COMPLETED"
+                                  ? "resultLabel"
+                                  : "resultOptionalLabel",
+                              )}
+                              {item.status === "COMPLETED" && (
+                                <span className="text-error-500"> *</span>
+                              )}
+                            </Label>
+                            <TextArea
+                              id={`quick-result-${item.clientId}`}
+                              rows={2}
+                              value={item.result}
+                              disabled={disabled}
+                              required={item.status === "COMPLETED"}
+                              placeholder={t(
+                                item.status === "COMPLETED"
+                                  ? "resultRequiredPlaceholder"
+                                  : "resultPlaceholder",
+                              )}
+                              error={Boolean(errors[item.clientId]?.result)}
+                              hint={errors[item.clientId]?.result}
+                              onBlur={() => onItemBlur(item.clientId, "result")}
+                              onChange={(result) =>
+                                onItemChange(item.clientId, { result })
+                              }
+                            />
+                          </div>
+                        </ReportFieldRow>
+                        <div className="mt-3">
+                          <WorkItemExtras
+                            facebookPages={facebookPages}
+                            reportDate={reportDate}
+                            item={item}
+                            errors={errors[item.clientId]}
+                            disabled={disabled}
+                            onChange={onItemChange}
+                            onBlur={onItemBlur}
                           />
                         </div>
-                        <div>
-                          <Label htmlFor={`quick-result-${item.clientId}`}>
-                            {t(
-                              item.status === "COMPLETED"
-                                ? "resultLabel"
-                                : "resultOptionalLabel",
-                            )}
-                            {item.status === "COMPLETED" && (
-                              <span className="text-error-500"> *</span>
-                            )}
-                          </Label>
-                          <TextArea
-                            id={`quick-result-${item.clientId}`}
-                            rows={2}
-                            value={item.result}
-                            disabled={disabled}
-                            required={item.status === "COMPLETED"}
-                            placeholder={t(
-                              item.status === "COMPLETED"
-                                ? "resultRequiredPlaceholder"
-                                : "resultPlaceholder",
-                            )}
-                            error={Boolean(errors[item.clientId]?.result)}
-                            hint={errors[item.clientId]?.result}
-                            onBlur={() => onItemBlur(item.clientId, "result")}
-                            onChange={(result) =>
-                              onItemChange(item.clientId, { result })
-                            }
-                          />
-                        </div>
-                      </ReportFieldRow>
-                      <div className="mt-3">
-                        <WorkItemExtras
-                          facebookPages={facebookPages}
-                          reportDate={reportDate}
-                          item={item}
-                          errors={errors[item.clientId]}
-                          disabled={disabled}
-                          onChange={onItemChange}
-                          onBlur={onItemBlur}
-                        />
-                      </div>
-                      {item.note.trim() && (
-                        <p className="mt-3 text-theme-xs text-gray-500 dark:text-gray-400">
-                          {t("notePreserved")}
-                        </p>
-                      )}
-                    </article>
-                  ))}
+                        {item.note.trim() && (
+                          <p className="mt-3 text-theme-xs text-gray-500 dark:text-gray-400">
+                            {t("notePreserved")}
+                          </p>
+                        )}
+                      </article>
+                    ),
+                  )}
                 </div>
               ) : (
                 <p className="mt-5 rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-center text-theme-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">

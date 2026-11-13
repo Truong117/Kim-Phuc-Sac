@@ -24,6 +24,7 @@ final class WorkReportWeeklyWork
                     'report_id' => (int) $report['report_id'], 'item_id' => (int) $item['item_id'],
                     'date' => $report['date'], 'status' => $item['status'],
                     'result' => $item['result'] ?? '', 'note' => $item['note'] ?? null,
+                    ...(array_key_exists('task_quantity', $item) ? ['task_quantity' => $item['task_quantity']] : []),
                 ];
             }
         }
@@ -44,7 +45,8 @@ final class WorkReportWeeklyWork
             foreach ($group['observations'] as $observation) {
                 $reports[] = ['report_id' => $observation['report_id'], 'date' => $observation['date'],
                     'items' => [['item_id' => $observation['item_id'], 'content' => $group['content'],
-                        'result' => $observation['result'], 'note' => $observation['note'], 'status' => $observation['status']]]];
+                        'result' => $observation['result'], 'note' => $observation['note'], 'status' => $observation['status'],
+                        ...(array_key_exists('task_quantity', $observation) ? ['task_quantity' => $observation['task_quantity']] : [])]]];
             }
         }
 

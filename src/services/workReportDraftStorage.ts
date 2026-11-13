@@ -1,5 +1,6 @@
 import type { WorkItemFormData } from "@/types/reports";
 import type { QuickReportDrafts } from "@/utils/quickReport";
+import { validTaskLink } from "@/utils/taskProgress";
 
 export const WORK_REPORT_DRAFT_SCHEMA_VERSION = 2;
 export const WORK_REPORT_DRAFT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -14,6 +15,7 @@ export type WorkReportDraftContext = {
 };
 
 export type WorkReportDraftData = {
+  taskDrafts?: WorkItemFormData[];
   items: WorkItemFormData[];
   quickDrafts: QuickReportDrafts;
   editorMode: WorkReportEditorMode;
@@ -81,6 +83,7 @@ const isWorkItem = (value: unknown): value is WorkItemFormData => {
 
   return (
     isString(item.clientId) &&
+    (item.taskLink === undefined || validTaskLink(item.taskLink)) &&
     (item.id === undefined ||
       (Number.isInteger(item.id) && Number(item.id) > 0)) &&
     (item.issue === undefined || isString(item.issue)) &&
@@ -143,6 +146,12 @@ const isDraftRecord = (value: unknown): value is WorkReportDraftRecord => {
     (data?.editorMode === "quick" || data?.editorMode === "detailed") &&
     Array.isArray(data?.items) &&
     data.items.every(isWorkItem) &&
+    (data.taskDrafts === undefined ||
+      (Array.isArray(data.taskDrafts) &&
+        data.taskDrafts.length <= 50 &&
+        data.taskDrafts.every(
+          (row) => isWorkItem(row) && validTaskLink(row.taskLink),
+        ))) &&
     isQuickDrafts(data?.quickDrafts)
   );
 };
@@ -157,6 +166,7 @@ export const draftDataSignature = (data: WorkReportDraftData): string =>
   JSON.stringify(data);
 
 export const hasMeaningfulDraftData = (data: WorkReportDraftData): boolean =>
+  Boolean(data.taskDrafts?.length) ||
   data.items.some(
     (item) =>
       Boolean(item.content.trim()) ||

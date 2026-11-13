@@ -9,6 +9,7 @@ import type {
   AssignableEmployee,
   TaskFormValues,
   TaskPriority,
+  TaskQuantityUnit,
 } from "@/types/tasks";
 import {
   hasTaskFormErrors,
@@ -50,8 +51,12 @@ export default function TaskForm({
   const { t } = useTranslation("common", {
     keyPrefix: "taskManagement.form",
   });
+  const { t: progressT } = useTranslation("common", {
+    keyPrefix: "taskProgress",
+  });
   const selectedEmployee = useMemo(
-    () => employees.find((employee) => String(employee.id) === values.assigneeId),
+    () =>
+      employees.find((employee) => String(employee.id) === values.assigneeId),
     [employees, values.assigneeId],
   );
   const [touchedFields, setTouchedFields] = useState<TaskFormTouchedFields>({});
@@ -172,16 +177,14 @@ export default function TaskForm({
             required
             error={Boolean(priorityError)}
             hint={priorityError}
-            onChange={(value) =>
-              changeField("priority", value as TaskPriority)
-            }
+            onChange={(value) => changeField("priority", value as TaskPriority)}
             onBlur={() => markTouched("priority")}
-            options={(["LOW", "MEDIUM", "HIGH", "URGENT"] as TaskPriority[]).map(
-              (priority) => ({
-                value: priority,
-                label: t(`priorityOptions.${priority}`),
-              }),
-            )}
+            options={(
+              ["LOW", "MEDIUM", "HIGH", "URGENT"] as TaskPriority[]
+            ).map((priority) => ({
+              value: priority,
+              label: t(`priorityOptions.${priority}`),
+            }))}
           />
         </div>
         <div>
@@ -215,6 +218,61 @@ export default function TaskForm({
         </div>
       </div>
 
+      <fieldset className="space-y-3 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+        <legend className="px-2 text-theme-sm font-medium text-gray-800 dark:text-gray-200">
+          {progressT("goalTitle")}
+        </legend>
+        <p className="text-theme-xs text-gray-500 dark:text-gray-400">
+          {progressT("goalHint")}
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="task-target-quantity">
+              {progressT("targetQuantity")}
+            </Label>
+            <Input
+              id="task-target-quantity"
+              type="number"
+              min="1"
+              max="1000000"
+              value={values.targetQuantity ?? ""}
+              disabled={isSubmitting}
+              error={Boolean(fieldError("targetQuantity", "target_quantity"))}
+              hint={fieldError("targetQuantity", "target_quantity")}
+              onChange={(e) => changeField("targetQuantity", e.target.value)}
+              onBlur={() => markTouched("targetQuantity")}
+            />
+          </div>
+          <div>
+            <Label htmlFor="task-quantity-unit">{progressT("unit")}</Label>
+            <Select
+              id="task-quantity-unit"
+              value={values.quantityUnit ?? ""}
+              disabled={isSubmitting}
+              placeholder={progressT("chooseUnit")}
+              error={Boolean(fieldError("quantityUnit", "quantity_unit"))}
+              hint={fieldError("quantityUnit", "quantity_unit")}
+              options={(
+                [
+                  "video",
+                  "ảnh",
+                  "bài viết",
+                  "sản phẩm",
+                  "khách hàng",
+                  "lượt chăm sóc",
+                ] as TaskQuantityUnit[]
+              ).map((unit) => ({
+                value: unit,
+                label: progressT(`units.${unit}`),
+              }))}
+              onChange={(unit) =>
+                changeField("quantityUnit", unit as TaskQuantityUnit)
+              }
+              onBlur={() => markTouched("quantityUnit")}
+            />
+          </div>
+        </div>
+      </fieldset>
       <div className="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-end">
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
@@ -224,7 +282,7 @@ export default function TaskForm({
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="bg-kps-primary hover:bg-kps-primary-hover disabled:bg-kps-primary"
+          className="!bg-kps-primary hover:!bg-kps-primary-hover disabled:!bg-kps-primary"
         >
           {isSubmitting ? t("saving") : submitLabel}
         </Button>

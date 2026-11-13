@@ -187,6 +187,9 @@ export const serializeWorkItems = (
       const links = item.evidenceLinks?.trim()
         ? `\n${item.evidenceLinks.trim()}`
         : "";
-      return `[${status}] ${item.content.trim()}${result}${note}${issue}${links}`;
+      const products = item.taskLink?.progress.input.outputs.length
+        ? `\n#${item.taskLink.task_id}: ${item.taskLink.progress.input.outputs.map((output) => (output.reference ? `${output.name} (${output.reference})` : output.name)).join("; ")}`
+        : "";
+      return `[${status}] ${item.content.trim()}${result}${note}${issue}${links}${products}`;
     })
     .join("\n\n");

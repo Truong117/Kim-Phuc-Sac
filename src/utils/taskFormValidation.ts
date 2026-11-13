@@ -10,7 +10,10 @@ export type TaskFormValidationError =
   | "startDateInvalid"
   | "dueDateRequired"
   | "dueDateInvalid"
-  | "dueDateBeforeStart";
+  | "dueDateBeforeStart"
+  | "goalQuantityInvalid"
+  | "goalUnitRequired";
+// Quantity goals are optional, but a configured goal always has an explicit unit.
 
 export type TaskFormClientErrors = Partial<
   Record<TaskFormField, TaskFormValidationError>
@@ -28,6 +31,15 @@ export const validateTaskForm = (
   if (!values.title.trim()) errors.title = "titleRequired";
   if (!values.assigneeId) errors.assigneeId = "assigneeRequired";
   if (!priorities.has(values.priority)) errors.priority = "priorityRequired";
+  if (
+    values.targetQuantity &&
+    (!/^\d+$/.test(values.targetQuantity) ||
+      Number(values.targetQuantity) < 1 ||
+      Number(values.targetQuantity) > 1000000)
+  )
+    errors.targetQuantity = "goalQuantityInvalid";
+  if (values.targetQuantity && !values.quantityUnit)
+    errors.quantityUnit = "goalUnitRequired";
 
   if (values.startDate && !isDateOnly(values.startDate)) {
     errors.startDate = "startDateInvalid";

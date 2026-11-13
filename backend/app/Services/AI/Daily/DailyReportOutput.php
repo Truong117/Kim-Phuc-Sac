@@ -39,6 +39,11 @@ final class DailyReportOutput
             if (! is_array($observation) || ! is_int($observation['item_id'] ?? null) || ! isset($items[$observation['item_id']])) {
                 throw new RuntimeException('AI_INVALID_EVIDENCE');
             }
+            // Product quantities are rebound from the saved report, including partial progress.
+            // Ignore model counts for these rows; normalize() supplies the authoritative fact.
+            if (is_array($items[$observation['item_id']]['task_quantity'] ?? null)) {
+                continue;
+            }
             $quantity = $observation['quantity'] ?? null;
             if ((! is_int($quantity) && ! is_float($quantity)) || ! is_finite((float) $quantity)
                 || $quantity < 0 || $quantity > 1000000000 || abs($quantity - round($quantity, 6)) > 0.000000001) {
