@@ -88,6 +88,13 @@ export interface SpaBusinessSnapshot {
 }
 export type SpaBusinessCommand =
   | {
+      kind: "product-create";
+      id: string;
+      name: string;
+      unit: string;
+      price: number;
+    }
+  | {
       kind: "service-save";
       id: string;
       name: string;

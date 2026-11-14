@@ -15,6 +15,8 @@ async function setup(
     const request = route.request();
     const path = new URL(request.url()).pathname;
     requests.push({ path, method: request.method() });
+    if (path === "/api/spa/catalog/status")
+      return route.fulfill({ json: { enabled: false, can_manage: true } });
     if (path === "/api/auth/me")
       return route.fulfill({
         status: options.authenticated === false ? 401 : 200,
@@ -142,7 +144,11 @@ test.describe("spa UI preview", () => {
     expect(errors).toEqual([]);
     expect(requests.every((request) => request.method === "GET")).toBe(true);
     expect(
-      requests.some((request) => request.path.startsWith("/api/spa")),
+      requests.some(
+        (request) =>
+          request.path.startsWith("/api/spa") &&
+          request.path !== "/api/spa/catalog/status",
+      ),
     ).toBe(false);
   });
 
@@ -812,6 +818,91 @@ test.describe("Spa concept one interactive modules", () => {
       page.getByRole("row").filter({ hasText: "INV-SPA-001" }),
     ).toHaveCount(0);
   });
+  for (const width of [1440, 390]) {
+    test(`retail product creation, stock-in and sale work at ${width}px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const requests = await setup(page);
+      const goTo = async (name: string) => {
+        if (width < 1280)
+          await page
+            .getByRole("button", {
+              name: "Đóng hoặc mở thanh điều hướng",
+              exact: true,
+            })
+            .click();
+        await openSpa(page, name);
+      };
+      await page.goto("/spa/services");
+      await page
+        .getByRole("button", { name: "Sản phẩm bán lẻ", exact: true })
+        .click();
+      await page
+        .getByRole("searchbox", { name: "Tìm kiếm", exact: true })
+        .fill("không khớp");
+      await page
+        .getByRole("button", { name: "Thêm sản phẩm", exact: true })
+        .click();
+      const dialog = page.getByRole("dialog");
+      const save = dialog.getByRole("button", { name: "Lưu mẫu", exact: true });
+      await dialog
+        .getByLabel("Tên sản phẩm", { exact: true })
+        .fill("Kem dưỡng mới mẫu");
+      await save.click();
+      await expect(dialog.getByRole("alert")).toContainText("Nhập đơn vị tính");
+      await expect(dialog.getByLabel("Đơn vị", { exact: true })).toBeFocused();
+      await dialog.getByLabel("Đơn vị", { exact: true }).fill("Hũ");
+      await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("150000");
+      await save.click();
+      await expect(dialog).toHaveCount(0);
+      const card = page
+        .getByRole("article")
+        .filter({ hasText: "Kem dưỡng mới mẫu" });
+      await expect(card).toContainText("150.000");
+      await expect(
+        card.getByRole("button", { name: "Bán sản phẩm", exact: true }),
+      ).toBeDisabled();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await goTo("Kho");
+      const product = page
+        .getByRole("row")
+        .filter({ hasText: "Kem dưỡng mới mẫu" })
+        .first();
+      await expect(product.getByRole("cell").nth(2)).toHaveText("0");
+      await product
+        .getByRole("button", { name: "Nhập kho", exact: true })
+        .click();
+      await dialog.getByLabel("Số lượng", { exact: true }).fill("5");
+      await dialog
+        .getByLabel("Lý do / diễn giải")
+        .fill("Nhập sản phẩm mới mẫu");
+      await save.click();
+      await expect(product.getByRole("cell").nth(2)).toHaveText("5");
+      await goTo("Dịch vụ và sản phẩm");
+      await page
+        .getByRole("button", { name: "Sản phẩm bán lẻ", exact: true })
+        .click();
+      await card
+        .getByRole("button", { name: "Bán sản phẩm", exact: true })
+        .click();
+      await dialog
+        .getByLabel("Khách hàng", { exact: true })
+        .selectOption("customer-2");
+      await dialog.getByLabel("Số lượng", { exact: true }).fill("2");
+      await save.click();
+      await expect(card).toContainText("Tồn hiện tại: 3");
+      await goTo("Thu ngân");
+      await expect(
+        page.getByRole("row").filter({ hasText: "Bán lẻ" }),
+      ).toContainText("300.000");
+      expect(requests.every((r) => r.method === "GET")).toBe(true);
+    });
+  }
   test("catalog and inventory share retail stock, with no automatic cash receipt", async ({
     page,
   }) => {
@@ -957,6 +1048,162 @@ const afterPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAmUlEQVR4nO3PMQ2AUBTFUPwvKMABChCBAsRg4L+BqTRpcscO92z3uS/3XMdyf+u3vx0KQB8KQB8KQB/6DLAcnfoAdB+A7gPQvR9gOTr1Aeg+AN0HoHs/wHJ06gPQfQC6D0D3foDl6NQHoPsAdB+A7v0Ay9GpD0D3Aeg+AN37AZajUx+A7gPQfQC69wMsR6c+AN0HoPsAdK8HvAXQ4fA0zIORAAAAAElFTkSuQmCC",
   "base64",
 );
+
+test.describe("Spa saved catalog", () => {
+  test.skip(!previewEnabled, "SPA UI preview flag disabled");
+  for (const width of [1440, 390]) {
+    test(`saves services and products across reload, edit and preview reset at ${width}px`, async ({
+      page,
+    }) => {
+      await setup(page);
+      await page.setViewportSize({ width, height: 900 });
+      const records: Record<string, unknown>[] = [];
+      const writes: string[] = [];
+      let rejectNextEdit = false;
+      await page.route("**/api/spa/catalog**", async (route) => {
+        const request = route.request(),
+          url = new URL(request.url());
+        if (url.pathname.endsWith("/status"))
+          return route.fulfill({ json: { enabled: true, can_manage: true } });
+        if (request.method() === "GET") {
+          const data = records.filter(
+            (r) => r.kind === url.searchParams.get("kind"),
+          );
+          return route.fulfill({
+            json: {
+              data,
+              meta: { current_page: 1, last_page: 1, total: data.length },
+            },
+          });
+        }
+        writes.push(request.method());
+        const input = request.postDataJSON();
+        if (request.method() === "POST") {
+          const row = { ...input, version: 1 };
+          records.push(row);
+          return route.fulfill({ status: 201, json: { data: row } });
+        }
+        if (rejectNextEdit) {
+          rejectNextEdit = false;
+          return route.fulfill({
+            status: 409,
+            json: { message: "SPA_CATALOG_CONFLICT" },
+          });
+        }
+        const row = records.find(
+          (r) => r.id === url.pathname.split("/").at(-1),
+        )!;
+        Object.assign(row, input, { version: Number(row.version) + 1 });
+        return route.fulfill({ json: { data: row } });
+      });
+      await page.goto("/spa/services");
+      const dialog = page.getByRole("dialog");
+      const save = dialog.getByRole("button", {
+        name: "Lưu danh mục",
+        exact: true,
+      });
+      await page
+        .getByRole("button", { name: "Thêm dịch vụ", exact: true })
+        .click();
+      await dialog
+        .getByLabel("Tên dịch vụ", { exact: true })
+        .fill("Dịch vụ lưu thật");
+      await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("250000");
+      await save.click();
+      await expect(
+        page.getByRole("heading", { name: "Dịch vụ lưu thật", exact: true }),
+      ).toBeVisible();
+      await page.reload();
+      await expect(
+        page.getByRole("heading", { name: "Dịch vụ lưu thật", exact: true }),
+      ).toBeVisible();
+      // Clicking the selected tab must not leave the list stuck loading.
+      await page.getByRole("button", { name: "Dịch vụ", exact: true }).click();
+      await page
+        .getByRole("button", { name: "Chỉnh sửa dịch vụ", exact: true })
+        .click();
+      await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("300000");
+      rejectNextEdit = true;
+      await save.click();
+      await expect(dialog.getByRole("alert")).toContainText(
+        "Danh mục đã được thay đổi",
+      );
+      await expect(
+        dialog.getByLabel("Đơn giá (₫)", { exact: true }),
+      ).toHaveValue("300000");
+      await save.click();
+      await expect(dialog).toHaveCount(0);
+      await expect(
+        page.getByRole("article").filter({ hasText: "Dịch vụ lưu thật" }),
+      ).toContainText("300.000");
+      await page
+        .getByRole("button", { name: "Sản phẩm bán lẻ", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Thêm sản phẩm", exact: true })
+        .click();
+      await dialog
+        .getByLabel("Tên sản phẩm", { exact: true })
+        .fill("Sản phẩm lưu thật");
+      await dialog.getByLabel("Đơn vị", { exact: true }).fill("Chai");
+      await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("150000");
+      await save.click();
+      await expect(
+        page.getByRole("heading", { name: "Sản phẩm lưu thật", exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Chỉnh sửa sản phẩm", exact: true })
+        .click();
+      await dialog.getByLabel("Đơn vị", { exact: true }).fill("Hộp");
+      await save.click();
+      await expect(
+        page.getByRole("article").filter({ hasText: "Sản phẩm lưu thật" }),
+      ).toContainText("Hộp");
+      page.once("dialog", (d) => d.accept());
+      await page
+        .getByRole("button", { name: "Khôi phục dữ liệu mẫu", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "Sản phẩm bán lẻ", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Sản phẩm lưu thật", exact: true }),
+      ).toBeVisible();
+      await page.reload();
+      await page
+        .getByRole("button", { name: "Sản phẩm bán lẻ", exact: true })
+        .click();
+      await expect(
+        page.getByRole("article").filter({ hasText: "Sản phẩm lưu thật" }),
+      ).toContainText("Hộp");
+      expect(records).toHaveLength(2);
+      expect(writes).toEqual(["POST", "PATCH", "PATCH", "POST", "PATCH"]);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await expect(
+        page.getByRole("button", { name: "Bán sản phẩm", exact: true }),
+      ).toHaveCount(0);
+    });
+  }
+  test("API failures never fall back to a successful local-only save", async ({
+    page,
+  }) => {
+    await setup(page);
+    await page.route("**/api/spa/catalog/status", (route) =>
+      route.fulfill({ status: 503, json: {} }),
+    );
+    await page.goto("/spa/services");
+    await expect(page.getByRole("alert")).toContainText(
+      "Chưa tải hoặc lưu được danh mục",
+    );
+    await expect(
+      page.getByRole("button", { name: "Thêm dịch vụ", exact: true }),
+    ).toHaveCount(0);
+  });
+});
 
 test.describe("Spa inline booking and skin photos", () => {
   test.skip(!previewEnabled, "SPA UI preview flag disabled");

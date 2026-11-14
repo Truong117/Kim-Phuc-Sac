@@ -27,6 +27,7 @@ use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
 use App\Http\Controllers\Reports\TaskProgressReconciliationController;
 use App\Http\Controllers\Reports\TodayReportController;
+use App\Http\Controllers\Spa\SpaCatalogController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
 use App\Http\Controllers\UserManagement\UserController;
@@ -91,6 +92,13 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/navigation', NavigationController::class);
     Route::get('/integrations/mail/personal-weekly-recipients', [ReportMailController::class, 'recipients']);
     Route::get('/workspaces', WorkspaceController::class);
+    Route::get('/spa/catalog/status', [SpaCatalogController::class, 'status'])
+        ->middleware(['permission:spa.services.manage', 'throttle:60,1,spa-catalog-status']);
+    Route::prefix('spa/catalog')->middleware('permission:spa.services.manage,organization')->group(function (): void {
+        Route::get('/', [SpaCatalogController::class, 'index'])->middleware('throttle:120,1,spa-catalog-read');
+        Route::post('/', [SpaCatalogController::class, 'store'])->middleware('throttle:30,1,spa-catalog-write');
+        Route::patch('/{id}', [SpaCatalogController::class, 'update'])->whereUuid('id')->middleware('throttle:30,1,spa-catalog-write');
+    });
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');
     Route::get('/reports/my-weekly-summary/periods', [PersonalWeeklyReportController::class, 'periods'])

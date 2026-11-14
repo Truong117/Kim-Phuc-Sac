@@ -115,6 +115,64 @@ test("partial receipts reduce balance, reject overpayments and appear by receipt
     fail(s, { ...command, id: "bad", amount }, "amountInvalid");
   fail(s, { ...command, id: "early", date: "2026-11-09" }, "dateInvalid");
 });
+test("new retail products start empty and flow through shared inventory and cashier", () => {
+  let s = fresh();
+  const command = {
+    kind: "product-create",
+    id: "new-product",
+    name: "  Kem dưỡng mẫu  ",
+    unit: "  Hũ  ",
+    price: 150000,
+  };
+  s = run(s, command);
+  const product = s.products.at(-1);
+  assert.equal(product.name, "Kem dưỡng mẫu");
+  assert.equal(product.unit, "Hũ");
+  assert.equal(product.retail, true);
+  assert.equal(product.stock, 0);
+  assert.equal(s.movements.length, fresh().movements.length);
+  assert.equal(s.invoices.length, fresh().invoices.length);
+  fail(s, command, "duplicateOperation");
+  const sale = {
+    kind: "retail-sell",
+    id: "new-product-sale",
+    customerId: "customer-2",
+    productId: command.id,
+    quantity: 2,
+    date: s.date,
+  };
+  fail(s, sale, "stockInsufficient");
+  s = run(s, {
+    kind: "stock",
+    id: "new-product-stock",
+    productId: command.id,
+    direction: "in",
+    quantity: 5,
+    reason: "Nhập kho mẫu",
+    date: s.date,
+  });
+  s = run(s, sale);
+  assert.equal(s.products.at(-1).stock, 3);
+  assert.equal(s.invoices.at(-1).total, 300000);
+  assert.equal(s.movements.at(-1).quantity, -2);
+  assert.equal(s.payments.length, fresh().payments.length);
+});
+test("invalid retail products are rejected without changing the catalog", () => {
+  const s = fresh();
+  const command = {
+    kind: "product-create",
+    id: "invalid-product",
+    name: "Kem dưỡng",
+    unit: "Hũ",
+    price: 150000,
+  };
+  for (const name of [" ", "a".repeat(101)])
+    fail(s, { ...command, name }, "nameRequired");
+  for (const unit of [" ", "a".repeat(31)])
+    fail(s, { ...command, unit }, "unitInvalid");
+  for (const price of [-1, 1.5, NaN, Infinity, 1_000_000_001])
+    fail(s, { ...command, price }, "amountInvalid");
+});
 test("retail sale posts stock-out and one invoice without inventing a payment", () => {
   let s = fresh();
   const stock = s.products[0].stock,

@@ -145,6 +145,11 @@ export type SpaPreviewCommand =
   | { kind: "technician"; id: string };
 export type SpaPreviewError =
   | "nameRequired"
+  | "unitInvalid"
+  | "catalogValidation"
+  | "catalogGroupInvalid"
+  | "catalogConflict"
+  | "catalogUnavailable"
   | "phoneInvalid"
   | "phoneDuplicate"
   | "customerRequired"

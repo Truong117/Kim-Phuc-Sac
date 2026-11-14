@@ -238,6 +238,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_dry_run_before_m23_m24_is_readable_but_apply_requires_both_migrations(): void
     {
+        (require database_path('migrations/2026_11_14_000000_create_spa_catalog_items.php'))->down();
         (require database_path('migrations/2026_11_13_030000_create_care_service_catalog.php'))->down();
         (require database_path('migrations/2026_11_13_020000_create_customer_care_reporting.php'))->down();
         (require database_path('migrations/2026_11_13_010000_add_task_progress_reconciliation.php'))->down();
@@ -261,7 +262,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         DB::table('migrations')->whereIn('migration', array_slice(StagingBootstrapPlan::EXPECTED_MIGRATIONS, 22))->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertFalse($preview['schema_ready']);
-        $this->assertCount(20, $preview['pending_migrations']);
+        $this->assertCount(21, $preview['pending_migrations']);
         $this->expectExceptionMessage('FIXTURE_APPLY_REQUIRES_M23_M24');
         $this->fixture->apply($this->batch, $this->end, $this->store, $preview['fingerprint'], []);
     }
@@ -393,6 +394,8 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_sampling_columns_must_match_the_reviewed_ledger(): void
     {
+        (require database_path('migrations/2026_11_14_000000_create_spa_catalog_items.php'))->down();
+        DB::table('migrations')->where('migration', '2026_11_14_000000_create_spa_catalog_items')->delete();
         (require database_path('migrations/2026_11_13_030000_create_care_service_catalog.php'))->down();
         (require database_path('migrations/2026_11_13_020000_create_customer_care_reporting.php'))->down();
         (require database_path('migrations/2026_11_13_010000_add_task_progress_reconciliation.php'))->down();
