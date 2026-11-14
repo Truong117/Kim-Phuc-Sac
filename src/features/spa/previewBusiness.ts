@@ -13,6 +13,7 @@ import {
   spaTaskPrice,
 } from "./businessSelectors";
 const kinds = [
+  "product-create",
   "service-save",
   "package-sell",
   "retail-sell",
@@ -66,6 +67,26 @@ export function applySpaBusinessCommand(
     ].some((i) => i.id === command.id)
   )
     return fail("duplicateOperation");
+  if (command.kind === "product-create") {
+    if (next.products.some((p) => p.id === command.id))
+      return fail("duplicateOperation");
+    if (!command.name.trim() || command.name.trim().length > 100)
+      return fail("nameRequired");
+    if (!command.unit.trim() || command.unit.trim().length > 30)
+      return fail("unitInvalid");
+    if (!moneyValid(command.price)) return fail("amountInvalid");
+    next.products.push({
+      id: command.id,
+      name: command.name.trim(),
+      unit: command.unit.trim(),
+      price: command.price,
+      retail: true,
+      stock: 0,
+      minStock: 0,
+      batch: "",
+      expires: "",
+    });
+  }
   if (command.kind === "service-save") {
     if (!command.name.trim() || command.name.trim().length > 100)
       return fail("nameRequired");

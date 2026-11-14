@@ -92,6 +92,27 @@ export default function useSpaBusinessForms() {
           requiresSkinPhoto: v.photo === "yes",
         }),
     }),
+    product: (onCreated?: () => void): SpaActionForm => ({
+      title: b("newProduct"),
+      hint: b("productHint"),
+      initial: { name: "", unit: "", price: "0" },
+      fields: [
+        field("name", "productName", { errors: ["nameRequired"] }),
+        field("unit", "unit", { errors: ["unitInvalid"] }),
+        amountField("price", "price"),
+      ],
+      submit: (v) => {
+        const error = execute({
+          kind: "product-create",
+          id: spaPreviewId("product"),
+          name: v.name,
+          unit: v.unit,
+          price: Number(v.price),
+        });
+        if (!error) onCreated?.();
+        return error;
+      },
+    }),
     retail: (product?: SpaProduct, onDate = snapshot.date): SpaActionForm => ({
       title: b("sell"),
       hint: b("sellHint"),

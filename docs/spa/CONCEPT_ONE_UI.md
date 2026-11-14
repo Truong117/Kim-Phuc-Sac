@@ -2,6 +2,8 @@
 
 This iteration extends the Spa workspace in the existing KPS repository. It uses synthetic data in React memory; reload/reset discards all changes. There are no Spa API writes, database migrations, role/permission changes, seeds, outbound messages or real payments.
 
+The default operating preview above remains available. The later optional [catalog persistence slice](CATALOG_PERSISTENCE.md), enabled by the backend `SPA_CATALOG_ENABLED`, saves only service/product definitions in a separate organization-scoped catalog. Its screen explicitly states that the remaining operational modules still use their own synthetic data.
+
 ## Screen coverage
 
 | Module             | Working preview interactions                                                                                                    |
@@ -26,6 +28,7 @@ Staff UI reuses the existing `settings` capability; cashbook reuses `cashier`. B
 
 ## Invariants demonstrated
 
+- Catalog create actions show a plus icon. Retail products can be created inline with name, unit and price; they start with zero stock and appear in the shared inventory. Stock-in enables the existing retail sale/cashier flow. All changes remain in the preview session.
 - Booking does not consume package sessions. Completion consumes one session once; insufficient/expired/wrong-customer packages fail atomically.
 - Once all services finish, one invoice contains only services outside packages. Retail/package sales create invoices, without inventing receipts.
 - Receipts are positive integer VND, cannot predate their invoice or exceed balance. Reports use receipt date for actual cash and invoice date for billing.

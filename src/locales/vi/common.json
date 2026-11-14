@@ -3734,7 +3734,7 @@
     "preview": {
       "badge": "UI mẫu",
       "title": "Không gian vận hành spa",
-      "description": "Dữ liệu và thao tác minh họa trong phiên hiện tại. Chưa lưu lên hệ thống, chưa thu tiền hoặc gửi tin nhắn thật. Tải lại trang sẽ đặt lại dữ liệu."
+      "description": "Các màn vận hành đang dùng dữ liệu minh họa, chưa thu tiền hoặc gửi tin nhắn thật. Danh mục dịch vụ và sản phẩm ghi rõ chế độ lưu tại màn hình tương ứng. Khôi phục dữ liệu mẫu không xóa danh mục đã lưu."
     },
     "navigationLabel": "Chức năng spa",
     "navigation": {
@@ -3948,6 +3948,8 @@
       },
       "errors": {
         "nameRequired": "Nhập tên khách hàng từ 1 đến 100 ký tự.",
+        "unitInvalid": "Nhập đơn vị tính từ 1 đến 30 ký tự.",
+        "catalogGroupInvalid": "Nhóm dịch vụ tối đa 100 ký tự.",
         "phoneInvalid": "Nhập số điện thoại mẫu hợp lệ từ 10 đến 15 chữ số.",
         "phoneDuplicate": "Số điện thoại đã có trong danh sách. Hãy chọn khách hàng hiện có.",
         "customerRequired": "Chọn khách hàng trước khi lưu lịch.",
@@ -3988,6 +3990,22 @@
     },
     "business": {
       "newService": "Thêm dịch vụ",
+      "newProduct": "Thêm sản phẩm",
+      "editProduct": "Chỉnh sửa sản phẩm",
+      "catalogLoading": "Đang tải danh mục…",
+      "catalogUnavailable": "Chưa tải hoặc lưu được danh mục. Hãy kiểm tra quyền truy cập, kết nối và việc bật danh mục trên hệ thống rồi thử lại.",
+      "catalogRetry": "Tải lại danh mục",
+      "catalogSavedHint": "Danh mục này được lưu trên hệ thống, tải lại trang vẫn giữ dữ liệu. Các màn đặt lịch, kho và bán hàng hiện vẫn dùng dữ liệu mẫu riêng, chưa sử dụng danh mục này.",
+      "catalogFormHint": "Lưu thông tin danh mục lên hệ thống. Chưa ghi nhận tồn kho hoặc giao dịch bán hàng.",
+      "catalogSave": "Lưu danh mục",
+      "catalogSaving": "Đang lưu…",
+      "catalogValidation": "Kiểm tra thông tin vừa nhập. Tên có thể đã tồn tại; tên tối đa 100 ký tự, nhóm tối đa 100 ký tự.",
+      "catalogConflict": "Danh mục đã được thay đổi hoặc hệ thống chưa sẵn sàng lưu. Giữ lại nội dung cần thiết, đóng biểu mẫu và tải lại danh mục trước khi thử lại.",
+      "catalogTotal": "Tổng mục",
+      "catalogPrevious": "Trang trước",
+      "catalogNext": "Trang sau",
+      "productName": "Tên sản phẩm",
+      "productHint": "Sản phẩm mới có tồn kho bằng 0. Nhập kho trước khi bán sản phẩm.",
       "editService": "Chỉnh sửa dịch vụ",
       "serviceName": "Tên dịch vụ",
       "group": "Nhóm dịch vụ",
