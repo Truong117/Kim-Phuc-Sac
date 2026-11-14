@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { PlusIcon } from "@/icons";
 import { useSpaPreview } from "../../hooks/useSpaPreviewSnapshot";
 import useSpaBusinessForms from "../../hooks/useSpaBusinessForms";
 import { normalizeSpaText } from "../../previewWorkflow";
@@ -40,11 +41,20 @@ export default function SpaCatalogView() {
           value={tab}
           onChange={setTab}
         />
-        {tab === "services" && (
-          <SpaAction onClick={() => setForm(forms.service())}>
-            {b("newService")}
-          </SpaAction>
-        )}
+        <SpaAction
+          onClick={() =>
+            setForm(
+              tab === "services"
+                ? forms.service()
+                : forms.product(() => setQuery("")),
+            )
+          }
+        >
+          <span className="inline-flex items-center gap-2">
+            <PlusIcon className="size-5 shrink-0" aria-hidden="true" />
+            {b(tab === "services" ? "newService" : "newProduct")}
+          </span>
+        </SpaAction>
       </div>
       <SpaSearch value={query} onChange={setQuery} />
       <SpaHint>{b(tab === "services" ? "serviceHint" : "sellHint")}</SpaHint>
