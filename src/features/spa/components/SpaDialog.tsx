@@ -6,9 +6,14 @@ import { CloseIcon } from "@/icons";
 
 export default function SpaDialog({
   title,
+  description,
   onClose,
   children,
-}: PropsWithChildren<{ title: string; onClose: () => void }>) {
+}: PropsWithChildren<{
+  title: string;
+  description?: string;
+  onClose: () => void;
+}>) {
   const id = useId();
   const { t } = useTranslation();
   return (
@@ -29,7 +34,7 @@ export default function SpaDialog({
             {title}
           </h2>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {t("spa.flow.formHint")}
+            {description ?? t("spa.flow.formHint")}
           </p>
         </div>
         <button

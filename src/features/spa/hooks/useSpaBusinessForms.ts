@@ -69,7 +69,7 @@ export default function useSpaBusinessForms() {
           step: 15,
           errors: ["timeInvalid", "serviceInUse"],
         }),
-        amountField("price", "price"),
+        { ...amountField("price", "price"), type: "money" },
         field("description", "description", {
           type: "textarea",
           required: false,
@@ -99,7 +99,7 @@ export default function useSpaBusinessForms() {
       fields: [
         field("name", "productName", { errors: ["nameRequired"] }),
         field("unit", "unit", { errors: ["unitInvalid"] }),
-        amountField("price", "price"),
+        { ...amountField("price", "price"), type: "money" },
       ],
       submit: (v) => {
         const error = execute({
