@@ -6,6 +6,7 @@ use App\Models\User;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\AuthorizationFixtures;
@@ -83,7 +84,7 @@ class SpaCatalogTest extends TestCase
         $this->postJson('/api/spa/catalog', $this->product())->assertConflict();
         $this->assertDatabaseCount('spa_catalog_items', 0);
         config(['spa.catalog_enabled' => true]);
-        \Illuminate\Support\Facades\Schema::drop('spa_catalog_items');
+        Schema::drop('spa_catalog_items');
         $this->getJson('/api/spa/catalog?kind=product')->assertConflict()->assertJsonPath('message', 'SPA_CATALOG_MIGRATION_REQUIRED');
     }
 

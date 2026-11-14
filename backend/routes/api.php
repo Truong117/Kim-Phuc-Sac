@@ -1,10 +1,10 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AI\AiDailyReportController;
 use App\Http\Controllers\AI\AiExecutiveDashboardController;
 use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
-use App\Http\Controllers\AccountController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\FacebookAnalyticsController;
