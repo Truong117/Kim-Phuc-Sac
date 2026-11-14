@@ -394,6 +394,8 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_sampling_columns_must_match_the_reviewed_ledger(): void
     {
+        (require database_path('migrations/2026_11_14_000000_create_spa_catalog_items.php'))->down();
+        DB::table('migrations')->where('migration', '2026_11_14_000000_create_spa_catalog_items')->delete();
         (require database_path('migrations/2026_11_13_030000_create_care_service_catalog.php'))->down();
         (require database_path('migrations/2026_11_13_020000_create_customer_care_reporting.php'))->down();
         (require database_path('migrations/2026_11_13_010000_add_task_progress_reconciliation.php'))->down();
