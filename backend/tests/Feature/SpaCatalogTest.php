@@ -23,6 +23,7 @@ class SpaCatalogTest extends TestCase
         $user = User::factory()->create();
         $membership = $this->createMembership($user, organizationCode: $organization);
         $this->attachRole($membership['membership_id'], DB::table('roles')->where('code', $role)->value('id'), true);
+        $this->app['auth']->forgetGuards();
         $this->actingAs($user, 'web');
         config(['spa.catalog_enabled' => true]);
 
