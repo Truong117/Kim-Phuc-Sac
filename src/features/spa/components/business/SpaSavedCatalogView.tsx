@@ -67,7 +67,7 @@ export default function SpaSavedCatalogView() {
             ? "editProduct"
             : "newProduct",
       ),
-      hint: b("catalogFormHint"),
+      description: b("catalogFormHint"),
       saveLabel: b("catalogSave"),
       messages: {
         catalogValidation: b("catalogValidation"),
@@ -117,7 +117,7 @@ export default function SpaSavedCatalogView() {
         {
           key: "price",
           label: b("price"),
-          type: "number",
+          type: "money",
           min: 0,
           max: 1000000000,
           step: 1,

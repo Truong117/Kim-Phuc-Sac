@@ -11,11 +11,12 @@ import type { SpaPreviewError } from "../../types";
 import { spaFieldClasses } from "../../config";
 import SpaDialog from "../SpaDialog";
 import SpaFormError from "../SpaFormError";
+import SpaMoneyInput from "../SpaMoneyInput";
 import { SpaHint } from "./SpaBusinessUi";
 export interface SpaFormField {
   key: string;
   label: string;
-  type?: "text" | "number" | "date" | "time" | "textarea" | "select";
+  type?: "text" | "number" | "money" | "date" | "time" | "textarea" | "select";
   options?: { value: string; label: string }[];
   errors?: SpaPreviewError[];
   min?: number;
@@ -25,6 +26,7 @@ export interface SpaFormField {
 }
 export interface SpaActionForm {
   title: string;
+  description?: string;
   hint?: string;
   fields: SpaFormField[];
   initial: Record<string, string>;
@@ -61,6 +63,7 @@ export default function SpaActionDialog({
   return (
     <SpaDialog
       title={form.title}
+      description={form.description}
       onClose={() => {
         if (!saving) close();
       }}
@@ -138,6 +141,14 @@ export default function SpaActionDialog({
                     placeholder={f.label}
                     error={invalid}
                     required
+                  />
+                ) : f.type === "money" ? (
+                  <SpaMoneyInput
+                    id={id}
+                    value={values[f.key] ?? ""}
+                    onChange={(value) => update(f.key, value)}
+                    required={f.required ?? true}
+                    error={invalid}
                   />
                 ) : (
                   <Input

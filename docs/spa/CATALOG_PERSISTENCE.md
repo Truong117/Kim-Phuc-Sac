@@ -24,3 +24,5 @@ This slice persists **only service and retail-product definitions**. It does not
 - Responses are `private, no-store`. Errors retain form values; concurrent edits require reloading rather than overwriting another user's version.
 
 The table is `spa_catalog_items`. Names and service/product definitions are shared within KPS for this first rollout; branch-specific pricing/catalog and customer-level scope are future work.
+
+Catalog unit prices use a text input with a numeric mobile keyboard and Vietnamese thousand separators (e.g. `1000000` displays as `1.000.000`). Forms retain unformatted digits and submit integer VND; existing backend limits still apply. The saved-catalog dialog identifies server storage instead of displaying the preview-only subtitle. This input change needs no migration or environment-variable change.

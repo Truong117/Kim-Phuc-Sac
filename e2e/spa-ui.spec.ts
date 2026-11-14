@@ -1108,11 +1108,25 @@ test.describe("Spa saved catalog", () => {
       await dialog
         .getByLabel("Tên dịch vụ", { exact: true })
         .fill("Dịch vụ lưu thật");
-      await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("250000");
+      const price = dialog.getByLabel("Đơn giá (₫)", { exact: true });
+      await expect(price).toHaveAttribute("type", "text");
+      await expect(price).toHaveAttribute("inputmode", "numeric");
+      await expect(dialog).not.toContainText("chỉ lưu trong phiên thử");
+      await price.fill("");
+      await price.pressSequentially("1000000");
+      await expect(price).toHaveValue("1.000.000");
+      await price.fill("1234");
+      await price.press("Home");
+      await price.press("ArrowRight");
+      await price.press("Delete");
+      await expect(price).toHaveValue("134");
+      await price.fill("250000");
+      await expect(price).toHaveValue("250.000");
       await save.click();
       await expect(
         page.getByRole("heading", { name: "Dịch vụ lưu thật", exact: true }),
       ).toBeVisible();
+      expect(records[0].price).toBe(250000);
       await page.reload();
       await expect(
         page.getByRole("heading", { name: "Dịch vụ lưu thật", exact: true }),
@@ -1130,7 +1144,7 @@ test.describe("Spa saved catalog", () => {
       );
       await expect(
         dialog.getByLabel("Đơn giá (₫)", { exact: true }),
-      ).toHaveValue("300000");
+      ).toHaveValue("300.000");
       await save.click();
       await expect(dialog).toHaveCount(0);
       await expect(
@@ -1146,8 +1160,10 @@ test.describe("Spa saved catalog", () => {
         .getByLabel("Tên sản phẩm", { exact: true })
         .fill("Sản phẩm lưu thật");
       await dialog.getByLabel("Đơn vị", { exact: true }).fill("Chai");
-      await dialog.getByLabel("Đơn giá (₫)", { exact: true }).fill("150000");
+      await price.fill("150.000");
+      await expect(price).toHaveValue("150.000");
       await save.click();
+      expect(records[1].price).toBe(150000);
       await expect(
         page.getByRole("heading", { name: "Sản phẩm lưu thật", exact: true }),
       ).toBeVisible();
