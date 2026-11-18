@@ -95,6 +95,10 @@ jobs:
     name: Frontend browser tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    container:
+      # Keep this version aligned with @playwright/test in package-lock.json.
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --user 1001
 
     steps:
       - name: Checkout repository
@@ -111,14 +115,6 @@ jobs:
       - name: Install frontend dependencies
         timeout-minutes: 3
         run: npm ci
-
-      - name: Install browser system dependencies
-        timeout-minutes: 2
-        run: npx playwright install-deps chromium
-
-      - name: Install Chromium headless shell
-        timeout-minutes: 2
-        run: npx playwright install --only-shell chromium
 
       - name: Run frontend browser tests
         timeout-minutes: 9
