@@ -559,8 +559,12 @@ test.describe("spa reception workflow preview", () => {
     ).toContainText("Phòng / giường");
     expect(requests.every((request) => request.method === "GET")).toBe(true);
     expect(
-      requests.some((request) => request.path.startsWith("/api/spa")),
-    ).toBe(false);
+      new Set(
+        requests
+          .filter((request) => request.path.startsWith("/api/spa"))
+          .map((request) => request.path),
+      ),
+    ).toEqual(new Set(["/api/spa/bookings/capabilities"]));
     await page.reload();
     await expect(page.getByText("Khách UI thử", { exact: true })).toHaveCount(
       0,
