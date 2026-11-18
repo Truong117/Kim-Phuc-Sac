@@ -48,6 +48,8 @@ class WorkspaceAccessService
             $sections = $manager ? self::SPA_SECTIONS : array_values(array_unique(array_merge(
                 $reception ? ['appointments', 'reception', 'customers', 'rooms', 'care'] : [],
                 $technician ? ['technician'] : [],
+                $permissions->contains('spa.appointments.view') ? ['appointments'] : [],
+                $permissions->contains('spa.customers.view') ? ['customers'] : [],
                 ! $reception && ! $technician ? ['appointments', 'customers'] : [],
             )));
             $home = $manager ? '/spa' : ($reception ? '/spa/reception' : ($technician ? '/spa/technician' : '/spa/appointments'));

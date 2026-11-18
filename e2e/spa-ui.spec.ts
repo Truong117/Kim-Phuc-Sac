@@ -1,6 +1,21 @@
 import { expect, test, type Page } from "@playwright/test";
+import type {
+  SpaAppointmentEvent,
+  SpaSavedAppointment,
+  SpaSavedCustomer,
+} from "../src/features/spa/services/spaBookingService";
 
 const previewEnabled = process.env.SPA_UI_TEST_ENABLED !== "false";
+const bookingCapabilities = {
+  enabled: false,
+  viewAppointments: false,
+  createAppointment: false,
+  rescheduleAppointment: false,
+  cancelAppointment: false,
+  viewCustomers: false,
+  createCustomer: false,
+  editCustomer: false,
+};
 
 async function setup(
   page: Page,
@@ -17,6 +32,8 @@ async function setup(
     requests.push({ path, method: request.method() });
     if (path === "/api/spa/catalog/status")
       return route.fulfill({ json: { enabled: false, can_manage: true } });
+    if (path === "/api/spa/bookings/capabilities")
+      return route.fulfill({ json: bookingCapabilities });
     if (path === "/api/auth/me")
       return route.fulfill({
         status: options.authenticated === false ? 401 : 200,
@@ -104,7 +121,7 @@ test.describe("spa UI preview", () => {
     await expect(page.getByText("Nguyễn Minh Anh")).toHaveCount(0);
   });
 
-  test("opens all base screens without spa API calls or writes", async ({
+  test("opens all preview screens with only SPA capability checks and no writes", async ({
     page,
   }) => {
     const requests = await setup(page);
@@ -147,7 +164,10 @@ test.describe("spa UI preview", () => {
       requests.some(
         (request) =>
           request.path.startsWith("/api/spa") &&
-          request.path !== "/api/spa/catalog/status",
+          ![
+            "/api/spa/catalog/status",
+            "/api/spa/bookings/capabilities",
+          ].includes(request.path),
       ),
     ).toBe(false);
   });
@@ -539,8 +559,12 @@ test.describe("spa reception workflow preview", () => {
     ).toContainText("Phòng / giường");
     expect(requests.every((request) => request.method === "GET")).toBe(true);
     expect(
-      requests.some((request) => request.path.startsWith("/api/spa")),
-    ).toBe(false);
+      new Set(
+        requests
+          .filter((request) => request.path.startsWith("/api/spa"))
+          .map((request) => request.path),
+      ),
+    ).toEqual(new Set(["/api/spa/bookings/capabilities"]));
     await page.reload();
     await expect(page.getByText("Khách UI thử", { exact: true })).toHaveCount(
       0,
@@ -1218,6 +1242,437 @@ test.describe("Spa saved catalog", () => {
     await expect(
       page.getByRole("button", { name: "Thêm dịch vụ", exact: true }),
     ).toHaveCount(0);
+  });
+});
+
+const spaBookingPath = "/api/spa/bookings";
+const appointmentDate = "2026-11-18";
+const savedCustomer: SpaSavedCustomer = {
+  id: "107cbc87-8261-4dc1-abc4-e65f4a8d3324",
+  name: "Khách Spa kiểm thử",
+  phone: "0912345678",
+  note: "",
+  version: 1,
+};
+const savedService = {
+  id: "931109cd-5576-45c8-a667-9787b2166fca",
+  name: "Chăm sóc da đã lưu",
+  price: 250000,
+  duration_minutes: 45,
+  requires_skin_photo: false,
+};
+const savedAppointment: SpaSavedAppointment = {
+  id: "3744327e-ddc0-4f38-b17e-f736cf3dbc3f",
+  customer: { id: savedCustomer.id, name: savedCustomer.name },
+  service: savedService,
+  date: appointmentDate,
+  start_time: "10:15",
+  end_time: "11:00",
+  status: "booked",
+  note: "",
+  version: 1,
+};
+
+function spaBookingPage<T>(data: T[]) {
+  return { data, meta: { current_page: 1, last_page: 1, total: data.length } };
+}
+
+async function setupLiveBooking(
+  page: Page,
+  { readOnly = false, seeded = false } = {},
+) {
+  await setup(page, { userName: "Người kiểm thử lịch hẹn" });
+  const customers = seeded ? [{ ...savedCustomer }] : [];
+  const appointments = seeded ? [{ ...savedAppointment }] : [];
+  const lookups: string[] = [];
+  const writes: {
+    path: string;
+    method: string;
+    payload: Record<string, unknown>;
+  }[] = [];
+  const history: SpaAppointmentEvent[] = [];
+  await page.route(`**${spaBookingPath}/**`, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname.slice(spaBookingPath.length);
+    const method = request.method();
+    const search = url.searchParams.get("search")?.toLocaleLowerCase() ?? "";
+    if (path === "/capabilities")
+      return route.fulfill({
+        json: {
+          enabled: true,
+          viewAppointments: true,
+          createAppointment: !readOnly,
+          rescheduleAppointment: !readOnly,
+          cancelAppointment: !readOnly,
+          viewCustomers: true,
+          createCustomer: !readOnly,
+          editCustomer: !readOnly,
+        },
+      });
+    if (path === "/services")
+      return route.fulfill({ json: spaBookingPage([savedService]) });
+    if (path === "/customers" && method === "GET")
+      return route.fulfill({
+        json: spaBookingPage(
+          customers.filter((item) =>
+            `${item.name} ${item.phone}`.toLocaleLowerCase().includes(search),
+          ),
+        ),
+      });
+    if (path === "/customers/lookup" && method === "POST") {
+      const { phone } = request.postDataJSON() as { phone: string };
+      lookups.push(phone);
+      return route.fulfill({
+        json: { data: customers.find((item) => item.phone === phone) ?? null },
+      });
+    }
+    if (path === "/appointments" && method === "GET")
+      return route.fulfill({
+        json: spaBookingPage(
+          appointments.filter(
+            (item) => item.date === url.searchParams.get("date"),
+          ),
+        ),
+      });
+
+    const [, resource, id, action] = path.split("/");
+    const appointment = appointments.find((item) => item.id === id);
+    if (resource === "appointments" && appointment && method === "GET")
+      return route.fulfill({
+        json: { data: { ...appointment, events: history } },
+      });
+
+    if (method === "POST" || method === "PATCH") {
+      const payload = request.postDataJSON() as Record<string, unknown>;
+      writes.push({ path, method, payload });
+      if (readOnly)
+        return route.fulfill({ status: 403, json: { message: "Forbidden" } });
+
+      if (path === "/customers") {
+        const customer = { ...savedCustomer, ...payload };
+        customers.push(customer);
+        return route.fulfill({ status: 201, json: { data: customer } });
+      }
+      if (resource === "customers") {
+        const customer = customers.find((item) => item.id === id);
+        if (customer) {
+          Object.assign(customer, payload, { version: customer.version + 1 });
+          return route.fulfill({ json: { data: customer } });
+        }
+      }
+      if (path === "/appointments") {
+        const customerInput = payload.customer as
+          Partial<typeof savedCustomer> | undefined;
+        const customer = customerInput
+          ? { ...savedCustomer, ...customerInput }
+          : customers.find((item) => item.id === payload.customer_id);
+        if (!customer || payload.service_id !== savedService.id)
+          return route.fulfill({
+            status: 422,
+            json: { message: "Invalid booking" },
+          });
+        if (customerInput) customers.push(customer);
+        const row = {
+          ...savedAppointment,
+          id: String(payload.id),
+          customer: { id: customer.id, name: customer.name },
+          date: String(payload.date),
+          start_time: String(payload.start_time),
+          note: String(payload.note ?? ""),
+        };
+        appointments.push(row);
+        history.push({
+          action: "created",
+          actor_name: "Người kiểm thử lịch hẹn",
+          created_at: "2026-11-18T03:00:00Z",
+          previous_date: null,
+          previous_start_time: null,
+          date: row.date,
+          start_time: row.start_time,
+          reason: null,
+        });
+        return route.fulfill({
+          status: 201,
+          json: { data: { ...row, events: history } },
+        });
+      }
+      if (resource === "appointments" && appointment && action) {
+        const rescheduled = action === "reschedule";
+        const event: SpaAppointmentEvent = {
+          action: rescheduled ? "rescheduled" : "cancelled",
+          actor_name: "Người kiểm thử lịch hẹn",
+          created_at: "2026-11-18T04:00:00Z",
+          previous_date: appointment.date,
+          previous_start_time: appointment.start_time,
+          date: rescheduled ? String(payload.date) : appointment.date,
+          start_time: rescheduled
+            ? String(payload.start_time)
+            : appointment.start_time,
+          reason: rescheduled ? null : String(payload.reason),
+        };
+        if (rescheduled) {
+          appointment.date = event.date;
+          appointment.start_time = event.start_time;
+          appointment.end_time = "13:45";
+        } else {
+          appointment.status = "cancelled";
+        }
+        appointment.version++;
+        history.push(event);
+        return route.fulfill({
+          json: { data: { ...appointment, events: history } },
+        });
+      }
+    }
+    return route.fulfill({
+      status: 404,
+      json: { message: `Unmapped fixture: ${path}` },
+    });
+  });
+  return { appointments, customers, lookups, writes };
+}
+
+test.describe("Spa saved appointments and customers", () => {
+  test.skip(!previewEnabled, "SPA UI preview flag disabled");
+
+  test("creates a real appointment with a new customer and retains changes through reload on mobile", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const { appointments, customers, lookups, writes } =
+      await setupLiveBooking(page);
+    await page.goto(`/spa/appointments?date=${appointmentDate}`);
+    await page
+      .getByRole("button", { name: "Tạo lịch hẹn", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByRole("button", { name: "Khách hàng mới", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Tên khách hàng", { exact: true })
+      .fill(savedCustomer.name);
+    await dialog
+      .getByLabel("Số điện thoại", { exact: true })
+      .fill(savedCustomer.phone);
+    await dialog
+      .getByLabel("Dịch vụ", { exact: true })
+      .selectOption(savedService.id);
+    await dialog.getByLabel("Giờ hẹn", { exact: true }).fill("10:15");
+    await dialog
+      .getByRole("button", { name: "Lưu lịch hẹn", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByText(savedCustomer.name, { exact: true }),
+    ).toBeVisible();
+    expect(lookups).toHaveLength(0);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toMatchObject({
+      path: "/appointments",
+      method: "POST",
+      payload: {
+        customer: { name: savedCustomer.name, phone: savedCustomer.phone },
+        date: appointmentDate,
+        start_time: "10:15",
+        service_id: savedService.id,
+      },
+    });
+    expect(customers).toHaveLength(1);
+    expect(appointments).toHaveLength(1);
+
+    await page.reload();
+    await expect(
+      page.getByText(savedService.name, { exact: false }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Đổi lịch", exact: true }).click();
+    await dialog.getByLabel("Giờ hẹn", { exact: true }).fill("13:00");
+    await dialog
+      .getByRole("button", { name: "Lưu thay đổi", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText(/13:00/).first()).toBeVisible();
+    expect(writes[1]).toMatchObject({
+      method: "PATCH",
+      path: `/appointments/${appointments[0].id}/reschedule`,
+      payload: { version: 1, date: appointmentDate, start_time: "13:00" },
+    });
+
+    await page
+      .getByRole("button", { name: "Hủy lịch hẹn", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Lý do hủy", { exact: true })
+      .fill("Khách đổi kế hoạch");
+    await dialog
+      .getByRole("button", { name: "Xác nhận hủy lịch", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText("Đã hủy", { exact: true })).toBeVisible();
+    expect(writes[2]).toMatchObject({
+      method: "POST",
+      path: `/appointments/${appointments[0].id}/cancel`,
+      payload: { version: 2, reason: "Khách đổi kế hoạch" },
+    });
+    await page.reload();
+    await page
+      .getByRole("button", { name: "Xem chi tiết", exact: true })
+      .click();
+    await expect(
+      dialog.getByText("Lịch sử thao tác", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Khách đổi kế hoạch", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByText("Người kiểm thử lịch hẹn", { exact: false }).first(),
+    ).toBeVisible();
+    for (const action of ["Tạo lịch hẹn", "Đổi lịch", "Hủy lịch hẹn"])
+      await expect(
+        dialog.getByText(`${action} · Người kiểm thử lịch hẹn`, {
+          exact: true,
+        }),
+      ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Đổi lịch", exact: true }),
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+
+  test("publishes appointments and customer profiles to readers without granting write actions", async ({
+    page,
+  }) => {
+    const { writes } = await setupLiveBooking(page, {
+      readOnly: true,
+      seeded: true,
+    });
+    await page.goto(`/spa/appointments?date=${appointmentDate}`);
+    await expect(
+      page.getByText(savedCustomer.name, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Tạo lịch hẹn", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Đổi lịch", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Hủy lịch hẹn", exact: true }),
+    ).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "Xem chi tiết", exact: true })
+      .click();
+    await expect(
+      page.getByRole("dialog").getByText(savedService.name, { exact: true }),
+    ).toBeVisible();
+
+    await page.goto("/spa/customers");
+    await expect(
+      page.getByRole("heading", { name: savedCustomer.name, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Thêm khách hàng", exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Sửa khách hàng", exact: true }),
+    ).toHaveCount(0);
+    expect(writes).toHaveLength(0);
+  });
+
+  test("creates and edits a customer profile and finds it by name or phone during booking", async ({
+    page,
+  }) => {
+    const { customers, lookups, writes } = await setupLiveBooking(page);
+    await page.goto("/spa/customers");
+    await page
+      .getByRole("button", { name: "Thêm khách hàng", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog");
+    await dialog
+      .getByLabel("Tên khách hàng", { exact: true })
+      .fill(savedCustomer.name);
+    await dialog
+      .getByLabel("Số điện thoại", { exact: true })
+      .fill(savedCustomer.phone);
+    await dialog
+      .getByRole("button", { name: "Lưu khách hàng", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: savedCustomer.name, exact: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: "Sửa khách hàng", exact: true })
+      .click();
+    await dialog
+      .getByLabel("Ghi chú khách hàng", { exact: true })
+      .fill("Ưu tiên buổi sáng");
+    await dialog
+      .getByRole("button", { name: "Lưu khách hàng", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(
+      page.getByText("Ưu tiên buổi sáng", { exact: true }),
+    ).toBeVisible();
+    expect(writes[1]).toMatchObject({
+      path: `/customers/${savedCustomer.id}`,
+      method: "PATCH",
+      payload: { version: 1, note: "Ưu tiên buổi sáng" },
+    });
+
+    await page.goto(`/spa/appointments?date=${appointmentDate}`);
+    await page
+      .getByRole("button", { name: "Tạo lịch hẹn", exact: true })
+      .click();
+    await expect(
+      dialog.getByRole("button", { name: "Khách hàng cũ", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const search = dialog.getByLabel("Tìm khách theo tên hoặc số điện thoại", {
+      exact: true,
+    });
+    const findCustomer = dialog.getByRole("button", {
+      name: "Tìm khách hàng",
+      exact: true,
+    });
+    await search.fill(savedCustomer.phone);
+    await findCustomer.click();
+    await expect(
+      dialog.getByText(`${savedCustomer.name} · ${savedCustomer.phone}`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(lookups).toEqual([savedCustomer.phone]);
+    await search.fill("Khách Spa");
+    await findCustomer.click();
+    const customerChoice = dialog.getByLabel("Chọn khách hàng", {
+      exact: true,
+    });
+    await customerChoice.selectOption(savedCustomer.id);
+    await expect(customerChoice).toHaveValue(savedCustomer.id);
+    await expect(
+      dialog.getByLabel("Tên khách hàng", { exact: true }),
+    ).toHaveCount(0);
+    await dialog
+      .getByLabel("Dịch vụ", { exact: true })
+      .selectOption(savedService.id);
+    await dialog.getByLabel("Giờ hẹn", { exact: true }).fill("10:15");
+    await dialog
+      .getByRole("button", { name: "Lưu lịch hẹn", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    expect(lookups).toEqual([savedCustomer.phone]);
+    expect(writes[2]).toMatchObject({
+      path: "/appointments",
+      method: "POST",
+      payload: { customer_id: savedCustomer.id },
+    });
+    expect(writes[2].payload).not.toHaveProperty("customer");
+    expect(customers).toHaveLength(1);
   });
 });
 

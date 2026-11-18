@@ -27,6 +27,7 @@ use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
 use App\Http\Controllers\Reports\TaskProgressReconciliationController;
 use App\Http\Controllers\Reports\TodayReportController;
+use App\Http\Controllers\Spa\SpaBookingController;
 use App\Http\Controllers\Spa\SpaCatalogController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
@@ -98,6 +99,19 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::get('/', [SpaCatalogController::class, 'index'])->middleware('throttle:120,1,spa-catalog-read');
         Route::post('/', [SpaCatalogController::class, 'store'])->middleware('throttle:30,1,spa-catalog-write');
         Route::patch('/{id}', [SpaCatalogController::class, 'update'])->whereUuid('id')->middleware('throttle:30,1,spa-catalog-write');
+    });
+    Route::prefix('spa/bookings')->group(function (): void {
+        Route::get('/capabilities', [SpaBookingController::class, 'capabilities'])->middleware('throttle:60,1,spa-booking-capabilities');
+        Route::get('/customers', [SpaBookingController::class, 'customers'])->middleware('throttle:120,1,spa-booking-read');
+        Route::post('/customers/lookup', [SpaBookingController::class, 'lookup'])->middleware('throttle:60,1,spa-booking-lookup');
+        Route::post('/customers', [SpaBookingController::class, 'createCustomer'])->middleware('throttle:30,1,spa-booking-write');
+        Route::patch('/customers/{id}', [SpaBookingController::class, 'updateCustomer'])->whereUuid('id')->middleware('throttle:30,1,spa-booking-write');
+        Route::get('/services', [SpaBookingController::class, 'services'])->middleware('throttle:120,1,spa-booking-read');
+        Route::get('/appointments', [SpaBookingController::class, 'appointments'])->middleware('throttle:120,1,spa-booking-read');
+        Route::get('/appointments/{id}', [SpaBookingController::class, 'appointment'])->whereUuid('id')->middleware('throttle:120,1,spa-booking-read');
+        Route::post('/appointments', [SpaBookingController::class, 'createAppointment'])->middleware('throttle:30,1,spa-booking-write');
+        Route::patch('/appointments/{id}/reschedule', [SpaBookingController::class, 'reschedule'])->whereUuid('id')->middleware('throttle:30,1,spa-booking-write');
+        Route::post('/appointments/{id}/cancel', [SpaBookingController::class, 'cancel'])->whereUuid('id')->middleware('throttle:30,1,spa-booking-write');
     });
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');
