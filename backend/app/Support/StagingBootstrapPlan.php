@@ -55,6 +55,7 @@ final class StagingBootstrapPlan
         '2026_11_13_020000_create_customer_care_reporting',
         '2026_11_13_030000_create_care_service_catalog',
         '2026_11_14_000000_create_spa_catalog_items',
+        '2026_11_18_000000_create_spa_bookings',
     ];
 
     /** @var list<string> */

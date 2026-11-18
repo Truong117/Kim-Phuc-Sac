@@ -85,6 +85,7 @@ class SpaCatalogTest extends TestCase
         $this->postJson('/api/spa/catalog', $this->product())->assertConflict();
         $this->assertDatabaseCount('spa_catalog_items', 0);
         config(['spa.catalog_enabled' => true]);
+        (require database_path('migrations/2026_11_18_000000_create_spa_bookings.php'))->down();
         Schema::drop('spa_catalog_items');
         $this->getJson('/api/spa/catalog?kind=product')->assertConflict()->assertJsonPath('message', 'SPA_CATALOG_MIGRATION_REQUIRED');
     }

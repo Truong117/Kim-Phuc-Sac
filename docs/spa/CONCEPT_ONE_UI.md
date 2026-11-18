@@ -1,8 +1,16 @@
 # Spa concept 1 — UI review scope
 
-This iteration extends the Spa workspace in the existing KPS repository. It uses synthetic data in React memory; reload/reset discards all changes. There are no Spa API writes, database migrations, role/permission changes, seeds, outbound messages or real payments.
+The Spa workspace in the existing KPS repository starts in preview mode. Preview screens use synthetic data in React memory. Reloading or resetting discards preview changes. Catalog, appointments and customer profiles can be saved when their backend flags are enabled.
 
 The default operating preview above remains available. The later optional [catalog persistence slice](CATALOG_PERSISTENCE.md), enabled by the backend `SPA_CATALOG_ENABLED`, saves only service/product definitions in a separate organization-scoped catalog. Its screen explicitly states that the remaining operational modules still use their own synthetic data.
+
+## Saved appointments and customers
+
+`SPA_BOOKING_ENABLED=true` switches Lịch hẹn and Khách hàng to saved records. Apply `2026_11_18_000000_create_spa_bookings.php` after the catalog migration, then deploy the backend before the frontend. `SPA_CATALOG_ENABLED=true` supplies service choices. Overview and reception link to live booking when enabled. Their operational dashboards still display preview data.
+
+One service per appointment uses the catalog price and duration at booking. Staff can find existing customers by name or phone. Each customer has a unique normalized phone number within their KPS organization. Inline customer creation and booking commit together. The same customer cannot have overlapping active appointments. Appointments record the actor, time, and outcome of creation, rescheduling, and cancellation.
+
+`SpaBookingAccess` maps each API action to existing KPS permissions and sends matching capabilities to the UI. The first rollout accepts organization-wide grants within the user's KPS organization. Configure role grants in KPS authorization when the matrix is approved. Location and assigned-record scopes require a data boundary for each scope. The booking flag defaults to `false`.
 
 ## Screen coverage
 
@@ -50,7 +58,7 @@ Staff UI reuses the existing `settings` capability; cashbook reuses `cashier`. B
 
 ## Deliberate next-stage integrations
 
-Persistent data and business APIs, facility/tenant isolation, server enforcement of final permissions, real KTV identity binding, skin-photo storage/consent, notifications/SMS/Zalo, financial reconciliation/refunds, tax invoices and payroll calculations remain backend/integration work. The UI labels these as a preview; the settings table does not edit access rights. Attendance and commission are operational illustrations, not HR/payroll records.
+The remaining preview screens still need persistent business data and APIs. Next-stage integrations include facility-level isolation, the final permission matrix, real KTV identity, skin-photo storage and consent, messaging, financial reconciliation and refunds, tax invoices, and payroll. Settings shows current access read-only. Attendance and commission use sample figures.
 
 ## Inline customer booking and skin-photo UI
 
