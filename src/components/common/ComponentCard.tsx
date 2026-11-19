@@ -4,6 +4,7 @@ interface ComponentCardProps {
   className?: string; // Additional custom classes for styling
   desc?: string; // Description text
   compact?: boolean;
+  fillHeight?: boolean;
 }
 
 const ComponentCard: React.FC<ComponentCardProps> = ({
@@ -12,13 +13,18 @@ const ComponentCard: React.FC<ComponentCardProps> = ({
   className = "",
   desc = "",
   compact = false,
+  fillHeight = false,
 }) => {
+  const bodyLayout = fillHeight ? "flex min-h-0 flex-1 flex-col" : "";
+
   return (
     <div
-      className={`rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] ${className}`}
+      className={`rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03] ${fillHeight ? "flex flex-col" : ""} ${className}`}
     >
       {/* Card Header */}
-      <div className={compact ? "px-5 pt-4 pb-2" : "px-6 py-5"}>
+      <div
+        className={`${compact ? "px-5 pt-4 pb-2" : "px-6 py-5"} ${fillHeight ? "shrink-0" : ""}`}
+      >
         <h3 className="text-base font-semibold text-gray-800 dark:text-white/90">
           {title}
         </h3>
@@ -31,13 +37,15 @@ const ComponentCard: React.FC<ComponentCardProps> = ({
 
       {/* Card Body */}
       <div
-        className={
+        className={`${
           compact
             ? "px-5 pt-2 pb-5"
-            : "border-t border-gray-100 p-4 dark:border-gray-800 sm:p-6"
-        }
+            : "border-t border-gray-100 p-4 sm:p-6 dark:border-gray-800"
+        } ${bodyLayout}`}
       >
-        <div className={compact ? "space-y-4" : "space-y-6"}>{children}</div>
+        <div className={`${compact ? "space-y-4" : "space-y-6"} ${bodyLayout}`}>
+          {children}
+        </div>
       </div>
     </div>
   );
