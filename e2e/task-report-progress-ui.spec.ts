@@ -6,6 +6,7 @@ async function setup(
     makeup?: boolean;
     schema?: boolean;
     unit?: "video" | "khách hàng" | "lượt chăm sóc";
+    crm?: boolean;
   } = {},
 ) {
   const task = {
@@ -104,6 +105,47 @@ async function setup(
           meta: { current_page: 1, last_page: 1 },
         },
       });
+    if (options.crm && path === "/api/crm/report-draft")
+      return route.fulfill({
+        json: {
+          data: {
+            business_date: date,
+            tasks: [{ id: task.id, title: "Chăm sóc khách hàng", revision: 3 }],
+            activities: [
+              {
+                id: 90,
+                kind: "INTAKE",
+                customer_code: "KH-701",
+                customer_name: "Khách A",
+                title: "Tiếp nhận khách mới",
+                result: "Nguồn Zalo",
+                services: [],
+                due_on: null,
+              },
+              {
+                id: 91,
+                kind: "CONSULTATION",
+                customer_code: "KH-701",
+                customer_name: "Khách A",
+                title: "Tư vấn khách hàng",
+                result: "Khách cần thêm thông tin",
+                services: [{ name: "Tư vấn sản phẩm" }, { name: "Theo dõi" }],
+                due_on: null,
+              },
+              {
+                id: 92,
+                kind: "FOLLOW_UP",
+                customer_code: "KH-701",
+                customer_name: "Khách A",
+                title: "Gọi lại sau dùng thử",
+                result: null,
+                services: [],
+                due_on: "2026-11-13",
+              },
+            ],
+          },
+        },
+      });
     const json =
       path === "/api/workspaces"
         ? { workspaces: [{ id: "internal", home: "/", sections: [] }] }
@@ -118,7 +160,14 @@ async function setup(
               location: null,
             }
           : path === "/api/navigation"
-            ? { items: ["reports.new", "reports.history", "tasks"] }
+            ? {
+                items: [
+                  "reports.new",
+                  "reports.history",
+                  "tasks",
+                  ...(options.crm ? ["customers"] : []),
+                ],
+              }
             : path === "/api/reports/today" ||
                 path === "/api/reports/makeup/state"
               ? {
@@ -166,6 +215,39 @@ async function setup(
   await expect(page.locator("#quick-draft-completed")).toBeVisible();
   return submissions;
 }
+
+test("CRM activities are selected in the daily draft and only selected sources are sent on save", async ({
+  page,
+}) => {
+  const submissions = await setup(page, { unit: "khách hàng", crm: true });
+  const intake = page.getByRole("checkbox", { name: /Tiếp nhận khách mới/ });
+  await expect(intake).toBeChecked();
+  await intake.uncheck();
+  await page.reload();
+  await expect(intake).not.toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: /Tư vấn khách hàng/ }),
+  ).toBeChecked();
+  await expect(
+    page.getByRole("checkbox", { name: /Gọi lại sau dùng thử/ }),
+  ).toBeChecked();
+  await page
+    .locator("#quick-draft-completed")
+    .fill("Công việc vãng lai → Đã xử lý");
+  await page.locator('form button[type="submit"]').click();
+  await expect.poll(() => submissions.length).toBe(1);
+  expect(submissions[0].crm_draft).toEqual({
+    activity_ids: [91, 92],
+    task_id: 51,
+    expected_revision: 3,
+  });
+  expect(submissions[0].items).toEqual([
+    expect.objectContaining({
+      content: "Công việc vãng lai",
+      result: "Đã xử lý",
+    }),
+  ]);
+});
 async function fillUpdate(page: Page) {
   await page
     .getByRole("button", { name: "Cập nhật tiến độ", exact: true })

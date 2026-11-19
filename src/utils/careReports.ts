@@ -200,6 +200,7 @@ export const careWorksFromLegacy = (
 export const careWorkPayload = (works: CareWorkItem[]) =>
   works.map((w) => ({
     client_key: w.client_key,
+    ...(w.crm_activity_id ? { crm_activity_id: w.crm_activity_id } : {}),
     services: w.services.map((s) => ({
       ...((s.id ?? 0) > 0 ? { id: s.id } : {}),
       name: s.name.trim(),

@@ -11,6 +11,7 @@ class StoreMakeupReportRequest extends ReportItemsRequest
         return array_replace(parent::rules(), [
             'report_date' => ['required', 'date_format:Y-m-d'],
             'form_version' => ['required', 'integer', Rule::in([3])],
+            'crm_draft' => ['prohibited'],
         ]);
     }
 }

@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\OrganizationMembership;
 use App\Models\ReportComment;
 use App\Models\User;
+use App\Services\Crm\CrmReportDraft;
 use App\Services\Social\ReportFacebookPosts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -169,6 +170,12 @@ class WorkReportService
                     'next_day_plan' => $details['next_day_plan'] ?? null,
                 ]);
 
+                if (isset($details['crm_draft'])) {
+                    app(CrmReportDraft::class)->apply($author, $report, $items, $details);
+                    $report->next_day_plan = $details['next_day_plan'];
+                    $report->save();
+                }
+
                 $this->replaceItems($report, $items, $author);
 
                 return $report;
@@ -236,6 +243,7 @@ class WorkReportService
                 && $existing->contains(fn ($item) => filled($item->issue) || ! empty($item->evidence_links))) {
                 throw new ConflictHttpException('Báo cáo có nội dung mới. Hãy tải lại trang trước khi chỉnh sửa.');
             }
+            app(CrmReportDraft::class)->apply($author, $report, $items, $details);
             // Reapplying a removed preview keeps its persisted task link and first-completion anchor.
             foreach ($items as &$item) {
                 if (! isset($item['id']) && ! empty($item['task_id'])) {
@@ -256,7 +264,7 @@ class WorkReportService
                     throw ValidationException::withMessages(['items' => 'Đầu việc không thuộc báo cáo đang sửa.']);
                 }
             }
-            $tasks = app(ReportTaskProgress::class)->lock($author, $report->report_date->toDateString(), $items, $existing);
+            $tasks = app(ReportTaskProgress::class)->lock($author, $report, $items, $existing);
             // Resolve and lock new Page choices before taking any item write locks (same order as sync).
             $selections = [];
             foreach ($items as $index => $item) {
@@ -400,7 +408,7 @@ class WorkReportService
      */
     private function replaceItems(DailyReport $report, array $items, User $author): void
     {
-        $tasks = app(ReportTaskProgress::class)->lock($author, $report->report_date->toDateString(), $items);
+        $tasks = app(ReportTaskProgress::class)->lock($author, $report, $items);
         foreach ($items as $index => $item) {
             $row = $report->items()->create([
                 'content' => $item['content'],

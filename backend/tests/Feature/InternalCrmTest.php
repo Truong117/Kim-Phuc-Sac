@@ -1,0 +1,212 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\DailyReport;
+use App\Models\Task;
+use App\Models\User;
+use App\Services\TaskService;
+use Carbon\CarbonImmutable;
+use Database\Seeders\AuthorizationSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
+use Tests\AuthorizationFixtures;
+use Tests\TestCase;
+
+class InternalCrmTest extends TestCase
+{
+    use AuthorizationFixtures, RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(AuthorizationSeeder::class);
+        $this->travelTo(CarbonImmutable::parse('2026-11-19 10:00:00', 'Asia/Ho_Chi_Minh'));
+        config(['crm.enabled' => true]);
+    }
+
+    public function test_crm_draft_records_each_work_but_counts_the_customer_once_when_saved(): void
+    {
+        [$sales] = $this->member('SALES_STAFF');
+        [$admin] = $this->member('ADMIN');
+        $task = $this->task($admin, $sales);
+        $this->as($sales);
+        $customer = $this->customer();
+        $opportunity = $this->activity($customer, 'OPPORTUNITY', ['title' => 'Nhu cầu về bộ dưỡng']);
+        $first = $this->consultation($customer, ['Tư vấn sản phẩm', 'Hướng dẫn sử dụng']);
+        $second = $this->consultation($customer, ['Theo dõi phản hồi']);
+        $followUp = $this->activity($customer, 'FOLLOW_UP', ['title' => 'Gọi lại sau dùng thử', 'due_on' => '2026-11-20']);
+        $this->activity($customer, 'FOLLOW_UP', ['title' => 'Gọi vào tuần sau', 'due_on' => '2026-11-23']);
+
+        $draft = $this->getJson('/api/crm/report-draft')->assertOk()
+            ->assertJsonCount(5, 'data.activities')->assertJsonPath('data.tasks.0.id', $task->id)
+            ->json('data');
+        $this->assertEquals([$opportunity, $first, $second, $followUp], array_slice(array_column($draft['activities'], 'id'), 1));
+        $this->assertDatabaseCount('daily_reports', 0);
+        $this->assertDatabaseCount('task_outputs', 0);
+
+        $payload = ['form_version' => 3, 'items' => [], 'crm_draft' => [
+            'activity_ids' => array_column($draft['activities'], 'id'), 'task_id' => $task->id,
+            'expected_revision' => $draft['tasks'][0]['revision'],
+        ]];
+        $report = $this->postJson('/api/reports', $payload)->assertCreated()
+            ->assertJsonCount(3, 'data.items')
+            ->assertJsonPath('data.items.0.task_link.progress.input.care_work_items.0.crm_activity_id', $first)
+            ->assertJsonPath('data.items.0.task_link.progress.input.care_work_items.1.crm_activity_id', $second)
+            ->assertJsonCount(2, 'data.items.0.task_link.progress.input.care_work_items.0.services')
+            ->assertJsonPath('data.items.2.status', 'IN_PROGRESS')
+            ->assertJsonPath('data.next_day_plan', "Liên hệ lại KH-$customer — Gọi lại sau dùng thử")->json('data');
+        $this->assertDatabaseCount('task_outputs', 1);
+        $this->assertDatabaseHas('task_outputs', ['task_id' => $task->id, 'care_customer_id' => $customer, 'completed' => true]);
+        $this->assertDatabaseCount('crm_report_activities', 5);
+        $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(0, 'data.activities');
+        $this->patchJson('/api/reports/'.$report['id'], $payload)->assertUnprocessable()->assertJsonValidationErrors('crm_draft');
+        $this->assertDatabaseCount('task_outputs', 1);
+
+        // Existing saved work stays editable and keeps the source metadata and quantity.
+        $replay = array_map(fn ($row) => [
+            'id' => $row['id'], 'content' => $row['content'], 'result' => $row['result'],
+            'status' => $row['status'],
+            ...($row['task_link'] ? ['task_id' => $row['task_link']['task_id'], 'task_progress' => $row['task_link']['progress']['input']] : []),
+        ], $report['items']);
+        $this->patchJson('/api/reports/'.$report['id'], ['form_version' => 3, 'next_day_plan' => 'Theo dõi', 'items' => $replay])
+            ->assertOk()->assertJsonPath('data.items.0.task_link.progress.input.care_work_items.1.crm_activity_id', $second);
+        $this->assertDatabaseCount('task_outputs', 1);
+    }
+
+    public function test_editing_report_applies_only_new_sources_and_requires_a_current_task_revision(): void
+    {
+        [$sales] = $this->member('SALES_STAFF');
+        [$admin] = $this->member('ADMIN');
+        $task = $this->task($admin, $sales);
+        $this->as($sales);
+        $customer = $this->customer();
+        $first = $this->consultation($customer, ['Tư vấn sản phẩm']);
+        $original = $this->postJson('/api/reports', [
+            'form_version' => 3, 'next_day_plan' => 'Theo dõi', 'items' => [],
+            'crm_draft' => ['activity_ids' => [$first], 'task_id' => $task->id, 'expected_revision' => $task->progress_revision],
+        ])->assertCreated()->json('data');
+        $row = $original['items'][0];
+        $second = $this->consultation($customer, ['Hướng dẫn sử dụng']);
+        $payload = [
+            'form_version' => 3, 'next_day_plan' => 'Theo dõi', 'items' => [[
+                'id' => $row['id'], 'content' => $row['content'], 'result' => $row['result'],
+                'status' => $row['status'], 'task_id' => $task->id, 'task_progress' => $row['task_link']['progress']['input'],
+            ]],
+            'crm_draft' => ['activity_ids' => [$second], 'task_id' => $task->id, 'expected_revision' => $task->progress_revision],
+        ];
+        $this->patchJson('/api/reports/'.$original['id'], $payload)->assertUnprocessable();
+        $this->assertDatabaseCount('crm_report_activities', 1);
+        $payload['crm_draft']['expected_revision'] = $task->fresh()->progress_revision;
+        $this->patchJson('/api/reports/'.$original['id'], $payload)->assertOk()
+            ->assertJsonCount(2, 'data.items.0.task_link.progress.input.care_work_items');
+        $this->assertDatabaseCount('task_outputs', 1);
+        $this->assertDatabaseCount('crm_report_activities', 2);
+    }
+
+    public function test_ownership_handoff_and_replay_use_scope_without_exposing_other_sales_contacts(): void
+    {
+        [$seller] = $this->member('SALES_STAFF');
+        [$receiver, $receiverId] = $this->member('SALES_STAFF');
+        [$admin] = $this->member('ADMIN');
+        $this->as($seller);
+        $input = ['request_key' => (string) Str::uuid(), 'name' => 'Ngọc Anh', 'channel' => 'ZALO', 'contact' => '0900001234'];
+        $created = $this->postJson('/api/crm/customers', $input)->assertCreated()->json('data.id');
+        $this->postJson('/api/crm/customers', $input)->assertCreated()->assertJsonPath('data.id', $created);
+        $this->postJson('/api/crm/customers', [...$input, 'name' => 'Tên khác'])->assertConflict();
+        $this->assertDatabaseCount('care_customers', 1);
+        $this->assertDatabaseCount('crm_activities', 1);
+        $followUp = $this->activity($created, 'FOLLOW_UP', ['title' => 'Gọi lại', 'due_on' => '2026-11-20']);
+
+        $this->as($receiver);
+        $this->getJson('/api/crm/customers/'.$created)->assertNotFound();
+        $this->postJson('/api/crm/customers', [...$input, 'request_key' => (string) Str::uuid(), 'contact' => '+84900001234'])
+            ->assertUnprocessable()->assertJsonValidationErrors('contact');
+        $this->assertDatabaseCount('care_customers', 1);
+
+        $this->as($admin);
+        $this->getJson('/api/crm/assignees')->assertOk();
+        $handoff = [
+            'membership_id' => $receiverId, 'request_key' => (string) Str::uuid(),
+            'version' => 1, 'reason' => 'Theo dõi ca tiếp theo',
+        ];
+        $this->patchJson('/api/crm/customers/'.$created.'/assignment', $handoff)->assertOk();
+        $this->patchJson('/api/crm/customers/'.$created.'/assignment', $handoff)->assertOk();
+        $this->assertDatabaseCount('crm_activities', 3);
+        $this->as($receiver);
+        $this->getJson('/api/crm/customers/'.$created)->assertOk()->assertJsonPath('data.owner_membership_id', $receiverId);
+        $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(1, 'data.activities')
+            ->assertJsonPath('data.activities.0.id', $followUp);
+
+        $this->as($seller);
+        $this->getJson('/api/crm/customers/'.$created)->assertNotFound();
+        $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(1, 'data.activities');
+    }
+
+    public function test_author_and_date_are_resolved_on_the_server_and_disabled_crm_is_safe(): void
+    {
+        [$sales] = $this->member('SALES_STAFF');
+        [$other] = $this->member('SALES_STAFF');
+        [$office] = $this->member('OFFICE_STAFF');
+        $this->as($sales);
+        $customer = $this->customer();
+        $event = $this->consultation($customer, ['Tư vấn']);
+        $this->as($office);
+        $this->getJson('/api/crm/customers')->assertForbidden();
+        $this->as($other);
+        $this->postJson('/api/reports', ['form_version' => 3, 'next_day_plan' => 'Theo dõi', 'items' => [], 'crm_draft' => ['activity_ids' => [$event]]])
+            ->assertUnprocessable()->assertJsonValidationErrors('crm_draft');
+        $this->assertSame(0, DailyReport::query()->count());
+
+        $this->as($sales);
+        $this->travelTo(CarbonImmutable::parse('2026-11-20 10:00:00', 'Asia/Ho_Chi_Minh'));
+        $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(0, 'data.activities');
+        config(['crm.enabled' => false]);
+        $this->getJson('/api/crm/capabilities')->assertOk()->assertJsonPath('data.ready', false);
+        $this->getJson('/api/crm/customers')->assertConflict();
+        $this->postJson('/api/reports', ['form_version' => 3, 'next_day_plan' => 'Theo dõi', 'items' => []])->assertCreated();
+    }
+
+    private function member(string $role): array
+    {
+        $user = User::factory()->create();
+        $membership = $this->createMembership($user);
+        $this->attachRole($membership['membership_id'], $this->createRole($role), true);
+
+        return [$user, $membership['membership_id']];
+    }
+
+    private function as(User $user): void
+    {
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($user, 'web');
+    }
+
+    private function task(User $admin, User $assignee): Task
+    {
+        return app(TaskService::class)->create($admin, [
+            'title' => 'Chăm sóc khách hàng', 'description' => '80 khách trong tháng',
+            'assignee_id' => $assignee->id, 'priority' => 'MEDIUM', 'start_date' => '2026-11-01', 'due_date' => '2026-11-30',
+            'target_quantity' => 80, 'quantity_unit' => 'khách hàng',
+        ])->fresh();
+    }
+
+    private function customer(): int
+    {
+        return $this->postJson('/api/crm/customers', [
+            'request_key' => (string) Str::uuid(), 'name' => 'Ngọc Anh', 'channel' => 'ZALO',
+        ])->assertCreated()->json('data.id');
+    }
+
+    private function consultation(int $customer, array $services): int
+    {
+        return $this->activity($customer, 'CONSULTATION', ['services' => $services, 'result' => 'Khách sẽ đọc hướng dẫn.']);
+    }
+
+    private function activity(int $customer, string $kind, array $fields): int
+    {
+        return $this->postJson("/api/crm/customers/$customer/activities", [
+            'kind' => $kind, 'request_key' => (string) Str::uuid(), ...$fields,
+        ])->assertCreated()->json('data.id');
+    }
+}
