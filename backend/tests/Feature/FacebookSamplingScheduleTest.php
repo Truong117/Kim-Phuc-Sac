@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\Social\Analytics\FacebookAnalyticsSync;
 use App\Services\Social\Analytics\FacebookSamplingDispatcher;
 use App\Services\Social\Analytics\FacebookSamplingPolicy;
+use App\Services\Social\FacebookPostTracking;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -313,5 +314,91 @@ class FacebookSamplingScheduleTest extends TestCase
         $this->assertDatabaseMissing('facebook_analytics_milestones', ['post_id' => $unavailable]);
         $this->assertDatabaseHas('facebook_analytics_samples', ['post_id' => $healthy]);
         $this->assertDatabaseHas('facebook_analytics_milestones', ['post_id' => $healthy]);
+    }
+
+    public function test_repeated_isolated_failure_defers_only_that_post_then_recovers_at_retry_time(): void
+    {
+        $missingId = $this->analyticsPost(1, '2026-11-08 09:55');
+        $this->analyticsPost(2, '2026-11-08 10:00');
+        $this->state();
+        $missingCalls = 0;
+        $available = false;
+        Http::fake(function ($r) use (&$available, &$missingCalls) {
+            if (str_contains($r->url(), 'published_posts')) {
+                return Http::response(['data' => [['id' => '100_2']]]);
+            }
+            if (str_contains($r->url(), '/100_1/reactions')) {
+                $missingCalls++;
+                if (! $available) {
+                    return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+                }
+            }
+
+            return Http::response(['summary' => ['total_count' => 5]]);
+        });
+        $sync = app(FacebookAnalyticsSync::class);
+        $this->assertSame(1, app(FacebookSamplingDispatcher::class)->dispatch());
+        $this->runLast();
+        $sync->enqueue($this->entry->id, $this->admin->id);
+        $this->runLast();
+        $retry = now()->addDay();
+        $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => '100_1', 'failure_count' => 2, 'retry_at' => $retry]);
+        $sync->enqueue($this->entry->id, $this->admin->id);
+        $this->runLast();
+        $this->assertSame(2, $missingCalls);
+        $this->assertSame(1, $this->state()->counts['ready_posts']);
+        $this->assertSame(1, $this->state()->counts['deferred_posts']);
+        $this->read()->assertOk()->assertJsonPath('data.sampling.deferred_posts', 1)->assertJsonPath('data.sampling.overdue_posts', 0);
+        $this->assertDatabaseMissing('facebook_analytics_samples', ['post_id' => $missingId]);
+
+        // The morning catalogue check encounters the existing cooldown; it schedules
+        // another check at expiry even though the next normal check is in the evening.
+        $this->travelTo($retry->copy()->subHour());
+        $this->assertSame(1, app(FacebookSamplingDispatcher::class)->dispatch());
+        $this->runLast();
+        $this->assertSame(2, $missingCalls);
+        $this->assertTrue($this->state()->sampling_next_check_at->eq($retry));
+        $this->travelTo($retry);
+        $available = true;
+        $this->assertSame(1, app(FacebookSamplingDispatcher::class)->dispatch());
+        $this->runLast();
+        $this->assertSame(3, $missingCalls);
+        $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => '100_1', 'failure_count' => 0, 'retry_at' => null]);
+        $this->assertDatabaseHas('facebook_analytics_samples', ['post_id' => $missingId, 'sampled_at' => now(), 'scheduled_for' => $retry, 'sampling_late' => false]);
+        $this->assertSame(2, $this->state()->counts['ready_posts']);
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-10 21:00', 'Asia/Ho_Chi_Minh')->utc());
+        $this->assertSame(1, app(FacebookSamplingDispatcher::class)->dispatch());
+        $this->runLast();
+        $this->assertSame(4, $missingCalls);
+        $this->assertDatabaseHas('facebook_analytics_samples', ['post_id' => $missingId, 'scheduled_for' => now(), 'sampling_late' => false]);
+    }
+
+    public function test_stop_during_provider_io_preserves_history_and_excludes_even_urgent_age_checks(): void
+    {
+        config(['facebook_analytics.milestones_enabled' => true]);
+        $post = $this->analyticsPost(1, '2026-11-08 10:00', '2026-11-08 10:01');
+        $this->analyticsPost(2, '2026-10-20 12:00', '2026-11-08 21:05');
+        $this->state();
+        Http::fake(function ($r) {
+            if (str_contains($r->url(), '/100_1/comments')) {
+                app(FacebookPostTracking::class)->setStopped($this->connection, '100_1', true, $this->admin->id);
+            }
+
+            return Http::response(['summary' => ['total_count' => 5]]);
+        });
+        $dispatcher = app(FacebookSamplingDispatcher::class);
+        $this->assertSame(1, $dispatcher->dispatch());
+        $this->runLast();
+        $this->assertSame('idle', $this->state()->status);
+        $this->assertSame(1, $this->state()->counts['catalogue_posts']);
+        $this->assertSame(1, $this->state()->counts['ready_posts']);
+        $this->assertSame(1, $this->state()->counts['stopped_posts']);
+        $this->assertDatabaseCount('facebook_analytics_samples', 2);
+        $this->assertDatabaseMissing('facebook_analytics_milestones', ['post_id' => $post]);
+        $this->read()->assertOk()->assertJsonPath('data.sampling.total_posts', 1)->assertJsonPath('data.sampling.overdue_posts', 0)
+            ->assertJsonPath('data.sampling.stopped_posts', 1);
+        $this->assertSame(0, $dispatcher->dispatch());
+        Http::assertSentCount(2);
     }
 }

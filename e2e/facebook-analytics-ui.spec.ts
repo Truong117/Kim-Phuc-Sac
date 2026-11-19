@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import type {
   FacebookAnalyticsPost,
+  FacebookPostTracking,
   FacebookMonthlyReportData,
 } from "../src/types/facebookAnalytics";
 
@@ -11,6 +12,7 @@ async function setup(
     delayed?: boolean;
     syncCycle?: boolean;
     skipped?: boolean;
+    tracking?: FacebookPostTracking;
     sampling?: "waiting" | "overdue" | "off";
     sources?: boolean;
     milestones?: boolean;
@@ -441,6 +443,7 @@ async function setup(
             connection_status: "connected",
             principal_available: true,
             can_manage: !options.assigned,
+            tracking: isSecond ? undefined : options.tracking,
             ai_enabled: true,
             milestones_enabled: !!(options.age || options.review),
             reviews_enabled: !!options.review,
@@ -1598,4 +1601,213 @@ test("completed sync exposes skipped posts without claiming full sample coverage
     page.getByText(/Bài bị bỏ qua không được tính là đã có mẫu/),
   ).toBeVisible();
   await expect(page.getByText("12/12", { exact: true })).toHaveCount(0);
+});
+
+const unavailableTracking = (): FacebookPostTracking => ({
+  can_manage: true,
+  entry_version: 6,
+  connection_revision: 3,
+  unavailable_count: 1,
+  stopped_count: 0,
+  page: 1,
+  last_page: 1,
+  posts: [
+    {
+      external_id: "100_999",
+      url: "https://facebook.com/reel/999",
+      status: "unavailable",
+      version: 9,
+      failures: 2,
+      next_retry_at: "2026-11-08T03:00:00Z",
+      reason: null,
+      stopped_at: null,
+    },
+  ],
+});
+
+for (const reason of [null, "post_deleted"] as const) {
+  test(`responsible employee stops tracking ${reason ? "with an explicit reason" : "without a reason"} and can resume`, async ({
+    page,
+  }) => {
+    const tracking = unavailableTracking();
+    await setup(page, { tracking, assigned: true });
+    const changes: unknown[] = [];
+    await page.route("**/facebook/1/tracking/100_999", async (route) => {
+      expect(route.request().method()).toBe("PATCH");
+      const body = route.request().postDataJSON();
+      changes.push(body);
+      if (body.status === "stopped") {
+        Object.assign(tracking.posts[0], {
+          status: "stopped",
+          version: 10,
+          reason: body.reason ?? null,
+          stopped_at: "2026-11-07T04:00:00Z",
+          next_retry_at: null,
+        });
+        tracking.unavailable_count = 0;
+        tracking.stopped_count = 1;
+      } else {
+        tracking.posts = [];
+        tracking.stopped_count = 0;
+      }
+      return route.fulfill({ status: 204 });
+    });
+    await page
+      .getByText("1 bài tạm thời không đọc được · 0 bài đã ngừng theo dõi")
+      .click();
+    await expect(page.getByText(/Có thể thử lại từ .*10:00/)).toBeVisible();
+    const stop = page.getByRole("button", {
+      name: "Ngừng theo dõi",
+      exact: true,
+    });
+    const dialog = page.getByRole("dialog", {
+      name: "Ngừng theo dõi bài viết",
+    });
+    const select = dialog.getByRole("combobox", {
+      name: "Lý do (không bắt buộc)",
+    });
+    await stop.click();
+    await expect(dialog).toContainText("100_999");
+    await expect(dialog).not.toContainText("ẩn vì trùng nội dung");
+    await expect(select).toHaveValue("");
+    if (reason) {
+      await select.selectOption({ label: "Bài đã xóa" });
+    } else {
+      await select.selectOption({ label: "Bài trùng nội dung" });
+      await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
+      await expect(dialog).toHaveCount(0);
+      expect(changes).toHaveLength(0);
+      await stop.click();
+      await expect(select).toHaveValue("");
+    }
+    await dialog
+      .getByRole("button", { name: "Ngừng theo dõi", exact: true })
+      .click();
+    await expect(
+      page.getByText("0 bài tạm thời không đọc được · 1 bài đã ngừng theo dõi"),
+    ).toBeVisible();
+    const stopped = page
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name: "Mở bài 100_999" }) });
+    await expect(stopped).toContainText("Ngừng theo dõi lúc");
+    if (reason) {
+      await expect(stopped).toContainText("Lý do: Bài đã xóa");
+    } else {
+      await expect(stopped).not.toContainText(/Lý do:|trùng nội dung/i);
+    }
+    await stopped
+      .getByRole("button", { name: "Theo dõi lại", exact: true })
+      .click();
+    await expect(
+      page.getByText("Đã đưa bài 100_999 trở lại lịch lấy mẫu."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Mở bài 100_999" }),
+    ).toHaveCount(0);
+    expect(changes).toEqual([
+      {
+        status: "stopped",
+        ...(reason ? { reason } : {}),
+        expected_version: 9,
+        entry_version: 6,
+        connection_revision: 3,
+      },
+      {
+        status: "active",
+        expected_version: 10,
+        entry_version: 6,
+        connection_revision: 3,
+      },
+    ]);
+  });
+}
+
+test("read-only manager can page through tracking issues without getting stop or resume controls", async ({
+  page,
+}) => {
+  const tracking = unavailableTracking();
+  Object.assign(tracking, {
+    can_manage: false,
+    stopped_count: 50,
+    last_page: 2,
+  });
+  await setup(page, { tracking });
+  await page.route("**/facebook/1/tracking?page=2", (route) =>
+    route.fulfill({
+      json: {
+        data: {
+          ...tracking,
+          page: 2,
+          posts: [
+            {
+              ...tracking.posts[0],
+              status: "stopped",
+              external_id: "100_888",
+              url: "https://facebook.com/reel/888",
+              reason: "hidden_duplicate",
+              stopped_at: "2026-11-07T04:00:00Z",
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await page
+    .getByText("1 bài tạm thời không đọc được · 50 bài đã ngừng theo dõi")
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Ngừng theo dõi", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Trang sau", exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Mở bài 100_888" }),
+  ).toBeVisible();
+  const stopped = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("link", { name: "Mở bài 100_888" }) });
+  await expect(stopped).toContainText("Ngừng theo dõi lúc");
+  await expect(stopped).not.toContainText(/Lý do:|trùng nội dung/i);
+  await expect(
+    page.getByRole("button", { name: "Theo dõi lại", exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("combobox", { name: "Page đang phân tích" })
+    .selectOption("2");
+  await expect(page.getByRole("link", { name: "Mở bài 100_888" })).toHaveCount(
+    0,
+  );
+});
+
+test("tracking conflict refreshes the issue and preserves the server's decision", async ({
+  page,
+}) => {
+  const tracking = unavailableTracking();
+  await setup(page, { tracking, assigned: true });
+  await page.route("**/facebook/1/tracking/100_999", (route) => {
+    tracking.posts = [];
+    tracking.unavailable_count = 0;
+    return route.fulfill({ status: 409, json: {} });
+  });
+  await page
+    .getByText("1 bài tạm thời không đọc được · 0 bài đã ngừng theo dõi")
+    .click();
+  await page
+    .getByRole("button", { name: "Ngừng theo dõi", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Ngừng theo dõi bài viết" })
+    .getByRole("button", { name: "Ngừng theo dõi", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Thông tin bài hoặc người phụ trách đã thay đổi",
+  );
+  await expect(page.getByRole("link", { name: "Mở bài 100_999" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByText("Đã ngừng theo dõi bài 100_999.", { exact: false }),
+  ).toHaveCount(0);
 });

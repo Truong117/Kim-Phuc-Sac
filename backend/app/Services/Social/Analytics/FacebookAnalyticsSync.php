@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\Social\FacebookApiException;
 use App\Services\Social\FacebookMetricsClient;
 use App\Services\Social\FacebookPostSampler;
+use App\Services\Social\FacebookPostTracking;
 use App\Services\Social\FacebookReference;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -21,7 +22,7 @@ use Throwable;
 
 class FacebookAnalyticsSync
 {
-    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly FacebookAnalyticsAccess $access, private readonly FacebookSamplingPolicy $sampling) {}
+    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly FacebookAnalyticsAccess $access, private readonly FacebookSamplingPolicy $sampling, private readonly FacebookPostTracking $tracking) {}
 
     public function enqueue(int $entryId, int $requestedBy, bool $scheduled = false): bool
     {
@@ -60,7 +61,7 @@ class FacebookAnalyticsSync
                     $plan = ['binding' => $binding, 'activated_at' => $anchor->toIso8601String(), 'failures' => 0, 'paused' => false];
                 }
                 $plan['last_checked_at'] = $anchor->toIso8601String();
-                $this->sampling->save($state, $plan, app(FacebookMilestoneSampling::class)->nextCheck($connection, $anchor, $this->sampling->nextCheck($anchor)));
+                $this->sampling->save($state, $plan, $this->sampling->nextPageCheck($connection, $anchor, $this->sampling->nextCheck($anchor)));
                 if (($plan['paused'] ?? false) || (isset($plan['retry_after']) && CarbonImmutable::parse($plan['retry_after'])->gt($anchor))) {
                     if (isset($plan['retry_after'])) {
                         $this->sampling->save($state, $plan, CarbonImmutable::parse($plan['retry_after'])->max($anchor->addMinutes(5)));
@@ -76,7 +77,7 @@ class FacebookAnalyticsSync
 
                     return null;
                 }
-                $query = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)
+                $query = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)->where('organization_id', $connection->organization_id)
                     ->whereBetween('published_at', [$anchor->setTimezone('Asia/Ho_Chi_Minh')->subDays(89)->startOfDay()->utc(), $anchor]);
                 $discoveryDue = ! $state->catalogue_complete || $state->catalogued_at === null || $state->catalogued_at->lt($this->sampling->slots($anchor)['young']);
                 if (! $discoveryDue && ! $this->scheduledPending($query, $anchor, self::definition(), app(FacebookMilestoneSampling::class)->enabled())->exists()) {
@@ -187,20 +188,34 @@ class FacebookAnalyticsSync
                 if (! $this->pending($connection, $state)->where('facebook_analytics_posts.id', $post->id)->exists()) {
                     continue;
                 }
+                $retryAt = null;
+                $version = $this->tracking->versionIfEligible($connection, $post->external_id, $retryAt);
+                if ($version === null) {
+                    continue;
+                }
                 $started = CarbonImmutable::now();
                 $scheduledFor = null;
-                if (($state->counts['mode'] ?? null) === 'scheduled') {
+                if (($state->counts['mode'] ?? null) === 'scheduled' && $retryAt !== null) {
+                    $scheduledFor = $retryAt;
+                } elseif (($state->counts['mode'] ?? null) === 'scheduled') {
                     $previous = DB::table('facebook_analytics_samples')->where('post_id', $post->id)->where('definition', self::definition())->exists();
                     $anchor = CarbonImmutable::parse($state->counts['schedule_anchor']);
                     $cadenceDue = $this->sampling->pending(DB::table('facebook_analytics_posts')->where('id', $post->id), $anchor, self::definition())->exists();
                     $scheduledFor = $cadenceDue ? $this->sampling->timing($post, $anchor, $state->sampling_schedule['activated_at'] ?? null, ! $previous)
                         : app(FacebookMilestoneSampling::class)->target($post, $started);
                 }
+                $peerReadable = false;
                 $metrics = app(FacebookPostSampler::class)->sample($connection->access_token, $connection->page_id, $post->external_id,
-                    [...$diagnostics, 'post_id' => (int) $post->id, 'post_url' => $post->url]);
+                    [...$diagnostics, 'post_id' => (int) $post->id, 'post_url' => $post->url], $peerReadable, $connection);
                 if ($metrics === null) {
-                    DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post): void {
+                    DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $version, $peerReadable): void {
                         $this->fence($connection, $state, $lease, $entryVersion, $actor, true);
+                        $current = $peerReadable
+                            ? $this->tracking->recordFailure($connection, $post->external_id, $state->counts['run_id'], $version)
+                            : $this->tracking->versionIfEligible($connection, $post->external_id) === $version;
+                        if (! $current) {
+                            return;
+                        }
                         $ids = array_values(array_unique([...($state->counts['skipped_post_ids'] ?? []), (int) $post->id]));
                         $state->fill(['counts' => [...$state->counts, 'skipped_post_ids' => $ids]])->save();
                         $this->progress($connection, $state);
@@ -210,8 +225,11 @@ class FacebookAnalyticsSync
                 }
                 // Bind both storage paths to one completed provider observation, even across a second/hour boundary.
                 $observedAt = CarbonImmutable::now()->utc();
-                DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $metrics, $scheduledFor, $started, $observedAt): void {
+                DB::transaction(function () use ($connection, $state, $lease, $entryVersion, $actor, $post, $metrics, $scheduledFor, $started, $observedAt, $version): void {
                     $this->fence($connection, $state, $lease, $entryVersion, $actor, true);
+                    if (! $this->tracking->recordSuccess($connection, $post->external_id, $version)) {
+                        return;
+                    }
                     if (($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION) {
                         app(FacebookMilestoneSampling::class)->capture($post, $metrics, $started, $observedAt, self::definition());
                     }
@@ -281,7 +299,7 @@ class FacebookAnalyticsSync
 
     private function catalogue(SocialConnection $connection, FacebookAnalyticsState $state): Builder
     {
-        $query = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id);
+        $query = DB::table('facebook_analytics_posts')->where('facebook_analytics_posts.social_connection_id', $connection->id)->where('facebook_analytics_posts.organization_id', $connection->organization_id);
         if (($state->counts['mode'] ?? null) === 'scheduled') {
             $anchor = CarbonImmutable::parse($state->counts['schedule_anchor']);
 
@@ -291,43 +309,64 @@ class FacebookAnalyticsSync
         return $query->whereBetween('published_at', [CarbonImmutable::parse($state->from_date, 'Asia/Ho_Chi_Minh')->startOfDay()->utc(), CarbonImmutable::parse($state->to_date, 'Asia/Ho_Chi_Minh')->endOfDay()->utc()]);
     }
 
-    private function pending(SocialConnection $connection, FacebookAnalyticsState $state): Builder
+    private function pending(SocialConnection $connection, FacebookAnalyticsState $state, ?CarbonImmutable $at = null): Builder
     {
         $catalogue = $this->excludeSkipped($this->catalogue($connection, $state), $state);
         if (($state->counts['mode'] ?? null) === 'scheduled') {
             return $this->scheduledPending($catalogue, CarbonImmutable::parse($state->counts['schedule_anchor']), $state->counts['definition'],
-                ($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION && app(FacebookMilestoneSampling::class)->enabled());
+                ($state->counts['milestone_policy'] ?? null) === FacebookMilestoneSampling::VERSION && app(FacebookMilestoneSampling::class)->enabled(), $at);
         }
 
-        return $catalogue->whereNotExists(function ($query) use ($state): void {
+        return $this->tracking->eligibleAnalytics($catalogue, $at)->whereNotExists(function ($query) use ($state): void {
             $query->selectRaw('1')->from('facebook_analytics_samples')->whereColumn('post_id', 'facebook_analytics_posts.id')
                 ->where('definition', $state->counts['definition'])->where('sampled_at', '>=', CarbonImmutable::parse($state->counts['target_bucket'])->utc());
         });
     }
 
-    private function scheduledPending(Builder $query, CarbonImmutable $anchor, string $definition, bool $milestones): Builder
+    private function scheduledPending(Builder $query, CarbonImmutable $anchor, string $definition, bool $milestones, ?CarbonImmutable $at = null): Builder
     {
-        return $query->where(function ($q) use ($anchor, $definition, $milestones): void {
-            $q->where(fn ($cadence) => $this->sampling->pending($cadence, $anchor, $definition));
+        return $query->where(function ($q) use ($anchor, $definition, $milestones, $at): void {
+            $q->where(fn ($cadence) => $this->sampling->pending($cadence, $anchor, $definition, $at));
             if ($milestones) {
-                $q->orWhere(fn ($age) => app(FacebookMilestoneSampling::class)->pending($age, $anchor, $definition));
+                $q->orWhere(fn ($age) => app(FacebookMilestoneSampling::class)->pending($age, $anchor, $definition, $at));
             }
         });
     }
 
     private function excludeSkipped(Builder $query, FacebookAnalyticsState $state): Builder
     {
-        // Retry these posts in the next cycle, without spinning on them within this one.
+        // An isolated failure is attempted at most once within its sync cycle.
         return $query->whereNotIn('facebook_analytics_posts.id', $state->counts['skipped_post_ids'] ?? []);
+    }
+
+    public function refreshTrackingProgress(SocialConnection $connection): void
+    {
+        $state = FacebookAnalyticsState::query()->where('social_connection_id', $connection->id)->lockForUpdate()->first();
+        if ($state !== null && in_array($state->status, ['idle', 'failed'], true) && isset($state->counts['run_id'])) {
+            $this->progress($connection, $state);
+        }
     }
 
     private function progress(SocialConnection $connection, FacebookAnalyticsState $state): void
     {
-        $total = $this->catalogue($connection, $state)->count();
-        $pending = $this->pending($connection, $state)->count();
-        $skipped = $this->catalogue($connection, $state)->whereIn('id', $state->counts['skipped_post_ids'] ?? [])->count();
+        $at = CarbonImmutable::now();
+        $summary = $this->catalogue($connection, $state)->leftJoin('facebook_post_tracking as t', function ($join): void {
+            $join->on('t.social_connection_id', '=', 'facebook_analytics_posts.social_connection_id')
+                ->on('t.external_id', '=', 'facebook_analytics_posts.external_id');
+        })->selectRaw('COUNT(*) - COUNT(t.stopped_at) AS active, COUNT(t.stopped_at) AS stopped,
+            COUNT(CASE WHEN t.stopped_at IS NULL AND t.retry_at > ? THEN 1 END) AS deferred', [$at]);
+        $all = (clone $summary)->first();
+        $skippedIds = $state->counts['skipped_post_ids'] ?? [];
+        $skippedSummary = $skippedIds === [] ? null : $summary->whereIntegerInRaw('facebook_analytics_posts.id', $skippedIds)->first();
+        $total = (int) $all->active;
+        $stopped = (int) $all->stopped;
+        $pending = $this->pending($connection, $state, $at)->count();
+        $skipped = (int) ($skippedSummary->active ?? 0);
+        // A post entering backoff during this cycle already appears in the skipped count.
+        $deferred = (int) $all->deferred - (int) ($skippedSummary->deferred ?? 0);
         $state->fill(['counts' => [...$state->counts, 'catalogue_posts' => $total, 'pending_posts' => $pending,
-            'skipped_posts' => $skipped, 'ready_posts' => $total - $pending - $skipped]])->save();
+            'skipped_posts' => $skipped, 'deferred_posts' => $deferred, 'stopped_posts' => $stopped,
+            'ready_posts' => $total - $pending - $skipped - $deferred]])->save();
     }
 
     private function event(int $entryId, FacebookAnalyticsState $state, string $event, int $batchNumber): void
@@ -335,7 +374,8 @@ class FacebookAnalyticsSync
         Log::log($event === 'failed' ? 'warning' : 'info', 'facebook_analytics.sync', ['entry_id' => $entryId, 'run_id' => $state->counts['run_id'], 'batch' => $batchNumber, 'event' => $event,
             'mode' => $state->counts['mode'] ?? 'manual', 'status' => $state->status, 'catalogue_complete' => $state->catalogue_complete, 'catalogue_posts' => $state->counts['catalogue_posts'],
             'ready_posts' => $state->counts['ready_posts'], 'pending_posts' => $state->counts['pending_posts'],
-            'skipped_posts' => $state->counts['skipped_posts'] ?? 0, 'error_code' => $state->error_code]);
+            'skipped_posts' => $state->counts['skipped_posts'] ?? 0, 'deferred_posts' => $state->counts['deferred_posts'] ?? 0,
+            'stopped_posts' => $state->counts['stopped_posts'] ?? 0, 'error_code' => $state->error_code]);
     }
 
     public static function definition(): string

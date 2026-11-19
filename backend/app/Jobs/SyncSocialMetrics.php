@@ -22,6 +22,6 @@ class SyncSocialMetrics implements ShouldQueue
 
     public function handle(SocialMetricsSync $sync): void
     {
-        $sync->run($this->entryId);
+        $sync->run($this->entryId, $this->job?->uuid());
     }
 }

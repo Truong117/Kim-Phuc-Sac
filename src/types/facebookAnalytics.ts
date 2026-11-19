@@ -57,6 +57,48 @@ export interface FacebookAnalyticsAnalysis {
   selected_posts: number;
   candidate_posts: number;
 }
+export const facebookTrackingStopReasons = [
+  "duplicate_content",
+  "post_hidden",
+  "post_deleted",
+  "no_longer_needed",
+] as const;
+export type FacebookTrackingStopReason =
+  (typeof facebookTrackingStopReasons)[number];
+
+export const isFacebookTrackingStopReason = (
+  value: unknown,
+): value is FacebookTrackingStopReason =>
+  facebookTrackingStopReasons.some((reason) => reason === value);
+
+export interface FacebookTrackedPost {
+  external_id: string;
+  url: string;
+  status: "unavailable" | "stopped";
+  version: number;
+  failures: number;
+  next_retry_at: string | null;
+  stopped_at: string | null;
+  reason: FacebookTrackingStopReason | "hidden_duplicate" | null;
+}
+export interface FacebookPostTracking {
+  can_manage: boolean;
+  entry_version: number;
+  connection_revision: number;
+  unavailable_count: number;
+  stopped_count: number;
+  posts: FacebookTrackedPost[];
+  page: number;
+  last_page: number;
+}
+export type FacebookTrackingChange = {
+  expected_version: number;
+  entry_version: number;
+  connection_revision: number;
+} & (
+  | { status: "stopped"; reason?: FacebookTrackingStopReason }
+  | { status: "active" }
+);
 export interface FacebookAnalyticsData {
   entry_id: number;
   page_name: string;
@@ -70,6 +112,7 @@ export interface FacebookAnalyticsData {
   reviews_enabled?: boolean;
   monthly_reports_enabled?: boolean;
   sampling?: FacebookSamplingHealth | null;
+  tracking?: FacebookPostTracking;
   sync: {
     status: string;
     interrupted: boolean;
@@ -88,6 +131,8 @@ export interface FacebookAnalyticsData {
       ready_posts: number;
       pending_posts: number;
       skipped_posts?: number;
+      deferred_posts?: number;
+      stopped_posts?: number;
       batches_completed: number;
       from_date: string;
       to_date: string;
@@ -129,6 +174,8 @@ export interface FacebookSamplingHealth {
     | "unconfirmed"
     | "waiting";
   total_posts: number;
+  deferred_posts?: number;
+  stopped_posts?: number;
   due_posts: number;
   overdue_posts: number;
   never_sampled_posts: number;

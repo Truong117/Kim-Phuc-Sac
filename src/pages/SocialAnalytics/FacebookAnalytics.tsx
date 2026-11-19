@@ -424,6 +424,7 @@ function Workspace() {
                   key={api.key}
                   data={data}
                   waiting={!!waiting}
+                  onRefresh={api.refresh}
                 />
                 <div
                   role="tablist"

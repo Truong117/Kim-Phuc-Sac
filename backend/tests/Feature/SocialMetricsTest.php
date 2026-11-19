@@ -10,6 +10,7 @@ use App\Models\SocialConnection;
 use App\Models\User;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportSnapshot;
+use App\Services\Social\FacebookPostTracking;
 use App\Services\Social\FacebookReference;
 use App\Services\Social\SocialMetricsRead;
 use App\Services\Social\SocialMetricsSync;
@@ -19,6 +20,7 @@ use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -71,6 +73,12 @@ class SocialMetricsTest extends TestCase
             }
             if ($path === '/v26.0/100/published_posts' && $this->interrupt === 'revoke') {
                 DB::table('organization_memberships')->where('user_id', $this->admin->id)->update(['is_active' => false]);
+            }
+            if ($path === '/v26.0/100_555/comments' && $this->interrupt === 'stop_then_resume') {
+                $connection = SocialConnection::query()->firstOrFail();
+                $tracking = app(FacebookPostTracking::class);
+                $tracking->setStopped($connection, '100_555', true, $this->admin->id);
+                $tracking->setStopped($connection, '100_555', false, $this->admin->id);
             }
 
             return match ($path) {
@@ -371,19 +379,25 @@ class SocialMetricsTest extends TestCase
         }
         Http::swap(new Factory);
         Http::preventStrayRequests();
-        Http::fake(function ($request) {
+        $unavailable = true;
+        $failedPostAttempts = 0;
+        Http::fake(function ($request) use (&$unavailable, &$failedPostAttempts) {
             $path = parse_url($request->url(), PHP_URL_PATH);
             if (str_ends_with($path, '/published_posts')) {
                 return Http::response(['data' => [['id' => '100_777']]]);
             }
             if ($path === '/v26.0/100_555/reactions') {
-                return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+                $failedPostAttempts++;
+                if ($unavailable) {
+                    return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+                }
             }
 
             return str_ends_with($path, '/insights') ? Http::response(['data' => []])
                 : Http::response(['summary' => ['total_count' => 3]]);
         });
-        app(SocialMetricsSync::class)->run($this->entry->id);
+        $runId = (string) Str::uuid();
+        app(SocialMetricsSync::class)->run($this->entry->id, $runId);
         $connection = SocialConnection::query()->firstOrFail();
         $this->assertNull($connection->error_code);
         $this->assertSame(1, $connection->sync_counts['sampled']);
@@ -392,5 +406,62 @@ class SocialMetricsTest extends TestCase
         $failed = DB::table('social_posts')->where('external_id', '100_555')->first();
         $this->assertNull($failed->sampled_at);
         $this->assertDatabaseMissing('social_metric_snapshots', ['social_post_id' => $failed->id]);
+
+        app(SocialMetricsSync::class)->run($this->entry->id, $runId);
+        $this->assertDatabaseHas('facebook_post_tracking', ['social_connection_id' => $connection->id, 'external_id' => '100_555', 'failure_count' => 1, 'retry_at' => null]);
+        $this->travel(1)->hours();
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertSame(3, $failedPostAttempts);
+        $this->travel(1)->hours();
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertSame(3, $failedPostAttempts);
+        $this->assertSame(1, $connection->refresh()->sync_counts['sampled']);
+        $this->assertSame([], $connection->sync_counts['skipped_posts']);
+        $this->assertSame(0, $connection->sync_counts['deferred']);
+        $this->assertDatabaseMissing('social_metric_snapshots', ['social_post_id' => $failed->id]);
+
+        $this->travel(1)->days();
+        $unavailable = false;
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertSame(4, $failedPostAttempts);
+        $this->assertSame(2, $connection->refresh()->sync_counts['sampled']);
+        $this->assertDatabaseHas('social_metric_snapshots', ['social_post_id' => $failed->id]);
+        $this->travel(1)->hours();
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $this->assertSame(5, $failedPostAttempts);
+    }
+
+    public function test_report_sampling_discards_in_flight_response_after_stop_and_resume_and_preserves_history(): void
+    {
+        $this->connect();
+        $item = $this->item($this->admin);
+        $connection = SocialConnection::query()->firstOrFail();
+        $tracking = app(FacebookPostTracking::class);
+        $sync = app(SocialMetricsSync::class);
+        $sync->run($this->entry->id);
+        $this->travel(1)->hours();
+        $this->interrupt = 'stop_then_resume';
+        $sync->run($this->entry->id);
+        $this->assertNull($connection->refresh()->error_code);
+        $this->assertSame(0, $connection->sync_counts['sampled']);
+        $this->assertDatabaseCount('social_metric_snapshots', 1);
+
+        $this->interrupt = '';
+        $tracking->setStopped($connection, '100_555', true, $this->admin->id);
+        $this->travel(1)->hours();
+        $sync->run($this->entry->id);
+        $attempts = Http::recorded(fn ($request) => str_contains($request->url(), '/100_555/reactions'));
+        $this->assertCount(2, $attempts);
+        $this->assertSame(0, $connection->refresh()->sync_counts['sampled']);
+        $this->assertDatabaseCount('social_metric_snapshots', 1);
+        $row = app(SocialMetricsRead::class)->forItems(collect([$item]), '2026-11-05', '2026-11-05')[0];
+        $this->assertSame(1, $row['sample_count']);
+        $this->assertSame(10, $row['current']['likes']);
+        $this->assertNull($row['observed_delta']['likes']);
+
+        $tracking->setStopped($connection, '100_555', false, $this->admin->id);
+        $sync->run($this->entry->id);
+        $this->assertSame(1, $connection->refresh()->sync_counts['sampled']);
+        $this->assertDatabaseCount('social_metric_snapshots', 2);
     }
 }

@@ -11,10 +11,13 @@ use App\Services\Social\Analytics\FacebookAnalyticsSync;
 use App\Services\Social\Analytics\FacebookMilestoneRead;
 use App\Services\Social\Analytics\FacebookMilestoneSampling;
 use App\Services\Social\Analytics\FacebookPeriodReview;
+use App\Services\Social\Analytics\FacebookTrackingIssues;
+use App\Services\Social\FacebookPostTracking;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class FacebookAnalyticsController extends Controller
@@ -50,11 +53,34 @@ class FacebookAnalyticsController extends Controller
         $input = $this->period($request);
         $data = $read->show($request->user(), $entry, $input['from_date'], $input['to_date']);
         $connection = SocialConnection::query()->where('integration_entry_id', $entry->id)->where('organization_id', $entry->organization_id)->first();
+        $data['tracking'] = app(FacebookTrackingIssues::class)->page($request->user(), $entry, $connection);
         $data['analysis'] = $connection === null ? null : $ai->latest($entry, $data);
 
         abort_if(strlen(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > 4194304, 422, 'Kết quả quá lớn. Hãy giảm khoảng ngày.');
 
         return response()->json(['data' => $data]);
+    }
+
+    public function tracking(Request $request, int $id, FacebookTrackingIssues $issues): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        $input = $request->validate(['page' => ['sometimes', 'integer', 'min:1']]);
+        $connection = $this->access->connection($entry);
+
+        return response()->json(['data' => $issues->page($request->user(), $entry, $connection, (int) ($input['page'] ?? 1))]);
+    }
+
+    public function updateTracking(Request $request, int $id, string $externalId, FacebookTrackingIssues $issues): JsonResponse
+    {
+        $entry = $this->access->entry($request->user(), $id);
+        abort_unless((int) $entry->responsible_user_id === (int) $request->user()->id, 403);
+        $input = $request->validate(['status' => ['required', 'in:stopped,active'],
+            'reason' => ['prohibited_if:status,active', 'nullable', 'string', Rule::in([...FacebookPostTracking::STOP_REASONS, 'hidden_duplicate'])],
+            'expected_version' => ['required', 'integer', 'min:0'], 'entry_version' => ['required', 'integer', 'min:1'],
+            'connection_revision' => ['required', 'integer', 'min:1']]);
+        $issues->update($request->user(), $id, $externalId, $input);
+
+        return response()->json(null, 204);
     }
 
     public function sync(Request $request, int $id): JsonResponse

@@ -17,14 +17,15 @@ use Throwable;
 
 class SocialMetricsSync
 {
-    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly AuthorizationService $authorization, private readonly ReportScopeService $reports, private readonly FacebookShareResolver $resolver, private readonly FacebookPostMatcher $matcher) {}
+    public function __construct(private readonly FacebookMetricsClient $facebook, private readonly AuthorizationService $authorization, private readonly ReportScopeService $reports, private readonly FacebookShareResolver $resolver, private readonly FacebookPostMatcher $matcher, private readonly FacebookPostTracking $tracking) {}
 
-    public function run(int $entryId): void
+    public function run(int $entryId, ?string $runId = null): void
     {
         if (! config('social_metrics.enabled')) {
             return;
         }
         $lease = (string) Str::uuid();
+        $runId ??= $lease;
         $connection = DB::transaction(function () use ($entryId, $lease): ?SocialConnection {
             $entry = IntegrationEntry::query()->whereKey($entryId)->where('enabled', true)->where('platform', 'facebook')->first();
             if ($entry === null) {
@@ -41,6 +42,7 @@ class SocialMetricsSync
         if ($connection === null) {
             return;
         }
+        $startedAt = now()->toIso8601String();
         try {
             $actor = User::query()->find($connection->connected_by);
             if ($actor === null || ! $this->authorization->allows($actor, 'integrations.manage') || ! $this->authorization->allows($actor, 'reports.view')) {
@@ -106,7 +108,7 @@ class SocialMetricsSync
                     }
                 }
             }
-            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'skipped_posts' => [], 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending, 'pending_post_aliases' => $aliases['pending'], 'unverified_post_aliases' => $aliases['unverified']];
+            $counts = ['started_at' => $startedAt, 'links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'skipped_posts' => [], 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending, 'pending_post_aliases' => $aliases['pending'], 'unverified_post_aliases' => $aliases['unverified']];
             DB::transaction(function () use ($connection, $lease, $matched, &$counts): void {
                 $this->fence($connection, $lease);
                 foreach ($matched as $external => $match) {
@@ -127,24 +129,38 @@ class SocialMetricsSync
                     }
                 }
             });
-            $posts = DB::table('social_posts')->where('integration_entry_id', $connection->integration_entry_id)->whereIn('external_id', array_keys($matched))->orderBy('sampled_at')->orderBy('id')->get();
+            $candidates = DB::table('social_posts')->where('integration_entry_id', $connection->integration_entry_id)
+                ->where('organization_id', $connection->organization_id)->whereIn('external_id', array_keys($matched));
+            $posts = $this->tracking->eligibleReports($candidates, $connection)->orderBy('sampled_at')->orderBy('id')->get();
             $counts['deferred'] = max(0, $posts->count() - 10);
             $definition = (string) config('social_metrics.graph_version').':reactions_like,comments:'.(config('social_metrics.views_metric') ?: 'views_unavailable');
             foreach ($posts->take(10) as $post) {
-                $metrics = app(FacebookPostSampler::class)->sample($connection->access_token, $connection->page_id, $post->external_id,
-                    ['entry_id' => $entryId, 'source' => 'report_metrics', 'post_id' => (int) $post->id, 'post_url' => $post->url]);
-                if ($metrics === null) {
-                    DB::transaction(fn () => $this->fence($connection, $lease));
-                    $counts['skipped_posts'][] = ['external_id' => $post->external_id, 'url' => $post->url];
-
+                $version = $this->tracking->versionIfEligible($connection, $post->external_id);
+                if ($version === null) {
                     continue;
                 }
-                DB::transaction(function () use ($connection, $lease, $definition, $post, $metrics): void {
+                $peerReadable = false;
+                $metrics = app(FacebookPostSampler::class)->sample($connection->access_token, $connection->page_id, $post->external_id,
+                    ['entry_id' => $entryId, 'source' => 'report_metrics', 'run_id' => $runId, 'post_id' => (int) $post->id, 'post_url' => $post->url], $peerReadable, $connection);
+                DB::transaction(function () use ($connection, $lease, $runId, $definition, $post, $metrics, $version, $peerReadable, &$counts): void {
                     $this->fence($connection, $lease);
+                    if ($metrics === null) {
+                        $current = $peerReadable
+                            ? $this->tracking->recordFailure($connection, $post->external_id, $runId, $version)
+                            : $this->tracking->versionIfEligible($connection, $post->external_id) === $version;
+                        if ($current) {
+                            $counts['skipped_posts'][] = ['external_id' => $post->external_id, 'url' => $post->url];
+                        }
+
+                        return;
+                    }
+                    if (! $this->tracking->recordSuccess($connection, $post->external_id, $version)) {
+                        return;
+                    }
                     DB::table('social_metric_snapshots')->insertOrIgnore(['social_post_id' => $post->id, 'definition' => $definition, 'bucket' => now()->utc()->startOfHour(), 'sampled_at' => now()->utc(), 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR)]);
                     DB::table('social_posts')->where('id', $post->id)->update(['sampled_at' => now()->utc(), 'updated_at' => now()->utc()]);
+                    $counts['sampled']++;
                 });
-                $counts['sampled']++;
             }
             $this->finish($connection, $lease, ['synced_at' => now(), 'error_code' => null, 'sync_counts' => $counts]);
         } catch (Throwable $exception) {

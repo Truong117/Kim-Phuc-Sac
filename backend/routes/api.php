@@ -138,6 +138,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::get('/{id}', [FacebookAnalyticsController::class, 'show'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-read');
         Route::get('/{id}/monthly-report', [FacebookMonthlyReportController::class, 'show'])->whereNumber('id')->middleware('throttle:20,1,fb-monthly-read');
         Route::post('/{id}/monthly-report', [FacebookMonthlyReportController::class, 'close'])->whereNumber('id')->middleware('throttle:5,1,fb-monthly-close');
+        Route::get('/{id}/tracking', [FacebookAnalyticsController::class, 'tracking'])->whereNumber('id')->middleware('throttle:60,1,fb-tracking-read');
+        Route::patch('/{id}/tracking/{externalId}', [FacebookAnalyticsController::class, 'updateTracking'])->whereNumber('id')->where('externalId', '[0-9]{1,32}_[0-9]{1,64}')->middleware('throttle:30,1,fb-tracking-write');
         Route::get('/{id}/review', [FacebookAnalyticsController::class, 'review'])->whereNumber('id')->middleware('throttle:30,1,fb-review-read');
         Route::put('/{id}/review', [FacebookAnalyticsController::class, 'saveReview'])->whereNumber('id')->middleware('throttle:10,1,fb-review-write');
         Route::get('/{id}/milestones', [FacebookAnalyticsController::class, 'milestones'])->whereNumber('id')->middleware('throttle:60,1,fb-analytics-milestones');
