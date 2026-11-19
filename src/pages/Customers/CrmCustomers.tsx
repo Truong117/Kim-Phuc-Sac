@@ -48,6 +48,7 @@ export default function CrmCustomers() {
   const [error, setError] = useState("");
   const [detailError, setDetailError] = useState("");
   const [message, setMessage] = useState("");
+  const selectedCustomer = detail?.id === customerId ? detail : null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -195,10 +196,16 @@ export default function CrmCustomers() {
             <ComponentCard
               title={t("list")}
               desc={list ? t("listCount", { count: list.total }) : undefined}
+              fillHeight
+              className={
+                selectedCustomer
+                  ? "min-w-0 xl:self-stretch xl:contain-size"
+                  : "min-w-0"
+              }
             >
-              <div className="flex flex-wrap gap-2">
+              <div className="flex shrink-0 flex-wrap justify-between gap-2">
                 <form
-                  className="flex flex-1 gap-2"
+                  className="grid max-w-92 min-w-0 flex-auto grid-cols-[minmax(0,1fr)_auto] gap-2"
                   onSubmit={(event) => {
                     event.preventDefault();
                     setQuery(search.trim());
@@ -222,7 +229,11 @@ export default function CrmCustomers() {
                   </Button>
                 )}
               </div>
-              <ul className="mt-3 divide-y divide-gray-200 dark:divide-gray-700">
+              <ul
+                key={`${query}:${list?.current_page}`}
+                aria-label={t("list")}
+                className="min-h-0 flex-1 divide-y divide-gray-200 overflow-y-auto dark:divide-gray-700"
+              >
                 {list?.data.map((customer) => (
                   <li key={customer.id}>
                     <Link
@@ -251,14 +262,14 @@ export default function CrmCustomers() {
                     </Link>
                   </li>
                 ))}
+                {list?.data.length === 0 && (
+                  <li className="text-sm text-gray-600 dark:text-gray-400">
+                    {t("emptyCustomers")}
+                  </li>
+                )}
               </ul>
-              {list?.data.length === 0 && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  {t("emptyCustomers")}
-                </p>
-              )}
               {list && list.last_page > 1 && (
-                <div className="mt-3 flex items-center justify-between gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <div className="flex shrink-0 items-center justify-between gap-2 text-sm text-gray-700 dark:text-gray-300">
                   <Button
                     type="button"
                     size="sm"
@@ -283,10 +294,10 @@ export default function CrmCustomers() {
                 </div>
               )}
             </ComponentCard>
-            {detail?.id === customerId && detail && (
-              <CrmCustomerDetails customer={detail} open={open} />
+            {selectedCustomer && (
+              <CrmCustomerDetails customer={selectedCustomer} open={open} />
             )}
-            {customerId !== null && detail?.id !== customerId && (
+            {customerId !== null && !selectedCustomer && (
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 {detailError || t("loading")}
               </p>
