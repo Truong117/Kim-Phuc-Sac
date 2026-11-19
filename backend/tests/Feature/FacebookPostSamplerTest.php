@@ -60,10 +60,45 @@ class FacebookPostSamplerTest extends TestCase
 
             return Http::response(['summary' => ['total_count' => 2]]);
         });
-        $this->assertNull(app(FacebookPostSampler::class)->sample('private-test-token', '100', '100_1', ['entry_id' => 7]));
+        $this->assertNull(app(FacebookPostSampler::class)->sample('private-test-token', '100', '100_1', ['entry_id' => 7], $peerReadable));
+        $this->assertTrue($peerReadable);
         Http::assertSent(fn ($r) => str_contains($r->url(), '100_2/comments'));
         Log::shouldHaveReceived('warning')->withArgs(fn ($event, $context) => $event === 'facebook_metrics.post_skipped'
             && $context['operation'] === 'comments' && $context['entry_id'] === 7)->once();
+    }
+
+    public function test_empty_catalogue_skips_one_cycle_without_confirming_an_isolated_failure(): void
+    {
+        Http::fake(fn ($request) => str_contains($request->url(), 'published_posts')
+            ? Http::response(['data' => []])
+            : Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400));
+        $peerReadable = true;
+        $this->assertNull(app(FacebookPostSampler::class)->sample('fixture', '100', '100_1', [], $peerReadable));
+        $this->assertFalse($peerReadable);
+    }
+
+    public function test_successful_http_responses_without_any_metric_values_cannot_mark_a_post_recovered(): void
+    {
+        Http::fake(['*' => Http::response(['data' => []])]);
+        $this->assertNull(app(FacebookPostSampler::class)->sample('fixture', '100', '100_1', [], $peerReadable));
+        $this->assertFalse($peerReadable);
+        Http::assertSentCount(2);
+    }
+
+    public function test_an_unavailable_peer_can_be_verified_with_a_second_peer(): void
+    {
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'published_posts')) {
+                return Http::response(['data' => [['id' => '100_2'], ['id' => '100_3']]]);
+            }
+
+            return str_contains($request->url(), '100_3/reactions')
+                ? Http::response(['summary' => ['total_count' => 0]])
+                : Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+        });
+        $this->assertNull(app(FacebookPostSampler::class)->sample('fixture', '100', '100_1', [], $peerReadable));
+        $this->assertTrue($peerReadable);
+        Http::assertSentCount(4);
     }
 
     public function test_page_listing_alone_does_not_hide_global_metric_permission_failure(): void

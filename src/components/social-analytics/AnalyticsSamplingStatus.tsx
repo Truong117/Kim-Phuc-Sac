@@ -57,6 +57,14 @@ export default function AnalyticsSamplingStatus({
                 late: sampling.late_posts,
               })}
             </p>
+            {!!(sampling.stopped_posts || sampling.deferred_posts) && (
+              <p>
+                {t("trackingCounts", {
+                  deferred: sampling.deferred_posts ?? 0,
+                  stopped: sampling.stopped_posts ?? 0,
+                })}
+              </p>
+            )}
             <p>{t("cadence")}</p>
             <p>{t("actualTime")}</p>
             {attention && (
