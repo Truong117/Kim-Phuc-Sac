@@ -4,12 +4,15 @@ namespace App\Services\Social\Analytics;
 
 use App\Models\FacebookAnalyticsState;
 use App\Models\SocialConnection;
+use App\Services\Social\FacebookPostTracking;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 class FacebookSamplingPolicy
 {
+    public function __construct(private readonly FacebookPostTracking $tracking) {}
+
     public function enabled(?int $entryId = null): bool
     {
         $ids = config('facebook_analytics.auto_sample_entry_ids', []);
@@ -41,14 +44,22 @@ class FacebookSamplingPolicy
         return $date >= $today->subDays(7)->toDateString() ? 'young' : ($date >= $today->subDays(30)->toDateString() ? 'daily' : 'weekly');
     }
 
-    public function pending(Builder $query, CarbonImmutable $anchor, string $definition): Builder
+    public function pending(Builder $query, CarbonImmutable $anchor, string $definition, ?CarbonImmutable $at = null): Builder
     {
         $slots = $this->slots($anchor);
         $day = $anchor->setTimezone('Asia/Ho_Chi_Minh')->startOfDay();
         $young = $day->subDays(7)->utc();
         $monthly = $day->subDays(30)->utc();
 
-        return $query->where(function ($q) use ($slots, $young, $monthly, $definition): void {
+        $at ??= CarbonImmutable::now();
+
+        return $this->tracking->eligibleAnalytics($query, $at)->where(function ($q) use ($slots, $young, $monthly, $definition, $at): void {
+            $q->whereExists(function ($tracking) use ($at): void {
+                $tracking->selectRaw('1')->from('facebook_post_tracking')
+                    ->whereColumn('social_connection_id', 'facebook_analytics_posts.social_connection_id')
+                    ->whereColumn('external_id', 'facebook_analytics_posts.external_id')
+                    ->whereNull('stopped_at')->where('retry_at', '<=', $at);
+            });
             foreach (['young', 'daily', 'weekly'] as $tier) {
                 $q->orWhere(function ($q) use ($tier, $slots, $young, $monthly, $definition): void {
                     if ($tier === 'young') {
@@ -88,6 +99,22 @@ class FacebookSamplingPolicy
         return $this->slots($at)['young']->addHours(12);
     }
 
+    public function nextPageCheck(SocialConnection $connection, CarbonImmutable $at, CarbonImmutable $fallback): CarbonImmutable
+    {
+        $retry = DB::table('facebook_post_tracking as t')
+            ->join('facebook_analytics_posts as p', function ($join): void {
+                $join->on('p.social_connection_id', '=', 't.social_connection_id')->on('p.external_id', '=', 't.external_id');
+            })
+            ->where('t.social_connection_id', $connection->id)->where('p.organization_id', $connection->organization_id)
+            ->whereBetween('p.published_at', [$at->setTimezone('Asia/Ho_Chi_Minh')->subDays(89)->startOfDay()->utc(), $at])
+            ->whereNull('t.stopped_at')->where('t.retry_at', '>', $at)->min('t.retry_at');
+        if ($retry !== null) {
+            $fallback = $fallback->min(CarbonImmutable::parse($retry, 'UTC'));
+        }
+
+        return app(FacebookMilestoneSampling::class)->nextCheck($connection, $at, $fallback);
+    }
+
     public function save(FacebookAnalyticsState $state, array $plan, CarbonImmutable $next): void
     {
         // Scheduler bookkeeping must not refresh queued/running heartbeat timestamps.
@@ -107,7 +134,7 @@ class FacebookSamplingPolicy
         $anchor = isset($state->counts['schedule_anchor']) ? CarbonImmutable::parse($state->counts['schedule_anchor']) : $at;
         // A cycle finishing after the next slot must not postpone that due check until tomorrow.
         $next = $this->nextCheck($anchor)->max($at);
-        $this->save($state, $plan, app(FacebookMilestoneSampling::class)->nextCheck($connection, $at, $next));
+        $this->save($state, $plan, $this->nextPageCheck($connection, $at, $next));
     }
 
     public function failed(FacebookAnalyticsState $state, string $code): void
@@ -133,16 +160,21 @@ class FacebookSamplingPolicy
         $enabled = $this->enabled((int) $connection->integration_entry_id);
         if (! $enabled) {
             return ['enabled' => false, 'status' => 'off', 'total_posts' => 0, 'due_posts' => 0, 'overdue_posts' => 0,
-                'never_sampled_posts' => 0, 'late_posts' => 0, 'last_checked_at' => null, 'next_check_at' => null, 'last_sampled_at' => null];
+                'never_sampled_posts' => 0, 'late_posts' => 0, 'stopped_posts' => 0, 'deferred_posts' => 0, 'last_checked_at' => null, 'next_check_at' => null, 'last_sampled_at' => null];
         }
         $at = CarbonImmutable::now();
         $plan = $state?->sampling_schedule ?? [];
-        $posts = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)
-            ->whereBetween('published_at', [$at->setTimezone('Asia/Ho_Chi_Minh')->subDays(89)->startOfDay()->utc(), $at])
-            ->limit(5001)->get(['id', 'published_at', 'created_at']);
+        $catalogue = DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)->where('organization_id', $connection->organization_id)
+            ->whereBetween('published_at', [$at->setTimezone('Asia/Ho_Chi_Minh')->subDays(89)->startOfDay()->utc(), $at]);
+        $stopped = $this->tracking->stoppedAnalytics(clone $catalogue)->count();
+        $deferred = $this->tracking->deferredAnalytics(clone $catalogue, $at)->count();
+        $posts = $this->tracking->eligibleAnalytics($catalogue, $at)->limit(5001)->get(['id', 'external_id', 'published_at', 'created_at']);
         abort_if($posts->count() > 5000, 422, 'Danh mục vượt giới hạn kiểm tra lịch lấy mẫu.');
         $latestIds = DB::table('facebook_analytics_samples')->whereIn('post_id', $posts->pluck('id'))->where('definition', FacebookAnalyticsSync::definition())->selectRaw('MAX(id)')->groupBy('post_id');
         $latest = DB::table('facebook_analytics_samples')->whereIn('id', $latestIds)->get(['post_id', 'sampled_at', 'sampling_late'])->keyBy('post_id');
+        $retryDue = DB::table('facebook_post_tracking')->where('social_connection_id', $connection->id)
+            ->whereIn('external_id', $posts->pluck('external_id'))->whereNull('stopped_at')->where('retry_at', '<=', $at)
+            ->pluck('retry_at', 'external_id');
         $ageDue = [];
         if (app(FacebookMilestoneSampling::class)->enabled()) {
             $ageDue = array_fill_keys(app(FacebookMilestoneSampling::class)->pending(DB::table('facebook_analytics_posts')->whereIn('id', $posts->pluck('id')), $at, FacebookAnalyticsSync::definition())->pluck('id')->all(), true);
@@ -165,9 +197,12 @@ class FacebookSamplingPolicy
             $late += $sample?->sampling_late === null ? 0 : (int) (bool) $sample->sampling_late;
             $last = $sample !== null && ($last === null || $sample->sampled_at > $last) ? $sample->sampled_at : $last;
             $cadenceDue = $sample === null || CarbonImmutable::parse($sample->sampled_at, 'UTC')->lt($slots[$this->tier($post->published_at, $at)]);
-            if ($cadenceDue || isset($ageDue[$post->id])) {
+            $retryAt = $retryDue->get($post->external_id);
+            if ($cadenceDue || $retryAt !== null || isset($ageDue[$post->id])) {
                 $due++;
-                $overdue += $cadenceDue && $this->late($this->timing($post, $at, $plan['activated_at'] ?? $at->toIso8601String(), $sample === null), $at) ? 1 : 0;
+                $expected = $retryAt === null ? $this->timing($post, $at, $plan['activated_at'] ?? $at->toIso8601String(), $sample === null)
+                    : CarbonImmutable::parse($retryAt, 'UTC');
+                $overdue += ($cadenceDue || $retryAt !== null) && $this->late($expected, $at) ? 1 : 0;
             }
         }
         $blocked = $connection->status !== 'connected' || ! $principalAvailable;
@@ -177,7 +212,8 @@ class FacebookSamplingPolicy
         $missedCheck = $checked === null || ($state?->sampling_next_check_at?->lt($at->subMinutes(10)) && $checked->lt($at->subMinutes(10)));
         $status = $blocked ? 'blocked' : (($plan['paused'] ?? false) ? 'paused' : ($busy ? $state->status : ($overdue > 0 ? 'overdue' : ($missedCheck ? 'unconfirmed' : 'waiting'))));
 
-        return ['enabled' => true, 'status' => $status, 'total_posts' => $posts->count(), 'due_posts' => $due, 'overdue_posts' => $overdue,
+        return ['enabled' => true, 'status' => $status, 'total_posts' => $posts->count() + $deferred, 'stopped_posts' => $stopped, 'deferred_posts' => $deferred,
+            'due_posts' => $due, 'overdue_posts' => $overdue,
             'never_sampled_posts' => $never, 'late_posts' => $late, 'last_checked_at' => $checked?->toIso8601String(),
             'next_check_at' => $blocked || ($plan['paused'] ?? false) ? null : ($state?->sampling_next_check_at ?? $at)->toIso8601String(),
             'last_sampled_at' => $last === null ? null : CarbonImmutable::parse($last, 'UTC')->toIso8601String()];

@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InfoCircleIcon } from "@/icons";
 import AnalyticsSamplingStatus from "./AnalyticsSamplingStatus";
+import FacebookTrackingIssues from "./FacebookTrackingIssues";
 import SkippedFacebookPosts from "./SkippedFacebookPosts";
 import type { FacebookAnalyticsData } from "@/types/facebookAnalytics";
 import { formatDateOnly } from "@/utils/dateOnly";
@@ -9,9 +10,11 @@ import { formatDateOnly } from "@/utils/dateOnly";
 export default function AnalyticsDataStatus({
   data,
   waiting,
+  onRefresh,
 }: {
   data: FacebookAnalyticsData;
   waiting: boolean;
+  onRefresh: () => void;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "facebookAnalytics" });
   const id = useId();
@@ -19,7 +22,9 @@ export default function AnalyticsDataStatus({
     waiting ||
     !data.sync.catalogue_complete ||
     !!data.sync.error_code ||
-    (data.sync.progress?.skipped_posts ?? 0) > 0 ||
+    (data.tracking?.unavailable_count ??
+      data.sync.progress?.skipped_posts ??
+      0) > 0 ||
     data.sync.interrupted ||
     ["blocked", "paused", "overdue", "unconfirmed"].includes(
       data.sampling?.status ?? "",
@@ -44,6 +49,13 @@ export default function AnalyticsDataStatus({
               name: data.page_name,
               count: data.summary.observed_posts,
             })}
+            {!open && !!data.tracking?.stopped_count && (
+              <span className="ms-2">
+                {t("tracking.stoppedTotal", {
+                  count: data.tracking.stopped_count,
+                })}
+              </span>
+            )}
           </span>
         </span>
         <span className="text-kps-primary underline dark:text-brand-300">
@@ -78,10 +90,19 @@ export default function AnalyticsDataStatus({
         )}
         <p>{t("dataPolicy")}</p>
         <AnalyticsSamplingStatus sampling={data.sampling} />
-        <SkippedFacebookPosts
-          posts={data.sync.skipped_posts}
-          total={data.sync.progress?.skipped_posts}
-        />
+        {data.tracking ? (
+          <FacebookTrackingIssues
+            key={`${data.tracking.entry_version}:${data.tracking.connection_revision}`}
+            entryId={data.entry_id}
+            tracking={data.tracking}
+            onRefresh={onRefresh}
+          />
+        ) : (
+          <SkippedFacebookPosts
+            posts={data.sync.skipped_posts}
+            total={data.sync.progress?.skipped_posts}
+          />
+        )}
         {data.sync.progress && (
           <details
             open={!!waiting}
@@ -102,13 +123,31 @@ export default function AnalyticsDataStatus({
                 })}
               </p>
               <p role="status">
-                {t("syncProgress", {
-                  ready: data.sync.progress.ready_posts,
-                  total: data.sync.progress.catalogue_posts,
-                  pending: data.sync.progress.pending_posts,
-                  batches: data.sync.progress.batches_completed,
-                })}
+                {t(
+                  data.sync.progress.stopped_posts != null
+                    ? "tracking.progress"
+                    : "syncProgress",
+                  {
+                    ready: data.sync.progress.ready_posts,
+                    total: data.sync.progress.catalogue_posts,
+                    pending: data.sync.progress.pending_posts,
+                    batches: data.sync.progress.batches_completed,
+                  },
+                )}
               </p>
+              {!!(
+                data.sync.progress.stopped_posts ||
+                data.sync.progress.deferred_posts ||
+                (data.tracking && data.sync.progress.skipped_posts)
+              ) && (
+                <p>
+                  {t("tracking.runCounts", {
+                    skipped: data.sync.progress.skipped_posts ?? 0,
+                    deferred: data.sync.progress.deferred_posts ?? 0,
+                    stopped: data.sync.progress.stopped_posts ?? 0,
+                  })}
+                </p>
+              )}
               {data.sync.catalogue_complete &&
                 data.sync.progress.catalogue_posts > 0 && (
                   <div

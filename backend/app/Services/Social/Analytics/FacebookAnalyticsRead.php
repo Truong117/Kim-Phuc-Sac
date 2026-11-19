@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\KpsMembershipResolver;
 use App\Services\ReportScopeService;
+use App\Services\Social\FacebookPostTracking;
 use App\Services\Social\FacebookReference;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -67,7 +68,8 @@ class FacebookAnalyticsRead
         $published = array_values(array_filter($rows, fn ($row) => CarbonImmutable::parse($row['published_at'])->betweenIncluded($start, $end)));
         $previousPublished = array_filter($rows, fn ($row) => CarbonImmutable::parse($row['published_at'])->betweenIncluded($previousStart, $previousEnd));
         $covers = $state !== null && $state->catalogue_complete && $state->from_date <= $previousStart->setTimezone('Asia/Ho_Chi_Minh')->toDateString() && $state->to_date >= $to;
-        $pending = $connection === null ? 0 : DB::table('facebook_analytics_posts')->where('social_connection_id', $connection->id)->where('published_at', '>=', now('Asia/Ho_Chi_Minh')->subDays(config('facebook_analytics.lookback_days') - 1)->startOfDay()->utc())->where(fn ($q) => $q->whereNull('sampled_at')->orWhere('sampled_at', '<', now()->utc()->startOfHour()))->count();
+        $pending = $connection === null ? 0 : app(FacebookPostTracking::class)->eligibleAnalytics(DB::table('facebook_analytics_posts')
+            ->where('organization_id', $entry->organization_id)->where('social_connection_id', $connection->id))->where('published_at', '>=', now('Asia/Ho_Chi_Minh')->subDays(config('facebook_analytics.lookback_days') - 1)->startOfDay()->utc())->where(fn ($q) => $q->whereNull('sampled_at')->orWhere('sampled_at', '<', now()->utc()->startOfHour()))->count();
         $totals = [];
         foreach (self::METRICS as $metric) {
             $valid = array_values(array_filter($rows, fn ($r) => is_int($r['observed_delta'][$metric])));
@@ -88,12 +90,15 @@ class FacebookAnalyticsRead
                 // Resolve within this connection instead of exposing persisted run diagnostics.
                 'skipped_posts' => $connection === null ? [] : DB::table('facebook_analytics_posts')
                     ->where('social_connection_id', $connection->id)->where('organization_id', $entry->organization_id)
+                    ->whereNotIn('id', app(FacebookPostTracking::class)->stoppedAnalytics(DB::table('facebook_analytics_posts')
+                        ->where('social_connection_id', $connection->id)->select('id')))
                     ->whereIn('id', $state?->counts['skipped_post_ids'] ?? [])->orderBy('id')->limit(50)
                     ->get(['id', 'external_id', 'url'])->map(fn ($p) => ['id' => (int) $p->id, 'external_id' => $p->external_id, 'url' => $p->url])->all(),
                 'progress' => isset($state?->counts['run_id']) ? [
                     'phase' => $state->counts['phase'], 'catalogue_posts' => (int) $state->counts['catalogue_posts'],
                     'ready_posts' => (int) $state->counts['ready_posts'], 'pending_posts' => (int) $state->counts['pending_posts'],
                     'skipped_posts' => (int) ($state->counts['skipped_posts'] ?? 0),
+                    'deferred_posts' => (int) ($state->counts['deferred_posts'] ?? 0), 'stopped_posts' => (int) ($state->counts['stopped_posts'] ?? 0),
                     'batches_completed' => (int) $state->counts['batches_completed'], 'from_date' => $state->counts['from_date'], 'to_date' => $state->counts['to_date'],
                     'started_at' => $state->counts['started_at'], 'finished_at' => $state->counts['finished_at'],
                 ] : null],

@@ -6,6 +6,8 @@ import { apiRequest } from "./apiClient";
 import type {
   FacebookAnalyticsData,
   FacebookAnalyticsPage,
+  FacebookPostTracking,
+  FacebookTrackingChange,
   FacebookTopic,
   FacebookAnalyticsPost,
   FacebookMilestoneData,
@@ -30,6 +32,29 @@ export const getFacebookAnalytics = (
   apiRequest<{ data: FacebookAnalyticsData }>(
     `${root}/${id}?${new URLSearchParams({ from_date: from, to_date: to })}`,
     { signal },
+  );
+export const getFacebookPostTracking = (
+  entryId: number,
+  page: number,
+  signal: AbortSignal,
+) =>
+  apiRequest<{ data: FacebookPostTracking }>(
+    `${root}/${entryId}/tracking?page=${page}`,
+    { signal },
+  );
+export const updateFacebookPostTracking = (
+  entryId: number,
+  externalId: string,
+  change: FacebookTrackingChange,
+  signal: AbortSignal,
+) =>
+  apiRequest<void>(
+    `${root}/${entryId}/tracking/${encodeURIComponent(externalId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(change),
+      signal,
+    },
   );
 export const syncFacebookAnalytics = (id: number, signal?: AbortSignal) =>
   apiRequest(`${root}/${id}/sync`, { method: "POST", signal });

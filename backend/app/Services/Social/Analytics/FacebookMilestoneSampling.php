@@ -3,12 +3,15 @@
 namespace App\Services\Social\Analytics;
 
 use App\Models\SocialConnection;
+use App\Services\Social\FacebookPostTracking;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 class FacebookMilestoneSampling
 {
+    public function __construct(private readonly FacebookPostTracking $tracking) {}
+
     public const DAYS = [1, 3, 7];
 
     public const VERSION = 1;
@@ -30,12 +33,12 @@ class FacebookMilestoneSampling
             : "DATE_ADD(DATE_ADD($column, INTERVAL $day DAY), INTERVAL $minutes MINUTE)";
     }
 
-    public function pending(Builder $query, CarbonImmutable $anchor, string $definition): Builder
+    public function pending(Builder $query, CarbonImmutable $anchor, string $definition, ?CarbonImmutable $at = null): Builder
     {
         // A queued cycle cannot turn an already missed window into an on-time sample.
-        $actual = CarbonImmutable::now()->max($anchor);
+        $actual = ($at ?? CarbonImmutable::now())->max($anchor);
 
-        return $query->where(function ($q) use ($anchor, $actual, $definition): void {
+        return $this->tracking->eligibleAnalytics($query, $actual)->where(function ($q) use ($anchor, $actual, $definition): void {
             foreach (self::DAYS as $day) {
                 $q->orWhere(function ($q) use ($anchor, $actual, $definition, $day): void {
                     $q->whereBetween('facebook_analytics_posts.published_at', [$actual->subDays($day)->subMinutes(self::WINDOW_MINUTES), $anchor->subDays($day)])
@@ -74,7 +77,7 @@ class FacebookMilestoneSampling
             return $at;
         }
         foreach (self::DAYS as $day) {
-            $published = $scope()->where('published_at', '>', $at->subDays($day))->where('published_at', '<=', $at)->orderBy('published_at')->value('published_at');
+            $published = $this->tracking->eligibleAnalytics($scope(), $at)->where('published_at', '>', $at->subDays($day))->where('published_at', '<=', $at)->orderBy('published_at')->value('published_at');
             if ($published !== null) {
                 $fallback = $fallback->min(CarbonImmutable::parse($published, 'UTC')->addDays($day));
             }
