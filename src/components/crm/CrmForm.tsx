@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import KpsDatePicker from "@/components/common/KpsDatePicker";
 import Input from "@/components/form/input/InputField";
 import TextArea from "@/components/form/input/TextArea";
 import Label from "@/components/form/Label";
@@ -16,6 +17,7 @@ import {
   type CrmStage,
 } from "@/services/crmService";
 import type { CrmAction } from "@/components/crm/CrmCustomerDetails";
+import { isDateOnlySelectable } from "@/utils/dateOnly";
 
 const transitions: Record<CrmStage, CrmStage[]> = {
   NEW: ["CONSULTING", "LOST"],
@@ -54,6 +56,7 @@ export default function CrmForm({
   const [assigneeQuery, setAssigneeQuery] = useState("");
   const [assignees, setAssignees] = useState<CrmPerson[]>([]);
   const [error, setError] = useState("");
+  const [dueDateError, setDueDateError] = useState(false);
   const [busy, setBusy] = useState(false);
   const operation = useRef<{ key: string; contents: string } | null>(null);
   const pending = useRef(false);
@@ -82,6 +85,14 @@ export default function CrmForm({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending.current) return;
+    if (
+      action === "FOLLOW_UP" &&
+      !isDateOnlySelectable(form.dueOn, { minDate: today })
+    ) {
+      setDueDateError(true);
+      event.currentTarget.querySelector<HTMLButtonElement>("#crm-due")?.focus();
+      return;
+    }
     const contents = JSON.stringify(form);
     if (operation.current?.contents !== contents) {
       operation.current = { key: crypto.randomUUID(), contents };
@@ -112,7 +123,7 @@ export default function CrmForm({
       isOpen
       onClose={close}
       ariaLabelledBy="crm-form-title"
-      className="max-w-lg p-5"
+      className="max-w-lg p-5 kps-ai-theme"
     >
       <h2
         id="crm-form-title"
@@ -180,13 +191,21 @@ export default function CrmForm({
         {action === "FOLLOW_UP" && (
           <div>
             <Label htmlFor="crm-due">{t("due")}</Label>
-            <Input
+            <KpsDatePicker
               id="crm-due"
-              type="date"
-              required
-              min={today}
               value={form.dueOn}
-              onChange={(event) => change("dueOn", event.target.value)}
+              onChange={(date) => {
+                change("dueOn", date);
+                setDueDateError(false);
+              }}
+              ariaLabel={t("due")}
+              placeholder={t("duePlaceholder")}
+              minDate={today}
+              preferredDate={today}
+              required
+              disabled={busy}
+              error={dueDateError}
+              hint={dueDateError ? t("dueError") : undefined}
             />
           </div>
         )}

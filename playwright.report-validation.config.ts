@@ -5,6 +5,7 @@ export default defineConfig({
   testDir: "./e2e",
   testMatch: [
     "spa-ui.spec.ts",
+    "crm-follow-up-ui.spec.ts",
     "report-validation-ui.spec.ts",
     "task-report-progress-ui.spec.ts",
     "task-progress-reconciliation-ui.spec.ts",
