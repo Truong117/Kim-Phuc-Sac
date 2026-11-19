@@ -90,7 +90,7 @@ class FacebookTrackingIssues
             'unavailable_count' => $unavailable, 'stopped_count' => $stopped, 'page' => $page, 'last_page' => $lastPage,
             'posts' => $rows->map(fn ($row) => ['id' => (int) $row->id, 'external_id' => $row->external_id, 'url' => $row->url,
                 'status' => $row->stopped_at === null ? 'unavailable' : 'stopped', 'version' => (int) $row->tracking_version,
-                'failures' => (int) ($row->failure_count ?? 1), 'reason' => $row->stop_reason,
+                'failures' => (int) ($row->failure_count ?? 1), 'reason' => FacebookPostTracking::explicitStopReason($row->stop_reason),
                 'next_retry_at' => $row->retry_at === null ? null : CarbonImmutable::parse($row->retry_at, 'UTC')->toIso8601String(),
                 'stopped_at' => $row->stopped_at === null ? null : CarbonImmutable::parse($row->stopped_at, 'UTC')->toIso8601String(),
             ])->all()];
@@ -114,7 +114,7 @@ class FacebookTrackingIssues
             $stop = $input['status'] === 'stopped';
             abort_unless($row !== null && (int) $row->tracking_version === (int) $input['expected_version']
                 && ($row->stopped_at === null) === $stop, 409, 'Trạng thái bài đã thay đổi. Vui lòng tải lại.');
-            app(FacebookPostTracking::class)->setStopped($connection, $externalId, $stop, (int) $actor->id);
+            app(FacebookPostTracking::class)->setStopped($connection, $externalId, $stop, (int) $actor->id, $input['reason'] ?? null);
             app(FacebookAnalyticsSync::class)->refreshTrackingProgress($connection);
         }, 3);
     }

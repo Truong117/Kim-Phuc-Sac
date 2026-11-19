@@ -9,6 +9,14 @@ use Illuminate\Support\Facades\DB;
 
 final class FacebookPostTracking
 {
+    public const STOP_REASONS = ['duplicate_content', 'post_hidden', 'post_deleted', 'no_longer_needed'];
+
+    // Older clients always sent hidden_duplicate when stopping, regardless of the reason.
+    public static function explicitStopReason(?string $reason): ?string
+    {
+        return in_array($reason, self::STOP_REASONS, true) ? $reason : null;
+    }
+
     private function rows(SocialConnection $connection, string $externalId): Builder
     {
         return DB::table('facebook_post_tracking')->where('social_connection_id', $connection->id)->where('external_id', $externalId);
@@ -113,7 +121,7 @@ final class FacebookPostTracking
         return true;
     }
 
-    public function setStopped(SocialConnection $connection, string $externalId, bool $stopped, int $actorId): void
+    public function setStopped(SocialConnection $connection, string $externalId, bool $stopped, int $actorId, ?string $reason = null): void
     {
         $rows = $this->rows($connection, $externalId);
         $row = $rows->lockForUpdate()->first();
@@ -124,7 +132,7 @@ final class FacebookPostTracking
             'tracking_version' => ($row->tracking_version ?? 0) + 1,
             'stopped_at' => $stopped ? now() : null,
             'stopped_by' => $stopped ? $actorId : null,
-            'stop_reason' => $stopped ? 'hidden_duplicate' : null,
+            'stop_reason' => $stopped ? self::explicitStopReason($reason) : null,
             'failure_count' => 0, 'last_failure_run_id' => null, 'retry_at' => null,
         ];
         if (! $stopped) {
