@@ -1,4 +1,6 @@
 import SpaCustomerBusinessSummary from "@/features/spa/components/SpaCustomerBusinessSummary";
+import SpaBookingGate from "@/features/spa/components/SpaBookingGate";
+import SpaLiveCustomers from "@/features/spa/components/booking/SpaLiveCustomers";
 import { spaFieldClasses } from "@/features/spa/config";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,6 +26,25 @@ import SpaBookingDialog from "@/features/spa/components/SpaBookingDialog";
 import SpaStatusBadge from "@/features/spa/components/SpaStatusBadge";
 
 export default function SpaCustomers() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <PageMeta
+        title={t("spa.meta.section", { name: t("spa.navigation.customers") })}
+        description={t("spa.meta.description")}
+      />
+      <SpaBookingGate
+        section="customers"
+        preview={<SpaCustomersPreview />}
+        live={(capabilities) => (
+          <SpaLiveCustomers capabilities={capabilities} />
+        )}
+      />
+    </>
+  );
+}
+
+function SpaCustomersPreview() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { snapshot } = useSpaPreview();
@@ -84,10 +105,6 @@ export default function SpaCustomers() {
     );
   return (
     <>
-      <PageMeta
-        title={t("spa.meta.section", { name: t("spa.navigation.customers") })}
-        description={t("spa.meta.description")}
-      />
       <SpaPageHeading
         section="customers"
         actions={

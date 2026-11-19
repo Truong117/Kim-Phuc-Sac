@@ -1,4 +1,6 @@
 import SpaTeamSchedule from "@/features/spa/components/SpaTeamSchedule";
+import SpaBookingGate from "@/features/spa/components/SpaBookingGate";
+import SpaLiveAppointments from "@/features/spa/components/booking/SpaLiveAppointments";
 import { SpaTabs } from "@/features/spa/components/business/SpaBusinessUi";
 import { spaFieldClasses } from "@/features/spa/config";
 import SpaPageHeading from "@/features/spa/components/SpaPageHeading";
@@ -26,6 +28,25 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router";
 
 export default function SpaAppointments() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <PageMeta
+        title={t("spa.meta.appointments")}
+        description={t("spa.meta.description")}
+      />
+      <SpaBookingGate
+        section="appointments"
+        preview={<SpaAppointmentsPreview />}
+        live={(capabilities) => (
+          <SpaLiveAppointments capabilities={capabilities} />
+        )}
+      />
+    </>
+  );
+}
+
+function SpaAppointmentsPreview() {
   const { t } = useTranslation();
   const { snapshot } = useSpaPreview();
   const { workspaces } = useAuthorization();
@@ -59,10 +80,6 @@ export default function SpaAppointments() {
   );
   return (
     <>
-      <PageMeta
-        title={t("spa.meta.appointments")}
-        description={t("spa.meta.description")}
-      />
       <SpaPageHeading
         section="appointments"
         actions={

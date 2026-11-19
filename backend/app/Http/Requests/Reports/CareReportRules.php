@@ -11,8 +11,9 @@ final class CareReportRules
 
         return [
             $prefix => ['sometimes', 'array', 'list', 'min:1', 'max:20'],
-            $work => ['array:client_key,services,customers,result,evidence_links,attachment_ids'],
+            $work => ['array:client_key,services,customers,result,evidence_links,attachment_ids,crm_activity_id'],
             "$work.client_key" => ['required', 'uuid'],
+            "$work.crm_activity_id" => ['sometimes', 'integer', 'min:1'],
             "$work.result" => ['required', 'string', 'max:1000'],
             "$work.services" => ['required', 'array', 'list', 'min:1', 'max:10'],
             "$work.services.*" => ['array:id,name'],

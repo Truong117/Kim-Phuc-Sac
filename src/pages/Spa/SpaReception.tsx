@@ -10,7 +10,10 @@ import { PlusIcon } from "@/icons";
 import Input from "@/components/form/input/InputField";
 import Label from "@/components/form/Label";
 import { useAuthorization } from "@/hooks/useAuthorization";
-import { useSpaPreview } from "@/features/spa/hooks/useSpaPreviewSnapshot";
+import {
+  useSpaBookingAccess,
+  useSpaPreview,
+} from "@/features/spa/hooks/useSpaPreviewSnapshot";
 import { filterSpaAppointments } from "@/features/spa/selectors";
 import { spaReceptionStage } from "@/features/spa/previewWorkflow";
 import type { SpaPreviewError } from "@/features/spa/types";
@@ -31,6 +34,11 @@ const stages = [
 export default function SpaReception() {
   const { t } = useTranslation();
   const { snapshot, execute } = useSpaPreview();
+  const access = useSpaBookingAccess();
+  const live = access.status === "ready" && access.capabilities.enabled;
+  const canCreate =
+    access.status === "ready" &&
+    (!live || access.capabilities.createAppointment);
   const { workspaces } = useAuthorization();
   const canOpenTechnician = workspaces.some(
     (item) => item.id === "spa" && item.sections.includes("technician"),
@@ -72,19 +80,28 @@ export default function SpaReception() {
         actions={
           <div className="flex flex-wrap gap-2">
             <Link
-              to={`/spa/appointments?date=${date}`}
+              to={live ? "/spa/appointments" : `/spa/appointments?date=${date}`}
               className="inline-flex min-h-11 items-center rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
             >
-              {t("spa.business.teamSchedule")}
+              {t(
+                live
+                  ? "spa.navigation.appointments"
+                  : "spa.business.teamSchedule",
+              )}
             </Link>
-            <Button
-              size="sm"
-              className="!bg-kps-primary hover:!bg-kps-primary-hover"
-              startIcon={<PlusIcon className="size-4" />}
-              onClick={() => setBooking(true)}
-            >
-              {t("spa.flow.newBooking")}
-            </Button>
+            {canCreate && (
+              <Button
+                size="sm"
+                className="!bg-kps-primary hover:!bg-kps-primary-hover"
+                startIcon={<PlusIcon className="size-4" />}
+                onClick={() => {
+                  if (live) navigate("/spa/appointments?new=1");
+                  else setBooking(true);
+                }}
+              >
+                {t("spa.flow.newBooking")}
+              </Button>
+            )}
           </div>
         }
       />
@@ -209,7 +226,7 @@ export default function SpaReception() {
           )}
         </section>
       </div>
-      {booking && (
+      {booking && !live && (
         <SpaBookingDialog
           date={date}
           onClose={() => setBooking(false)}

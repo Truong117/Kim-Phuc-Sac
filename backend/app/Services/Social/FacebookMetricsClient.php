@@ -4,6 +4,7 @@ namespace App\Services\Social;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -30,16 +31,18 @@ class FacebookMetricsClient
             }
             $data = $response->json();
         } catch (Throwable) {
-            throw new RuntimeException('SOCIAL_PROVIDER_UNAVAILABLE');
+            throw new FacebookApiException('SOCIAL_PROVIDER_UNAVAILABLE', FacebookApiException::diagnostics($path, null, [], []));
         }
         if (! $response->successful() || ! is_array($data) || isset($data['error'])) {
-            $code = $data['error']['code'] ?? null;
+            $error = is_array($data['error'] ?? null) ? $data['error'] : [];
+            $code = $error['code'] ?? null;
 
-            throw new RuntimeException(match (true) {
+            throw new FacebookApiException(match (true) {
                 $code === 190, $response->status() === 401 => 'SOCIAL_RECONNECT_REQUIRED',
                 $response->status() === 429, in_array($code, [4, 17, 32, 613], true) => 'SOCIAL_RATE_LIMITED',
+                $response->serverError(), ($error['is_transient'] ?? false) === true => 'SOCIAL_PROVIDER_UNAVAILABLE',
                 default => 'SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE',
-            });
+            }, FacebookApiException::diagnostics($path, $response->status(), $error, [$token, $secret, $query['appsecret_proof'] ?? null]));
         }
 
         return $data;
@@ -90,7 +93,7 @@ class FacebookMetricsClient
         return ['posts' => $posts, 'after' => isset($data['paging']['next']) && is_string($cursor) && strlen($cursor) <= 2048 ? $cursor : null];
     }
 
-    public function metrics(string $token, string $post): array
+    public function metrics(string $token, string $post, array $context = []): array
     {
         $metrics = ['likes' => null, 'comments' => null, 'media_views' => null];
         foreach (['likes', 'comments'] as $field) {
@@ -109,6 +112,11 @@ class FacebookMetricsClient
             } catch (RuntimeException $exception) {
                 if ($exception->getMessage() !== 'SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE') {
                     throw $exception;
+                }
+                if ($exception instanceof FacebookApiException) {
+                    // Optional views can be unsupported; preserve real LIKE/comment values.
+                    Log::warning('facebook_metrics.optional_metric_unavailable', [...$context, 'external_id' => $post,
+                        'error_code' => $exception->getMessage(), ...$exception->diagnostics]);
                 }
             }
         }

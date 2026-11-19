@@ -8,14 +8,25 @@ import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import { BellIcon, ChevronDownIcon, GridIcon, SearchIcon } from "@/icons";
 import { canOpenWorkspacePath } from "@/utils/workspace";
 import { spaNavigation } from "../config";
+import type { SpaBookingAccessState } from "../hooks/useSpaPreviewSnapshot";
 
-export default function SpaHeader() {
+export default function SpaHeader({
+  bookingAccess,
+}: {
+  bookingAccess: SpaBookingAccessState;
+}) {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { workspaces } = useAuthorization();
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const [query, setQuery] = useState("");
+  const live =
+    bookingAccess.status === "ready" && bookingAccess.capabilities.enabled;
+  const showCustomerSearch =
+    canOpenWorkspacePath(workspaces, "/spa/customers") &&
+    bookingAccess.status === "ready" &&
+    (!live || bookingAccess.capabilities.viewCustomers);
   const section =
     spaNavigation.find((item) => item.path === pathname)?.key ?? "overview";
   return (
@@ -58,14 +69,19 @@ export default function SpaHeader() {
           </nav>
         </div>
         <div className="flex min-w-0 items-center gap-2 md:gap-4">
-          {canOpenWorkspacePath(workspaces, "/spa/customers") && (
+          {showCustomerSearch && (
             <form
               className="hidden lg:block"
               onSubmit={(event) => {
                 event.preventDefault();
-                navigate(
-                  `/spa/customers?q=${encodeURIComponent(query.trim())}`,
-                );
+                if (live)
+                  navigate("/spa/customers", {
+                    state: { spaCustomerSearch: query.trim() },
+                  });
+                else
+                  navigate(
+                    `/spa/customers?q=${encodeURIComponent(query.trim())}`,
+                  );
               }}
             >
               <div className="relative">

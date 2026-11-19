@@ -2,6 +2,7 @@ import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
 import viCommon from "../locales/vi/common.json";
+import viCrm from "../locales/vi/crm.json";
 import {
   defaultLocale,
   getLanguage,
@@ -11,7 +12,7 @@ import {
 
 export const resources = {
   vi: {
-    common: viCommon,
+    common: { ...viCommon, crm: viCrm },
   },
 } as const;
 

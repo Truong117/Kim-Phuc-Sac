@@ -42,6 +42,7 @@ import { createWeeklyPlanV3NavigationWindow } from "./utils/weeklyPlanV3Navigati
 const FacebookAnalytics = lazy(
   () => import("./pages/SocialAnalytics/FacebookAnalytics"),
 );
+const CrmCustomers = lazy(() => import("./pages/Customers/CrmCustomers"));
 const SpaLayout = lazy(() => import("./features/spa/components/SpaLayout"));
 const SpaCustomers = lazy(() => import("./pages/Spa/SpaCustomers"));
 const SpaReception = lazy(() => import("./pages/Spa/SpaReception"));
@@ -170,13 +171,11 @@ export default function App() {
                   element={<AuthorizationRoute navigationKey="customers" />}
                 >
                   <Route
-                    path="/customers"
-                    element={<ModulePlaceholder titleKey="modules.customers" />}
-                  />
-                  <Route
-                    path="/customers/:id"
+                    path="/customers/:id?"
                     element={
-                      <ModulePlaceholder titleKey="modules.customerDetail" />
+                      <Suspense fallback={<AuthLoadingScreen />}>
+                        <CrmCustomers />
+                      </Suspense>
                     }
                   />
                 </Route>

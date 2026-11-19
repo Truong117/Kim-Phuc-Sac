@@ -285,4 +285,33 @@ class FacebookSamplingScheduleTest extends TestCase
         $this->assertNotNull(FacebookAnalyticsState::query()->firstOrFail()->sampling_next_check_at);
         Http::assertNothingSent();
     }
+
+    public function test_unavailable_age_due_post_does_not_pause_other_samples_or_create_a_fake_milestone(): void
+    {
+        config(['facebook_analytics.milestones_enabled' => true]);
+        $unavailable = $this->analyticsPost(1, '2026-11-08 10:00');
+        $healthy = $this->analyticsPost(2, '2026-11-08 09:55');
+        $this->state();
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), 'published_posts')) {
+                return Http::response(['data' => [['id' => '100_2']]]);
+            }
+            if (str_contains($request->url(), '/100_1/reactions')) {
+                return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+            }
+
+            return Http::response(['summary' => ['total_count' => 5]]);
+        });
+        $this->assertSame(1, app(FacebookSamplingDispatcher::class)->dispatch());
+        $this->runLast();
+        $state = FacebookAnalyticsState::query()->firstOrFail();
+        $this->assertSame('idle', $state->status);
+        $this->assertSame(1, $state->counts['skipped_posts']);
+        $this->assertSame(1, $state->counts['ready_posts']);
+        $this->assertFalse($state->sampling_schedule['paused']);
+        $this->assertDatabaseMissing('facebook_analytics_samples', ['post_id' => $unavailable]);
+        $this->assertDatabaseMissing('facebook_analytics_milestones', ['post_id' => $unavailable]);
+        $this->assertDatabaseHas('facebook_analytics_samples', ['post_id' => $healthy]);
+        $this->assertDatabaseHas('facebook_analytics_milestones', ['post_id' => $healthy]);
+    }
 }

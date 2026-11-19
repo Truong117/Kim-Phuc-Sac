@@ -6,6 +6,7 @@ use App\Http\Controllers\AI\AiExecutiveDashboardController;
 use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Crm\CrmController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\FacebookAnalyticsController;
 use App\Http\Controllers\Integrations\FacebookMonthlyReportController;
@@ -27,6 +28,7 @@ use App\Http\Controllers\Reports\ReportNotificationController;
 use App\Http\Controllers\Reports\ReportReferenceController;
 use App\Http\Controllers\Reports\TaskProgressReconciliationController;
 use App\Http\Controllers\Reports\TodayReportController;
+use App\Http\Controllers\Spa\SpaBookingController;
 use App\Http\Controllers\Spa\SpaCatalogController;
 use App\Http\Controllers\Tasks\TaskController;
 use App\Http\Controllers\UserManagement\ReferenceController;
@@ -92,12 +94,40 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/navigation', NavigationController::class);
     Route::get('/integrations/mail/personal-weekly-recipients', [ReportMailController::class, 'recipients']);
     Route::get('/workspaces', WorkspaceController::class);
+    Route::prefix('crm')->middleware('permission:customers.view')->group(function (): void {
+        Route::get('/capabilities', [CrmController::class, 'capabilities'])->middleware('throttle:60,1,crm-read');
+        Route::get('/customers', [CrmController::class, 'index'])->middleware('throttle:120,1,crm-read');
+        Route::get('/customers/{id}', [CrmController::class, 'show'])->whereNumber('id')->middleware('throttle:120,1,crm-read');
+        Route::post('/customers', [CrmController::class, 'store'])->middleware(['permission:customers.create', 'throttle:30,1,crm-write']);
+        Route::post('/customers/{id}/activities', [CrmController::class, 'record'])->whereNumber('id')
+            ->middleware(['permission:customers.update', 'throttle:60,1,crm-write']);
+        Route::patch('/customers/{id}/opportunities/{opportunity}', [CrmController::class, 'stage'])->whereNumber(['id', 'opportunity'])
+            ->middleware(['permission:customers.update', 'throttle:30,1,crm-write']);
+        Route::get('/assignees', [CrmController::class, 'assignees'])->middleware(['permission:customers.assign', 'throttle:60,1,crm-read']);
+        Route::patch('/customers/{id}/assignment', [CrmController::class, 'assign'])->whereNumber('id')
+            ->middleware(['permission:customers.assign', 'throttle:30,1,crm-write']);
+        Route::get('/report-draft', [CrmController::class, 'reportDraft'])
+            ->middleware(['report_participant', 'permission:reports.create', 'throttle:60,1,crm-report']);
+    });
     Route::get('/spa/catalog/status', [SpaCatalogController::class, 'status'])
         ->middleware(['permission:spa.services.manage', 'throttle:60,1,spa-catalog-status']);
     Route::prefix('spa/catalog')->middleware('permission:spa.services.manage,organization')->group(function (): void {
         Route::get('/', [SpaCatalogController::class, 'index'])->middleware('throttle:120,1,spa-catalog-read');
         Route::post('/', [SpaCatalogController::class, 'store'])->middleware('throttle:30,1,spa-catalog-write');
         Route::patch('/{id}', [SpaCatalogController::class, 'update'])->whereUuid('id')->middleware('throttle:30,1,spa-catalog-write');
+    });
+    Route::prefix('spa/bookings')->group(function (): void {
+        Route::get('/capabilities', [SpaBookingController::class, 'capabilities'])->middleware('throttle:60,1,spa-booking-capabilities');
+        Route::get('/customers', [SpaBookingController::class, 'customers'])->middleware('throttle:120,1,spa-booking-read');
+        Route::post('/customers/lookup', [SpaBookingController::class, 'lookup'])->middleware('throttle:60,1,spa-booking-lookup');
+        Route::post('/customers', [SpaBookingController::class, 'createCustomer'])->middleware('throttle:30,1,spa-booking-write');
+        Route::patch('/customers/{id}', [SpaBookingController::class, 'updateCustomer'])->whereUuid('id')->middleware('throttle:30,1,spa-booking-write');
+        Route::get('/services', [SpaBookingController::class, 'services'])->middleware('throttle:120,1,spa-booking-read');
+        Route::get('/appointments', [SpaBookingController::class, 'appointments'])->middleware('throttle:120,1,spa-booking-read');
+        Route::get('/appointments/{id}', [SpaBookingController::class, 'appointment'])->whereUuid('id')->middleware('throttle:120,1,spa-booking-read');
+        Route::post('/appointments', [SpaBookingController::class, 'createAppointment'])->middleware('throttle:30,1,spa-booking-write');
+        Route::patch('/appointments/{id}/reschedule', [SpaBookingController::class, 'reschedule'])->whereUuid('id')->middleware('throttle:30,1,spa-booking-write');
+        Route::post('/appointments/{id}/cancel', [SpaBookingController::class, 'cancel'])->whereUuid('id')->middleware('throttle:30,1,spa-booking-write');
     });
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');

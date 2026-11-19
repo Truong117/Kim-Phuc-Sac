@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useAuthorization } from "@/hooks/useAuthorization";
@@ -9,7 +9,10 @@ import Button from "@/components/ui/button/Button";
 import { ArrowRightIcon, BoxCubeIcon, ChatIcon, PlusIcon } from "@/icons";
 import { filterSpaAppointments } from "@/features/spa/selectors";
 import { spaHourlyVisits } from "@/features/spa/presentation";
-import { useSpaPreview } from "@/features/spa/hooks/useSpaPreviewSnapshot";
+import {
+  useSpaBookingAccess,
+  useSpaPreview,
+} from "@/features/spa/hooks/useSpaPreviewSnapshot";
 import SpaPageHeading from "@/features/spa/components/SpaPageHeading";
 import SpaDateFilter from "@/features/spa/components/SpaDateFilter";
 import SpaBookingDialog from "@/features/spa/components/SpaBookingDialog";
@@ -25,6 +28,12 @@ export default function SpaOverview() {
   const { currentUser } = useAuth();
   const { workspaces } = useAuthorization();
   const { snapshot } = useSpaPreview();
+  const access = useSpaBookingAccess();
+  const navigate = useNavigate();
+  const live = access.status === "ready" && access.capabilities.enabled;
+  const canCreate =
+    access.status === "ready" &&
+    (!live || access.capabilities.createAppointment);
   const [date, setDate] = useState(snapshot.date),
     [booking, setBooking] = useState(false),
     [detailId, setDetailId] = useState<string>();
@@ -76,12 +85,15 @@ export default function SpaOverview() {
         actions={
           <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <SpaDateFilter date={date} onChange={setDate} />
-            {allowed("/spa/appointments") && (
+            {allowed("/spa/appointments") && canCreate && (
               <Button
                 size="sm"
                 className="!bg-kps-primary hover:!bg-kps-primary-hover"
                 startIcon={<PlusIcon className="size-4" />}
-                onClick={() => setBooking(true)}
+                onClick={() => {
+                  if (live) navigate("/spa/appointments?new=1");
+                  else setBooking(true);
+                }}
               >
                 {t("spa.flow.newBooking")}
               </Button>
@@ -146,7 +158,11 @@ export default function SpaOverview() {
             action={
               allowed("/spa/appointments") && (
                 <Link
-                  to={`/spa/appointments?date=${date}`}
+                  to={
+                    live
+                      ? "/spa/appointments"
+                      : `/spa/appointments?date=${date}`
+                  }
                   className="inline-flex min-h-11 items-center gap-2 text-theme-xs font-medium text-kps-primary-hover dark:text-gray-200"
                 >
                   {t("spa.overview.viewSchedule")}
@@ -222,7 +238,7 @@ export default function SpaOverview() {
           </div>
         </div>
       </div>
-      {booking && (
+      {booking && !live && (
         <SpaBookingDialog
           date={date}
           onClose={() => setBooking(false)}

@@ -82,7 +82,8 @@ test("Vietnamese is the only active locale and uses the local Vietnam flag", asy
   assert.doesNotMatch(languages, /UsFlagIcon|id:\s*"en"/);
   assert.match(icons, /VnFlagIcon.*flag-vn\.svg/);
   assert.match(i18n, /import viCommon from "\.\.\/locales\/vi\/common\.json"/);
-  assert.match(i18n, /vi:\s*\{\s*common:\s*viCommon/);
+  assert.match(i18n, /import viCrm from "\.\.\/locales\/vi\/crm\.json"/);
+  assert.match(i18n, /vi:\s*\{\s*common:\s*\{\s*\.\.\.viCommon,\s*crm:\s*viCrm/);
   assert.match(i18n, /fallbackLng\s*=\s*defaultLocale/);
   assert.match(dropdown, /currentLang\.shortName/);
   assert.match(dropdown, /<CurrentFlagIcon/);

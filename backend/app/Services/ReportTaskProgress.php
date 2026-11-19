@@ -8,6 +8,7 @@ use App\Models\DailyReportItem;
 use App\Models\Task;
 use App\Models\TaskOutput;
 use App\Models\User;
+use App\Services\Crm\CrmReportDraft;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -41,8 +42,9 @@ final class ReportTaskProgress
     }
 
     /** Called in the report transaction, before any item writes. */
-    public function lock(User $actor, string $date, array &$items, $existing = null): array
+    public function lock(User $actor, DailyReport $report, array &$items, $existing = null): array
     {
+        $date = $report->report_date->toDateString();
         $ids = collect($items)->pluck('task_id')->filter()->map(fn ($id) => (int) $id);
         if ($ids->isEmpty()) {
             return [];
@@ -100,7 +102,9 @@ final class ReportTaskProgress
                 throw ValidationException::withMessages(["items.$index.task_progress" => 'Cập nhật CSKH nằm ngoài kỳ công việc. Hãy chọn công việc của kỳ tương ứng; không cộng vào mục tiêu kỳ cũ.']);
             }
             if (CustomerCare::structured($progress)) {
-                $item['result'] = app(CustomerCare::class)->prepare($actor, $task, $progress, "items.$index.task_progress");
+                $fromCrm = collect($progress['care_work_items'] ?? [])->contains(fn ($work) => isset($work['crm_activity_id']));
+                $sources = $fromCrm ? app(CrmReportDraft::class)->careSources($report, $task) : [];
+                $item['result'] = app(CustomerCare::class)->prepare($actor, $task, $progress, "items.$index.task_progress", $sources);
                 $item['task_progress'] = $progress;
             } elseif (collect($progress['outputs'] ?? [])->contains(fn ($o) => ! empty($o['care_customer_id']))
                 || (app(CustomerCare::class)->ready() && TaskOutput::query()->where('task_id', $task->id)->whereNotNull('care_customer_id')->whereIn('id', collect($progress['outputs'] ?? [])->pluck('id')->filter())->exists())) {

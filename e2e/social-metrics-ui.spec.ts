@@ -5,6 +5,7 @@ async function setup(
   options: {
     status?: string;
     errorCode?: string | null;
+    skipped?: boolean;
     connectStatus?: number;
     connectCode?: string;
   } = {},
@@ -14,7 +15,9 @@ async function setup(
   let token: string | null = null;
   await page.route("**/api/**", async (route) => {
     if (new URL(route.request().url()).pathname === "/api/workspaces")
-      return route.fulfill({ json: { workspaces: [{ id: "internal", home: "/", sections: [] }] } });
+      return route.fulfill({
+        json: { workspaces: [{ id: "internal", home: "/", sections: [] }] },
+      });
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/me")
       return route.fulfill({
@@ -81,7 +84,20 @@ async function setup(
               status: connectionStatus,
               synced_at: null,
               error_code: errorCode,
-              sync_counts: null,
+              sync_counts: options.skipped
+                ? {
+                    links: 2,
+                    matched_links: 2,
+                    sampled: 1,
+                    deferred: 0,
+                    skipped_posts: [
+                      {
+                        external_id: "100_999",
+                        url: "https://facebook.com/kps/posts/999",
+                      },
+                    ],
+                  }
+                : null,
             },
             posts: [
               {
@@ -246,4 +262,19 @@ test("disconnecting does not display a previous token error as a current sync fa
   ).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(page.getByText("KPS Page · Đã ngắt kết nối")).toBeVisible();
+});
+
+test("report-linked metrics list unavailable posts separately from successful samples", async ({
+  page,
+}) => {
+  await setup(page, true, { skipped: true });
+  await page
+    .getByText("Có 1 bài tạm bỏ qua trong lượt đồng bộ này", { exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "Mở bài 100_999", exact: true }),
+  ).toHaveAttribute("href", "https://facebook.com/kps/posts/999");
+  await expect(
+    page.getByText(/Bài bị bỏ qua không được tính là đã có mẫu/),
+  ).toBeVisible();
 });

@@ -84,7 +84,7 @@ final class CustomerCare
     }
 
     /** Runs inside the report transaction, after task/revision/period authorization. */
-    public function prepare(User $actor, Task $task, array &$input, string $field): string
+    public function prepare(User $actor, Task $task, array &$input, string $field, array $crmSources = []): string
     {
         $this->profiles = $this->outputs = $this->files = $this->referencesChecked = [];
         $this->profileLocked = false;
@@ -100,6 +100,7 @@ final class CustomerCare
         $works = [];
         $outputs = [];
         $keys = [];
+        $crmKeys = [];
         $catalog = [];
         foreach ($input['care_work_items'] as $work) {
             foreach ($work['services'] as $value) {
@@ -113,6 +114,18 @@ final class CustomerCare
         }
         foreach ($input['care_work_items'] as $i => $work) {
             $key = "$field.care_work_items.$i";
+            $crmActivity = $work['crm_activity_id'] ?? null;
+            $crmCustomer = null;
+            if ($crmActivity !== null) {
+                $crmCustomer = $crmSources[$crmActivity] ?? null;
+                $selection = $work['customers'][0] ?? [];
+                if ($crmCustomer === null || isset($crmKeys[$crmActivity])
+                    || count($work['customers']) !== 1 || (int) ($selection['customer_id'] ?? 0) !== $crmCustomer
+                    || ! empty($selection['new_customer']) || ! empty($selection['contact_update'])) {
+                    throw ValidationException::withMessages([$key => 'Lượt chăm từ CRM không hợp lệ hoặc đã được dùng. Hãy giữ đúng khách của lượt chăm.']);
+                }
+                $crmKeys[$crmActivity] = true;
+            }
             if (isset($keys[$work['client_key']])) {
                 throw ValidationException::withMessages([$key => 'Đầu việc bị trùng mã. Hãy tải lại bản nháp trước khi lưu.']);
             }
@@ -129,7 +142,7 @@ final class CustomerCare
                 ...$selection, 'activities' => array_map(fn ($service) => ['service' => $service['name'], 'result' => $result], $services),
                 'evidence_links' => $work['evidence_links'] ?? [], 'attachment_ids' => $work['attachment_ids'] ?? [],
             ], $work['customers'])];
-            $this->prepareLegacy($actor, $task, $legacy, $key);
+            $this->prepareLegacy($actor, $task, $legacy, $key, $crmCustomer);
             foreach ($legacy['outputs'] as $output) {
                 $outputs[$output['care_customer_id']] = $output;
             }
@@ -138,7 +151,8 @@ final class CustomerCare
                 $note = trim($work['customers'][$j]['note'] ?? '');
                 $customers[] = ['client_key' => $entry['client_key'], 'customer_id' => $entry['customer_id'], 'name' => $entry['name'], 'note' => $note];
             }
-            $works[] = ['client_key' => $work['client_key'], 'services' => $services, 'customers' => $customers, 'result' => $result,
+            $works[] = ['client_key' => $work['client_key'], ...($crmActivity === null ? [] : ['crm_activity_id' => (int) $crmActivity]),
+                'services' => $services, 'customers' => $customers, 'result' => $result,
                 'evidence_links' => $legacy['care_entries'][0]['evidence_links'], 'attachment_ids' => $legacy['care_entries'][0]['attachment_ids']];
         }
         if (count($outputs) > 50) {
@@ -190,7 +204,7 @@ final class CustomerCare
         return array_values($entries);
     }
 
-    private function prepareLegacy(User $actor, Task $task, array &$input, string $field): string
+    private function prepareLegacy(User $actor, Task $task, array &$input, string $field, ?int $crmCustomer = null): string
     {
         abort_unless($this->ready(), 409, 'CUSTOMER_CARE_MIGRATION_REQUIRED');
         if (($input['unit'] ?? null) !== 'khách hàng' || ($task->quantity_unit && $task->quantity_unit !== 'khách hàng')) {
@@ -209,10 +223,12 @@ final class CustomerCare
             if (! empty($entry['customer_id']) && ! empty($entry['new_customer'])) {
                 throw ValidationException::withMessages([$key => 'Chọn khách đã có hoặc thêm khách mới, không dùng cả hai.']);
             }
-            $profileKey = ! empty($entry['customer_id']) ? 'id:'.$entry['customer_id'] : 'new:'.($entry['new_customer']['request_key'] ?? '');
-            $customer = $this->profiles[$profileKey] ??= (! empty($entry['customer_id'])
+            $profileKey = ($crmCustomer === null ? '' : 'crm:').(! empty($entry['customer_id']) ? 'id:'.$entry['customer_id'] : 'new:'.($entry['new_customer']['request_key'] ?? ''));
+            $customer = $this->profiles[$profileKey] ??= ($crmCustomer !== null
+                ? DB::table('care_customers')->where('organization_id', $task->organization_id)->find($crmCustomer)
+                : (! empty($entry['customer_id'])
                 ? $this->visible($actor, $task->organization_id)->where('care_customers.id', $entry['customer_id'])->first()
-                : $this->create($actor, $task->organization_id, $entry['new_customer'] ?? [], $key));
+                : $this->createCustomer($actor, $task->organization_id, $entry['new_customer'] ?? [], $key)));
             if (! $customer) {
                 throw ValidationException::withMessages([$key => 'Khách hàng không thuộc phạm vi bạn được sử dụng. Hãy tìm và chọn lại.']);
             }
@@ -276,14 +292,17 @@ final class CustomerCare
         return implode("\n", array_map(fn ($entry) => $entry['name'].' — '.implode('; ', array_map(fn ($a) => $a['service'].': '.$a['result'], $entry['activities'])), $entries));
     }
 
-    private function create(User $actor, int $organization, array $input, string $field): object
+    /** The caller serializes creates for this actor within a transaction. */
+    public function createCustomer(User $actor, int $organization, array $input, string $field, bool $reuseRequest = true): object
     {
         if (empty($input['request_key']) || trim($input['name'] ?? '') === '') {
             throw ValidationException::withMessages([$field => 'Chọn khách hoặc nhập tên để tạo khách mới.']);
         }
-        $identity = self::normalizeContact($input['contact'] ?? '', "$field.new_customer.contact");
+        $identity = self::normalizeContact($input['contact'] ?? '', $reuseRequest ? "$field.new_customer.contact" : $field);
         $existing = DB::table('care_customers')->where('organization_id', $organization)->where('created_by', $actor->id)->where('request_key', $input['request_key'])->first();
         if ($existing) {
+            abort_unless($reuseRequest, 409, 'Mã yêu cầu đã dùng cho hồ sơ khác.');
+
             return $existing;
         }
         if ($identity && DB::table('care_customer_contacts')->where('organization_id', $organization)->where('identity_hash', hash('sha256', $identity))->exists()) {
