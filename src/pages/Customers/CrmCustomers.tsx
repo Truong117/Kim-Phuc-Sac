@@ -145,7 +145,7 @@ export default function CrmCustomers() {
         description={t("description")}
       />
       <PageBreadCrumb pageTitle={t("title")} />
-      <div className="space-y-4">
+      <div className="space-y-4 kps-ai-theme">
         {message && (
           <p
             role="status"

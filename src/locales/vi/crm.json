@@ -21,6 +21,8 @@
   "need": "Nhu cầu cần tư vấn",
   "nextAction": "Việc cần làm khi liên hệ lại",
   "due": "Ngày liên hệ lại",
+  "duePlaceholder": "Chọn ngày",
+  "dueError": "Chọn ngày liên hệ lại từ hôm nay trở đi.",
   "services": "Nội dung hỗ trợ",
   "servicesHint": "Mỗi nội dung một dòng. Có thể ghi nhiều nội dung trong cùng một lượt tư vấn.",
   "result": "Kết quả đã thực hiện",
