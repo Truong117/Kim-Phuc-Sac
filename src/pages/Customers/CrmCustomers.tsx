@@ -205,7 +205,7 @@ export default function CrmCustomers() {
             >
               <div className="flex shrink-0 flex-wrap justify-between gap-2">
                 <form
-                  className="grid max-w-84 min-w-0 flex-auto grid-cols-[minmax(0,1fr)_auto] gap-2"
+                  className="grid max-w-92 min-w-0 flex-auto grid-cols-[minmax(0,1fr)_auto] gap-2"
                   onSubmit={(event) => {
                     event.preventDefault();
                     setQuery(search.trim());

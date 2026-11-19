@@ -154,7 +154,7 @@ test("CRM balances the list and detail while paginating a full customer list", a
   await expect.poll(differenceBetweenPanelBottoms).toBeLessThan(1);
   await expect
     .poll(() => search.evaluate((input) => input.getBoundingClientRect().width))
-    .toBeGreaterThan(260);
+    .toBeGreaterThan(290);
   await expect
     .poll(() =>
       list.evaluate((element) => element.scrollHeight > element.clientHeight),
