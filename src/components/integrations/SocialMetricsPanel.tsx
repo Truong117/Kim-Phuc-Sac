@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useAuthorization } from "@/hooks/useAuthorization";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import SkippedFacebookPosts from "@/components/social-analytics/SkippedFacebookPosts";
 import { apiRequest, ApiServiceError } from "@/services/apiClient";
 import Button from "@/components/ui/button/Button";
 import SocialConnectionForm, {
@@ -61,6 +62,7 @@ interface SocialData {
       links: number;
       matched_links: number;
       sampled: number;
+      skipped_posts?: { external_id: string; url: string }[];
       deferred: number;
       unresolved_share_links?: number;
       pending_share_links?: number;
@@ -263,6 +265,9 @@ export default function SocialMetricsPanel({
                   )}
                 </p>
               )}
+              <SkippedFacebookPosts
+                posts={data.connection.sync_counts?.skipped_posts}
+              />
               {Boolean(
                 (data.connection.sync_counts?.unresolved_share_links ?? 0) +
                 (data.connection.sync_counts?.pending_share_links ?? 0),

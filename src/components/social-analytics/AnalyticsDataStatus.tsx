@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InfoCircleIcon } from "@/icons";
 import AnalyticsSamplingStatus from "./AnalyticsSamplingStatus";
+import SkippedFacebookPosts from "./SkippedFacebookPosts";
 import type { FacebookAnalyticsData } from "@/types/facebookAnalytics";
 import { formatDateOnly } from "@/utils/dateOnly";
 
@@ -18,6 +19,7 @@ export default function AnalyticsDataStatus({
     waiting ||
     !data.sync.catalogue_complete ||
     !!data.sync.error_code ||
+    (data.sync.progress?.skipped_posts ?? 0) > 0 ||
     data.sync.interrupted ||
     ["blocked", "paused", "overdue", "unconfirmed"].includes(
       data.sampling?.status ?? "",
@@ -76,6 +78,10 @@ export default function AnalyticsDataStatus({
         )}
         <p>{t("dataPolicy")}</p>
         <AnalyticsSamplingStatus sampling={data.sampling} />
+        <SkippedFacebookPosts
+          posts={data.sync.skipped_posts}
+          total={data.sync.progress?.skipped_posts}
+        />
         {data.sync.progress && (
           <details
             open={!!waiting}

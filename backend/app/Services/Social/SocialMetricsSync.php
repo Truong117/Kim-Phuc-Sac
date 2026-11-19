@@ -10,6 +10,7 @@ use App\Services\AuthorizationService;
 use App\Services\KpsMembershipResolver;
 use App\Services\ReportScopeService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
@@ -105,7 +106,7 @@ class SocialMetricsSync
                     }
                 }
             }
-            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending, 'pending_post_aliases' => $aliases['pending'], 'unverified_post_aliases' => $aliases['unverified']];
+            $counts = ['links' => count($links), 'matched_links' => 0, 'sampled' => 0, 'skipped_posts' => [], 'deferred' => 0, 'unresolved_share_links' => $unresolved, 'pending_share_links' => $resolutionPending, 'pending_post_aliases' => $aliases['pending'], 'unverified_post_aliases' => $aliases['unverified']];
             DB::transaction(function () use ($connection, $lease, $matched, &$counts): void {
                 $this->fence($connection, $lease);
                 foreach ($matched as $external => $match) {
@@ -130,7 +131,14 @@ class SocialMetricsSync
             $counts['deferred'] = max(0, $posts->count() - 10);
             $definition = (string) config('social_metrics.graph_version').':reactions_like,comments:'.(config('social_metrics.views_metric') ?: 'views_unavailable');
             foreach ($posts->take(10) as $post) {
-                $metrics = $this->facebook->metrics($connection->access_token, $post->external_id);
+                $metrics = app(FacebookPostSampler::class)->sample($connection->access_token, $connection->page_id, $post->external_id,
+                    ['entry_id' => $entryId, 'source' => 'report_metrics', 'post_id' => (int) $post->id, 'post_url' => $post->url]);
+                if ($metrics === null) {
+                    DB::transaction(fn () => $this->fence($connection, $lease));
+                    $counts['skipped_posts'][] = ['external_id' => $post->external_id, 'url' => $post->url];
+
+                    continue;
+                }
                 DB::transaction(function () use ($connection, $lease, $definition, $post, $metrics): void {
                     $this->fence($connection, $lease);
                     DB::table('social_metric_snapshots')->insertOrIgnore(['social_post_id' => $post->id, 'definition' => $definition, 'bucket' => now()->utc()->startOfHour(), 'sampled_at' => now()->utc(), 'metrics' => json_encode($metrics, JSON_THROW_ON_ERROR)]);
@@ -140,6 +148,10 @@ class SocialMetricsSync
             }
             $this->finish($connection, $lease, ['synced_at' => now(), 'error_code' => null, 'sync_counts' => $counts]);
         } catch (Throwable $exception) {
+            if ($exception instanceof FacebookApiException) {
+                Log::warning('social_metrics.provider_failed', ['entry_id' => $entryId, 'page_id' => $connection->page_id,
+                    'error_code' => $exception->getMessage(), ...$exception->diagnostics]);
+            }
             $allowed = ['SOCIAL_PRINCIPAL_UNAVAILABLE', 'SOCIAL_SOURCE_LIMIT_EXCEEDED', 'SOCIAL_RECONNECT_REQUIRED', 'SOCIAL_RATE_LIMITED', 'SOCIAL_PERMISSION_OR_OBJECT_UNAVAILABLE', 'SOCIAL_PROVIDER_UNAVAILABLE', 'SOCIAL_NOT_CONFIGURED'];
             $code = in_array($exception->getMessage(), $allowed, true) ? $exception->getMessage() : 'SOCIAL_SYNC_FAILED';
             $this->finish($connection, $lease, ['error_code' => $code, ...($code === 'SOCIAL_RECONNECT_REQUIRED' ? ['status' => 'reconnect_required'] : [])]);

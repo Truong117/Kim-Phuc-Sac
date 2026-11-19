@@ -3342,6 +3342,12 @@
     "syncScope": "Phạm vi thu thập: {from}–{to} (90 ngày), độc lập với bộ lọc bên trên.",
     "syncProgress": "Đã có mẫu {ready}/{total} bài đã tải; còn {pending} bài chờ lấy mẫu. Đã xong {batches} lượt xử lý.",
     "syncProgressLabel": "Tiến độ lấy mẫu danh mục Facebook",
+    "skippedPosts": {
+      "title": "Có {count} bài tạm bỏ qua trong lượt đồng bộ này",
+      "description": "Facebook chưa cho phép đọc số liệu của các bài dưới đây. Các bài còn lại vẫn được đồng bộ. Bài bị bỏ qua không được tính là đã có mẫu và sẽ được thử lại ở lượt sau.",
+      "open": "Mở bài {id}",
+      "limited": "Đang hiển thị {count} bài. Chi tiết đầy đủ được ghi trong log đồng bộ."
+    },
     "syncPhases": {
       "catalogue": "Đang tự động tải danh mục và lấy mẫu",
       "samples": "Đã tải hết danh mục; đang lấy mẫu các bài còn lại",

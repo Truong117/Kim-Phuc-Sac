@@ -10,6 +10,7 @@ async function setup(
     empty?: boolean;
     delayed?: boolean;
     syncCycle?: boolean;
+    skipped?: boolean;
     sampling?: "waiting" | "overdue" | "off";
     sources?: boolean;
     milestones?: boolean;
@@ -458,12 +459,22 @@ async function setup(
               error_code: null,
               pending_samples: 1,
               catalogue_posts: 2,
+              skipped_posts: options.skipped
+                ? [
+                    {
+                      id: 99,
+                      external_id: "100_999",
+                      url: "https://facebook.com/kps/posts/999",
+                    },
+                  ]
+                : [],
               progress:
                 options.syncCycle && sync
                   ? {
                       phase: cycleDone ? "completed" : "samples",
                       catalogue_posts: 12,
-                      ready_posts: cycleDone ? 12 : 10,
+                      ready_posts: cycleDone ? (options.skipped ? 11 : 12) : 10,
+                      skipped_posts: options.skipped ? 1 : 0,
                       pending_posts: cycleDone ? 0 : 2,
                       batches_completed: cycleDone ? 2 : 1,
                       from_date: "2026-08-10",
@@ -1564,4 +1575,27 @@ test("monthly stale source preserves notes and requires refresh before another c
       exact: true,
     }),
   ).toBeEnabled();
+});
+
+test("completed sync exposes skipped posts without claiming full sample coverage", async ({
+  page,
+}) => {
+  await setup(page, { syncCycle: true, skipped: true });
+  await page.getByRole("button", { name: "Đồng bộ Page", exact: true }).click();
+  await expect(page.getByText("11/12", { exact: true })).toBeVisible();
+  const skipped = page.getByText("Có 1 bài tạm bỏ qua trong lượt đồng bộ này", {
+    exact: true,
+  });
+  await expect(skipped).toBeVisible();
+  await skipped.click();
+  const link = page.getByRole("link", { name: "Mở bài 100_999", exact: true });
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://facebook.com/kps/posts/999",
+  );
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(
+    page.getByText(/Bài bị bỏ qua không được tính là đã có mẫu/),
+  ).toBeVisible();
+  await expect(page.getByText("12/12", { exact: true })).toHaveCount(0);
 });

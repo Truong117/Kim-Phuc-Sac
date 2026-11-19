@@ -357,4 +357,40 @@ class SocialMetricsTest extends TestCase
             || (parse_url($request->url(), PHP_URL_HOST) !== 'graph.facebook.com' && $request->hasHeader('Authorization')));
         $this->assertDatabaseCount('social_posts', 0);
     }
+
+    public function test_report_metrics_skip_unavailable_post_without_fake_sample_and_continue(): void
+    {
+        $this->connect();
+        $first = $this->item($this->admin);
+        $item = $this->item($this->actor('OFFICE_STAFF'), 'https://facebook.com/kps/posts/777');
+        // Explicit selections avoid unrelated HTML alias resolution during this regression.
+        foreach ([$item->id => '100_777', $first->id => '100_555'] as $id => $external) {
+            $row = DailyReportItem::query()->findOrFail($id);
+            $row->update(['facebook_selections' => [['source_url' => $row->evidence_links[0], 'entry_id' => $this->entry->id, 'page_id' => '100',
+                'external_id' => $external, 'post_url' => 'https://facebook.com/kps/posts/'.substr($external, 4)]]]);
+        }
+        Http::swap(new Factory);
+        Http::preventStrayRequests();
+        Http::fake(function ($request) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, '/published_posts')) {
+                return Http::response(['data' => [['id' => '100_777']]]);
+            }
+            if ($path === '/v26.0/100_555/reactions') {
+                return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+            }
+
+            return str_ends_with($path, '/insights') ? Http::response(['data' => []])
+                : Http::response(['summary' => ['total_count' => 3]]);
+        });
+        app(SocialMetricsSync::class)->run($this->entry->id);
+        $connection = SocialConnection::query()->firstOrFail();
+        $this->assertNull($connection->error_code);
+        $this->assertSame(1, $connection->sync_counts['sampled']);
+        $this->assertSame('100_555', $connection->sync_counts['skipped_posts'][0]['external_id']);
+        $this->assertDatabaseCount('social_metric_snapshots', 1);
+        $failed = DB::table('social_posts')->where('external_id', '100_555')->first();
+        $this->assertNull($failed->sampled_at);
+        $this->assertDatabaseMissing('social_metric_snapshots', ['social_post_id' => $failed->id]);
+    }
 }
