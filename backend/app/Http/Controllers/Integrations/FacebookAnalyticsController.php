@@ -12,10 +12,12 @@ use App\Services\Social\Analytics\FacebookMilestoneRead;
 use App\Services\Social\Analytics\FacebookMilestoneSampling;
 use App\Services\Social\Analytics\FacebookPeriodReview;
 use App\Services\Social\Analytics\FacebookTrackingIssues;
+use App\Services\Social\FacebookPostTracking;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class FacebookAnalyticsController extends Controller
@@ -73,7 +75,7 @@ class FacebookAnalyticsController extends Controller
         $entry = $this->access->entry($request->user(), $id);
         abort_unless((int) $entry->responsible_user_id === (int) $request->user()->id, 403);
         $input = $request->validate(['status' => ['required', 'in:stopped,active'],
-            'reason' => ['required_if:status,stopped', 'prohibited_if:status,active', 'in:hidden_duplicate'],
+            'reason' => ['prohibited_if:status,active', 'nullable', 'string', Rule::in([...FacebookPostTracking::STOP_REASONS, 'hidden_duplicate'])],
             'expected_version' => ['required', 'integer', 'min:0'], 'entry_version' => ['required', 'integer', 'min:1'],
             'connection_revision' => ['required', 'integer', 'min:1']]);
         $issues->update($request->user(), $id, $externalId, $input);

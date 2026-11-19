@@ -6,9 +6,12 @@ import {
   getFacebookPostTracking,
   updateFacebookPostTracking,
 } from "@/services/facebookAnalyticsService";
-import type {
-  FacebookPostTracking,
-  FacebookTrackedPost,
+import FacebookTrackingAction from "./FacebookTrackingAction";
+import {
+  isFacebookTrackingStopReason,
+  type FacebookPostTracking,
+  type FacebookTrackingStopReason,
+  type FacebookTrackedPost,
 } from "@/types/facebookAnalytics";
 import { observationDate } from "@/utils/facebookAnalytics";
 
@@ -83,14 +86,12 @@ export default function FacebookTrackingIssues({
       if (!signal.aborted) setExtra({ first: tracking, data: response.data });
     }, true);
   }
-  function change(post: FacebookTrackedPost) {
+  function change(
+    post: FacebookTrackedPost,
+    reason?: FacebookTrackingStopReason,
+  ) {
     if (request.current || !tracking.can_manage || !list.can_manage) return;
     const stop = post.status === "unavailable";
-    if (
-      stop &&
-      !window.confirm(t("tracking.stopConfirm", { id: post.external_id }))
-    )
-      return;
     void run(async (signal) => {
       await updateFacebookPostTracking(
         entryId,
@@ -99,9 +100,7 @@ export default function FacebookTrackingIssues({
           entry_version: list.entry_version,
           connection_revision: list.connection_revision,
           expected_version: post.version,
-          ...(stop
-            ? { status: "stopped", reason: "hidden_duplicate" }
-            : { status: "active" }),
+          ...(stop ? { status: "stopped", reason } : { status: "active" }),
         },
         signal,
       );
@@ -147,11 +146,17 @@ export default function FacebookTrackingIssues({
                   </a>
                   {post.status === "stopped" ? (
                     <>
-                      <p>{t("tracking.stopped")}</p>
-                      {post.stopped_at && (
+                      <p>
+                        {post.stopped_at
+                          ? t("tracking.stoppedAt", {
+                              at: observationDate(post.stopped_at),
+                            })
+                          : t("tracking.stopped")}
+                      </p>
+                      {isFacebookTrackingStopReason(post.reason) && (
                         <p>
-                          {t("tracking.stoppedAt", {
-                            at: observationDate(post.stopped_at),
+                          {t("tracking.recordedReason", {
+                            reason: t(`tracking.reasons.${post.reason}`),
                           })}
                         </p>
                       )}
@@ -174,23 +179,17 @@ export default function FacebookTrackingIssues({
                   )}
                 </div>
                 {tracking.can_manage && list.can_manage && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => change(post)}
+                  <FacebookTrackingAction
+                    key={`${entryId}:${list.entry_version}:${list.connection_revision}:${post.version}:${post.status}`}
+                    post={post}
+                    onChange={(reason) => change(post, reason)}
                     disabled={
                       busy ||
                       (acknowledged?.external_id === post.external_id &&
                         acknowledged.version === post.version &&
                         acknowledged.status === post.status)
                     }
-                  >
-                    {t(
-                      post.status === "stopped"
-                        ? "tracking.resume"
-                        : "tracking.stop",
-                    )}
-                  </Button>
+                  />
                 )}
               </li>
             ))}

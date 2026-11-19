@@ -11,6 +11,7 @@ use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -173,31 +174,78 @@ class FacebookAssignedChannelAccessTest extends TestCase
         $base = '/api/social-analytics/facebook/'.$this->page->id;
         $summary = $base.'?from_date=2026-11-01&to_date=2026-11-07';
         $tracking = $base.'/tracking/100_555';
-        $body = ['expected_version' => 0, 'entry_version' => 1, 'connection_revision' => 1, 'status' => 'stopped', 'reason' => 'hidden_duplicate'];
+        $body = ['expected_version' => 0, 'entry_version' => 1, 'connection_revision' => 1, 'status' => 'stopped'];
         $this->actingAs($this->assignee)->getJson($summary)->assertOk()->assertJsonPath('data.tracking.can_manage', true)
             ->assertJsonPath('data.tracking.unavailable_count', 1)->assertJsonPath('data.tracking.posts.0.external_id', '100_555')
             ->assertJsonPath('data.tracking.posts.0.version', 0)->assertJsonPath('data.summary.growth.likes.value', null);
-        $this->patchJson($tracking, [...$body, 'reason' => 'assumed_hidden'])->assertUnprocessable();
+        $this->patchJson($tracking, [...$body, 'reason' => 'assumed_hidden'])->assertUnprocessable()->assertJsonValidationErrors('reason');
+        $this->patchJson($tracking, [...$body, 'reason' => ['post_hidden']])->assertUnprocessable()->assertJsonValidationErrors('reason');
         $this->patchJson($tracking, [...$body, 'entry_version' => 2])->assertConflict();
         $this->patchJson($tracking, [...$body, 'connection_revision' => 2])->assertConflict();
         $this->actingAs($this->manager)->getJson($base.'/tracking')->assertOk()->assertJsonPath('data.can_manage', false);
         $this->patchJson($tracking, $body)->assertForbidden();
         $this->actingAs($this->assignee)->patchJson($tracking, $body)->assertNoContent();
         $this->getJson($summary)->assertOk()->assertJsonPath('data.tracking.stopped_count', 1)
-            ->assertJsonPath('data.tracking.posts.0.reason', 'hidden_duplicate')->assertJsonPath('data.tracking.posts.0.version', 1)
+            ->assertJsonPath('data.tracking.posts.0.reason', null)->assertJsonPath('data.tracking.posts.0.version', 1)
             ->assertJsonPath('data.sync.progress.stopped_posts', 1)->assertJsonPath('data.sync.progress.catalogue_posts', 0)
             ->assertJsonPath('data.sync.progress.skipped_posts', 0)->assertJsonPath('data.sync.skipped_posts', [])
             ->assertJsonPath('data.sync.pending_samples', 0)->assertJsonPath('data.posts.0.current.likes', 17);
-        $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => '100_555', 'stopped_by' => $this->assignee->id]);
+        $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => '100_555', 'stopped_by' => $this->assignee->id, 'stop_reason' => null]);
         $resume = ['expected_version' => 1, 'entry_version' => 1, 'connection_revision' => 1, 'status' => 'active'];
         $this->patchJson($tracking, [...$resume, 'expected_version' => 0])->assertConflict();
-        $this->patchJson($tracking, $resume)->assertNoContent();
+        $this->patchJson($tracking, [...$resume, 'reason' => null])->assertNoContent();
         $this->patchJson($tracking, $body)->assertConflict();
         $this->getJson($summary)->assertOk()->assertJsonPath('data.tracking.posts', [])
             ->assertJsonPath('data.sync.progress.stopped_posts', 0)->assertJsonPath('data.sync.progress.catalogue_posts', 1);
         $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => '100_555', 'stopped_at' => null, 'tracking_version' => 2]);
         $this->assertDatabaseCount('facebook_analytics_samples', 1);
         Http::assertNothingSent();
+    }
+
+    public static function stopReasons(): array
+    {
+        return [
+            'no selection' => [null, null],
+            'older client supplied its default' => ['hidden_duplicate', null],
+            'duplicate content selected' => ['duplicate_content', 'duplicate_content'],
+            'hidden selected' => ['post_hidden', 'post_hidden'],
+            'deleted selected' => ['post_deleted', 'post_deleted'],
+            'no longer needed selected' => ['no_longer_needed', 'no_longer_needed'],
+        ];
+    }
+
+    #[DataProvider('stopReasons')]
+    public function test_only_explicit_stop_reasons_are_saved_and_returned(?string $reason, ?string $expected): void
+    {
+        $connection = $this->connection();
+        $this->trackingPost($connection, '100_555');
+        $row = ['social_connection_id' => $connection->id, 'external_id' => '100_555'];
+        DB::table('facebook_post_tracking')->insert([...$row, 'failure_count' => 1, 'created_at' => now(), 'updated_at' => now()]);
+        $base = '/api/social-analytics/facebook/'.$this->page->id.'/tracking';
+        $action = $base.'/100_555';
+        $context = ['entry_version' => 1, 'connection_revision' => 1];
+        $this->actingAs($this->assignee)->patchJson($action, [...$context, 'expected_version' => 0, 'status' => 'stopped', 'reason' => $reason])
+            ->assertNoContent();
+        $this->assertDatabaseHas('facebook_post_tracking', [...$row, 'stop_reason' => $expected]);
+        $this->getJson($base)->assertOk()->assertJsonPath('data.posts.0.status', 'stopped')->assertJsonPath('data.posts.0.reason', $expected);
+
+        $resume = [...$context, 'expected_version' => 1, 'status' => 'active'];
+        $this->patchJson($action, [...$resume, 'reason' => 'post_deleted'])->assertUnprocessable()->assertJsonValidationErrors('reason');
+        $this->patchJson($action, $resume)->assertNoContent();
+        $this->assertDatabaseHas('facebook_post_tracking', [...$row, 'stopped_at' => null, 'stop_reason' => null]);
+    }
+
+    public function test_stored_legacy_reason_is_shown_as_unspecified_without_changing_the_stop(): void
+    {
+        $connection = $this->connection();
+        $this->trackingPost($connection, '100_555');
+        $row = ['social_connection_id' => $connection->id, 'external_id' => '100_555', 'stopped_at' => now()->subDay(),
+            'stopped_by' => $this->assignee->id, 'stop_reason' => 'hidden_duplicate', 'tracking_version' => 1];
+        DB::table('facebook_post_tracking')->insert([...$row, 'created_at' => now(), 'updated_at' => now()]);
+        $this->actingAs($this->assignee)->getJson('/api/social-analytics/facebook/'.$this->page->id.'/tracking')
+            ->assertOk()->assertJsonPath('data.stopped_count', 1)->assertJsonPath('data.posts.0.status', 'stopped')
+            ->assertJsonPath('data.posts.0.version', 1)->assertJsonPath('data.posts.0.reason', null);
+        $this->assertDatabaseHas('facebook_post_tracking', $row);
     }
 
     public function test_an_actual_sample_from_the_other_pipeline_clears_a_legacy_skip(): void
@@ -211,7 +259,7 @@ class FacebookAssignedChannelAccessTest extends TestCase
         DB::table('social_posts')->insert(['organization_id' => $connection->organization_id, 'integration_entry_id' => $this->page->id,
             'external_id' => '100_555', 'url' => 'https://facebook.com/reel/555', 'sampled_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
         $this->getJson($endpoint)->assertOk()->assertJsonPath('data.posts', []);
-        $this->patchJson($endpoint.'/100_555', ['status' => 'stopped', 'reason' => 'hidden_duplicate', 'expected_version' => 0,
+        $this->patchJson($endpoint.'/100_555', ['status' => 'stopped', 'expected_version' => 0,
             'entry_version' => 1, 'connection_revision' => 1])->assertConflict();
         $this->assertDatabaseCount('facebook_post_tracking', 0);
     }
@@ -237,7 +285,7 @@ class FacebookAssignedChannelAccessTest extends TestCase
         $this->actingAs($this->assignee)->getJson($base)->assertOk()->assertJsonPath('data.unavailable_count', 52)
             ->assertJsonPath('data.last_page', 2)->assertJsonCount(50, 'data.posts');
         $this->getJson($base.'?page=2')->assertOk()->assertJsonCount(2, 'data.posts')->assertJsonPath('data.posts.1.external_id', '100_100');
-        $stop = ['status' => 'stopped', 'reason' => 'hidden_duplicate', 'expected_version' => 0, 'entry_version' => 1, 'connection_revision' => 1];
+        $stop = ['status' => 'stopped', 'expected_version' => 0, 'entry_version' => 1, 'connection_revision' => 1];
         $this->patchJson($base.'/101_555', $stop)->assertNotFound();
         $this->patchJson($base.'/100_999', $stop)->assertNotFound();
         $this->patchJson($base.'/100_100', $stop)->assertNoContent();

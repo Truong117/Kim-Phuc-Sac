@@ -57,6 +57,20 @@ export interface FacebookAnalyticsAnalysis {
   selected_posts: number;
   candidate_posts: number;
 }
+export const facebookTrackingStopReasons = [
+  "duplicate_content",
+  "post_hidden",
+  "post_deleted",
+  "no_longer_needed",
+] as const;
+export type FacebookTrackingStopReason =
+  (typeof facebookTrackingStopReasons)[number];
+
+export const isFacebookTrackingStopReason = (
+  value: unknown,
+): value is FacebookTrackingStopReason =>
+  facebookTrackingStopReasons.some((reason) => reason === value);
+
 export interface FacebookTrackedPost {
   external_id: string;
   url: string;
@@ -65,7 +79,7 @@ export interface FacebookTrackedPost {
   failures: number;
   next_retry_at: string | null;
   stopped_at: string | null;
-  reason: "hidden_duplicate" | null;
+  reason: FacebookTrackingStopReason | "hidden_duplicate" | null;
 }
 export interface FacebookPostTracking {
   can_manage: boolean;
@@ -82,7 +96,7 @@ export type FacebookTrackingChange = {
   entry_version: number;
   connection_revision: number;
 } & (
-  | { status: "stopped"; reason: "hidden_duplicate" }
+  | { status: "stopped"; reason?: FacebookTrackingStopReason }
   | { status: "active" }
 );
 export interface FacebookAnalyticsData {

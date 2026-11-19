@@ -92,7 +92,7 @@ class FacebookPostTrackingStateTest extends TestCase
 
         $this->tracking->setStopped($this->connection, $external, true, $this->actor->id);
         $this->assertFalse($this->tracking->recordSuccess($this->connection, $external, $version));
-        $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => $external, 'stop_reason' => 'hidden_duplicate',
+        $this->assertDatabaseHas('facebook_post_tracking', ['external_id' => $external, 'stop_reason' => null,
             'stopped_by' => $this->actor->id, 'stopped_at' => now(), 'tracking_version' => 1]);
 
         $this->travel(1)->day();
