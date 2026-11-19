@@ -25,7 +25,7 @@ class ReportController extends Controller
 
     public function store(StoreReportRequest $request, WorkReportService $reports): JsonResponse
     {
-        $report = $reports->create($request->user(), $request->validated('items'), $request->safe()->only(['next_day_plan', 'form_version']));
+        $report = $reports->create($request->user(), $request->validated('items'), $request->safe()->only(['next_day_plan', 'form_version', 'crm_draft']));
 
         return DailyReportResource::make($report)->response()->setStatusCode(201);
     }
@@ -41,7 +41,7 @@ class ReportController extends Controller
         WorkReportService $reports,
     ): DailyReportResource {
         return DailyReportResource::make(
-            $reports->update($request->user(), $id, $request->validated('items'), $request->safe()->only(['next_day_plan', 'form_version'])),
+            $reports->update($request->user(), $id, $request->validated('items'), $request->safe()->only(['next_day_plan', 'form_version', 'crm_draft'])),
         );
     }
 }

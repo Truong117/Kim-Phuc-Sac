@@ -6,6 +6,7 @@ use App\Http\Controllers\AI\AiExecutiveDashboardController;
 use App\Http\Controllers\AI\DailyDocumentController;
 use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Crm\CrmController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Integrations\FacebookAnalyticsController;
 use App\Http\Controllers\Integrations\FacebookMonthlyReportController;
@@ -93,6 +94,21 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/navigation', NavigationController::class);
     Route::get('/integrations/mail/personal-weekly-recipients', [ReportMailController::class, 'recipients']);
     Route::get('/workspaces', WorkspaceController::class);
+    Route::prefix('crm')->middleware('permission:customers.view')->group(function (): void {
+        Route::get('/capabilities', [CrmController::class, 'capabilities'])->middleware('throttle:60,1,crm-read');
+        Route::get('/customers', [CrmController::class, 'index'])->middleware('throttle:120,1,crm-read');
+        Route::get('/customers/{id}', [CrmController::class, 'show'])->whereNumber('id')->middleware('throttle:120,1,crm-read');
+        Route::post('/customers', [CrmController::class, 'store'])->middleware(['permission:customers.create', 'throttle:30,1,crm-write']);
+        Route::post('/customers/{id}/activities', [CrmController::class, 'record'])->whereNumber('id')
+            ->middleware(['permission:customers.update', 'throttle:60,1,crm-write']);
+        Route::patch('/customers/{id}/opportunities/{opportunity}', [CrmController::class, 'stage'])->whereNumber(['id', 'opportunity'])
+            ->middleware(['permission:customers.update', 'throttle:30,1,crm-write']);
+        Route::get('/assignees', [CrmController::class, 'assignees'])->middleware(['permission:customers.assign', 'throttle:60,1,crm-read']);
+        Route::patch('/customers/{id}/assignment', [CrmController::class, 'assign'])->whereNumber('id')
+            ->middleware(['permission:customers.assign', 'throttle:30,1,crm-write']);
+        Route::get('/report-draft', [CrmController::class, 'reportDraft'])
+            ->middleware(['report_participant', 'permission:reports.create', 'throttle:60,1,crm-report']);
+    });
     Route::get('/spa/catalog/status', [SpaCatalogController::class, 'status'])
         ->middleware(['permission:spa.services.manage', 'throttle:60,1,spa-catalog-status']);
     Route::prefix('spa/catalog')->middleware('permission:spa.services.manage,organization')->group(function (): void {

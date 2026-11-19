@@ -55,6 +55,7 @@ abstract class ReportItemsRequest extends FormRequest
         return [
             'items.*.result.required_if' => 'Vui lòng nhập kết quả của công việc đã hoàn thành.',
             'next_day_plan.required' => 'Vui lòng nhập kế hoạch ngày tiếp theo, mỗi dòng một công việc.',
+            'next_day_plan.required_without' => 'Vui lòng nhập kế hoạch ngày tiếp theo, mỗi dòng một công việc.',
         ];
     }
 
@@ -70,8 +71,17 @@ abstract class ReportItemsRequest extends FormRequest
             'locked_at' => ['prohibited'],
             'is_makeup' => ['prohibited'],
             'form_version' => ['sometimes', 'integer', Rule::in([3])],
-            'next_day_plan' => (int) $this->input('form_version') === 3 ? ['required', 'string', 'max:5000'] : ['sometimes', 'nullable', 'string', 'max:5000'],
-            'items' => ['present', 'array', $this->filled('next_day_plan') ? 'min:0' : 'min:1', 'max:50'],
+            'crm_draft' => (int) $this->input('form_version') === 3
+                ? ['sometimes', 'array:activity_ids,task_id,expected_revision']
+                : ['prohibited'],
+            'crm_draft.activity_ids' => ['required_with:crm_draft', 'array', 'list', 'min:1', 'max:50'],
+            'crm_draft.activity_ids.*' => ['required', 'integer', 'min:1', 'distinct'],
+            'crm_draft.task_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'crm_draft.expected_revision' => ['required_with:crm_draft.task_id', 'nullable', 'integer', 'min:0'],
+            'next_day_plan' => (int) $this->input('form_version') === 3
+                ? ['required_without:crm_draft.activity_ids', 'nullable', 'string', 'max:5000']
+                : ['sometimes', 'nullable', 'string', 'max:5000'],
+            'items' => ['present', 'array', ($this->filled('next_day_plan') || $this->filled('crm_draft.activity_ids')) ? 'min:0' : 'min:1', 'max:50'],
             'items.*' => ['required', 'array:id,content,result,status,note,issue,evidence_links,facebook_selections,task_id,task_progress'],
             'items.*.task_id' => ['required_with:items.*.task_progress', 'nullable', 'integer', 'min:1'],
             'items.*.task_progress' => ['required_with:items.*.task_id', 'array:expected_revision,status,unit,outputs,care_entries,care_work_items'],

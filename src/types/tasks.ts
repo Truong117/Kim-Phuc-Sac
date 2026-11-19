@@ -60,6 +60,7 @@ export type CareReportEntry = CareCustomerSelection & {
 export type CareServiceOption = { id?: number | null; name: string };
 export type CareWorkItem = {
   client_key: string;
+  crm_activity_id?: number;
   services: CareServiceOption[];
   customers: CareCustomerSelection[];
   result: string;

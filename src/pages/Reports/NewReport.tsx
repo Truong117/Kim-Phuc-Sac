@@ -23,11 +23,13 @@ import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
 import QuickReportEditor from "@/components/reports/QuickReportEditor";
 import AssignedTaskReportPanel from "@/components/reports/AssignedTaskReportPanel";
+import CrmReportDraftPanel from "@/components/reports/CrmReportDraftPanel";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
 import { useAuthorization } from "@/hooks/useAuthorization";
 import { useFacebookReportPages } from "@/hooks/useFacebookReportPages";
 import { useAuth } from "@/hooks/useAuth";
+import { useCrmReportDraft } from "@/hooks/useCrmReportDraft";
 import { useWorkReportDraft } from "@/hooks/useWorkReportDraft";
 import { DocsIcon, TimeIcon } from "@/icons";
 import { ApiServiceError } from "@/services/apiClient";
@@ -266,6 +268,12 @@ export default function NewReport({
     !isClosed &&
     !isReadOnly &&
     !cannotCreate,
+  );
+  const crmDraft = useCrmReportDraft(
+    !makeupDate && isDraftEditable && canNavigate("customers") && currentUser
+      ? String(currentUser.id)
+      : null,
+    today?.business_date ?? null,
   );
 
   const facebookPages = useFacebookReportPages(
@@ -586,7 +594,7 @@ export default function NewReport({
     if (!today) return;
     const normalizedPlan = normalizeNextDayPlan(nextDayPlan);
     if (
-      !normalizedPlan ||
+      (!normalizedPlan && !crmDraft.hasPlan) ||
       normalizedPlan.length > 5000 ||
       Object.keys(candidateErrors).length > 0
     ) {
@@ -605,6 +613,9 @@ export default function NewReport({
     const input: SaveReportInput = {
       form_version: 3,
       next_day_plan: normalizedPlan,
+      ...(crmDraft.selection && !crmDraft.error
+        ? { crm_draft: crmDraft.selection }
+        : {}),
       items: candidateItems.map((item) => ({
         ...(item.id ? { id: item.id } : {}),
         issue: item.issue?.trim() || null,
@@ -1001,6 +1012,10 @@ export default function NewReport({
                 onSubmit={() => void handleSubmit()}
                 className="space-y-6"
               >
+                <CrmReportDraftPanel
+                  crm={crmDraft}
+                  disabled={isSaveFlowActive}
+                />
                 {currentUser &&
                   (canNavigate("tasks") || taskDrafts.length > 0) && (
                     <AssignedTaskReportPanel

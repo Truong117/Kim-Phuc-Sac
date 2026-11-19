@@ -145,6 +145,7 @@ export type SaveReportInput = {
   items: WorkItemInput[];
   next_day_plan?: string;
   form_version?: 3;
+  crm_draft?: import("@/services/crmService").CrmDraftSelection;
 };
 
 export type WorkItemFormData = {
