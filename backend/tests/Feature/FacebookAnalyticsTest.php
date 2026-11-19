@@ -482,4 +482,98 @@ class FacebookAnalyticsTest extends TestCase
         Http::assertSentCount(1);
         $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'queued']);
     }
+
+    public function test_unavailable_post_is_skipped_across_batches_without_fake_samples_and_retried_next_cycle(): void
+    {
+        Queue::fake();
+        Log::spy();
+        $missing = true;
+        $failedCalls = 0;
+        Http::fake(function ($request) use (&$missing, &$failedCalls) {
+            $path = parse_url($request->url(), PHP_URL_PATH);
+            if (str_ends_with($path, 'published_posts')) {
+                return Http::response(['data' => array_map(fn ($id) => ['id' => '100_'.$id, 'permalink_url' => 'https://facebook.com/kps/posts/'.$id,
+                    'created_time' => '2026-11-05T03:00:00Z'], range(1, 12))]);
+            }
+            if ($path === '/v27.0/100_1/reactions' && $missing) {
+                $failedCalls++;
+
+                return Http::response(['error' => ['code' => 100, 'error_subcode' => 33, 'message' => 'Object unavailable', 'fbtrace_id' => 'trace-123']], 400);
+            }
+
+            return Http::response(['summary' => ['total_count' => 5]]);
+        });
+        $sync = app(FacebookAnalyticsSync::class);
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        $this->assertDatabaseHas('facebook_analytics_states', ['status' => 'queued']);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        $state = FacebookAnalyticsState::query()->firstOrFail();
+        $this->assertSame('idle', $state->status);
+        $this->assertSame(11, $state->counts['ready_posts']);
+        $this->assertSame(0, $state->counts['pending_posts']);
+        $this->assertSame(1, $state->counts['skipped_posts']);
+        $this->assertSame(1, $failedCalls);
+        $this->assertDatabaseCount('facebook_analytics_samples', 11);
+        $post = DB::table('facebook_analytics_posts')->where('external_id', '100_1')->first();
+        $this->assertNull($post->sampled_at);
+        $this->assertDatabaseMissing('facebook_analytics_samples', ['post_id' => $post->id]);
+        $this->actingAs($this->owner)->getJson($this->url())->assertOk()->assertJsonPath('data.sync.progress.skipped_posts', 1)
+            ->assertJsonPath('data.sync.skipped_posts.0.external_id', '100_1')->assertDontSee('test-only-private-meta-token');
+        Log::shouldHaveReceived('warning')->withArgs(fn ($message, $context) => $message === 'facebook_metrics.post_skipped'
+            && $context['external_id'] === '100_1' && $context['operation'] === 'reactions' && $context['provider_trace_id'] === 'trace-123')->once();
+        $this->travel(1)->hours();
+        $missing = false;
+        $sync->enqueue($this->entry->id, $this->owner->id);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        Queue::pushed(SyncFacebookAnalytics::class)->last()->handle($sync);
+        $this->assertSame([], FacebookAnalyticsState::query()->firstOrFail()->counts['skipped_post_ids']);
+        $this->assertDatabaseHas('facebook_analytics_samples', ['post_id' => $post->id]);
+        $this->assertNotNull(DB::table('facebook_analytics_posts')->where('id', $post->id)->value('sampled_at'));
+    }
+
+    public function test_page_probe_permission_failure_stops_analytics_and_does_not_record_skip(): void
+    {
+        Queue::fake();
+        $catalogueCalls = 0;
+        Http::fake(function ($request) use (&$catalogueCalls) {
+            if (str_contains($request->url(), 'published_posts')) {
+                if (++$catalogueCalls > 1) {
+                    return Http::response(['error' => ['code' => 10, 'message' => 'Page permission denied']], 403);
+                }
+
+                return Http::response(['data' => [['id' => '100_1', 'permalink_url' => 'https://facebook.com/kps/posts/1', 'created_time' => '2026-11-05T03:00:00Z']]]);
+            }
+
+            return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+        });
+        app(FacebookAnalyticsSync::class)->run($this->entry->id, $this->owner->id);
+        $state = FacebookAnalyticsState::query()->firstOrFail();
+        $this->assertSame('failed', $state->status);
+        $this->assertSame([], $state->counts['skipped_post_ids']);
+        $this->assertDatabaseCount('facebook_analytics_samples', 0);
+    }
+
+    public function test_skip_record_is_fenced_when_assignment_changes_during_page_probe(): void
+    {
+        Queue::fake();
+        $post = $this->analyticsPost('100_1', '2026-11-05 03:00:00');
+        $catalogueCalls = 0;
+        Http::fake(function ($request) use (&$catalogueCalls) {
+            if (str_contains($request->url(), 'published_posts')) {
+                if (++$catalogueCalls > 1) {
+                    $this->entry->update(['version' => 2, 'responsible_user_id' => $this->admin->id]);
+                }
+
+                return Http::response(['data' => []]);
+            }
+
+            return Http::response(['error' => ['code' => 100, 'error_subcode' => 33]], 400);
+        });
+        app(FacebookAnalyticsSync::class)->run($this->entry->id, $this->owner->id);
+        $state = FacebookAnalyticsState::query()->firstOrFail();
+        $this->assertSame('FACEBOOK_ANALYTICS_ACCESS_CHANGED', $state->error_code);
+        $this->assertSame([], $state->counts['skipped_post_ids']);
+        $this->assertDatabaseMissing('facebook_analytics_samples', ['post_id' => $post]);
+    }
 }
