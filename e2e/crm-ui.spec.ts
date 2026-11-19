@@ -13,6 +13,12 @@ const customer = {
   can_assign: false,
   version: 0,
 };
+const noFollowUps = {
+  business_date: "2026-11-30",
+  upcoming_through: "2026-12-07",
+  today: 0,
+  upcoming: 0,
+};
 const responses: Record<string, unknown> = {
   "/api/workspaces": {
     workspaces: [{ id: "internal", home: "/", sections: [] }],
@@ -35,9 +41,6 @@ const responses: Record<string, unknown> = {
       business_date: "2026-11-30",
     },
   },
-  "/api/crm/customers": {
-    data: { data: [customer], total: 1, current_page: 1, last_page: 1 },
-  },
   "/api/crm/customers/1": { data: customer },
 };
 const emptyResponse = { data: [], unread_count: 0 };
@@ -49,6 +52,22 @@ test("CRM uses the KPS calendar to validate and save a follow-up date", async ({
 
   await page.route("**/api/**", async (route) => {
     const { pathname } = new URL(route.request().url());
+    if (pathname === "/api/crm/customers") {
+      return route.fulfill({
+        json: {
+          data: {
+            data: [customer],
+            total: 1,
+            current_page: 1,
+            last_page: 1,
+            follow_up_summary: {
+              ...noFollowUps,
+              upcoming: submissions.length ? 1 : 0,
+            },
+          },
+        },
+      });
+    }
     if (
       pathname === "/api/crm/customers/1/activities" &&
       route.request().method() === "POST"
@@ -62,6 +81,8 @@ test("CRM uses the KPS calendar to validate and save a follow-up date", async ({
   });
 
   await page.goto("/customers/1");
+  const upcoming = page.getByRole("button", { name: /Sắp đến hẹn/ });
+  await expect(upcoming).toContainText("0 khách");
   await expect(
     page.getByRole("button", { name: "Ghi lượt tư vấn", exact: true }),
   ).toHaveCSS("background-color", "rgb(139, 99, 58)");
@@ -92,6 +113,7 @@ test("CRM uses the KPS calendar to validate and save a follow-up date", async ({
 
   await save.click();
   await expect(dialog).toBeHidden();
+  await expect(upcoming).toContainText("1 khách");
   expect(submissions).toEqual([
     expect.objectContaining({
       kind: "FOLLOW_UP",
@@ -121,6 +143,7 @@ test("CRM balances the list and detail while paginating a full customer list", a
             total: customers.length,
             current_page: pageNumber,
             last_page: 2,
+            follow_up_summary: noFollowUps,
           },
         },
       });
@@ -166,4 +189,85 @@ test("CRM balances the list and detail while paginating a full customer list", a
   await nextPage.click();
   await expect(list.getByRole("listitem")).toHaveCount(1);
   await expect.poll(differenceBetweenPanelBottoms).toBeLessThan(1);
+});
+
+test("CRM reminder counts open the matching customer list and appointment details", async ({
+  page,
+}) => {
+  const tomorrow = { ...customer, id: 2, code: "KH-2", name: "Khách An" };
+  const nextWeek = { ...customer, id: 3, code: "KH-3", name: "Khách Bình" };
+  const all = [customer, tomorrow, nextWeek];
+  const today = [
+    {
+      ...customer,
+      next_follow_up: { due_on: "2026-11-30", title: "Gọi xác nhận hôm nay" },
+    },
+  ];
+  const upcoming = [
+    {
+      ...tomorrow,
+      next_follow_up: { due_on: "2026-12-01", title: "Gửi bảng giá" },
+    },
+    {
+      ...nextWeek,
+      next_follow_up: { due_on: "2026-12-07", title: "Hỏi kết quả dùng thử" },
+    },
+  ];
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/crm/customers") {
+      const filter = url.searchParams.get("follow_up");
+      const rows =
+        filter === "today" ? today : filter === "upcoming" ? upcoming : all;
+      return route.fulfill({
+        json: {
+          data: {
+            data: rows,
+            total: rows.length,
+            current_page: 1,
+            last_page: 1,
+            follow_up_summary: {
+              ...noFollowUps,
+              today: today.length,
+              upcoming: upcoming.length,
+            },
+          },
+        },
+      });
+    }
+    if (url.pathname === "/api/crm/customers/2") {
+      return route.fulfill({ json: { data: tomorrow } });
+    }
+    return route.fulfill({ json: responses[url.pathname] ?? emptyResponse });
+  });
+
+  await page.goto("/customers");
+  const todayButton = page.getByRole("button", { name: /Đến hẹn hôm nay/ });
+  const upcomingButton = page.getByRole("button", { name: /Sắp đến hẹn/ });
+  const list = page.getByRole("list", { name: "Danh sách khách hàng" });
+  await expect(todayButton).toContainText("1 khách");
+  await expect(upcomingButton).toContainText("2 khách");
+
+  await todayButton.click();
+  await expect(todayButton).toHaveAttribute("aria-pressed", "true");
+  await expect(list.getByRole("link")).toHaveCount(1);
+  await expect(list).toContainText("30/11/2026");
+  await expect(list).toContainText("Gọi xác nhận hôm nay");
+  await expect(upcomingButton).toContainText("2 khách");
+
+  await upcomingButton.click();
+  await expect(upcomingButton).toHaveAttribute("aria-pressed", "true");
+  await expect(list.getByRole("link")).toHaveCount(2);
+  const nextCustomer = list.getByRole("link", { name: /Khách An/ });
+  await expect(nextCustomer).toContainText("01/12/2026");
+  await expect(nextCustomer).toContainText("Gửi bảng giá");
+  await nextCustomer.click();
+  await expect(page).toHaveURL((url) => url.pathname === "/customers/2");
+  await expect(
+    page.getByRole("heading", { name: tomorrow.name, exact: true }),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Tất cả khách hàng" }).click();
+  await expect(list.getByRole("link")).toHaveCount(3);
+  await expect(list).not.toContainText("Gửi bảng giá");
 });

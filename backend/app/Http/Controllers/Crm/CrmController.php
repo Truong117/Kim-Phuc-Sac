@@ -37,9 +37,13 @@ final class CrmController extends Controller
     public function index(Request $request): JsonResponse
     {
         $member = $this->member($request, true);
-        $input = $request->validate(['search' => ['nullable', 'string', 'max:200'], 'page' => ['nullable', 'integer', 'min:1']]);
+        $input = $request->validate([
+            'search' => ['nullable', 'string', 'max:200'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'follow_up' => ['nullable', 'string', Rule::in(['today', 'upcoming'])],
+        ]);
 
-        return $this->response($this->customers->index($member, $input['search'] ?? null)->toArray());
+        return $this->response($this->customers->index($member, $input['search'] ?? null, $input['follow_up'] ?? null));
     }
 
     public function show(Request $request, int $id): JsonResponse

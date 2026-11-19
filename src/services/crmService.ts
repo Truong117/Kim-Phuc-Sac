@@ -9,6 +9,13 @@ export const crmChannels = [
 ] as const;
 export type CrmChannel = (typeof crmChannels)[number];
 export type CrmStage = "NEW" | "CONSULTING" | "WAITING" | "WON" | "LOST";
+export type CrmFollowUpWindow = "today" | "upcoming";
+export type CrmFollowUpSummary = {
+  business_date: string;
+  upcoming_through: string;
+  today: number;
+  upcoming: number;
+};
 export type CrmActivityKind =
   "INTAKE" | "OPPORTUNITY" | "CONSULTATION" | "FOLLOW_UP" | "HANDOFF";
 
@@ -29,6 +36,7 @@ export type CrmCustomer = {
   owner_name: string | null;
   owner_membership_id: number | null;
   version: number;
+  next_follow_up?: { due_on: string; title: string } | null;
 };
 export type CrmActivity = {
   id: number;
@@ -93,16 +101,18 @@ export const getCrmCustomers = (
   query: string,
   page: number,
   signal?: AbortSignal,
-) =>
-  crm<{
+  followUp?: CrmFollowUpWindow,
+) => {
+  const params = new URLSearchParams({ search: query, page: String(page) });
+  if (followUp) params.set("follow_up", followUp);
+  return crm<{
     data: CrmCustomer[];
     total: number;
     current_page: number;
     last_page: number;
-  }>(
-    "/customers?" + new URLSearchParams({ search: query, page: String(page) }),
-    { signal },
-  );
+    follow_up_summary?: CrmFollowUpSummary;
+  }>("/customers?" + params, { signal });
+};
 
 export const getCrmCustomer = (id: number, signal?: AbortSignal) =>
   crm<CrmCustomerDetail>("/customers/" + id, { signal });
