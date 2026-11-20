@@ -17,8 +17,10 @@ import {
 function ClaimList({
   claims,
   sources = [],
+  verbatim,
 }: {
-  claims: AnalysisClaim[];
+  claims: readonly AnalysisClaim[];
+  verbatim: boolean;
   sources?: AnalysisSource[];
 }) {
   return (
@@ -33,7 +35,7 @@ function ClaimList({
             className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400 dark:bg-brand-300"
           />
           <p className="min-w-0 break-words whitespace-pre-wrap">
-            {reportClaimText(claim, sources)}
+            {verbatim ? claim.text : reportClaimText(claim, sources)}
           </p>
         </li>
       ))}
@@ -45,31 +47,29 @@ export default function WorkAnalysisResult({
   result,
   sources,
   employee = false,
+  verbatim = false,
   totals = [],
 }: {
   result: AnalysisResult;
   sources: AnalysisSource[];
   employee?: boolean;
+  verbatim?: boolean;
   totals?: WorkTotal[];
 }) {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
-  const sections = reportSections(result);
-  const review = uniqueReportClaims([
-    ...result.overview,
-    ...result.highlights,
-    ...result.ongoing,
-    ...result.attention,
-    ...result.support,
-  ]);
+  const sections = reportSections(result, verbatim);
+  const reviewClaims = sections.slice(0, 3).flatMap(({ claims }) => claims);
+  const review = verbatim ? reviewClaims : uniqueReportClaims(reviewClaims);
+  const uncertainties = verbatim
+    ? result.uncertainties
+    : uniqueReportClaims(result.uncertainties);
+  const recommendations = sections[3].claims;
   const unclear = totals.filter(
     (total) =>
       total.status !== "confirmed" ||
       total.total === null ||
       !Number.isFinite(total.total) ||
       total.total < 0,
-  );
-  const recommendations = uniqueReportClaims(result.recommendations).sort(
-    (a, b) => Number(b.priority === "high") - Number(a.priority === "high"),
   );
   return (
     <div className="space-y-6">
@@ -80,7 +80,11 @@ export default function WorkAnalysisResult({
               {t(`form.${key}`)}
             </h3>
             {claims.length > 0 ? (
-              <ClaimList claims={claims} sources={sources} />
+              <ClaimList
+                verbatim={verbatim}
+                claims={claims}
+                sources={sources}
+              />
             ) : (
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 {t(`form.empty.${key}`)}
@@ -92,8 +96,7 @@ export default function WorkAnalysisResult({
         {result.uncertainties.length > 0 || unclear.length > 0 ? (
           <details className="rounded-xl bg-warning-50 p-4 text-sm text-warning-800 dark:bg-warning-950/40 dark:text-warning-200">
             <summary className="cursor-pointer font-medium">
-              {t("reader.clarify")} ·{" "}
-              {uniqueReportClaims(result.uncertainties).length + unclear.length}
+              {t("reader.clarify")} · {uncertainties.length + unclear.length}
             </summary>
             <div className="mt-3 space-y-3">
               {unclear.length > 0 && (
@@ -111,7 +114,7 @@ export default function WorkAnalysisResult({
                   </ul>
                 </>
               )}
-              <ClaimList claims={uniqueReportClaims(result.uncertainties)} />
+              <ClaimList verbatim={verbatim} claims={uncertainties} />
             </div>
           </details>
         ) : (
@@ -129,7 +132,7 @@ export default function WorkAnalysisResult({
             {t("reader.review")}
           </h3>
           {review.length > 0 ? (
-            <ClaimList claims={review} />
+            <ClaimList verbatim={verbatim} claims={review} />
           ) : (
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {t("reader.noReview")}
@@ -156,15 +159,16 @@ export default function WorkAnalysisResult({
                   key={index}
                   className="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
                 >
-                  <summary className="cursor-pointer text-sm leading-7 font-medium text-gray-900 dark:text-white">
-                    {claim.priority === "high" && (
+                  <summary className="cursor-pointer text-sm leading-7 font-medium break-words whitespace-pre-wrap text-gray-900 dark:text-white">
+                    {(claim.priority === "high" ||
+                      (verbatim && claim.priority === "normal")) && (
                       <span
                         className={`me-2 inline-block rounded-full px-2 py-0.5 text-xs ${claim.priority === "high" ? "bg-warning-50 text-warning-800 dark:bg-warning-950 dark:text-warning-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}
                       >
                         {t(`reader.priority.${claim.priority}`)}
                       </span>
                     )}
-                    {reportText(claim.text)}
+                    {verbatim ? claim.text : reportText(claim.text)}
                   </summary>
                   <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
                     {(
@@ -184,7 +188,9 @@ export default function WorkAnalysisResult({
                             {t(`reader.decision.${field}`)}
                           </dt>
                           <dd className="mt-1 leading-7 break-words whitespace-pre-wrap text-gray-600 dark:text-gray-300">
-                            {reportText(claim[field]!)}
+                            {verbatim
+                              ? claim[field]
+                              : reportText(claim[field]!)}
                           </dd>
                         </div>
                       ))}

@@ -20,9 +20,11 @@ export default function WorkAnalysisEmployees({
   selectedEmployeeId,
   onSelect,
   exportRun,
+  weekly,
   frozen = true,
 }: {
   employees: AnalysisEmployee[];
+  weekly: boolean;
   exportRun?: Pick<WorkReportAnalysis, "id" | "period">;
   sources: AnalysisSource[];
   selectedEmployeeId?: number;
@@ -164,11 +166,13 @@ export default function WorkAnalysisEmployees({
                 {selected.result && (
                   <>
                     <WorkAnalysisWeeklyWork
+                      weekly={weekly}
                       groups={selected.work_groups ?? []}
                       totals={selected.work_totals ?? []}
                       partial={selected.status !== "completed"}
                     />
                     <WorkAnalysisResult
+                      verbatim={weekly}
                       result={selected.result}
                       sources={sources}
                       totals={selected.work_totals ?? []}

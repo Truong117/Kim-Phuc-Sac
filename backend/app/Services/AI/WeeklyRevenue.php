@@ -72,18 +72,26 @@ final class WeeklyRevenue
             return self::value(null);
         }
 
-        return $closing || $days ? self::value($closing[0] ?? $sum) : null;
-    }
-
-    public static function combined(array $employees): ?array
-    {
-        $totals = array_values(array_filter(array_column($employees, 'weekly_revenue')));
-        if (! $totals) {
-            return null;
+        if ($closing || $days) {
+            return self::value($closing[0] ?? $sum);
         }
-        $amounts = array_column($totals, 'amount');
 
-        return self::value(in_array(null, $amounts, true) ? null : array_sum($amounts));
+        // Old reports can mention revenue with no corresponding frozen source amount.
+        // Preserve that uncertainty without deriving a new total from AI prose.
+        foreach ($employee['work_groups'] ?? [] as $group) {
+            if (self::points($group['title'], ['date' => $endDate, 'result' => $group['text']], [], $endDate)) {
+                return self::value(null);
+            }
+        }
+        foreach (WorkReportAnalysisOutput::SECTIONS as $section) {
+            foreach ($employee['result'][$section] ?? [] as $claim) {
+                if (self::points('', ['date' => $endDate, 'result' => $claim['text']], [], $endDate)) {
+                    return self::value(null);
+                }
+            }
+        }
+
+        return null;
     }
 
     public static function value(?int $amount): array
