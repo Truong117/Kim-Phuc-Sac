@@ -315,7 +315,7 @@ test("weekly reader downloads the displayed full, summary and selected employee 
     .selectOption("summary");
   await download();
   await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
-  await page.getByLabel("Chọn nhân viên", { exact: true }).selectOption("8");
+  await page.getByRole("button", { name: /^Nhân viên B / }).click();
   await download();
   expect(urls.map((url) => Object.fromEntries(url.searchParams))).toEqual([
     { mode: "full" },
