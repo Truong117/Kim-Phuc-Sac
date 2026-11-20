@@ -67,6 +67,11 @@ export interface WeeklyRevenue {
 }
 
 export interface AnalysisEmployee {
+  weekly_brief?: {
+    figures: { label: string; text: string }[];
+    results: string[];
+    follow_up: { label: string; text: string }[];
+  };
   weekly_revenue?: WeeklyRevenue;
   employee_id: number;
   name: string;
@@ -89,7 +94,6 @@ export interface DailyCoverage {
   missing_report_ids: number[];
 }
 export interface WorkReportAnalysis {
-  weekly_revenue?: WeeklyRevenue;
   can_export_word?: boolean;
   daily_coverage?: DailyCoverage | null;
   id: number;

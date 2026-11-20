@@ -5,9 +5,11 @@ namespace Tests\Feature;
 use App\Models\ReportAutomationCycle;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
+use App\Services\AI\WeeklyEmployeeBrief;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\AI\WorkReportSnapshot;
+use App\Services\Reports\WeeklyReportWord;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -134,12 +136,21 @@ class PersonalWeeklyReportTest extends TestCase
 
             return $dom->textContent;
         };
-        $this->actingAs($admin, 'web')->getJson($base)->assertOk()
-            ->assertJsonPath('data.weekly_revenue.amount', 2500000)->assertJsonPath('data.can_export_word', true);
+        $runPayload = $this->actingAs($admin, 'web')->getJson($base)->assertOk()
+            ->assertJsonMissingPath('data.weekly_revenue')->assertJsonPath('data.can_export_word', true);
+        $byEmployee = collect($runPayload->json('data.employees'))->keyBy('employee_id');
+        $this->assertSame(2000000, $byEmployee[$this->alice->id]['weekly_revenue']['amount']);
+        $this->assertSame(500000, $byEmployee[$this->bob->id]['weekly_revenue']['amount']);
+        $adminBrief = $byEmployee[$this->alice->id]['weekly_brief'];
         $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.employee.weekly_revenue.amount', 2000000);
+        $this->assertSame($adminBrief, $mine->json('data.employee.weekly_brief'));
         $this->getJson($base.'/word?mode=full')->assertForbidden();
         $this->getJson($self.'&version='.str_repeat('a', 64))->assertConflict();
         $personal = $text($this->get($self.'&version='.$mine->json('data.export_version').'&employee_id='.$this->bob->id));
+        $this->assertNotEmpty($adminBrief['results']);
+        foreach ($adminBrief['results'] as $line) {
+            $this->assertStringContainsString($line, $personal);
+        }
         $this->assertStringContainsString('2.000.000 đồng', $personal);
         $this->assertStringNotContainsString('800.000', $personal);
         $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $personal);
@@ -148,20 +159,49 @@ class PersonalWeeklyReportTest extends TestCase
             $this->app['auth']->forgetGuards();
             $this->actingAs($viewer, 'web');
             $full = $text($this->get($base.'/word?mode=full'));
-            $this->assertStringContainsString('2.500.000 đồng', $full);
+            $this->assertStringNotContainsString('2.500.000 đồng', $full);
             $this->assertStringContainsString('2.000.000 đồng', $full);
             $this->assertStringNotContainsString('800.000', $full);
             $one = $text($this->get($base.'/word?mode=employee&employee_id='.$this->alice->id));
             $this->assertStringContainsString('2.000.000 đồng', $one);
             $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $one);
             $summary = $text($this->get($base.'/word?mode=summary'));
-            $this->assertStringContainsString('2.500.000 đồng', $summary);
+            $this->assertStringNotContainsString('2.500.000 đồng', $summary);
+            $this->assertStringContainsString($this->alice->name.'Doanh thu cá nhân trong tuần · 2.000.000 đồng', $summary);
+            $this->assertStringContainsString($this->bob->name.'Doanh thu cá nhân trong tuần · 500.000 đồng', $summary);
             $this->assertStringNotContainsString('Báo cáo tuần của ', $summary);
             $this->getJson($base.'/word?mode=employee&employee_id=999999')->assertNotFound();
         }
         $daily = $this->createAnalysis('2026-11-04', 1);
-        $this->actingAs($admin, 'web')->getJson('/api/ai/work-report-analyses/'.$daily->id)->assertOk()->assertJsonMissingPath('data.weekly_revenue');
+        $this->actingAs($admin, 'web')->getJson('/api/ai/work-report-analyses/'.$daily->id)->assertOk()
+            ->assertJsonMissingPath('data.weekly_revenue')->assertJsonMissingPath('data.employees.0.weekly_brief');
         $this->getJson('/api/ai/work-report-analyses/'.$daily->id.'/word?mode=full')->assertUnprocessable();
+    }
+
+    public function test_compact_employee_word_uses_the_web_figures_and_kps_table_colour(): void
+    {
+        $employee = ['employee_id' => 12, 'name' => 'Nhân viên mẫu', 'status' => 'completed',
+            'work_totals' => [
+                ['metric' => 'Ảnh đã đăng trên Kênh A', 'unit' => 'ảnh', 'status' => 'confirmed', 'total' => 3, 'entries' => []],
+                ['metric' => 'Ảnh đã đăng trên Kênh B', 'unit' => 'ảnh', 'status' => 'confirmed', 'total' => 5, 'entries' => []],
+            ], 'result' => ['highlights' => [['text' => 'Đã bàn giao nội dung.', 'evidence' => []]]]];
+        $employee = WeeklyEmployeeBrief::present($employee, '2026-11-07');
+        $figure = $employee['weekly_brief']['figures'][0];
+        $this->assertSame('8 ảnh (2 kênh)', $figure['text']);
+        $word = app(WeeklyReportWord::class)->download(['start_date' => '2026-11-01', 'end_date' => '2026-11-07'], [$employee]);
+        $path = $word->getFile()->getPathname();
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($path));
+        try {
+            $xml = $zip->getFromName('word/document.xml');
+            $this->assertStringContainsString($figure['label'], $xml);
+            $this->assertStringContainsString($figure['text'], $xml);
+            $this->assertStringNotContainsString('trên Kênh A', $xml);
+            $this->assertStringContainsString('w:fill="8B633A"', $xml);
+        } finally {
+            $zip->close();
+            unlink($path);
+        }
     }
 
     public function test_owner_also_receives_only_their_own_work(): void

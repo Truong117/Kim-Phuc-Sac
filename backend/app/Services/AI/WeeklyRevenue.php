@@ -75,17 +75,6 @@ final class WeeklyRevenue
         return $closing || $days ? self::value($closing[0] ?? $sum) : null;
     }
 
-    public static function combined(array $employees): ?array
-    {
-        $totals = array_values(array_filter(array_column($employees, 'weekly_revenue')));
-        if (! $totals) {
-            return null;
-        }
-        $amounts = array_column($totals, 'amount');
-
-        return self::value(in_array(null, $amounts, true) ? null : array_sum($amounts));
-    }
-
     public static function value(?int $amount): array
     {
         return ['amount' => $amount, 'display' => $amount === null ? 'Cần đối chiếu số liệu nguồn' : number_format($amount, 0, ',', '.').' đồng'];

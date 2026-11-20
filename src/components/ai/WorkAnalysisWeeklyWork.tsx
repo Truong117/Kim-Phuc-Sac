@@ -7,10 +7,12 @@ export default function WorkAnalysisWeeklyWork({
   groups,
   totals,
   partial,
+  weekly = false,
 }: {
   groups: GroupedWork[];
   totals: WorkTotal[];
   partial: boolean;
+  weekly?: boolean;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "workReportAnalysis" });
   const confirmed = totals.filter(
@@ -57,7 +59,11 @@ export default function WorkAnalysisWeeklyWork({
           {confirmed.map((total, index) => (
             <span
               key={index}
-              className="rounded-lg bg-success-50 px-3 py-1.5 text-xs leading-6 text-success-800 dark:bg-success-950/40 dark:text-success-200"
+              className={
+                weekly
+                  ? "rounded-lg bg-brand-50 px-3 py-1.5 text-xs leading-6 text-brand-800 dark:bg-brand-500/10 dark:text-brand-200"
+                  : "rounded-lg bg-success-50 px-3 py-1.5 text-xs leading-6 text-success-800 dark:bg-success-950/40 dark:text-success-200"
+              }
             >
               {total.metric}:{" "}
               <strong className="font-medium">

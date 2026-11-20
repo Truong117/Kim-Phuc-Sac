@@ -161,6 +161,20 @@ test("staff reads focused grouped work with sources at the end and GET requests 
   ).toHaveCount(0);
 });
 
+test("personal weekly figures are compact and original work is accessible on demand", async ({ page }) => {
+  const report = sample();
+  report.employee!.weekly_brief = {
+    figures: [{ label: "Ảnh và video/Reel đã đăng", text: "6 ảnh, 4 video/Reel (2 kênh)" }],
+    results: ["Đã bàn giao sản phẩm."],
+    follow_up: [],
+  };
+  await setup(page, () => report);
+  await expect(page.getByText("6 ảnh, 4 video/Reel (2 kênh)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Thiết kế nội dung" })).toBeHidden();
+  await page.getByText("Xem báo cáo đầy đủ và số liệu từng kênh").click();
+  await expect(page.getByRole("heading", { name: "Thiết kế nội dung" })).toBeVisible();
+});
+
 test("personal Word export uses the selected week and the displayed employee revision", async ({
   page,
 }) => {

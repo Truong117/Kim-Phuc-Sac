@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Services\AI\WeeklyEmployeeBrief;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
@@ -25,16 +26,15 @@ final class WeeklyReportWord
             if ($context !== null) {
                 $body .= $this->p($context);
             }
-            $body .= $this->revenue($company);
             $rows = [];
             foreach ($company['employees'] as $employee) {
                 $id = (int) $employee['employee_id'];
                 $label = $employees
-                    ? '<w:p><w:hyperlink w:anchor="Employee_'.$id.'"><w:r><w:rPr><w:color w:val="195B59"/><w:u w:val="single"/></w:rPr><w:t>'.$this->escape($employee['name']).'</w:t></w:r></w:hyperlink></w:p>'
+                    ? '<w:p><w:hyperlink w:anchor="Employee_'.$id.'"><w:r><w:rPr><w:color w:val="6F4E2F"/><w:u w:val="single"/></w:rPr><w:t>'.$this->escape($employee['name']).'</w:t></w:r></w:hyperlink></w:p>'
                     : $this->p($employee['name']);
                 $lines = [];
                 if (isset($employee['weekly_revenue'])) {
-                    $lines[] = 'Doanh thu ghi nhận trong tuần · '.$employee['weekly_revenue']['display'];
+                    $lines[] = 'Doanh thu cá nhân trong tuần · '.$employee['weekly_revenue']['display'];
                 }
                 $highlight = $employee['work_groups'][0]['text'] ?? $employee['result']['highlights'][0]['text'] ?? $employee['result']['overview'][0]['text'] ?? null;
                 if ($highlight) {
@@ -58,24 +58,30 @@ final class WeeklyReportWord
             if ($person['department_name'] ?? null) {
                 $body .= $this->p($person['department_name']);
             }
+            $brief = $person['weekly_brief'] ?? WeeklyEmployeeBrief::build($person);
             $rows = [];
             if (isset($person['weekly_revenue'])) {
-                $rows[] = [$this->p('Doanh thu ghi nhận trong tuần'), $this->p($person['weekly_revenue']['display'])];
+                $rows[] = [$this->p('Doanh thu cá nhân trong tuần'), $this->p($person['weekly_revenue']['display'])];
             }
-            foreach ($person['work_totals'] ?? [] as $total) {
-                if ($total['status'] === 'confirmed' && $total['total'] !== null) {
-                    $quantity = rtrim(rtrim(number_format($total['total'], 6, ',', '.'), '0'), ',');
-                    $rows[] = [$this->p($total['metric']), $this->p($quantity.' '.$total['unit'])];
+            foreach ($brief['figures'] as $figure) {
+                $rows[] = [$this->p($figure['label']), $this->p($figure['text'])];
+            }
+            $body .= $this->table('Chỉ số chính trong tuần', 'Kết quả ghi nhận', $rows, 3400);
+            if ($brief['results']) {
+                $body .= $this->p('Kết quả chính', 'H2');
+                foreach ($brief['results'] as $line) {
+                    $body .= $this->p($line);
                 }
             }
-            foreach ($person['work_groups'] ?? [] as $group) {
-                $rows[] = [$this->p($group['title']), $this->p($group['text'])];
+            if ($brief['follow_up']) {
+                $body .= $this->p('Việc cần theo dõi', 'H2');
+                foreach ($brief['follow_up'] as $line) {
+                    $body .= $this->p($line['label'].' · '.$line['text']);
+                }
             }
-            $body .= $this->table('Đầu việc', 'Kết quả ghi nhận', $rows);
-            if (($person['status'] ?? null) !== 'completed') {
+            if (($person['status'] ?? null) !== 'completed' || (! $rows && ! $brief['results'] && ! $brief['follow_up'])) {
                 $body .= $this->p($this->status($person));
             }
-            $body .= $this->claims($person['result'] ?? []);
         }
 
         $path = tempnam(sys_get_temp_dir(), 'kps-weekly-word-');
@@ -108,11 +114,6 @@ final class WeeklyReportWord
         return $this->p('KIM PHỤC SẮC', 'Brand').$this->p($title, 'Title').$this->p($period);
     }
 
-    private function revenue(array $report): string
-    {
-        return isset($report['weekly_revenue']) ? $this->p('Doanh thu ghi nhận trong tuần', 'H2').$this->p($report['weekly_revenue']['display']) : '';
-    }
-
     private function status(array $employee): string
     {
         return match ($employee['status'] ?? null) {
@@ -123,21 +124,22 @@ final class WeeklyReportWord
     }
 
     /** All cells are escaped paragraphs, including optional internal employee links. */
-    private function table(string $left, string $right, array $rows): string
+    private function table(string $left, string $right, array $rows, int $labelWidth = 2850): string
     {
         if (! $rows) {
             return '';
         }
+        $valueWidth = 9386 - $labelWidth;
         $xml = '<w:tbl><w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders>'
-            .'<w:bottom w:val="single" w:sz="4" w:color="CDDAD8"/><w:insideH w:val="single" w:sz="4" w:color="CDDAD8"/></w:tblBorders>'
+            .'<w:bottom w:val="single" w:sz="4" w:color="D9D9D9"/><w:insideH w:val="single" w:sz="4" w:color="D9D9D9"/></w:tblBorders>'
             .'<w:tblCellMar><w:top w:w="50" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="30" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar>'
-            .'</w:tblPr><w:tblGrid><w:gridCol w:w="2850"/><w:gridCol w:w="6536"/></w:tblGrid>';
-        array_unshift($rows, [$this->p($left), $this->p($right)]);
+            .'</w:tblPr><w:tblGrid><w:gridCol w:w="'.$labelWidth.'"/><w:gridCol w:w="'.$valueWidth.'"/></w:tblGrid>';
+        array_unshift($rows, [$this->p($left, 'TableHeader'), $this->p($right, 'TableHeader')]);
         foreach ($rows as $index => $row) {
             $xml .= '<w:tr>'.($index === 0 ? '<w:trPr><w:tblHeader/></w:trPr>' : '');
             foreach ($row as $column => $paragraph) {
-                $width = $column === 0 ? 2850 : 6536;
-                $color = $index === 0 ? '<w:shd w:val="clear" w:fill="DCECE9"/>' : '';
+                $width = $column === 0 ? $labelWidth : $valueWidth;
+                $color = $index === 0 ? '<w:shd w:val="clear" w:fill="8B633A"/>' : '';
                 $xml .= '<w:tc><w:tcPr><w:tcW w:w="'.$width.'" w:type="dxa"/>'.$color.'</w:tcPr>'.$paragraph.'</w:tc>';
             }
             $xml .= '</w:tr>';

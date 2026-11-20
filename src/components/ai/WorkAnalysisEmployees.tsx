@@ -1,3 +1,4 @@
+import WeeklyEmployeeSummary from "@/components/reports/WeeklyEmployeeSummary";
 import WeeklyRevenueFigure from "@/components/reports/WeeklyRevenueFigure";
 import WeeklyWordExport from "@/components/reports/WeeklyWordExport";
 import { useId, useState } from "react";
@@ -161,21 +162,27 @@ export default function WorkAnalysisEmployees({
                     {t("employeePartial", { count: selected.failed_units })}
                   </p>
                 )}
-                {selected.result && (
-                  <>
-                    <WorkAnalysisWeeklyWork
-                      groups={selected.work_groups ?? []}
-                      totals={selected.work_totals ?? []}
-                      partial={selected.status !== "completed"}
-                    />
-                    <WorkAnalysisResult
-                      result={selected.result}
-                      sources={sources}
-                      totals={selected.work_totals ?? []}
-                      employee
-                    />
-                  </>
-                )}
+                <WeeklyEmployeeSummary
+                  key={selected.employee_id}
+                  brief={selected.weekly_brief}
+                >
+                  {selected.result && (
+                    <>
+                      <WorkAnalysisWeeklyWork
+                        groups={selected.work_groups ?? []}
+                        totals={selected.work_totals ?? []}
+                        partial={selected.status !== "completed"}
+                        weekly={Boolean(selected.weekly_brief)}
+                      />
+                      <WorkAnalysisResult
+                        result={selected.result}
+                        sources={sources}
+                        totals={selected.work_totals ?? []}
+                        employee
+                      />
+                    </>
+                  )}
+                </WeeklyEmployeeSummary>
                 <WorkAnalysisSources
                   sources={sources}
                   frozen={frozen}

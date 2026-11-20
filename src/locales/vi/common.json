@@ -3262,8 +3262,14 @@
       "unknown": "Chưa xác định được kết quả gửi. Hãy kiểm tra hộp thư trước khi yêu cầu thư mới."
     }
   },
+  "weeklyEmployeeBrief": {
+    "figures": "Chỉ số chính trong tuần",
+    "results": "Kết quả chính",
+    "followUp": "Việc cần theo dõi",
+    "details": "Xem báo cáo đầy đủ và số liệu từng kênh"
+  },
   "weeklyWord": {
-    "revenue": "Doanh thu ghi nhận trong tuần",
+    "revenue": "Doanh thu cá nhân trong tuần",
     "scope": "Nội dung file Word",
     "full": "Bản tổng hợp và từng nhân viên",
     "summary": "Chỉ bản tổng hợp",

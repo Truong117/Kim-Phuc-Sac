@@ -71,8 +71,5 @@ class WeeklyRevenueTest extends TestCase
         $pending = WeeklyRevenuePresentation::employee($historic, '2026-10-31');
         $this->assertNull($pending['weekly_revenue']['amount']);
         $this->assertSame('Chốt 8 đơn. Chi phí 500.000 đồng.', $pending['result']['overview'][0]['text']);
-        $other = ['weekly_revenue' => ['amount' => 150000]];
-        $this->assertSame(4150000, WeeklyRevenue::combined([$result, $other, []])['amount']);
-        $this->assertNull(WeeklyRevenue::combined([$result, ['weekly_revenue' => ['amount' => null]]])['amount']);
     }
 }
