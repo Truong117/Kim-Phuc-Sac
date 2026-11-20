@@ -1,3 +1,5 @@
+import WeeklyRevenueFigure from "@/components/reports/WeeklyRevenueFigure";
+import WeeklyWordExport from "@/components/reports/WeeklyWordExport";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useTranslation } from "react-i18next";
@@ -513,6 +515,18 @@ function PeriodWorkReportInsights({ daily }: { daily: boolean }) {
             id={`panel-${tab}`}
             aria-labelledby={`tab-${tab}`}
           >
+            {tab === "overview" && run?.period.days === 7 && (
+              <>
+                <WeeklyRevenueFigure revenue={run.weekly_revenue} />
+                {run.can_export_word && run.result && (
+                  <WeeklyWordExport
+                    key={run.id}
+                    period={run.period}
+                    target={{ kind: "company", analysis: run.id }}
+                  />
+                )}
+              </>
+            )}
             {tab === "overview" &&
               (run?.result ? (
                 <WorkAnalysisResult result={run.result} sources={sources} />
@@ -528,6 +542,11 @@ function PeriodWorkReportInsights({ daily }: { daily: boolean }) {
             {tab === "employees" && (
               <WorkAnalysisEmployees
                 employees={employees}
+                exportRun={
+                  run?.can_export_word && run.period.days === 7
+                    ? run
+                    : undefined
+                }
                 frozen={Boolean(run)}
                 sources={sources}
                 selectedEmployeeId={selectedEmployeeId}

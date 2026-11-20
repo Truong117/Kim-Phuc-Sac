@@ -5,6 +5,7 @@ import type {
 } from "./workReportAnalysis";
 
 export interface PersonalWeeklyReport {
+  export_version?: string;
   period: WorkReportAnalysis["period"];
   status: AnalysisEmployee["status"];
   employee: AnalysisEmployee | null;

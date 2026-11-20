@@ -110,6 +110,60 @@ class PersonalWeeklyReportTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_weekly_web_and_word_agree_and_exports_obey_the_scope_and_revision(): void
+    {
+        DB::table('daily_report_items')->where('daily_report_id', $this->aliceReport)->update(['content' => 'Doanh thu trong ngày', 'result' => '800.000 đồng']);
+        $next = $this->report($this->alice, 'Doanh số', '2026-11-05');
+        DB::table('daily_report_items')->where('daily_report_id', $next)->update(['result' => '1.200.000 đồng']);
+        DB::table('daily_report_items')->where('daily_report_id', $this->bobReport)->update(['result' => 'Doanh thu 500.000 đồng']);
+        $admin = $this->member('ADMIN');
+        $assistant = $this->member('EXECUTIVE_ASSISTANT');
+        $run = $this->createAnalysis();
+        $base = '/api/ai/work-report-analyses/'.$run->id;
+        $self = '/api/reports/my-weekly-summary/word?end_date=2026-11-07';
+        $text = function ($response): string {
+            $response->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            $file = $response->baseResponse->getFile()->getPathname();
+            $zip = new \ZipArchive;
+            $this->assertTrue($zip->open($file));
+            $xml = $zip->getFromName('word/document.xml');
+            $zip->close();
+            unlink($file);
+            $dom = new \DOMDocument;
+            $this->assertTrue($dom->loadXML($xml));
+
+            return $dom->textContent;
+        };
+        $this->actingAs($admin, 'web')->getJson($base)->assertOk()
+            ->assertJsonPath('data.weekly_revenue.amount', 2500000)->assertJsonPath('data.can_export_word', true);
+        $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.employee.weekly_revenue.amount', 2000000);
+        $this->getJson($base.'/word?mode=full')->assertForbidden();
+        $this->getJson($self.'&version='.str_repeat('a', 64))->assertConflict();
+        $personal = $text($this->get($self.'&version='.$mine->json('data.export_version').'&employee_id='.$this->bob->id));
+        $this->assertStringContainsString('2.000.000 đồng', $personal);
+        $this->assertStringNotContainsString('800.000', $personal);
+        $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $personal);
+        $this->assertStringNotContainsString('2.500.000', $personal);
+        foreach ([$assistant, $admin] as $viewer) {
+            $this->app['auth']->forgetGuards();
+            $this->actingAs($viewer, 'web');
+            $full = $text($this->get($base.'/word?mode=full'));
+            $this->assertStringContainsString('2.500.000 đồng', $full);
+            $this->assertStringContainsString('2.000.000 đồng', $full);
+            $this->assertStringNotContainsString('800.000', $full);
+            $one = $text($this->get($base.'/word?mode=employee&employee_id='.$this->alice->id));
+            $this->assertStringContainsString('2.000.000 đồng', $one);
+            $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $one);
+            $summary = $text($this->get($base.'/word?mode=summary'));
+            $this->assertStringContainsString('2.500.000 đồng', $summary);
+            $this->assertStringNotContainsString('Báo cáo tuần của ', $summary);
+            $this->getJson($base.'/word?mode=employee&employee_id=999999')->assertNotFound();
+        }
+        $daily = $this->createAnalysis('2026-11-04', 1);
+        $this->actingAs($admin, 'web')->getJson('/api/ai/work-report-analyses/'.$daily->id)->assertOk()->assertJsonMissingPath('data.weekly_revenue');
+        $this->getJson('/api/ai/work-report-analyses/'.$daily->id.'/word?mode=full')->assertUnprocessable();
+    }
+
     public function test_owner_also_receives_only_their_own_work(): void
     {
         $own = $this->report($this->owner, 'Công việc của owner');

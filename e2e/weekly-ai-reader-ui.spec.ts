@@ -114,6 +114,11 @@ function sampleRun(
     };
   return {
     id: 41,
+    can_export_word: (options.days ?? 7) === 7,
+    weekly_revenue:
+      (options.days ?? 7) === 7
+        ? { amount: 3500000, display: "3.500.000 đồng" }
+        : undefined,
     status: options.partial ? "partial" : "completed",
     period: {
       start_date:
@@ -282,6 +287,43 @@ async function setup(
 }
 const employeePanel = (page: Page, name: string) =>
   page.getByRole("region", { name: "Báo cáo AI của " + name, exact: true });
+
+test("weekly reader downloads the displayed full, summary and selected employee reports", async ({
+  page,
+}) => {
+  const posts = await setup(page);
+  await expect(page.getByText("3.500.000 đồng", { exact: true })).toBeVisible();
+  const urls: URL[] = [];
+  await page.route("**/api/ai/work-report-analyses/41/word?**", (route) => {
+    urls.push(new URL(route.request().url()));
+    return route.fulfill({
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      body: "word",
+    });
+  });
+  async function download() {
+    const [file] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Xuất Word", exact: true }).click(),
+    ]);
+    expect(file.suggestedFilename()).toMatch(/\.docx$/);
+  }
+  await download();
+  await page
+    .getByRole("combobox", { name: "Nội dung file Word" })
+    .selectOption("summary");
+  await download();
+  await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
+  await page.getByRole("button", { name: /^Nhân viên B / }).click();
+  await download();
+  expect(urls.map((url) => Object.fromEntries(url.searchParams))).toEqual([
+    { mode: "full" },
+    { mode: "summary" },
+    { mode: "employee", employee_id: "8" },
+  ]);
+  expect(posts).toEqual([]);
+});
 
 test("company first, structured decisions and source footer; employee selection is local and survives reload and tab changes", async ({
   page,

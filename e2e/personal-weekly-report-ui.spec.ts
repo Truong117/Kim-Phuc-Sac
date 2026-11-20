@@ -161,6 +161,40 @@ test("staff reads focused grouped work with sources at the end and GET requests 
   ).toHaveCount(0);
 });
 
+test("personal Word export uses the selected week and the displayed employee revision", async ({
+  page,
+}) => {
+  const report = sample();
+  report.export_version = "a".repeat(64);
+  report.employee!.weekly_revenue = {
+    amount: 1800000,
+    display: "1.800.000 đồng",
+  };
+  await setup(page, () => report);
+  await expect(page.getByText("1.800.000 đồng", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Nội dung file Word" }),
+  ).toHaveCount(0);
+  let url: URL | undefined;
+  await page.route("**/api/reports/my-weekly-summary/word?**", (route) => {
+    url = new URL(route.request().url());
+    return route.fulfill({
+      contentType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      body: "word",
+    });
+  });
+  const [file] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Xuất Word", exact: true }).click(),
+  ]);
+  expect(file.suggestedFilename()).toContain("2026-11-01_2026-11-07");
+  expect(Object.fromEntries(url!.searchParams)).toEqual({
+    end_date: "2026-11-07",
+    version: report.export_version,
+  });
+});
+
 test("week links and browser history select the correct week without stale results", async ({
   page,
 }) => {
