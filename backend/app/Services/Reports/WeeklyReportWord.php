@@ -2,7 +2,6 @@
 
 namespace App\Services\Reports;
 
-use App\Services\AI\WorkReportAnalysisOutput;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
@@ -25,14 +24,10 @@ final class WeeklyReportWord
                 .$this->claimSection('2. Công việc đang tiếp tục', $result['ongoing'] ?? [], 'Chưa ghi nhận công việc đang tiếp tục trong bản này.')
                 .$this->claimSection('3. Vướng mắc cần theo dõi', [...($result['attention'] ?? []), ...($result['support'] ?? [])], 'Chưa ghi nhận vướng mắc cần theo dõi trong bản này.')
                 .$this->clarifications($result['uncertainties'] ?? [], [])
-                .$this->decisions($result['recommendations'] ?? [])
-                .$this->sources($result);
+                .$this->decisions($result['recommendations'] ?? []);
         }
         foreach ($employees as $person) {
-            if ($body !== '') {
-                $body .= '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-            }
-            $body .= $this->heading('Báo cáo tuần của '.$person['name'], $dates);
+            $body .= $this->heading('Báo cáo tuần của '.$person['name'], $dates, newPage: $body !== '');
             if ($company === null && $context !== null) {
                 $body .= $this->p($context);
             }
@@ -77,9 +72,9 @@ final class WeeklyReportWord
         }
     }
 
-    private function heading(string $title, string $period): string
+    private function heading(string $title, string $period, bool $newPage = false): string
     {
-        return $this->p('KIM PHỤC SẮC', 'Brand').$this->p($title, 'Title').$this->p($period);
+        return $this->p('KIM PHỤC SẮC', 'Brand', pageBreakBefore: $newPage).$this->p($title, 'Title').$this->p($period);
     }
 
     private function status(array $employee): string
@@ -143,8 +138,7 @@ final class WeeklyReportWord
         return $xml.$this->clarifications($result['uncertainties'] ?? [], $unclear)
             .$this->claimSection('Nhận xét', [...($result['overview'] ?? []), ...($result['highlights'] ?? []),
                 ...($result['ongoing'] ?? []), ...($result['attention'] ?? []), ...($result['support'] ?? [])], 'Chưa có nhận xét AI cho bản tổng hợp này.')
-            .$this->decisions($result['recommendations'] ?? [])
-            .$this->sources($result, $groups, $person['work_totals'] ?? []);
+            .$this->decisions($result['recommendations'] ?? []);
     }
 
     private function clarifications(array $claims, array $metrics): string
@@ -194,39 +188,15 @@ final class WeeklyReportWord
         return $xml;
     }
 
-    private function sources(array $result, array $groups = [], array $totals = []): string
-    {
-        $lists = [...array_column($groups, 'evidence'), ...array_column($totals, 'entries')];
-        foreach (WorkReportAnalysisOutput::SECTIONS as $key) {
-            array_push($lists, ...array_column($result[$key] ?? [], 'evidence'));
-        }
-
-        $xml = '';
-        $seen = [];
-        foreach ($lists as $references) {
-            foreach ($references as $ref) {
-                if (! isset($ref['report_id'], $ref['item_id'], $ref['quote'])) {
-                    continue;
-                }
-                $identity = $ref['report_id'].':'.$ref['item_id'].':'.$ref['quote'];
-                if (isset($seen[$identity])) {
-                    continue;
-                }
-                $seen[$identity] = true;
-                $xml .= $this->p('Báo cáo #'.$ref['report_id'].' · Đầu việc #'.$ref['item_id'], bold: true, keepNext: true).$this->p($ref['quote']);
-            }
-        }
-
-        return $xml === '' ? '' : $this->p('Căn cứ', 'H2').$xml;
-    }
-
-    private function p(string $text, string $style = 'Normal', bool $bold = false, ?string $label = null, bool $keepNext = false): string
+    private function p(string $text, string $style = 'Normal', bool $bold = false, ?string $label = null, bool $keepNext = false, bool $pageBreakBefore = false): string
     {
         $prefix = $label === null ? '' : '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">'.$this->escape($label).' · </w:t></w:r>';
         $lines = preg_split('/\R/u', $text);
         $runs = array_map(fn ($line) => '<w:t xml:space="preserve">'.$this->escape($line).'</w:t>', $lines);
 
-        return '<w:p><w:pPr><w:pStyle w:val="'.$style.'"/>'.($keepNext ? '<w:keepNext/>' : '').'</w:pPr>'.$prefix.'<w:r>'.($bold ? '<w:rPr><w:b/></w:rPr>' : '')
+        $pagination = ($keepNext ? '<w:keepNext/>' : '').($pageBreakBefore ? '<w:pageBreakBefore/>' : '');
+
+        return '<w:p><w:pPr><w:pStyle w:val="'.$style.'"/>'.$pagination.'</w:pPr>'.$prefix.'<w:r>'.($bold ? '<w:rPr><w:b/></w:rPr>' : '')
             .implode('<w:br/>', $runs).'</w:r></w:p>';
     }
 
