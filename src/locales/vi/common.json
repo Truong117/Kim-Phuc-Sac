@@ -3262,6 +3262,16 @@
       "unknown": "Chưa xác định được kết quả gửi. Hãy kiểm tra hộp thư trước khi yêu cầu thư mới."
     }
   },
+  "weeklyWord": {
+    "revenue": "Doanh thu ghi nhận trong tuần",
+    "scope": "Nội dung file Word",
+    "full": "Bản tổng hợp và từng nhân viên",
+    "summary": "Chỉ bản tổng hợp",
+    "download": "Xuất Word",
+    "downloading": "Đang tải Word…",
+    "error": "Không tải được file Word. Vui lòng thử lại.",
+    "changed": "Báo cáo đã thay đổi hoặc chưa hoàn tất. Hãy tải lại báo cáo trước khi xuất Word."
+  },
   "personalWeeklyReport": {
     "title": "Báo cáo tuần của tôi",
     "subtitle": "Xem phần phân tích của bạn từ báo cáo tổng hợp tuần công ty. Không cần tạo lượt AI riêng.",

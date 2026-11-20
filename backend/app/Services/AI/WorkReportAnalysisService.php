@@ -337,6 +337,19 @@ class WorkReportAnalysisService
             ];
         }
 
+        $weekly = $includeContent && (int) $run->days === 7;
+        $result = $includeContent ? $run->result : null;
+        $weeklyFields = [];
+        if ($weekly) {
+            $employees = array_map(fn ($e) => WeeklyRevenuePresentation::employee($e, $snapshot['period']['end_date']), $employees);
+            $revenue = WeeklyRevenuePresentation::forDisplay(WeeklyRevenue::combined($employees), ['result' => $result]);
+            if ($revenue !== null) {
+                $weeklyFields['weekly_revenue'] = $revenue;
+                $result = WeeklyRevenuePresentation::result($result);
+            }
+            $weeklyFields['can_export_word'] = $this->sources->membership($viewer)->roles()
+                ->whereIn('roles.code', ['ADMIN', 'EXECUTIVE_ASSISTANT'])->exists();
+        }
         $revision = $run->revisionRecord;
 
         return [
@@ -359,7 +372,7 @@ class WorkReportAnalysisService
             'model' => $run->analysis_config['driver'] === 'fake' ? 'deterministic-v2' : $run->analysis_config['gateway']['model'],
             'prompt_version' => $run->analysis_config['prompt_version'], 'schema_version' => $run->analysis_config['schema_version'],
             'work_counts' => $snapshot['work_counts'], 'progress' => ['finished' => $terminal->count(), 'total' => $units->count()],
-            'result' => $includeContent ? $run->result : null, 'employees' => $includeContent ? $employees : [],
+            'result' => $result, 'employees' => $includeContent ? $employees : [], ...$weeklyFields,
             'daily_coverage' => $snapshot['daily_coverage'] ?? null,
             'source_reports' => $includeContent ? $this->sourcePayloads($snapshot) : [],
             'errors' => $units->where('status', 'failed')->map(fn ($u) => ['unit_key' => $u->unit_key, 'code' => $u->error_code,
