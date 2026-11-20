@@ -23,31 +23,70 @@ final class CrmCustomers
         private readonly ReportClock $clock,
     ) {}
 
-    public function index(OrganizationMembership $member, ?string $search)
+    public function index(OrganizationMembership $member, ?string $search, ?string $followUp = null): array
     {
         $query = $this->access->customers($member, 'customers.view');
-        $term = trim($search ?? '');
-        if ($term !== '') {
-            try {
-                $identity = CustomerCare::normalizeContact($term, 'search');
-            } catch (ValidationException) {
-                $identity = null;
-            }
-            $query->where(function (Builder $matches) use ($term, $identity, $member): void {
-                $matches->where('customer.name', 'like', '%'.addcslashes($term, '%_\\').'%');
-                if (preg_match('/^KH-(\d+)$/i', $term, $match)) {
-                    $matches->orWhere('customer.id', (int) $match[1]);
-                }
-                if ($identity !== null) {
-                    $matches->orWhereIn('customer.id', DB::table('care_customer_contacts')
-                        ->where('organization_id', $member->organization_id)
-                        ->where('identity_hash', hash('sha256', $identity))->select('customer_id'));
-                }
-            });
+        $now = $this->clock->now();
+        $today = $now->toDateString();
+        $through = $now->addDays(7)->toDateString();
+        $appointments = DB::table('crm_activities')->where('organization_id', $member->organization_id)
+            ->where('kind', 'FOLLOW_UP')->whereBetween('due_on', [$today, $through])
+            ->whereIn('customer_id', (clone $query)->select('customer.id'));
+        $counts = (clone $appointments)
+            ->selectRaw('COUNT(DISTINCT CASE WHEN due_on = ? THEN customer_id END) AS today_count', [$today])
+            ->selectRaw('COUNT(DISTINCT CASE WHEN due_on > ? THEN customer_id END) AS upcoming_count', [$today])
+            ->first();
+
+        $query = $this->withOwner($query);
+        if ($followUp !== null) {
+            $matches = $appointments->where('due_on', $followUp === 'today' ? '=' : '>', $today)
+                ->select('customer_id', 'due_on', 'title')
+                ->selectRaw('ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY due_on, id) AS appointment_rank');
+            $query->joinSub($matches, 'follow_up', 'follow_up.customer_id', '=', 'customer.id')
+                ->where('follow_up.appointment_rank', 1)
+                ->addSelect('follow_up.due_on as follow_up_date', 'follow_up.title as follow_up_title')
+                ->orderBy('follow_up.due_on');
         }
 
-        return $this->withOwner($query)->orderByDesc('customer.id')->paginate(25)
-            ->through(fn (object $customer) => $this->publicFields($customer));
+        $this->applySearch($query, $member, $search);
+        $page = $query->orderByDesc('customer.id')->paginate(25)->through(function (object $customer): array {
+            $fields = $this->publicFields($customer);
+            if (isset($customer->follow_up_date)) {
+                $fields['next_follow_up'] = ['due_on' => $customer->follow_up_date, 'title' => $customer->follow_up_title];
+            }
+
+            return $fields;
+        });
+
+        return [...$page->toArray(), 'follow_up_summary' => [
+            'business_date' => $today, 'upcoming_through' => $through,
+            'today' => (int) $counts->today_count, 'upcoming' => (int) $counts->upcoming_count,
+        ]];
+    }
+
+    private function applySearch(Builder $query, OrganizationMembership $member, ?string $search): void
+    {
+        $term = trim($search ?? '');
+        if ($term === '') {
+            return;
+        }
+
+        try {
+            $identity = CustomerCare::normalizeContact($term, 'search');
+        } catch (ValidationException) {
+            $identity = null;
+        }
+        $query->where(function (Builder $matches) use ($term, $identity, $member): void {
+            $matches->where('customer.name', 'like', '%'.addcslashes($term, '%_\\').'%');
+            if (preg_match('/^KH-(\d+)$/i', $term, $match)) {
+                $matches->orWhere('customer.id', (int) $match[1]);
+            }
+            if ($identity !== null) {
+                $matches->orWhereIn('customer.id', DB::table('care_customer_contacts')
+                    ->where('organization_id', $member->organization_id)
+                    ->where('identity_hash', hash('sha256', $identity))->select('customer_id'));
+            }
+        });
     }
 
     public function detail(OrganizationMembership $member, int $id): array

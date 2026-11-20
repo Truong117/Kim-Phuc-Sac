@@ -10,8 +10,10 @@ import CrmCustomerDetails, {
   type CrmAction,
 } from "@/components/crm/CrmCustomerDetails";
 import CrmForm from "@/components/crm/CrmForm";
+import CrmFollowUpReminders from "@/components/crm/CrmFollowUpReminders";
 import { useModal } from "@/hooks/useModal";
 import { ApiServiceError } from "@/services/apiClient";
+import { dateOnlyInTimeZone, formatDateOnly } from "@/utils/dateOnly";
 import {
   assignCrmCustomer,
   createCrmCustomer,
@@ -21,6 +23,7 @@ import {
   recordCrmActivity,
   updateCrmOpportunity,
   type CrmCustomerDetail,
+  type CrmFollowUpWindow,
   type CrmFormValues,
   type CrmOpportunity,
 } from "@/services/crmService";
@@ -36,11 +39,15 @@ export default function CrmCustomers() {
   }>({ action: "new" });
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [followUp, setFollowUp] = useState<CrmFollowUpWindow>();
   const [page, setPage] = useState(1);
   const [revision, setRevision] = useState(0);
-  const [list, setList] = useState<Awaited<
-    ReturnType<typeof getCrmCustomers>
-  > | null>(null);
+  const listKey = JSON.stringify([followUp, query, page, revision]);
+  const [listResult, setListResult] = useState<{
+    key: string;
+    value: Awaited<ReturnType<typeof getCrmCustomers>> | null;
+  }>();
+  const list = listResult?.key === listKey ? listResult.value : undefined;
   const [detail, setDetail] = useState<CrmCustomerDetail | null>(null);
   const [capabilities, setCapabilities] = useState<Awaited<
     ReturnType<typeof getCrmCapabilities>
@@ -70,20 +77,52 @@ export default function CrmCustomers() {
   }, [revision, t]);
 
   const ready = capabilities?.ready;
+  const loadError = error || (ready && list === null ? t("loadError") : "");
+  useEffect(() => {
+    if (!ready) return;
+    let lastDate = dateOnlyInTimeZone();
+    const refreshAfterMidnight = () => {
+      if (document.visibilityState === "hidden") return;
+      const today = dateOnlyInTimeZone();
+      if (today !== lastDate) {
+        lastDate = today;
+        setPage(1);
+        setRevision((value) => value + 1);
+      }
+    };
+    const timer = window.setInterval(refreshAfterMidnight, 60_000);
+    window.addEventListener("focus", refreshAfterMidnight);
+    document.addEventListener("visibilitychange", refreshAfterMidnight);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshAfterMidnight);
+      document.removeEventListener("visibilitychange", refreshAfterMidnight);
+    };
+  }, [ready]);
+
   useEffect(() => {
     if (!ready) return;
     const controller = new AbortController();
-    getCrmCustomers(query, page, controller.signal)
+    getCrmCustomers(query, page, controller.signal, followUp)
       .then((value) => {
         if (controller.signal.aborted) return;
-        setList(value);
-        setError("");
+        if (followUp && !value.follow_up_summary) {
+          setFollowUp(undefined);
+          setPage(1);
+          return;
+        }
+        if (page > value.last_page && value.last_page > 0) {
+          setPage(value.last_page);
+          return;
+        }
+        setListResult({ key: listKey, value });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setError(t("loadError"));
+        if (!controller.signal.aborted)
+          setListResult({ key: listKey, value: null });
       });
     return () => controller.abort();
-  }, [ready, query, page, revision, t]);
+  }, [ready, query, page, followUp, listKey]);
 
   useEffect(() => {
     if (!ready || customerId === null) return;
@@ -113,6 +152,14 @@ export default function CrmCustomers() {
     dialog.openModal();
   };
 
+  const showFollowUps = (group?: CrmFollowUpWindow) => {
+    setFollowUp(group);
+    setPage(1);
+    setSearch("");
+    setQuery("");
+    if (customerId !== null) void navigate("/customers");
+  };
+
   const save = async (values: CrmFormValues, requestKey: string) => {
     if (mode.action === "new") {
       const created = await createCrmCustomer(requestKey, values);
@@ -120,6 +167,7 @@ export default function CrmCustomers() {
       setPage(1);
       setQuery("");
       setSearch("");
+      setFollowUp(undefined);
     } else if (detail) {
       if (mode.action === "assignment")
         await assignCrmCustomer(detail, requestKey, values);
@@ -155,12 +203,12 @@ export default function CrmCustomers() {
             {message}
           </p>
         )}
-        {error && (
+        {loadError && (
           <div
             role="alert"
             className="flex flex-wrap items-center gap-3 text-sm text-error-600 dark:text-error-300"
           >
-            {error}{" "}
+            {loadError}{" "}
             <Button
               type="button"
               size="sm"
@@ -190,6 +238,14 @@ export default function CrmCustomers() {
               {t("retry")}
             </Button>
           </ComponentCard>
+        )}
+        {ready && (!list || list.follow_up_summary) && (
+          <CrmFollowUpReminders
+            summary={list?.follow_up_summary}
+            selected={followUp}
+            loading={list === undefined}
+            onSelect={showFollowUps}
+          />
         )}
         {ready && (
           <div className="grid items-start gap-4 xl:grid-cols-2">
@@ -230,8 +286,9 @@ export default function CrmCustomers() {
                 )}
               </div>
               <ul
-                key={`${query}:${list?.current_page}`}
+                key={`${followUp ?? "all"}:${query}:${page}`}
                 aria-label={t("list")}
+                aria-busy={list === undefined}
                 className="min-h-0 flex-1 divide-y divide-gray-200 overflow-y-auto dark:divide-gray-700"
               >
                 {list?.data.map((customer) => (
@@ -255,6 +312,15 @@ export default function CrmCustomers() {
                                 defaultValue: customer.channel,
                               })}
                         </span>
+                        {followUp && customer.next_follow_up && (
+                          <span className="mt-1 block text-xs font-medium break-words text-kps-primary dark:text-brand-200">
+                            <time dateTime={customer.next_follow_up.due_on}>
+                              {formatDateOnly(customer.next_follow_up.due_on)}
+                            </time>
+                            {" · "}
+                            {customer.next_follow_up.title}
+                          </span>
+                        )}
                       </span>
                       <span className="text-gray-700 dark:text-gray-300">
                         {customer.owner_name || t("unassigned")}
@@ -264,7 +330,16 @@ export default function CrmCustomers() {
                 ))}
                 {list?.data.length === 0 && (
                   <li className="text-sm text-gray-600 dark:text-gray-400">
-                    {t("emptyCustomers")}
+                    {t(
+                      followUp && !query
+                        ? "reminders.empty." + followUp
+                        : "emptyCustomers",
+                    )}
+                  </li>
+                )}
+                {list === undefined && (
+                  <li className="text-sm text-gray-600 dark:text-gray-400">
+                    {t("loading")}
                   </li>
                 )}
               </ul>
