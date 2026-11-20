@@ -341,8 +341,7 @@ class WorkReportAnalysisService
         $result = $includeContent ? $run->result : null;
         $weeklyFields = [];
         if ($weekly) {
-            $employees = array_map(fn ($e) => WeeklyEmployeeBrief::present($e, $snapshot['period']['end_date']), $employees);
-            $result = WeeklyRevenuePresentation::result($result);
+            $employees = array_map(fn ($e) => WeeklyRevenuePresentation::employee($e, $snapshot['period']['end_date']), $employees);
             $weeklyFields['can_export_word'] = $this->sources->membership($viewer)->roles()
                 ->whereIn('roles.code', ['ADMIN', 'EXECUTIVE_ASSISTANT'])->exists();
         }

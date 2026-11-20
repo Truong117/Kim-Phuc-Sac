@@ -67,11 +67,6 @@ export interface WeeklyRevenue {
 }
 
 export interface AnalysisEmployee {
-  weekly_brief?: {
-    figures: { label: string; text: string }[];
-    results: string[];
-    follow_up: { label: string; text: string }[];
-  };
   weekly_revenue?: WeeklyRevenue;
   employee_id: number;
   name: string;

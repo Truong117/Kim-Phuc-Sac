@@ -72,7 +72,26 @@ final class WeeklyRevenue
             return self::value(null);
         }
 
-        return $closing || $days ? self::value($closing[0] ?? $sum) : null;
+        if ($closing || $days) {
+            return self::value($closing[0] ?? $sum);
+        }
+
+        // Old reports can mention revenue with no corresponding frozen source amount.
+        // Preserve that uncertainty without deriving a new total from AI prose.
+        foreach ($employee['work_groups'] ?? [] as $group) {
+            if (self::points($group['title'], ['date' => $endDate, 'result' => $group['text']], [], $endDate)) {
+                return self::value(null);
+            }
+        }
+        foreach (WorkReportAnalysisOutput::SECTIONS as $section) {
+            foreach ($employee['result'][$section] ?? [] as $claim) {
+                if (self::points('', ['date' => $endDate, 'result' => $claim['text']], [], $endDate)) {
+                    return self::value(null);
+                }
+            }
+        }
+
+        return null;
     }
 
     public static function value(?int $amount): array

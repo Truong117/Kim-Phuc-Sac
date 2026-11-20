@@ -31,7 +31,7 @@ final class PersonalWeeklyReport
     {
         $payload = $this->forMail($viewer, $endDate);
         if ($payload['employee'] !== null) {
-            $payload['employee'] = WeeklyEmployeeBrief::present($payload['employee'], $endDate);
+            $payload['employee'] = WeeklyRevenuePresentation::employee($payload['employee'], $endDate);
             // Pin the same readable revision and employee content without exposing company identifiers.
             $payload['export_version'] = WorkReportSnapshot::hash([$payload['_analysis_id'], $payload['employee'], $payload['captured_at']]);
         }

@@ -161,18 +161,25 @@ test("staff reads focused grouped work with sources at the end and GET requests 
   ).toHaveCount(0);
 });
 
-test("personal weekly figures are compact and original work is accessible on demand", async ({ page }) => {
+test("the personal reader preserves repeated claims, complete work descriptions and decision order", async ({ page }) => {
   const report = sample();
-  report.employee!.weekly_brief = {
-    figures: [{ label: "Ảnh và video/Reel đã đăng", text: "6 ảnh, 4 video/Reel (2 kênh)" }],
-    results: ["Đã bàn giao sản phẩm."],
-    follow_up: [],
-  };
+  const employee = report.employee!;
+  const group = employee.work_groups![0];
+  group.text = "Ghi nhận từ nguồn: Bàn giao bản đầu.\nCòn hai bước đối chiếu chi tiết.";
+  const review = { text: "Nhận xét có căn cứ: Lần ghi nhận này cần giữ lại.", evidence };
+  employee.result!.overview = [review];
+  employee.result!.highlights = [review];
+  employee.result!.recommendations = [
+    {text: "Đề xuất: Xác nhận bản đầu.", priority: "normal", evidence},
+    {text: "Đề xuất: Duyệt bản tiếp theo.", priority: "high", evidence},
+  ];
   await setup(page, () => report);
-  await expect(page.getByText("6 ảnh, 4 video/Reel (2 kênh)")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Thiết kế nội dung" })).toBeHidden();
-  await page.getByText("Xem báo cáo đầy đủ và số liệu từng kênh").click();
-  await expect(page.getByRole("heading", { name: "Thiết kế nội dung" })).toBeVisible();
+  await expect(page.getByText(group.text, { exact: true })).toBeVisible();
+  await expect(page.getByText(review.text, { exact: true })).toHaveCount(2);
+  await expect(page.locator("summary").filter({ hasText: /Đề xuất:/ })).toHaveText([
+    /Đề xuất: Xác nhận bản đầu\./,
+    /Đề xuất: Duyệt bản tiếp theo\./,
+  ]);
 });
 
 test("personal Word export uses the selected week and the displayed employee revision", async ({

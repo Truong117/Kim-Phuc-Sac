@@ -526,7 +526,11 @@ function PeriodWorkReportInsights({ daily }: { daily: boolean }) {
               )}
             {tab === "overview" &&
               (run?.result ? (
-                <WorkAnalysisResult result={run.result} sources={sources} />
+                <WorkAnalysisResult
+                  result={run.result}
+                  sources={sources}
+                  verbatim={run.period.days === 7}
+                />
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {t(
@@ -538,6 +542,7 @@ function PeriodWorkReportInsights({ daily }: { daily: boolean }) {
               ))}
             {tab === "employees" && (
               <WorkAnalysisEmployees
+                weekly={run?.period.days === 7}
                 employees={employees}
                 exportRun={
                   run?.can_export_word && run.period.days === 7

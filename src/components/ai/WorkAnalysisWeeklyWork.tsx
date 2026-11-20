@@ -40,7 +40,7 @@ export default function WorkAnalysisWeeklyWork({
                   {group.title}
                 </h4>
                 <p className="break-words whitespace-pre-wrap text-gray-600 dark:text-gray-300">
-                  {reportText(group.text)}
+                  {weekly ? group.text : reportText(group.text)}
                 </p>
               </div>
             </li>

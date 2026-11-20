@@ -98,7 +98,6 @@ function sampleRun(
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
-    compact?: boolean;
     days?: 1 | 7 | 30;
   } = {},
 ): WorkReportAnalysis {
@@ -106,15 +105,6 @@ function sampleRun(
   if ((options.days ?? 7) === 7) {
     employees[0].weekly_revenue = { amount: 2000000, display: "2.000.000 đồng" };
     employees[1].weekly_revenue = { amount: 1500000, display: "1.500.000 đồng" };
-  }
-  if (options.compact) {
-    for (const person of employees) {
-      person.weekly_brief = {
-        figures: [{ label: "Ảnh và video/Reel đã đăng", text: "4 ảnh, 3 video/Reel (2 kênh)" }],
-        results: [],
-        follow_up: [],
-      };
-    }
   }
   if (options.partial || options.truncated)
     employees[1] = {
@@ -218,7 +208,6 @@ async function setup(
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
-    compact?: boolean;
     days?: 1 | 7 | 30;
   } = {},
 ) {
@@ -338,20 +327,6 @@ test("weekly reader downloads the displayed full, summary and selected employee 
     { mode: "employee", employee_id: "8" },
   ]);
   expect(posts).toEqual([]);
-});
-
-test("weekly employee view starts collapsed for each selected person", async ({ page }) => {
-  await setup(page, { compact: true });
-  await page.getByRole("tab", { name: "Theo nhân viên" }).click();
-  const first = employeePanel(page, "Nhân viên A");
-  await expect(first.getByText("4 ảnh, 3 video/Reel (2 kênh)")).toBeVisible();
-  await expect(first.getByRole("heading", { name: "Thiết kế của Nhân viên A" })).toBeHidden();
-  await first.getByText("Xem báo cáo đầy đủ và số liệu từng kênh").click();
-  await expect(first.getByRole("heading", { name: "Thiết kế của Nhân viên A" })).toBeVisible();
-  await page.getByRole("button", { name: /^Nhân viên B / }).click();
-  const second = employeePanel(page, "Nhân viên B");
-  await expect(second.getByText("Ảnh và video/Reel đã đăng")).toBeVisible();
-  await expect(second.getByRole("heading", { name: "Thiết kế của Nhân viên B" })).toBeHidden();
 });
 
 test("company first, structured decisions and source footer; employee selection is local and survives reload and tab changes", async ({
@@ -520,7 +495,9 @@ for (const days of [1, 7] as const) {
       ).toBeVisible();
     await expect(
       page.getByText(
-        "Nhân viên A — Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối.",
+        days === 7
+          ? "Ghi nhận từ nguồn: Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối."
+          : "Nhân viên A — Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -529,11 +506,12 @@ for (const days of [1, 7] as const) {
         .locator("summary")
         .filter({ hasText: "Xác nhận phiên bản được duyệt" }),
     ).toBeVisible();
-    await expect(
-      page.getByText(
-        /Nhận xét có căn cứ:|Ghi nhận từ nguồn:|Đề xuất: Đề xuất:/,
-      ),
-    ).not.toBeVisible();
+    if (days === 7) {
+      await expect(page.getByText(result().overview[0].text, { exact: true })).toBeVisible();
+      await expect(page.locator("summary").filter({ hasText: "Đề xuất: Đề xuất: Xác nhận phiên bản được duyệt" })).toBeVisible();
+    } else {
+      await expect(page.getByText(/Nhận xét có căn cứ:|Ghi nhận từ nguồn:|Đề xuất: Đề xuất:/)).not.toBeVisible();
+    }
     const sources = page
       .locator("footer")
       .filter({ has: page.getByText("Xem căn cứ", { exact: true }) });

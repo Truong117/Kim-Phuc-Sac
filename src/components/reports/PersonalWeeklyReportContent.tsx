@@ -1,4 +1,3 @@
-import WeeklyEmployeeSummary from "@/components/reports/WeeklyEmployeeSummary";
 import WeeklyRevenueFigure from "@/components/reports/WeeklyRevenueFigure";
 import WeeklyWordExport from "@/components/reports/WeeklyWordExport";
 import WorkAnalysisResult from "@/components/ai/WorkAnalysisResult";
@@ -28,27 +27,23 @@ export default function PersonalWeeklyReportContent({
           }}
         />
       )}
-      <WeeklyEmployeeSummary
-        key={report.period.end_date}
-        brief={employee.weekly_brief}
-      >
-        {employee.result && (
-          <>
-            <WorkAnalysisWeeklyWork
-              groups={employee.work_groups ?? []}
-              totals={employee.work_totals ?? []}
-              partial={report.status !== "completed"}
-              weekly={Boolean(employee.weekly_brief)}
-            />
-            <WorkAnalysisResult
-              result={employee.result}
-              sources={report.source_reports}
-              totals={employee.work_totals ?? []}
-              employee
-            />
-          </>
-        )}
-      </WeeklyEmployeeSummary>
+      {employee.result && (
+        <>
+          <WorkAnalysisWeeklyWork
+            weekly
+            groups={employee.work_groups ?? []}
+            totals={employee.work_totals ?? []}
+            partial={report.status !== "completed"}
+          />
+          <WorkAnalysisResult
+            verbatim
+            result={employee.result}
+            sources={report.source_reports}
+            totals={employee.work_totals ?? []}
+            employee
+          />
+        </>
+      )}
       <WorkAnalysisSources
         sources={report.source_reports}
         inventory={employee.work_inventory ?? []}
