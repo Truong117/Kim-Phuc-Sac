@@ -9,6 +9,7 @@ use App\Services\TaskService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
@@ -120,6 +121,8 @@ class InternalCrmTest extends TestCase
 
         $this->as($receiver);
         $this->getJson('/api/crm/customers/'.$created)->assertNotFound();
+        $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
+            ->assertJsonPath('data.follow_up_summary.upcoming', 0)->assertJsonCount(0, 'data.data');
         $this->postJson('/api/crm/customers', [...$input, 'request_key' => (string) Str::uuid(), 'contact' => '+84900001234'])
             ->assertUnprocessable()->assertJsonValidationErrors('contact');
         $this->assertDatabaseCount('care_customers', 1);
@@ -135,12 +138,84 @@ class InternalCrmTest extends TestCase
         $this->assertDatabaseCount('crm_activities', 3);
         $this->as($receiver);
         $this->getJson('/api/crm/customers/'.$created)->assertOk()->assertJsonPath('data.owner_membership_id', $receiverId);
+        $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
+            ->assertJsonPath('data.follow_up_summary.upcoming', 1)->assertJsonPath('data.data.0.id', $created);
         $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(1, 'data.activities')
             ->assertJsonPath('data.activities.0.id', $followUp);
 
         $this->as($seller);
         $this->getJson('/api/crm/customers/'.$created)->assertNotFound();
+        $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
+            ->assertJsonPath('data.follow_up_summary.upcoming', 0)->assertJsonCount(0, 'data.data');
         $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(1, 'data.activities');
+    }
+
+    public function test_follow_up_windows_use_local_dates_and_count_distinct_visible_customers(): void
+    {
+        [$sales] = $this->member('SALES_STAFF');
+        $this->as($sales);
+        $both = $this->customer();
+        $weekEnd = $this->customer();
+        $outside = $this->customer();
+        $this->followUp($both, '2026-11-20', 'Hẹn sáng');
+        $this->followUp($both, '2026-11-20', 'Hẹn chiều');
+        $this->followUp($both, '2026-11-23', 'Hẹn lần sau');
+        $this->followUp($both, '2026-11-21', 'Hẹn ngày mai');
+        $this->followUp($both, '2026-11-21', 'Hẹn khác cùng ngày');
+        $this->followUp($weekEnd, '2026-11-27', 'Ngày cuối trong kỳ');
+        $this->followUp($outside, '2026-11-19', 'Lịch hôm qua');
+        $this->followUp($outside, '2026-11-28', 'Lịch ngoài kỳ');
+
+        $this->travelTo(CarbonImmutable::parse('2026-11-19 17:05:00', 'UTC'));
+        $all = $this->getJson('/api/crm/customers')->assertOk()
+            ->assertJsonPath('data.follow_up_summary.business_date', '2026-11-20')
+            ->assertJsonPath('data.follow_up_summary.upcoming_through', '2026-11-27')
+            ->assertJsonPath('data.follow_up_summary.today', 1)
+            ->assertJsonPath('data.follow_up_summary.upcoming', 2)->json('data.data');
+        $this->assertSame([$outside, $weekEnd, $both], array_column($all, 'id'));
+
+        $this->getJson('/api/crm/customers?follow_up=today')->assertOk()
+            ->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $both)
+            ->assertJsonPath('data.data.0.next_follow_up.due_on', '2026-11-20')
+            ->assertJsonPath('data.data.0.next_follow_up.title', 'Hẹn sáng');
+        $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
+            ->assertJsonCount(2, 'data.data')->assertJsonPath('data.data.0.id', $both)
+            ->assertJsonPath('data.data.0.next_follow_up.due_on', '2026-11-21')
+            ->assertJsonPath('data.data.0.next_follow_up.title', 'Hẹn ngày mai')
+            ->assertJsonPath('data.data.1.id', $weekEnd);
+        $this->getJson("/api/crm/customers?follow_up=upcoming&search=KH-$weekEnd")->assertOk()
+            ->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $weekEnd)
+            ->assertJsonPath('data.follow_up_summary.upcoming', 2)->assertJsonPath('data.follow_up_summary.today', 1);
+        $this->getJson('/api/crm/customers?follow_up=unknown')->assertUnprocessable()->assertJsonValidationErrors('follow_up');
+
+        $foreignOrg = $this->createMembership(User::factory()->create(), organizationCode: 'OTHER')['organization_id'];
+        DB::table('care_customers')->where('id', $weekEnd)->update(['organization_id' => $foreignOrg]);
+        DB::table('crm_activities')->where('customer_id', $weekEnd)->update(['organization_id' => $foreignOrg]);
+        [$admin] = $this->member('ADMIN');
+        $this->as($admin);
+        $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
+            ->assertJsonPath('data.follow_up_summary.today', 1)->assertJsonPath('data.follow_up_summary.upcoming', 1)
+            ->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $both);
+    }
+
+    public function test_follow_up_totals_span_every_page_of_customers(): void
+    {
+        [$sales] = $this->member('SALES_STAFF');
+        $this->as($sales);
+        $customers = [];
+        for ($i = 0; $i < 26; $i++) {
+            $customers[] = $this->customer();
+        }
+        foreach ($customers as $customer) {
+            $this->followUp($customer, '2026-11-19', 'Liên hệ hôm nay');
+        }
+
+        $this->getJson('/api/crm/customers?follow_up=today&page=1')->assertOk()
+            ->assertJsonCount(25, 'data.data')->assertJsonPath('data.follow_up_summary.today', 26)
+            ->assertJsonPath('data.total', 26)->assertJsonPath('data.data.0.id', $customers[25]);
+        $this->getJson('/api/crm/customers?follow_up=today&page=2')->assertOk()
+            ->assertJsonCount(1, 'data.data')->assertJsonPath('data.follow_up_summary.today', 26)
+            ->assertJsonPath('data.data.0.id', $customers[0]);
     }
 
     public function test_author_and_date_are_resolved_on_the_server_and_disabled_crm_is_safe(): void
@@ -201,6 +276,11 @@ class InternalCrmTest extends TestCase
     private function consultation(int $customer, array $services): int
     {
         return $this->activity($customer, 'CONSULTATION', ['services' => $services, 'result' => 'Khách sẽ đọc hướng dẫn.']);
+    }
+
+    private function followUp(int $customer, string $date, string $title): void
+    {
+        $this->activity($customer, 'FOLLOW_UP', ['due_on' => $date, 'title' => $title]);
     }
 
     private function activity(int $customer, string $kind, array $fields): int

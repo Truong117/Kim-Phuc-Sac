@@ -131,6 +131,8 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     });
     Route::get('/reports/my-weekly-summary', PersonalWeeklyReportController::class)
         ->middleware('permission:reports.view');
+    Route::get('/reports/my-weekly-summary/word', [PersonalWeeklyReportController::class, 'export'])
+        ->middleware('permission:reports.view');
     Route::get('/reports/my-weekly-summary/periods', [PersonalWeeklyReportController::class, 'periods'])
         ->middleware('permission:reports.view');
     Route::prefix('social-analytics/facebook')->group(function (): void {
@@ -372,6 +374,7 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
             Route::get('/regenerations/{key}', [WorkReportAnalysisController::class, 'regeneration'])->whereUuid('key');
             Route::post('/', [WorkReportAnalysisController::class, 'store'])->middleware('throttle:4,1');
             Route::get('/{id}', [WorkReportAnalysisController::class, 'show'])->whereNumber('id');
+            Route::get('/{id}/word', [WorkReportAnalysisController::class, 'export'])->whereNumber('id');
             Route::get('/{id}/sources', [WorkReportAnalysisController::class, 'sources'])->whereNumber('id');
             Route::post('/{id}/retry', [WorkReportAnalysisController::class, 'retry'])->whereNumber('id')->middleware('throttle:4,1');
             Route::post('/{id}/regenerate', [WorkReportAnalysisController::class, 'regenerate'])->whereNumber('id')->middleware('throttle:4,1');

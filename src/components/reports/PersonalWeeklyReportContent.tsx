@@ -1,3 +1,5 @@
+import WeeklyRevenueFigure from "@/components/reports/WeeklyRevenueFigure";
+import WeeklyWordExport from "@/components/reports/WeeklyWordExport";
 import WorkAnalysisResult from "@/components/ai/WorkAnalysisResult";
 import WorkAnalysisSources from "@/components/ai/WorkAnalysisSources";
 import WorkAnalysisWeeklyWork from "@/components/ai/WorkAnalysisWeeklyWork";
@@ -13,6 +15,18 @@ export default function PersonalWeeklyReportContent({
   if (!employee) return null;
   return (
     <div className="space-y-6">
+      <WeeklyRevenueFigure revenue={employee.weekly_revenue} />
+      {report.status === "completed" && report.export_version && (
+        <WeeklyWordExport
+          key={report.export_version}
+          period={report.period}
+          target={{
+            kind: "personal",
+            version: report.export_version,
+            name: employee.name,
+          }}
+        />
+      )}
       {employee.result && (
         <>
           <WorkAnalysisWeeklyWork

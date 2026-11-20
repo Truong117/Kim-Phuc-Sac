@@ -1,3 +1,5 @@
+import WeeklyRevenueFigure from "@/components/reports/WeeklyRevenueFigure";
+import WeeklyWordExport from "@/components/reports/WeeklyWordExport";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Input from "@/components/form/input/InputField";
@@ -8,6 +10,7 @@ import WorkAnalysisSources from "./WorkAnalysisSources";
 import {
   analysisSections,
   type AnalysisEmployee,
+  type WorkReportAnalysis,
   type AnalysisSource,
 } from "@/types/workReportAnalysis";
 
@@ -16,9 +19,11 @@ export default function WorkAnalysisEmployees({
   sources,
   selectedEmployeeId,
   onSelect,
+  exportRun,
   frozen = true,
 }: {
   employees: AnalysisEmployee[];
+  exportRun?: Pick<WorkReportAnalysis, "id" | "period">;
   sources: AnalysisSource[];
   selectedEmployeeId?: number;
   onSelect?: (id: number) => void;
@@ -130,6 +135,19 @@ export default function WorkAnalysisEmployees({
                 </span>
               </div>
               <div key={selected.employee_id} className="space-y-6">
+                <WeeklyRevenueFigure revenue={selected.weekly_revenue} />
+                {exportRun && selected.status === "completed" && (
+                  <WeeklyWordExport
+                    key={exportRun.id}
+                    period={exportRun.period}
+                    target={{
+                      kind: "employee",
+                      analysis: exportRun.id,
+                      employee: selected.employee_id,
+                      name: selected.name,
+                    }}
+                  />
+                )}
                 {selected.status !== "completed" && (
                   <p className="text-sm leading-6 text-gray-600 dark:text-gray-400">
                     {t(selected.result ? "reader.partial" : "reader.pending")}

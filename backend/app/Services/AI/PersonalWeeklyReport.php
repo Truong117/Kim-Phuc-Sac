@@ -30,6 +30,11 @@ final class PersonalWeeklyReport
     public function read(User $viewer, string $endDate): array
     {
         $payload = $this->forMail($viewer, $endDate);
+        if ($payload['employee'] !== null) {
+            $payload['employee'] = WeeklyRevenuePresentation::employee($payload['employee'], $endDate);
+            // Pin the same readable revision and employee content without exposing company identifiers.
+            $payload['export_version'] = WorkReportSnapshot::hash([$payload['_analysis_id'], $payload['employee'], $payload['captured_at']]);
+        }
         unset($payload['_analysis_id']);
 
         return $payload;

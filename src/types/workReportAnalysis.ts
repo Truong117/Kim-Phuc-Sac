@@ -61,7 +61,13 @@ export interface AnalysisSource {
   date: string;
   item_ids: number[];
 }
+export interface WeeklyRevenue {
+  amount: number | null;
+  display: string;
+}
+
 export interface AnalysisEmployee {
+  weekly_revenue?: WeeklyRevenue;
   employee_id: number;
   name: string;
   department_name: string | null;
@@ -83,6 +89,8 @@ export interface DailyCoverage {
   missing_report_ids: number[];
 }
 export interface WorkReportAnalysis {
+  weekly_revenue?: WeeklyRevenue;
+  can_export_word?: boolean;
   daily_coverage?: DailyCoverage | null;
   id: number;
   status: "pending" | "running" | "completed" | "partial" | "failed";

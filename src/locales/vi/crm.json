@@ -3,6 +3,17 @@
   "description": "Quản lý hồ sơ CRM và theo dõi các lần chăm sóc khách hàng.",
   "list": "Danh sách khách hàng",
   "listCount": "{count} hồ sơ",
+  "reminders": {
+    "title": "Lịch liên hệ lại",
+    "today": "Đến hẹn hôm nay",
+    "upcoming": "Sắp đến hẹn trong 7 ngày tới",
+    "count": "{count} khách",
+    "all": "Tất cả khách hàng",
+    "empty": {
+      "today": "Hôm nay chưa có khách đến hẹn liên hệ lại.",
+      "upcoming": "Chưa có khách đến hẹn trong 7 ngày tới."
+    }
+  },
   "owner": "Phụ trách",
   "unassigned": "Chưa phân công",
   "name": "Tên khách hàng",
