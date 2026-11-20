@@ -69,7 +69,7 @@ export default function PersonalWeeklyReport() {
         description={t("subtitle")}
       />
       <PageBreadCrumb pageTitle={t("title")} />
-      <div className="space-y-5">
+      <div className="kps-ai-theme space-y-5">
         <ComponentCard title={t("chooseWeek")}>
           <p className="mb-4 text-sm leading-6 text-gray-600 dark:text-gray-300">
             {t("subtitle")}

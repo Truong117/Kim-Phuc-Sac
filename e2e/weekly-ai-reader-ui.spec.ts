@@ -102,6 +102,10 @@ function sampleRun(
   } = {},
 ): WorkReportAnalysis {
   const employees = [employee(7, "Nhân viên A"), employee(8, "Nhân viên B")];
+  if ((options.days ?? 7) === 7) {
+    employees[0].weekly_revenue = { amount: 2000000, display: "2.000.000 đồng" };
+    employees[1].weekly_revenue = { amount: 1500000, display: "1.500.000 đồng" };
+  }
   if (options.partial || options.truncated)
     employees[1] = {
       ...employees[1],
@@ -115,10 +119,6 @@ function sampleRun(
   return {
     id: 41,
     can_export_word: (options.days ?? 7) === 7,
-    weekly_revenue:
-      (options.days ?? 7) === 7
-        ? { amount: 3500000, display: "3.500.000 đồng" }
-        : undefined,
     status: options.partial ? "partial" : "completed",
     period: {
       start_date:
@@ -292,7 +292,8 @@ test("weekly reader downloads the displayed full, summary and selected employee 
   page,
 }) => {
   const posts = await setup(page);
-  await expect(page.getByText("3.500.000 đồng", { exact: true })).toBeVisible();
+  await expect(page.getByText("Doanh thu cá nhân trong tuần", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("3.500.000 đồng", { exact: true })).toHaveCount(0);
   const urls: URL[] = [];
   await page.route("**/api/ai/work-report-analyses/41/word?**", (route) => {
     urls.push(new URL(route.request().url()));
@@ -315,7 +316,10 @@ test("weekly reader downloads the displayed full, summary and selected employee 
     .selectOption("summary");
   await download();
   await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
+  await expect(employeePanel(page, "Nhân viên A").getByText("2.000.000 đồng")).toBeVisible();
   await page.getByRole("button", { name: /^Nhân viên B / }).click();
+  await expect(employeePanel(page, "Nhân viên B").getByText("1.500.000 đồng")).toBeVisible();
+  await expect(page.getByText("2.000.000 đồng", { exact: true })).toHaveCount(0);
   await download();
   expect(urls.map((url) => Object.fromEntries(url.searchParams))).toEqual([
     { mode: "full" },
@@ -491,7 +495,9 @@ for (const days of [1, 7] as const) {
       ).toBeVisible();
     await expect(
       page.getByText(
-        "Nhân viên A — Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối.",
+        days === 7
+          ? "Ghi nhận từ nguồn: Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối."
+          : "Nhân viên A — Tiếp tục hoàn thiện catalogue; chưa xác nhận duyệt cuối.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -500,11 +506,12 @@ for (const days of [1, 7] as const) {
         .locator("summary")
         .filter({ hasText: "Xác nhận phiên bản được duyệt" }),
     ).toBeVisible();
-    await expect(
-      page.getByText(
-        /Nhận xét có căn cứ:|Ghi nhận từ nguồn:|Đề xuất: Đề xuất:/,
-      ),
-    ).not.toBeVisible();
+    if (days === 7) {
+      await expect(page.getByText(result().overview[0].text, { exact: true })).toBeVisible();
+      await expect(page.locator("summary").filter({ hasText: "Đề xuất: Đề xuất: Xác nhận phiên bản được duyệt" })).toBeVisible();
+    } else {
+      await expect(page.getByText(/Nhận xét có căn cứ:|Ghi nhận từ nguồn:|Đề xuất: Đề xuất:/)).not.toBeVisible();
+    }
     const sources = page
       .locator("footer")
       .filter({ has: page.getByText("Xem căn cứ", { exact: true }) });

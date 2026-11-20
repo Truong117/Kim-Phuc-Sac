@@ -30,11 +30,13 @@ export default function PersonalWeeklyReportContent({
       {employee.result && (
         <>
           <WorkAnalysisWeeklyWork
+            weekly
             groups={employee.work_groups ?? []}
             totals={employee.work_totals ?? []}
             partial={report.status !== "completed"}
           />
           <WorkAnalysisResult
+            verbatim
             result={employee.result}
             sources={report.source_reports}
             totals={employee.work_totals ?? []}

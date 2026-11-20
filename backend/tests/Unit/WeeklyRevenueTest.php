@@ -54,25 +54,19 @@ class WeeklyRevenueTest extends TestCase
         $this->assertSame(1500000, $this->revenue([[30, 'Doanh thu', 'Doanh thu 1,5 triệu đồng và chi phí 300.000 đồng']])['amount']);
     }
 
-    public function test_source_inventory_is_untouched_and_old_mixed_claims_keep_the_order_count(): void
+    public function test_personal_weekly_revenue_is_supplemental_to_unchanged_saved_ai_content(): void
     {
         $employee = $this->employee([[29, 'Doanh số ngày', '2.450.000'], [30, 'Doanh thu', '1.550.000 đồng']]);
         $text = 'Doanh số ngày 29/10 là 2.450.000 đồng, ngày 30/10 là 1.550.000 đồng; đã lập 8 đơn đặt hàng.';
         $employee['work_groups'] = [['title' => 'Bán hàng', 'text' => $text, 'evidence' => [['quote' => '1.550.000 đồng']]]];
         $employee['result'] = ['overview' => [['text' => $text, 'evidence' => []]]];
         $result = WeeklyRevenuePresentation::employee($employee, '2026-10-31');
-        $this->assertSame('Đã lập 8 đơn đặt hàng.', $result['work_groups'][0]['text']);
-        $this->assertSame($result['work_groups'][0]['text'], $result['result']['overview'][0]['text']);
-        $this->assertSame($employee['work_groups'][0]['evidence'], $result['work_groups'][0]['evidence']);
-        $this->assertSame($employee['work_inventory'], $result['work_inventory']);
+        $this->assertSame($employee, array_diff_key($result, ['weekly_revenue' => true]));
         $this->assertSame('4.000.000 đồng', $result['weekly_revenue']['display']);
         $historic = $this->employee([]);
         $historic['result'] = ['overview' => [['text' => 'Chốt 8 đơn với doanh thu 1.500.000 đồng. Chi phí 500.000 đồng.', 'evidence' => []]]];
         $pending = WeeklyRevenuePresentation::employee($historic, '2026-10-31');
         $this->assertNull($pending['weekly_revenue']['amount']);
-        $this->assertSame('Chốt 8 đơn. Chi phí 500.000 đồng.', $pending['result']['overview'][0]['text']);
-        $other = ['weekly_revenue' => ['amount' => 150000]];
-        $this->assertSame(4150000, WeeklyRevenue::combined([$result, $other, []])['amount']);
-        $this->assertNull(WeeklyRevenue::combined([$result, ['weekly_revenue' => ['amount' => null]]])['amount']);
+        $this->assertSame($historic['result'], $pending['result']);
     }
 }

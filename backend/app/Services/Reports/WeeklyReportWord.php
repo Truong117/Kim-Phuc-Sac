@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Services\AI\WorkReportAnalysisOutput;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Throwable;
@@ -9,12 +10,6 @@ use ZipArchive;
 
 final class WeeklyReportWord
 {
-    private const SECTIONS = [
-        'overview' => 'Tình hình chung', 'highlights' => 'Kết quả nổi bật', 'ongoing' => 'Công việc đang thực hiện',
-        'attention' => 'Vấn đề cần theo dõi', 'support' => 'Nhu cầu hỗ trợ', 'recommendations' => 'Đề xuất',
-        'uncertainties' => 'Thông tin cần đối chiếu',
-    ];
-
     public function download(array $period, array $employees, ?array $company = null, ?string $context = null): BinaryFileResponse
     {
         $date = fn ($s) => implode('/', array_reverse(explode('-', $s)));
@@ -25,57 +20,36 @@ final class WeeklyReportWord
             if ($context !== null) {
                 $body .= $this->p($context);
             }
-            $body .= $this->revenue($company);
-            $rows = [];
-            foreach ($company['employees'] as $employee) {
-                $id = (int) $employee['employee_id'];
-                $label = $employees
-                    ? '<w:p><w:hyperlink w:anchor="Employee_'.$id.'"><w:r><w:rPr><w:color w:val="195B59"/><w:u w:val="single"/></w:rPr><w:t>'.$this->escape($employee['name']).'</w:t></w:r></w:hyperlink></w:p>'
-                    : $this->p($employee['name']);
-                $lines = [];
-                if (isset($employee['weekly_revenue'])) {
-                    $lines[] = 'Doanh thu ghi nhận trong tuần · '.$employee['weekly_revenue']['display'];
-                }
-                $highlight = $employee['work_groups'][0]['text'] ?? $employee['result']['highlights'][0]['text'] ?? $employee['result']['overview'][0]['text'] ?? null;
-                if ($highlight) {
-                    $lines[] = $highlight;
-                }
-                $rows[] = [$label, $this->p($lines ? implode("\n", $lines) : $this->status($employee))];
-            }
-            $body .= $this->table('Nhân viên', 'Kết quả chính trong kỳ', $rows).$this->claims($company['result'] ?? []);
+            $result = $company['result'] ?? [];
+            $body .= $this->claimSection('1. Kết quả trong kỳ', [...($result['overview'] ?? []), ...($result['highlights'] ?? [])], 'Chưa có kết quả được tổng hợp trong bản này.')
+                .$this->claimSection('2. Công việc đang tiếp tục', $result['ongoing'] ?? [], 'Chưa ghi nhận công việc đang tiếp tục trong bản này.')
+                .$this->claimSection('3. Vướng mắc cần theo dõi', [...($result['attention'] ?? []), ...($result['support'] ?? [])], 'Chưa ghi nhận vướng mắc cần theo dõi trong bản này.')
+                .$this->clarifications($result['uncertainties'] ?? [], [])
+                .$this->decisions($result['recommendations'] ?? [])
+                .$this->sources($result);
         }
         foreach ($employees as $person) {
             if ($body !== '') {
                 $body .= '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
             }
-            $id = (int) $person['employee_id'];
-            $body .= '<w:bookmarkStart w:id="'.$id.'" w:name="Employee_'.$id.'"/>'
-                .$this->heading('Báo cáo tuần của '.$person['name'], $dates)
-                .'<w:bookmarkEnd w:id="'.$id.'"/>';
+            $body .= $this->heading('Báo cáo tuần của '.$person['name'], $dates);
             if ($company === null && $context !== null) {
                 $body .= $this->p($context);
             }
             if ($person['department_name'] ?? null) {
                 $body .= $this->p($person['department_name']);
             }
-            $rows = [];
             if (isset($person['weekly_revenue'])) {
-                $rows[] = [$this->p('Doanh thu ghi nhận trong tuần'), $this->p($person['weekly_revenue']['display'])];
+                $body .= $this->p('Doanh thu cá nhân trong tuần', 'H2').$this->p($person['weekly_revenue']['display']);
             }
-            foreach ($person['work_totals'] ?? [] as $total) {
-                if ($total['status'] === 'confirmed' && $total['total'] !== null) {
-                    $quantity = rtrim(rtrim(number_format($total['total'], 6, ',', '.'), '0'), ',');
-                    $rows[] = [$this->p($total['metric']), $this->p($quantity.' '.$total['unit'])];
-                }
-            }
-            foreach ($person['work_groups'] ?? [] as $group) {
-                $rows[] = [$this->p($group['title']), $this->p($group['text'])];
-            }
-            $body .= $this->table('Đầu việc', 'Kết quả ghi nhận', $rows);
             if (($person['status'] ?? null) !== 'completed') {
                 $body .= $this->p($this->status($person));
             }
-            $body .= $this->claims($person['result'] ?? []);
+            if (($person['result'] ?? null) !== null || ! empty($person['work_groups']) || ! empty($person['work_totals'])) {
+                $body .= $this->employeeContent($person);
+            } elseif (($person['status'] ?? null) === 'completed') {
+                $body .= $this->p($this->status($person));
+            }
         }
 
         $path = tempnam(sys_get_temp_dir(), 'kps-weekly-word-');
@@ -108,11 +82,6 @@ final class WeeklyReportWord
         return $this->p('KIM PHỤC SẮC', 'Brand').$this->p($title, 'Title').$this->p($period);
     }
 
-    private function revenue(array $report): string
-    {
-        return isset($report['weekly_revenue']) ? $this->p('Doanh thu ghi nhận trong tuần', 'H2').$this->p($report['weekly_revenue']['display']) : '';
-    }
-
     private function status(array $employee): string
     {
         return match ($employee['status'] ?? null) {
@@ -122,22 +91,23 @@ final class WeeklyReportWord
         };
     }
 
-    /** All cells are escaped paragraphs, including optional internal employee links. */
-    private function table(string $left, string $right, array $rows): string
+    private function quantityTable(array $rows): string
     {
         if (! $rows) {
             return '';
         }
+        $labelWidth = 6200;
+        $valueWidth = 9386 - $labelWidth;
         $xml = '<w:tbl><w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders>'
-            .'<w:bottom w:val="single" w:sz="4" w:color="CDDAD8"/><w:insideH w:val="single" w:sz="4" w:color="CDDAD8"/></w:tblBorders>'
+            .'<w:bottom w:val="single" w:sz="4" w:color="D9D9D9"/><w:insideH w:val="single" w:sz="4" w:color="D9D9D9"/></w:tblBorders>'
             .'<w:tblCellMar><w:top w:w="50" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="30" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar>'
-            .'</w:tblPr><w:tblGrid><w:gridCol w:w="2850"/><w:gridCol w:w="6536"/></w:tblGrid>';
-        array_unshift($rows, [$this->p($left), $this->p($right)]);
+            .'</w:tblPr><w:tblGrid><w:gridCol w:w="'.$labelWidth.'"/><w:gridCol w:w="'.$valueWidth.'"/></w:tblGrid>';
+        array_unshift($rows, [$this->p('Tổng số lượng từ báo cáo', 'TableHeader'), $this->p('Số lượng', 'TableHeader')]);
         foreach ($rows as $index => $row) {
             $xml .= '<w:tr>'.($index === 0 ? '<w:trPr><w:tblHeader/></w:trPr>' : '');
             foreach ($row as $column => $paragraph) {
-                $width = $column === 0 ? 2850 : 6536;
-                $color = $index === 0 ? '<w:shd w:val="clear" w:fill="DCECE9"/>' : '';
+                $width = $column === 0 ? $labelWidth : $valueWidth;
+                $color = $index === 0 ? '<w:shd w:val="clear" w:fill="8B633A"/>' : '';
                 $xml .= '<w:tc><w:tcPr><w:tcW w:w="'.$width.'" w:type="dxa"/>'.$color.'</w:tcPr>'.$paragraph.'</w:tc>';
             }
             $xml .= '</w:tr>';
@@ -146,21 +116,77 @@ final class WeeklyReportWord
         return $xml.'</w:tbl>';
     }
 
-    private function claims(array $result): string
+    private function employeeContent(array $person): string
     {
-        $xml = '';
-        foreach (self::SECTIONS as $key => $heading) {
-            if (empty($result[$key])) {
+        $result = $person['result'] ?? [];
+        $groups = $person['work_groups'] ?? [];
+        $xml = $this->p('Tổng hợp từ báo cáo', 'H2');
+        foreach ($groups as $group) {
+            $xml .= $this->p($group['title'], bold: true, keepNext: true).$this->p($group['text']);
+        }
+        $rows = $unclear = [];
+        foreach ($person['work_totals'] ?? [] as $metric) {
+            $value = $metric['total'] ?? null;
+            if (($metric['status'] ?? null) !== 'confirmed' || ! is_numeric($value) || ! is_finite((float) $value) || $value < 0) {
+                $unclear[] = $metric;
+
                 continue;
             }
-            $xml .= $this->p($heading, 'H2');
-            foreach ($result[$key] as $claim) {
-                $xml .= $this->p($claim['text']);
-                foreach (['action' => 'Hành động', 'decision_needed' => 'Quyết định cần chốt', 'expected_outcome' => 'Kết quả dự kiến',
-                    'rationale' => 'Căn cứ', 'impact' => 'Tác động', 'verification' => 'Cách kiểm tra'] as $field => $label) {
-                    if (! empty($claim[$field]) && $claim[$field] !== $claim['text']) {
-                        $xml .= $this->p($label.' · '.$claim[$field]);
-                    }
+            $amount = rtrim(rtrim(number_format($value, 6, ',', '.'), '0'), ',');
+            $rows[] = [$this->p($metric['metric']), $this->p(trim($amount.' '.$metric['unit']))];
+        }
+        $xml .= $this->quantityTable($rows);
+        if (($person['status'] ?? null) !== 'completed' && ($rows || $unclear)) {
+            $xml .= $this->p('Số tổng hiện chỉ dùng các phần AI đã đọc thành công; chưa đại diện đầy đủ cho kỳ này.');
+        }
+
+        return $xml.$this->clarifications($result['uncertainties'] ?? [], $unclear)
+            .$this->claimSection('Nhận xét', [...($result['overview'] ?? []), ...($result['highlights'] ?? []),
+                ...($result['ongoing'] ?? []), ...($result['attention'] ?? []), ...($result['support'] ?? [])], 'Chưa có nhận xét AI cho bản tổng hợp này.')
+            .$this->decisions($result['recommendations'] ?? [])
+            .$this->sources($result, $groups, $person['work_totals'] ?? []);
+    }
+
+    private function clarifications(array $claims, array $metrics): string
+    {
+        $xml = $this->p('Cần làm rõ', 'H2');
+        foreach ($metrics as $metric) {
+            $xml .= $this->p($metric['metric'].($metric['unit'] === '' ? '' : ' ('.$metric['unit'].')'));
+        }
+
+        return $xml.$this->claimList($claims).(! $claims && ! $metrics ? $this->p('Chưa ghi nhận nội dung cần làm rõ trong kết quả này.') : '');
+    }
+
+    private function claimSection(string $heading, array $claims, string $empty): string
+    {
+        return $this->p($heading, 'H2').($claims ? $this->claimList($claims) : $this->p($empty));
+    }
+
+    private function claimList(array $claims): string
+    {
+        $xml = '';
+        foreach ($claims as $claim) {
+            $xml .= $this->p($claim['text']);
+        }
+
+        return $xml;
+    }
+
+    private function decisions(array $claims): string
+    {
+        $xml = $this->p('4. Việc cần xem xét và quyết định', 'H2');
+        if (! $claims) {
+            return $xml.$this->p('Chưa có đề xuất hỗ trợ AI cho bản tổng hợp này.');
+        }
+        foreach ($claims as $claim) {
+            $xml .= $this->p($claim['text'], bold: true, keepNext: isset($claim['priority']) || isset($claim['action']));
+            if (isset($claim['priority'])) {
+                $xml .= $this->p($claim['priority'] === 'high' ? 'Ưu tiên cao' : 'Ưu tiên bình thường');
+            }
+            foreach (['rationale' => 'Căn cứ', 'impact' => 'Ảnh hưởng', 'action' => 'Hành động đề xuất',
+                'expected_outcome' => 'Kết quả mong đợi', 'verification' => 'Cách kiểm chứng', 'decision_needed' => 'Quyết định cần quản lý'] as $field => $label) {
+                if (isset($claim[$field]) && $claim[$field] !== '') {
+                    $xml .= $this->p($claim[$field], label: $label);
                 }
             }
         }
@@ -168,12 +194,40 @@ final class WeeklyReportWord
         return $xml;
     }
 
-    private function p(string $text, string $style = 'Normal'): string
+    private function sources(array $result, array $groups = [], array $totals = []): string
     {
+        $lists = [...array_column($groups, 'evidence'), ...array_column($totals, 'entries')];
+        foreach (WorkReportAnalysisOutput::SECTIONS as $key) {
+            array_push($lists, ...array_column($result[$key] ?? [], 'evidence'));
+        }
+
+        $xml = '';
+        $seen = [];
+        foreach ($lists as $references) {
+            foreach ($references as $ref) {
+                if (! isset($ref['report_id'], $ref['item_id'], $ref['quote'])) {
+                    continue;
+                }
+                $identity = $ref['report_id'].':'.$ref['item_id'].':'.$ref['quote'];
+                if (isset($seen[$identity])) {
+                    continue;
+                }
+                $seen[$identity] = true;
+                $xml .= $this->p('Báo cáo #'.$ref['report_id'].' · Đầu việc #'.$ref['item_id'], bold: true, keepNext: true).$this->p($ref['quote']);
+            }
+        }
+
+        return $xml === '' ? '' : $this->p('Căn cứ', 'H2').$xml;
+    }
+
+    private function p(string $text, string $style = 'Normal', bool $bold = false, ?string $label = null, bool $keepNext = false): string
+    {
+        $prefix = $label === null ? '' : '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">'.$this->escape($label).' · </w:t></w:r>';
         $lines = preg_split('/\R/u', $text);
         $runs = array_map(fn ($line) => '<w:t xml:space="preserve">'.$this->escape($line).'</w:t>', $lines);
 
-        return '<w:p><w:pPr><w:pStyle w:val="'.$style.'"/></w:pPr><w:r>'.implode('<w:br/>', $runs).'</w:r></w:p>';
+        return '<w:p><w:pPr><w:pStyle w:val="'.$style.'"/>'.($keepNext ? '<w:keepNext/>' : '').'</w:pPr>'.$prefix.'<w:r>'.($bold ? '<w:rPr><w:b/></w:rPr>' : '')
+            .implode('<w:br/>', $runs).'</w:r></w:p>';
     }
 
     private function escape(string $text): string

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\WorkReportAnalysis;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportAnalysisWorker;
+use App\Services\AI\WorkReportDecision;
 use App\Services\AI\WorkReportSnapshot;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
@@ -121,47 +122,141 @@ class PersonalWeeklyReportTest extends TestCase
         $run = $this->createAnalysis();
         $base = '/api/ai/work-report-analyses/'.$run->id;
         $self = '/api/reports/my-weekly-summary/word?end_date=2026-11-07';
-        $text = function ($response): string {
-            $response->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-            $file = $response->baseResponse->getFile()->getPathname();
-            $zip = new \ZipArchive;
-            $this->assertTrue($zip->open($file));
-            $xml = $zip->getFromName('word/document.xml');
-            $zip->close();
-            unlink($file);
-            $dom = new \DOMDocument;
-            $this->assertTrue($dom->loadXML($xml));
-
-            return $dom->textContent;
-        };
-        $this->actingAs($admin, 'web')->getJson($base)->assertOk()
-            ->assertJsonPath('data.weekly_revenue.amount', 2500000)->assertJsonPath('data.can_export_word', true);
+        $runPayload = $this->actingAs($admin, 'web')->getJson($base)->assertOk()
+            ->assertJsonMissingPath('data.weekly_revenue')->assertJsonPath('data.can_export_word', true);
+        $byEmployee = collect($runPayload->json('data.employees'))->keyBy('employee_id');
+        $this->assertSame(2000000, $byEmployee[$this->alice->id]['weekly_revenue']['amount']);
+        $this->assertSame(500000, $byEmployee[$this->bob->id]['weekly_revenue']['amount']);
         $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.employee.weekly_revenue.amount', 2000000);
+        $this->assertSame($byEmployee[$this->alice->id]['result'], $mine->json('data.employee.result'));
         $this->getJson($base.'/word?mode=full')->assertForbidden();
         $this->getJson($self.'&version='.str_repeat('a', 64))->assertConflict();
-        $personal = $text($this->get($self.'&version='.$mine->json('data.export_version').'&employee_id='.$this->bob->id));
+        $personal = $this->wordText($this->get($self.'&version='.$mine->json('data.export_version').'&employee_id='.$this->bob->id));
         $this->assertStringContainsString('2.000.000 đồng', $personal);
-        $this->assertStringNotContainsString('800.000', $personal);
         $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $personal);
         $this->assertStringNotContainsString('2.500.000', $personal);
         foreach ([$assistant, $admin] as $viewer) {
             $this->app['auth']->forgetGuards();
             $this->actingAs($viewer, 'web');
-            $full = $text($this->get($base.'/word?mode=full'));
-            $this->assertStringContainsString('2.500.000 đồng', $full);
+            $full = $this->wordText($this->get($base.'/word?mode=full'));
+            $this->assertStringNotContainsString('2.500.000 đồng', $full);
             $this->assertStringContainsString('2.000.000 đồng', $full);
-            $this->assertStringNotContainsString('800.000', $full);
-            $one = $text($this->get($base.'/word?mode=employee&employee_id='.$this->alice->id));
+            $one = $this->wordText($this->get($base.'/word?mode=employee&employee_id='.$this->alice->id));
             $this->assertStringContainsString('2.000.000 đồng', $one);
             $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $one);
-            $summary = $text($this->get($base.'/word?mode=summary'));
-            $this->assertStringContainsString('2.500.000 đồng', $summary);
+            $summary = $this->wordText($this->get($base.'/word?mode=summary'));
+            $this->assertStringNotContainsString('2.500.000 đồng', $summary);
+            $this->assertStringNotContainsString('Doanh thu cá nhân trong tuần', $summary);
             $this->assertStringNotContainsString('Báo cáo tuần của ', $summary);
             $this->getJson($base.'/word?mode=employee&employee_id=999999')->assertNotFound();
         }
         $daily = $this->createAnalysis('2026-11-04', 1);
-        $this->actingAs($admin, 'web')->getJson('/api/ai/work-report-analyses/'.$daily->id)->assertOk()->assertJsonMissingPath('data.weekly_revenue');
+        $this->actingAs($admin, 'web')->getJson('/api/ai/work-report-analyses/'.$daily->id)->assertOk()
+            ->assertJsonMissingPath('data.weekly_revenue');
         $this->getJson('/api/ai/work-report-analyses/'.$daily->id.'/word?mode=full')->assertUnprocessable();
+    }
+
+    private function wordText($response): string
+    {
+        $response->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        $path = $response->baseResponse->getFile()->getPathname();
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($path));
+        try {
+            $document = new \DOMDocument;
+            $this->assertTrue($document->loadXML($zip->getFromName('word/document.xml')));
+            foreach ($document->getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'br') as $break) {
+                $break->parentNode->insertBefore($document->createTextNode("\n"), $break);
+            }
+
+            return $document->textContent;
+        } finally {
+            $zip->close();
+            unlink($path);
+        }
+    }
+
+    public function test_word_preserves_saved_ai_claims_groups_metrics_and_decisions_in_order(): void
+    {
+        $quotedSource = 'Công việc <A> & "kiểm tra"';
+        DB::table('daily_report_items')->where('daily_report_id', $this->aliceReport)->update(['content' => $quotedSource]);
+        $admin = $this->member('ADMIN');
+        $run = $this->createAnalysis();
+        $unit = $run->units()->where('unit_key', 'like', 'employee:'.$this->alice->id.':%')->firstOrFail();
+        $saved = $unit->result;
+        $evidence = $saved['work_groups'][0]['evidence'];
+        $groupText = "Đã xuất bản bộ ảnh <B> & video.\nĐang đối chiếu  bản cuối.";
+        $saved['work_groups'][0]['text'] = $groupText;
+        $claim = fn ($text) => ['text' => $text, 'evidence' => $evidence];
+        $overview = 'Ghi nhận từ nguồn: Doanh thu ngày 04/11 là 830.000 đồng. Giữ nguyên nội dung đã ghi.';
+        $saved['overview'] = [$claim($overview)];
+        $saved['highlights'] = array_map(fn ($i) => $claim('Đầu ra số '.$i.'. Phần tiếp theo của đầu ra '.$i.'.'), range(1, 8));
+        $saved['highlights'][] = $saved['highlights'][7];
+        $saved['ongoing'] = [$claim('Hai bước tiếp theo vẫn đang được thực hiện.')];
+        $saved['attention'] = [$claim('Điểm cần theo dõi riêng của nhân viên.')];
+        $saved['support'] = [$claim('Cần phản hồi của nhóm phụ trách.')];
+        $saved['uncertainties'] = [$claim('Chưa có xác nhận cho phiên bản hai.')];
+        $decision = WorkReportDecision::fake($claim('Đề xuất: Giữ đề xuất đầu tiên.'));
+        $decision['action'] = $decision['text'];
+        $decision['decision_needed'] = 'Xác nhận phạm vi trước khi chuyển bước.';
+        $saved['recommendations'] = [$decision, [...$decision, 'text' => 'Đề xuất ưu tiên cao được ghi sau.', 'priority' => 'high', 'action' => 'Làm rõ phương án sau.']];
+        $observation = [...$evidence[0], 'quantity' => 2, 'quote' => 'Đã tạo 2 ảnh', 'unit' => 'ảnh', 'basis' => 'incremental'];
+        $saved['quantity_observations'] = [
+            [...$observation, 'metric' => 'Ảnh đăng trên kênh thử'],
+            [...$observation, 'metric' => 'Ảnh chưa rõ phạm vi', 'basis' => 'unclear'],
+        ];
+        $unit->update(['result' => $saved]);
+
+        $company = $run->result;
+        $company['overview'] = [$claim('Đoạn mở đầu công ty chứa doanh thu ngày 04/11 là 830.000 đồng.')];
+        $company['support'] = [$claim('Giữ mục hỗ trợ của toàn công ty.')];
+        $run->update(['result' => $company]);
+        $base = '/api/ai/work-report-analyses/'.$run->id;
+        $web = $this->actingAs($admin, 'web')->getJson($base)->assertOk()->assertJsonPath('data.result', $company);
+        $person = collect($web->json('data.employees'))->firstWhere('employee_id', $this->alice->id);
+        $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.status', 'completed');
+        foreach (['overview', 'highlights', 'ongoing', 'attention', 'support', 'uncertainties', 'recommendations'] as $section) {
+            $this->assertSame($saved[$section], $person['result'][$section]);
+            $this->assertSame($saved[$section], $mine->json('data.employee.result.'.$section));
+        }
+        $this->assertSame($saved['work_groups'], $mine->json('data.employee.work_groups'));
+        $this->assertSame($person['work_totals'], $mine->json('data.employee.work_totals'));
+        $this->assertSame(['Ảnh đăng trên kênh thử' => 2, 'Ảnh chưa rõ phạm vi' => null], array_column($person['work_totals'], 'total', 'metric'));
+        $word = $this->wordText($this->get('/api/reports/my-weekly-summary/word?end_date=2026-11-07&version='.$mine->json('data.export_version')));
+        $cursor = 0;
+        $expected = [
+            'Tổng hợp từ báo cáo', $saved['work_groups'][0]['title'], $groupText, 'Ảnh đăng trên kênh thử', '2 ảnh',
+            'Cần làm rõ', 'Ảnh chưa rõ phạm vi', $saved['uncertainties'][0]['text'], 'Nhận xét', $overview,
+            ...array_column($saved['highlights'], 'text'), $saved['ongoing'][0]['text'],
+            $saved['attention'][0]['text'], $saved['support'][0]['text'], '4. Việc cần xem xét và quyết định', ...array_column($saved['recommendations'], 'text'),
+        ];
+        foreach ($expected as $text) {
+            $offset = strpos($word, $text, $cursor);
+            $this->assertNotFalse($offset, 'Missing or out-of-order saved text: '.$text);
+            $cursor = $offset + strlen($text);
+        }
+        $this->assertSame(2, substr_count($word, $decision['text']));
+        $this->assertStringContainsString('Ưu tiên cao', $word);
+        $this->assertStringContainsString('Ưu tiên bình thường', $word);
+        $sourceRef = 'Báo cáo #'.$this->aliceReport.' · Đầu việc #'.$evidence[0]['item_id'];
+        $sourceStart = strpos($word, $sourceRef);
+        $this->assertNotFalse($sourceStart);
+        $this->assertStringContainsString($quotedSource, substr($word, $sourceStart));
+        $this->assertStringNotContainsString('Báo cáo #'.$this->bobReport.' · Đầu việc #', $word);
+        foreach (WorkReportDecision::FIELDS as $field) {
+            $this->assertStringContainsString($decision[$field], $word);
+        }
+        $this->assertStringNotContainsString($company['overview'][0]['text'], $word);
+        $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $word);
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($admin, 'web');
+        $summary = $this->wordText($this->get($base.'/word?mode=summary'));
+        $this->assertStringContainsString($company['overview'][0]['text'], $summary);
+        $this->assertStringContainsString($company['support'][0]['text'], $summary);
+        $this->assertStringNotContainsString($groupText, $summary);
+        $this->assertStringNotContainsString($overview, $summary);
+        $this->assertSame($saved, $unit->fresh()->result);
+        $this->assertSame($company, $run->fresh()->result);
     }
 
     public function test_owner_also_receives_only_their_own_work(): void

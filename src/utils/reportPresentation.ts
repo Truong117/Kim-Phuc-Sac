@@ -12,7 +12,9 @@ export function reportText(text: string): string {
   );
 }
 
-export function uniqueReportClaims(claims: AnalysisClaim[]): AnalysisClaim[] {
+export function uniqueReportClaims(
+  claims: readonly AnalysisClaim[],
+): AnalysisClaim[] {
   const unique = new Map<string, AnalysisClaim>();
   for (const claim of claims) {
     // Same title with different decision details remains a separate proposal.
@@ -69,22 +71,22 @@ export function reportClaimText(
     : text;
 }
 
-export function reportSections(result: AnalysisResult) {
-  return [
-    {
-      key: "results",
-      claims: uniqueReportClaims([...result.overview, ...result.highlights]),
-    },
-    { key: "ongoing", claims: uniqueReportClaims(result.ongoing) },
-    {
-      key: "obstacles",
-      claims: uniqueReportClaims([...result.attention, ...result.support]),
-    },
-    {
-      key: "decisions",
-      claims: uniqueReportClaims(result.recommendations).sort(
-        (a, b) => Number(b.priority === "high") - Number(a.priority === "high"),
-      ),
-    },
+export function reportSections(result: AnalysisResult, verbatim = false) {
+  const sections = [
+    { key: "results", claims: [...result.overview, ...result.highlights] },
+    { key: "ongoing", claims: result.ongoing },
+    { key: "obstacles", claims: [...result.attention, ...result.support] },
+    { key: "decisions", claims: result.recommendations },
   ] as const;
+
+  if (verbatim) return sections;
+  return sections.map(({ key, claims }) => {
+    const unique = uniqueReportClaims(claims);
+    if (key === "decisions") {
+      unique.sort(
+        (a, b) => Number(b.priority === "high") - Number(a.priority === "high"),
+      );
+    }
+    return { key, claims: unique };
+  });
 }
