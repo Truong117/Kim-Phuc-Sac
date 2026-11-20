@@ -156,7 +156,7 @@ class PersonalWeeklyReportTest extends TestCase
         $this->getJson('/api/ai/work-report-analyses/'.$daily->id.'/word?mode=full')->assertUnprocessable();
     }
 
-    private function wordText($response): string
+    private function wordDocument($response): \DOMDocument
     {
         $response->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         $path = $response->baseResponse->getFile()->getPathname();
@@ -165,14 +165,48 @@ class PersonalWeeklyReportTest extends TestCase
         try {
             $document = new \DOMDocument;
             $this->assertTrue($document->loadXML($zip->getFromName('word/document.xml')));
-            foreach ($document->getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'br') as $break) {
-                $break->parentNode->insertBefore($document->createTextNode("\n"), $break);
-            }
 
-            return $document->textContent;
+            return $document;
         } finally {
             $zip->close();
             unlink($path);
+        }
+    }
+
+    private function wordText($response): string
+    {
+        $document = $this->wordDocument($response);
+        foreach ($document->getElementsByTagNameNS('http://schemas.openxmlformats.org/wordprocessingml/2006/main', 'br') as $break) {
+            $break->parentNode->insertBefore($document->createTextNode("\n"), $break);
+        }
+
+        return $document->textContent;
+    }
+
+    public function test_word_starts_each_employee_on_a_new_page_without_a_leading_or_standalone_page_break(): void
+    {
+        $admin = $this->member('ADMIN');
+        $run = $this->createAnalysis();
+        $base = '/api/ai/work-report-analyses/'.$run->id;
+        $people = $this->actingAs($admin, 'web')->getJson($base)->assertOk()->json('data.employees');
+        $employeeTitles = array_map(fn ($employee) => 'Báo cáo tuần của '.$employee['name'], $people);
+        $this->assertGreaterThanOrEqual(2, count($employeeTitles));
+        foreach ([
+            'mode=full' => ['Tổng kết công việc tuần', ...$employeeTitles],
+            'mode=employee&employee_id='.$this->alice->id => ['Báo cáo tuần của '.$this->alice->name],
+            'mode=summary' => ['Tổng kết công việc tuần'],
+        ] as $query => $titles) {
+            $xpath = new \DOMXPath($this->wordDocument($this->get($base.'/word?'.$query)));
+            $xpath->registerNamespace('w', 'http://schemas.openxmlformats.org/wordprocessingml/2006/main');
+            $brands = $xpath->query('/w:document/w:body/w:p[w:pPr/w:pStyle[@w:val="Brand"]]');
+            $this->assertCount(count($titles), $brands);
+            $this->assertSame(0, (int) $xpath->evaluate('count(//w:br[@w:type="page"])'));
+            $this->assertSame(count($titles) - 1, (int) $xpath->evaluate('count(//w:pageBreakBefore)'));
+            foreach ($brands as $index => $brand) {
+                $this->assertSame($titles[$index], $xpath->evaluate('string(following-sibling::*[1][self::w:p])', $brand));
+                $this->assertSame($index > 0, $xpath->evaluate('boolean(w:pPr/w:pageBreakBefore[not(@w:val="0" or @w:val="false")])', $brand));
+            }
+            $this->assertSame(0, (int) $xpath->evaluate('count(//w:p[w:pPr/w:pStyle[@w:val="H2"] and .="Căn cứ"])'));
         }
     }
 
@@ -186,6 +220,7 @@ class PersonalWeeklyReportTest extends TestCase
         $saved = $unit->result;
         $evidence = $saved['work_groups'][0]['evidence'];
         $groupText = "Đã xuất bản bộ ảnh <B> & video.\nĐang đối chiếu  bản cuối.";
+        $saved['work_groups'][0]['title'] = 'Nhóm việc đã tổng hợp';
         $saved['work_groups'][0]['text'] = $groupText;
         $claim = fn ($text) => ['text' => $text, 'evidence' => $evidence];
         $overview = 'Ghi nhận từ nguồn: Doanh thu ngày 04/11 là 830.000 đồng. Giữ nguyên nội dung đã ghi.';
@@ -209,6 +244,7 @@ class PersonalWeeklyReportTest extends TestCase
 
         $company = $run->result;
         $company['overview'] = [$claim('Đoạn mở đầu công ty chứa doanh thu ngày 04/11 là 830.000 đồng.')];
+        $company['highlights'] = [$claim('Kết quả trong tuần của toàn công ty.')];
         $company['support'] = [$claim('Giữ mục hỗ trợ của toàn công ty.')];
         $run->update(['result' => $company]);
         $base = '/api/ai/work-report-analyses/'.$run->id;
@@ -239,9 +275,9 @@ class PersonalWeeklyReportTest extends TestCase
         $this->assertStringContainsString('Ưu tiên cao', $word);
         $this->assertStringContainsString('Ưu tiên bình thường', $word);
         $sourceRef = 'Báo cáo #'.$this->aliceReport.' · Đầu việc #'.$evidence[0]['item_id'];
-        $sourceStart = strpos($word, $sourceRef);
-        $this->assertNotFalse($sourceStart);
-        $this->assertStringContainsString($quotedSource, substr($word, $sourceStart));
+        $this->assertStringNotContainsString($sourceRef, $word);
+        $this->assertStringNotContainsString($quotedSource, $word);
+        $this->assertStringContainsString('Căn cứ · '.$decision['rationale'], $word);
         $this->assertStringNotContainsString('Báo cáo #'.$this->bobReport.' · Đầu việc #', $word);
         foreach (WorkReportDecision::FIELDS as $field) {
             $this->assertStringContainsString($decision[$field], $word);
@@ -253,6 +289,8 @@ class PersonalWeeklyReportTest extends TestCase
         $summary = $this->wordText($this->get($base.'/word?mode=summary'));
         $this->assertStringContainsString($company['overview'][0]['text'], $summary);
         $this->assertStringContainsString($company['support'][0]['text'], $summary);
+        $this->assertStringNotContainsString($sourceRef, $summary);
+        $this->assertStringNotContainsString($quotedSource, $summary);
         $this->assertStringNotContainsString($groupText, $summary);
         $this->assertStringNotContainsString($overview, $summary);
         $this->assertSame($saved, $unit->fresh()->result);
