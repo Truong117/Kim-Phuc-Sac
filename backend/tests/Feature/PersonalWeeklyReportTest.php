@@ -156,21 +156,32 @@ class PersonalWeeklyReportTest extends TestCase
         $this->getJson('/api/ai/work-report-analyses/'.$daily->id.'/word?mode=full')->assertUnprocessable();
     }
 
-    private function wordDocument($response): \DOMDocument
+    private function wordXmlParts($response, string ...$parts): array
     {
         $response->assertOk()->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         $path = $response->baseResponse->getFile()->getPathname();
         $zip = new \ZipArchive;
         $this->assertTrue($zip->open($path));
         try {
-            $document = new \DOMDocument;
-            $this->assertTrue($document->loadXML($zip->getFromName('word/document.xml')));
+            $documents = [];
+            foreach ($parts as $part) {
+                $xml = $zip->getFromName($part);
+                $this->assertNotFalse($xml, "Missing Word part: $part");
+                $document = new \DOMDocument;
+                $this->assertTrue($document->loadXML($xml));
+                $documents[] = $document;
+            }
 
-            return $document;
+            return $documents;
         } finally {
             $zip->close();
             unlink($path);
         }
+    }
+
+    private function wordDocument($response): \DOMDocument
+    {
+        return $this->wordXmlParts($response, 'word/document.xml')[0];
     }
 
     private function wordText($response): string
@@ -208,6 +219,66 @@ class PersonalWeeklyReportTest extends TestCase
             }
             $this->assertSame(0, (int) $xpath->evaluate('count(//w:p[w:pPr/w:pStyle[@w:val="H2"] and .="Căn cứ"])'));
         }
+    }
+
+    public function test_printed_claims_and_decision_fields_are_bulleted_and_each_reports_decisions_start_at_one(): void
+    {
+        $admin = $this->member('ADMIN');
+        $run = $this->createAnalysis();
+        $employee = $run->units()->where('unit_key', 'like', 'employee:'.$this->alice->id.':%')->firstOrFail();
+        $evidence = $employee->result['work_groups'][0]['evidence'];
+        foreach (['Công ty' => $run, 'Cá nhân' => $employee] as $scope => $model) {
+            $saved = $model->result;
+            $saved['overview'] = [['text' => $scope.' — Kết quả <A> & B.', 'evidence' => $evidence]];
+            $saved['recommendations'] = [];
+            foreach (['Đối chiếu bản đầu.', 'Chốt bản sau.'] as $text) {
+                $proposal = WorkReportDecision::fake(['text' => $scope.' — '.$text, 'evidence' => $evidence]);
+                $proposal['action'] = $scope.' — Hành động cho '.$text;
+                $saved['recommendations'][] = $proposal;
+            }
+            $model->update(['result' => $saved]);
+        }
+        $response = $this->actingAs($admin, 'web')->get('/api/ai/work-report-analyses/'.$run->id.'/word?mode=full');
+        [$document, $numbering, $relationships, $types] = $this->wordXmlParts($response, 'word/document.xml', 'word/numbering.xml', 'word/_rels/document.xml.rels', '[Content_Types].xml');
+        $this->assertSame('numbering.xml', (new \DOMXPath($relationships))->evaluate('string(//*[local-name()="Relationship" and @Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"]/@Target)'));
+        $this->assertSame('application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml', (new \DOMXPath($types))->evaluate('string(//*[local-name()="Override" and @PartName="/word/numbering.xml"]/@ContentType)'));
+
+        $body = new \DOMXPath($document);
+        $definitions = new \DOMXPath($numbering);
+        $namespace = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+        $body->registerNamespace('w', $namespace);
+        $definitions->registerNamespace('w', $namespace);
+        $lists = [];
+        foreach ($body->query('//w:p[w:pPr/w:numPr]') as $paragraph) {
+            $id = $body->evaluate('string(w:pPr/w:numPr/w:numId/@w:val)', $paragraph);
+            $level = $body->evaluate('string(w:pPr/w:numPr/w:ilvl/@w:val)', $paragraph);
+            $num = "/w:numbering/w:num[@w:numId='$id']";
+            $abstract = $definitions->evaluate("string($num/w:abstractNumId/@w:val)");
+            $style = "/w:numbering/w:abstractNum[@w:abstractNumId='$abstract']/w:lvl[@w:ilvl='$level']";
+            $restart = $definitions->evaluate("string($num/w:lvlOverride[@w:ilvl='$level']/w:startOverride/@w:val)");
+            $lists[$paragraph->textContent] = [
+                'id' => $id, 'level' => (int) $level,
+                'format' => $definitions->evaluate("string($style/w:numFmt/@w:val)"),
+                'marker' => $definitions->evaluate("string($style/w:lvlText/@w:val)"),
+                'start' => $restart === '' ? $definitions->evaluate("string($style/w:start/@w:val)") : $restart,
+            ];
+        }
+        foreach (['Công ty', 'Cá nhân'] as $scope) {
+            $claim = $lists[$scope.' — Kết quả <A> & B.'];
+            $first = $lists[$scope.' — Đối chiếu bản đầu.'];
+            $last = $lists[$scope.' — Chốt bản sau.'];
+            $field = $lists['Hành động đề xuất · '.$scope.' — Hành động cho Đối chiếu bản đầu.'];
+            $this->assertSame('bullet', $claim['format']);
+            $this->assertNotSame('', trim($claim['marker']));
+            $this->assertSame('bullet', $field['format']);
+            $this->assertNotSame('', trim($field['marker']));
+            $this->assertGreaterThan($claim['level'], $field['level']);
+            $this->assertSame('decimal', $first['format']);
+            $this->assertStringContainsString('%1', $first['marker']);
+            $this->assertSame('1', $first['start']);
+            $this->assertSame($first['id'], $last['id']);
+        }
+        $this->assertNotSame($lists['Công ty — Đối chiếu bản đầu.']['id'], $lists['Cá nhân — Đối chiếu bản đầu.']['id']);
     }
 
     public function test_word_preserves_saved_ai_claims_groups_metrics_and_decisions_in_order(): void
