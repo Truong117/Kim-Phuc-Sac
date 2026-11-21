@@ -182,6 +182,43 @@ test("the personal reader preserves repeated claims, complete work descriptions 
   ]);
 });
 
+test("personal weekly figures preserve work and keep uncertain quantities in clarification", async ({ page }) => {
+  const report = sample();
+  report.employee!.weekly_figures = [
+    { label: "Ảnh và video/Reel đã đăng", text: "6 ảnh, 4 video/Reel (2 kênh)" },
+  ];
+  report.employee!.work_totals = [
+    { metric: "Ảnh đã đăng trên Kênh A", total: 6, unit: "ảnh", status: "confirmed", entries: [] },
+    { metric: "Bài SEO chưa rõ phạm vi", total: null, unit: "bài", status: "needs_confirmation", entries: [] },
+  ];
+  await setup(page, () => report);
+  await expect(page.locator("dt").filter({ hasText: "Ảnh và video/Reel đã đăng" })).toBeVisible();
+  await expect(page.locator("dd").filter({ hasText: "6 ảnh, 4 video/Reel (2 kênh)" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Thiết kế nội dung" })).toBeVisible();
+  await expect(page.getByText("Đã thiết kế 2 ảnh", { exact: true })).toBeVisible();
+  await expect(page.getByText("Ảnh đã đăng trên Kênh A:", { exact: false })).toHaveCount(0);
+  await page.locator("summary").filter({ hasText: "Cần làm rõ" }).click();
+  await expect(page.getByText("Bài SEO chưa rõ phạm vi (bài)", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Nhận xét", exact: true })).toBeVisible();
+});
+
+for (const hasFigures of [false, true]) {
+  test(`personal quantity display respects ${hasFigures ? "an explicitly empty weekly figure list" : "legacy data"}`, async ({ page }) => {
+    const report = sample();
+    report.employee!.weekly_figures = hasFigures ? [] : undefined;
+    report.employee!.weekly_revenue = { amount: 1200000, display: "1.200.000 đồng" };
+    report.employee!.work_totals = [
+      { metric: "Chỉ số thử nghiệm", total: 2, unit: "ảnh", status: "confirmed", entries: [] },
+    ];
+    await setup(page, () => report);
+    await expect(page.getByText("1.200.000 đồng", { exact: true })).toBeVisible();
+    const oldChip = page.getByText("Chỉ số thử nghiệm:", { exact: false });
+    if (!hasFigures) await expect(oldChip).toBeVisible();
+    else await expect(oldChip).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Thiết kế nội dung" })).toBeVisible();
+  });
+}
+
 test("personal Word export uses the selected week and the displayed employee revision", async ({
   page,
 }) => {

@@ -49,6 +49,7 @@ class WorkReportAnalysisWorker
             // Before input synthesis, budget reservation or any provider invocation.
             WorkReportAnalysisOutput::assertExecutable($run->analysis_config);
             $input = $unit->input;
+            $weekly = (int) $run->days === 7;
             if ($unit->unit_key === 'summary') {
                 $parts = $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'completed')->get();
                 if ($parts->isEmpty()) {
@@ -58,6 +59,11 @@ class WorkReportAnalysisWorker
                     'analysis_stage' => 'company_summary',
                     'review_feedback' => $run->revisionRecord?->review_feedback,
                     'missing_units' => $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->count()];
+                if ($weekly) {
+                    $input['source_scope'] = $input['missing_units'] === 0 && empty($run->snapshot['daily_coverage']['missing_report_ids'])
+                        && ! in_array(false, array_column($input['parts'], 'employee_complete'), true)
+                        ? 'complete' : 'partial';
+                }
                 if ($unit->input['_consolidate'] ?? false) {
                     $batches = $run->units()->whereIn('id', $unit->input['_batch_ids'])->where('status', 'completed')->get();
                     $input['parts'] = $batches->pluck('result')->all();
@@ -85,6 +91,9 @@ class WorkReportAnalysisWorker
                     $input['work_inventory'] = WorkReportWeeklyWork::build($allowed);
                 }
                 $input['analysis_stage'] = 'employee_review';
+                if ($weekly) {
+                    $input['source_scope'] = $this->coversEmployeeSources($run->snapshot, $input['employee_id'], $allowed) ? 'complete' : 'partial';
+                }
                 unset($input['reports']);
                 unset($input['_reused_from_unit_id']);
             }
@@ -102,7 +111,7 @@ class WorkReportAnalysisWorker
             $stage = 'bind_evidence';
             $response['result'] = WorkReportEvidence::bind($response['result'], $allowed, $input);
             $stage = 'validate_output';
-            WorkReportAnalysisOutput::validate($response['result'], $allowed, true);
+            WorkReportAnalysisOutput::validate($response['result'], $allowed, true, conciseWeekly: $weekly);
             if ($summaryUnit && ($response['result']['work_groups'] ?? []) !== []) {
                 throw new \RuntimeException('AI_INVALID_SCHEMA');
             }
@@ -178,30 +187,70 @@ class WorkReportAnalysisWorker
 
     private function summaryParts(WorkReportAnalysis $run, Collection $parts): array
     {
-        $people = array_column($run->snapshot['employees'], 'name', 'employee_id');
-        $quantities = [];
+        $snapshot = $run->snapshot;
+        $people = array_column($snapshot['employees'], 'name', 'employee_id');
+        $weekly = (int) $run->days === 7;
+        $quantities = $reports = [];
         foreach ($parts as $part) {
             $id = $part->input['employee_id'];
-            $quantities[$id] = [...($quantities[$id] ?? []), ...($part->result['quantity_observations'] ?? [])];
+            $quantities[$id] ??= [];
+            array_push($quantities[$id], ...($part->result['quantity_observations'] ?? []));
+            if ($weekly) {
+                $reports[$id] ??= [];
+                array_push($reports[$id], ...$part->input['reports']);
+            }
         }
         $failed = $run->units()->where('unit_key', 'like', 'employee:%')->where('status', 'failed')->get()
             ->map(fn ($u) => $u->input['employee_id'])->all();
+        $complete = [];
+        foreach (array_keys($quantities) as $id) {
+            $complete[$id] = ! in_array($id, $failed, true)
+                && (! $weekly || $this->coversEmployeeSources($snapshot, $id, $reports[$id]));
+        }
         $seen = [];
 
-        return $parts->map(function ($unit) use ($people, $quantities, $failed, &$seen): array {
+        return $parts->map(function ($unit) use ($people, $quantities, $complete, &$seen): array {
             $id = $unit->input['employee_id'];
             $totals = isset($seen[$id]) ? [] : WorkReportWorkTotals::totals($quantities[$id]);
             $seen[$id] = true;
 
             return ['id' => (int) $unit->id, 'result' => WorkReportEvidence::prepare([
                 ...array_intersect_key($unit->result, array_flip(WorkReportAnalysisOutput::SECTIONS)),
-                'employee_id' => $id, 'employee_name' => $people[$id] ?? null,
-                'employee_complete' => ! in_array($id, $failed, true),
+                'employee_id' => $id, 'employee_name' => $people[$id] ?? null, 'employee_complete' => $complete[$id],
                 'work_groups' => $unit->result['work_groups'] ?? [],
                 'work_inventory' => isset($unit->input['daily_documents']) ? [] : WorkReportWeeklyWork::build($unit->input['reports']),
                 'work_totals' => array_map(fn ($t) => array_diff_key($t, ['entries' => true]), $totals),
             ], $unit->input['reports'])];
         })->values()->all();
+    }
+
+    /** A single daily report may itself be spread across employee units. */
+    private function coversEmployeeSources(array $snapshot, int $employeeId, array $reports): bool
+    {
+        $items = [];
+        foreach ($reports as $report) {
+            foreach ($report['items'] as $item) {
+                $items[$report['report_id']][$item['item_id']] = true;
+            }
+        }
+        $matched = false;
+        $missing = array_flip($snapshot['daily_coverage']['missing_report_ids'] ?? []);
+        foreach ($snapshot['reports'] as $source) {
+            if ($source['employee_id'] !== $employeeId) {
+                continue;
+            }
+            if (isset($missing[$source['report_id']])) {
+                return false;
+            }
+            foreach ($source['items'] as $item) {
+                if (! isset($items[$source['report_id']][$item['item_id']])) {
+                    return false;
+                }
+                $matched = true;
+            }
+        }
+
+        return $matched;
     }
 
     public function settle(int $runId): void

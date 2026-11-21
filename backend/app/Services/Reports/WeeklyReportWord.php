@@ -101,12 +101,12 @@ final class WeeklyReportWord
         };
     }
 
-    private function quantityTable(array $rows): string
+    private function quantityTable(array $rows, bool $grouped): string
     {
         if (! $rows) {
             return '';
         }
-        $labelWidth = 6200;
+        $labelWidth = $grouped ? 3250 : 6200;
         $valueWidth = 9386 - $labelWidth;
         $xml = '<w:tbl><w:tblPr><w:tblW w:w="9386" w:type="dxa"/><w:tblBorders>'
             .'<w:bottom w:val="single" w:sz="4" w:color="D9D9D9"/><w:insideH w:val="single" w:sz="4" w:color="D9D9D9"/></w:tblBorders>'
@@ -142,11 +142,16 @@ final class WeeklyReportWord
 
                 continue;
             }
-            $amount = rtrim(rtrim(number_format($value, 6, ',', '.'), '0'), ',');
-            $rows[] = [$this->p($metric['metric']), $this->p(trim($amount.' '.$metric['unit']))];
+            if (! isset($person['weekly_figures'])) {
+                $amount = rtrim(rtrim(number_format($value, 6, ',', '.'), '0'), ',');
+                $rows[] = [$this->p($metric['metric']), $this->p(trim($amount.' '.$metric['unit']))];
+            }
         }
-        $xml .= $this->quantityTable($rows);
-        if (($person['status'] ?? null) !== 'completed' && ($rows || $unclear)) {
+        foreach ($person['weekly_figures'] ?? [] as $figure) {
+            $rows[] = [$this->p($figure['label']), $this->p($figure['text'])];
+        }
+        $xml .= $this->quantityTable($rows, isset($person['weekly_figures']));
+        if (($person['status'] ?? null) !== 'completed' && ! empty($person['work_totals'])) {
             $xml .= $this->p('Số tổng hiện chỉ dùng các phần AI đã đọc thành công; chưa đại diện đầy đủ cho kỳ này.');
         }
 

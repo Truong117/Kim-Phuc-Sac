@@ -20,7 +20,7 @@ final class WorkReportDecision
         return $claim;
     }
 
-    public static function validate(array $claim, bool $currentContract): void
+    public static function validate(array $claim, bool $currentContract, bool $conciseWeekly = false): void
     {
         $fields = ['text', 'evidence', 'priority', ...self::FIELDS];
         // Historic results stay readable/validatable without inventing missing reasoning.
@@ -31,22 +31,23 @@ final class WorkReportDecision
             || ! in_array($claim['priority'] ?? null, ['high', 'normal'], true)) {
             throw new RuntimeException('AI_INVALID_SCHEMA');
         }
+        $requiredText = $conciseWeekly ? ['action', 'expected_outcome'] : array_diff(self::FIELDS, ['decision_needed']);
         foreach (self::FIELDS as $field) {
             if (! is_string($claim[$field]) || strlen($claim[$field]) > 2000
-                || ($field !== 'decision_needed' && trim($claim[$field]) === '')) {
+                || (in_array($field, $requiredText, true) && trim($claim[$field]) === '')) {
                 throw new RuntimeException('AI_INVALID_SCHEMA');
             }
         }
     }
 
-    public static function fake(array $claim): array
+    public static function fake(array $claim, bool $conciseWeekly = false): array
     {
         return [...$claim, 'priority' => 'normal',
-            'rationale' => 'Nguồn báo cáo ghi nhận công việc đang vướng mắc.',
-            'impact' => 'Chưa đủ thông tin để xác định mức ảnh hưởng của vướng mắc.',
+            'rationale' => $conciseWeekly ? '' : 'Nguồn báo cáo ghi nhận công việc đang vướng mắc.',
+            'impact' => $conciseWeekly ? '' : 'Chưa đủ thông tin để xác định mức ảnh hưởng của vướng mắc.',
             'action' => 'Trao đổi với người báo cáo về nguyên nhân và hỗ trợ cần thiết.',
             'expected_outcome' => 'Làm rõ trở ngại và bước xử lý phù hợp.',
-            'verification' => 'Đối chiếu câu trả lời với cập nhật tiếp theo của chính công việc này.',
+            'verification' => $conciseWeekly ? '' : 'Đối chiếu câu trả lời với cập nhật tiếp theo của chính công việc này.',
             'decision_needed' => ''];
     }
 }

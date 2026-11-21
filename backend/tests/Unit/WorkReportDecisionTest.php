@@ -56,6 +56,42 @@ class WorkReportDecisionTest extends TestCase
         WorkReportAnalysisOutput::validate($result, $this->reports(), true);
     }
 
+    public function test_only_the_weekly_summary_allows_empty_explanations_when_action_and_outcome_are_present(): void
+    {
+        $result = WorkReportAnalysisOutput::fake(['reports' => $this->reports()]);
+        foreach (['rationale', 'impact', 'verification', 'decision_needed'] as $field) {
+            $result['recommendations'][0][$field] = '';
+        }
+        WorkReportAnalysisOutput::validate($result, $this->reports(), true, conciseWeekly: true);
+        WorkReportAnalysisOutput::validate($result, $this->reports(), false, conciseWeekly: true);
+        $this->expectException(RuntimeException::class);
+        WorkReportAnalysisOutput::validate($result, $this->reports(), true);
+    }
+
+    public static function invalidWeeklyProposals(): array
+    {
+        return [
+            'blank action' => ['action', ' '],
+            'blank outcome' => ['expected_outcome', ''],
+            'missing optional explanation key' => ['impact', null],
+            'non-string optional explanation' => ['verification', false],
+            'no decision evidence' => ['evidence', []],
+        ];
+    }
+
+    #[DataProvider('invalidWeeklyProposals')]
+    public function test_concise_weekly_decisions_still_require_action_outcome_shape_and_evidence(string $field, mixed $value): void
+    {
+        $result = WorkReportAnalysisOutput::fake(['reports' => $this->reports()]);
+        if ($value === null) {
+            unset($result['recommendations'][0][$field]);
+        } else {
+            $result['recommendations'][0][$field] = $value;
+        }
+        $this->expectException(RuntimeException::class);
+        WorkReportAnalysisOutput::validate($result, $this->reports(), true, conciseWeekly: true);
+    }
+
     public function test_plausible_decision_with_a_fabricated_quote_is_rejected(): void
     {
         $result = WorkReportAnalysisOutput::fake(['reports' => $this->reports()]);
