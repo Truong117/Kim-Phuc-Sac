@@ -26,6 +26,11 @@ final class CrmAccess
 
     public function scopes(OrganizationMembership $member, string $permission): array
     {
+        // Anyone granted CRM viewing can read the shared customer directory in their organization.
+        if ($permission === 'customers.view') {
+            return $this->authorization->allows($member->user, $permission) ? [DataScope::ORGANIZATION] : [];
+        }
+
         return array_values(array_filter(
             $this->authorization->scopesFor($member->user, $permission),
             static fn ($scope) => in_array($scope, [
