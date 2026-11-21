@@ -30,6 +30,9 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
   const [loaded, setLoaded] = useState<LoadedDraft | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [finishedRequest, setFinishedRequest] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+  const requestKey = scope ? scope + ":" + revision : null;
 
   useEffect(() => {
     if (!scope) return;
@@ -46,6 +49,9 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailure(scope);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFinishedRequest(requestKey);
       });
     const refresh = () => setRevision((version) => version + 1);
     window.addEventListener("focus", refresh);
@@ -53,9 +59,11 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
       controller.abort();
       window.removeEventListener("focus", refresh);
     };
-  }, [date, revision, scope]);
+  }, [date, requestKey, scope]);
 
   const state = loaded?.scope === scope ? loaded : null;
+  const loading = scope !== null && finishedRequest !== requestKey;
+  const error = scope !== null && failure === scope;
   const selected =
     state?.draft.activities.filter(
       ({ id }) => !state.preference.excluded.includes(id),
@@ -91,14 +99,20 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
 
   return {
     activities: state?.draft.activities ?? [],
+    selectedActivities: selected,
     excluded: state?.preference.excluded ?? [],
-    error: scope !== null && failure === scope,
+    error,
+    loading,
+    refreshed: refreshNotice === scope && scope !== null && !loading && !error,
     hasConsultation,
     hasPlan: selected.some(({ kind }) => kind === "FOLLOW_UP"),
     selection,
     taskId: task?.id ?? 0,
     tasks,
-    refresh: () => setRevision((version) => version + 1),
+    refresh: () => {
+      setRefreshNotice(scope);
+      setRevision((version) => version + 1);
+    },
     toggle(id: number) {
       if (!state) return;
       const { excluded } = state.preference;

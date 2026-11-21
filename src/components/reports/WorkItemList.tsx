@@ -19,6 +19,9 @@ interface WorkItemListProps {
   facebookPages?: FacebookReportPage[];
   disabled?: boolean;
   planSection?: ReactNode;
+  additionalItems?: Partial<
+    Record<WorkStatus, { content: ReactNode; count: number }>
+  >;
   items: WorkItemFormData[];
   errors: Record<string, WorkItemValidationErrors>;
   onItemChange: (
@@ -36,6 +39,7 @@ export default function WorkItemList({
   reportDate,
   disabled,
   planSection,
+  additionalItems = {},
   errors,
   onItemChange,
   onItemBlur,
@@ -44,11 +48,15 @@ export default function WorkItemList({
   onEditTask,
 }: WorkItemListProps) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
-  const hasReachedLimit = items.length >= 50;
+  const additionalCount = Object.values(additionalItems).reduce(
+    (count, item) => count + (item?.count ?? 0),
+    0,
+  );
+  const hasReachedLimit = items.length + additionalCount >= 50;
 
   return (
     <div className="space-y-5">
-      {items.length === 0 && (
+      {items.length === 0 && additionalCount === 0 && (
         <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-5 py-8 text-center text-theme-sm text-gray-500 dark:border-gray-700 dark:bg-white/3 dark:text-gray-400">
           {t("detailedEmpty")}
         </div>
@@ -94,6 +102,7 @@ export default function WorkItemList({
                   />
                 ),
               )}
+            {additionalItems[status]?.content}
             <Button
               type="button"
               variant="outline"
