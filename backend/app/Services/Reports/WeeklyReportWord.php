@@ -9,11 +9,14 @@ use ZipArchive;
 
 final class WeeklyReportWord
 {
+    private const BULLET_LIST = 1;
+
     public function download(array $period, array $employees, ?array $company = null, ?string $context = null): BinaryFileResponse
     {
         $date = fn ($s) => implode('/', array_reverse(explode('-', $s)));
         $dates = $date($period['start_date']).' – '.$date($period['end_date']);
         $body = '';
+        $lastListId = self::BULLET_LIST;
         if ($company !== null) {
             $body = $this->heading('Tổng kết công việc tuần', $dates);
             if ($context !== null) {
@@ -24,7 +27,7 @@ final class WeeklyReportWord
                 .$this->claimSection('2. Công việc đang tiếp tục', $result['ongoing'] ?? [], 'Chưa ghi nhận công việc đang tiếp tục trong bản này.')
                 .$this->claimSection('3. Vướng mắc cần theo dõi', [...($result['attention'] ?? []), ...($result['support'] ?? [])], 'Chưa ghi nhận vướng mắc cần theo dõi trong bản này.')
                 .$this->clarifications($result['uncertainties'] ?? [], [])
-                .$this->decisions($result['recommendations'] ?? []);
+                .$this->decisions($result['recommendations'] ?? [], ++$lastListId);
         }
         foreach ($employees as $person) {
             $body .= $this->heading('Báo cáo tuần của '.$person['name'], $dates, newPage: $body !== '');
@@ -41,7 +44,7 @@ final class WeeklyReportWord
                 $body .= $this->p($this->status($person));
             }
             if (($person['result'] ?? null) !== null || ! empty($person['work_groups']) || ! empty($person['work_totals'])) {
-                $body .= $this->employeeContent($person);
+                $body .= $this->employeeContent($person, ++$lastListId);
             } elseif (($person['status'] ?? null) === 'completed') {
                 $body .= $this->p($this->status($person));
             }
@@ -56,10 +59,13 @@ final class WeeklyReportWord
             if (! copy(resource_path('weekly-report/template.docx'), $path) || $zip->open($path) !== true) {
                 throw new RuntimeException('Không thể mở mẫu Word.');
             }
-            $template = $zip->getFromName('word/document.xml');
-            $marker = '<!--REPORT_BODY-->';
-            if ($template === false || ! str_contains($template, $marker)
-                || ! $zip->addFromString('word/document.xml', str_replace($marker, $body, $template)) || ! $zip->close()) {
+            $this->fillPart($zip, 'word/document.xml', '<!--REPORT_BODY-->', $body);
+            $lists = '';
+            for ($id = self::BULLET_LIST + 1; $id <= $lastListId; $id++) {
+                $lists .= '<w:num w:numId="'.$id.'"><w:abstractNumId w:val="1"/><w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>';
+            }
+            $this->fillPart($zip, 'word/numbering.xml', '<!--DECISION_LISTS-->', $lists);
+            if (! $zip->close()) {
                 throw new RuntimeException('Không thể ghi tệp Word.');
             }
             $name = 'KPS_Bao_cao_tuan_'.$period['start_date'].'_'.$period['end_date'].'.docx';
@@ -69,6 +75,15 @@ final class WeeklyReportWord
         } catch (Throwable $e) {
             @unlink($path);
             throw $e;
+        }
+    }
+
+    private function fillPart(ZipArchive $zip, string $part, string $marker, string $replacement): void
+    {
+        $template = $zip->getFromName($part);
+        if ($template === false || ! str_contains($template, $marker)
+            || ! $zip->addFromString($part, str_replace($marker, $replacement, $template))) {
+            throw new RuntimeException('Không thể ghi tệp Word.');
         }
     }
 
@@ -111,13 +126,13 @@ final class WeeklyReportWord
         return $xml.'</w:tbl>';
     }
 
-    private function employeeContent(array $person): string
+    private function employeeContent(array $person, int $decisionList): string
     {
         $result = $person['result'] ?? [];
         $groups = $person['work_groups'] ?? [];
         $xml = $this->p('Tổng hợp từ báo cáo', 'H2');
         foreach ($groups as $group) {
-            $xml .= $this->p($group['title'], bold: true, keepNext: true).$this->p($group['text']);
+            $xml .= $this->p($group['title'], 'GroupTitle').$this->p($group['text'], 'GroupBody');
         }
         $rows = $unclear = [];
         foreach ($person['work_totals'] ?? [] as $metric) {
@@ -138,14 +153,14 @@ final class WeeklyReportWord
         return $xml.$this->clarifications($result['uncertainties'] ?? [], $unclear)
             .$this->claimSection('Nhận xét', [...($result['overview'] ?? []), ...($result['highlights'] ?? []),
                 ...($result['ongoing'] ?? []), ...($result['attention'] ?? []), ...($result['support'] ?? [])], 'Chưa có nhận xét AI cho bản tổng hợp này.')
-            .$this->decisions($result['recommendations'] ?? []);
+            .$this->decisions($result['recommendations'] ?? [], $decisionList);
     }
 
     private function clarifications(array $claims, array $metrics): string
     {
         $xml = $this->p('Cần làm rõ', 'H2');
         foreach ($metrics as $metric) {
-            $xml .= $this->p($metric['metric'].($metric['unit'] === '' ? '' : ' ('.$metric['unit'].')'));
+            $xml .= $this->p($metric['metric'].($metric['unit'] === '' ? '' : ' ('.$metric['unit'].')'), 'ClaimBullet', listId: self::BULLET_LIST);
         }
 
         return $xml.$this->claimList($claims).(! $claims && ! $metrics ? $this->p('Chưa ghi nhận nội dung cần làm rõ trong kết quả này.') : '');
@@ -160,35 +175,38 @@ final class WeeklyReportWord
     {
         $xml = '';
         foreach ($claims as $claim) {
-            $xml .= $this->p($claim['text']);
+            $xml .= $this->p($claim['text'], 'ClaimBullet', listId: self::BULLET_LIST);
         }
 
         return $xml;
     }
 
-    private function decisions(array $claims): string
+    private function decisions(array $claims, int $decisionList): string
     {
         $xml = $this->p('4. Việc cần xem xét và quyết định', 'H2');
         if (! $claims) {
             return $xml.$this->p('Chưa có đề xuất hỗ trợ AI cho bản tổng hợp này.');
         }
         foreach ($claims as $claim) {
-            $xml .= $this->p($claim['text'], bold: true, keepNext: isset($claim['priority']) || isset($claim['action']));
-            if (isset($claim['priority'])) {
-                $xml .= $this->p($claim['priority'] === 'high' ? 'Ưu tiên cao' : 'Ưu tiên bình thường');
-            }
+            $fields = '';
             foreach (['rationale' => 'Căn cứ', 'impact' => 'Ảnh hưởng', 'action' => 'Hành động đề xuất',
                 'expected_outcome' => 'Kết quả mong đợi', 'verification' => 'Cách kiểm chứng', 'decision_needed' => 'Quyết định cần quản lý'] as $field => $label) {
                 if (isset($claim[$field]) && $claim[$field] !== '') {
-                    $xml .= $this->p($claim[$field], label: $label);
+                    $fields .= $this->p($claim[$field], 'DecisionField', label: $label, listId: self::BULLET_LIST);
                 }
             }
+            $hasPriority = isset($claim['priority']);
+            $xml .= $this->p($claim['text'], 'DecisionTitle', keepNext: $hasPriority || $fields !== '', listId: $decisionList);
+            if ($hasPriority) {
+                $xml .= $this->p($claim['priority'] === 'high' ? 'Ưu tiên cao' : 'Ưu tiên bình thường', 'DecisionPriority', keepNext: $fields !== '');
+            }
+            $xml .= $fields;
         }
 
         return $xml;
     }
 
-    private function p(string $text, string $style = 'Normal', bool $bold = false, ?string $label = null, bool $keepNext = false, bool $pageBreakBefore = false): string
+    private function p(string $text, string $style = 'Normal', ?string $label = null, bool $keepNext = false, bool $pageBreakBefore = false, ?int $listId = null): string
     {
         $prefix = $label === null ? '' : '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">'.$this->escape($label).' · </w:t></w:r>';
         $lines = preg_split('/\R/u', $text);
@@ -196,7 +214,10 @@ final class WeeklyReportWord
 
         $pagination = ($keepNext ? '<w:keepNext/>' : '').($pageBreakBefore ? '<w:pageBreakBefore/>' : '');
 
-        return '<w:p><w:pPr><w:pStyle w:val="'.$style.'"/>'.$pagination.'</w:pPr>'.$prefix.'<w:r>'.($bold ? '<w:rPr><w:b/></w:rPr>' : '')
+        $level = $style === 'DecisionField' ? 1 : 0;
+        $numbering = $listId === null ? '' : '<w:numPr><w:ilvl w:val="'.$level.'"/><w:numId w:val="'.$listId.'"/></w:numPr>';
+
+        return '<w:p><w:pPr><w:pStyle w:val="'.$style.'"/>'.$pagination.$numbering.'</w:pPr>'.$prefix.'<w:r>'
             .implode('<w:br/>', $runs).'</w:r></w:p>';
     }
 
