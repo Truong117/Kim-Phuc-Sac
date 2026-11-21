@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectLockedReportChanges } from "../src/utils/lockedReportAmendment.ts";
+import {
+  collectLockedReportChanges,
+  newAmendmentItemErrors,
+} from "../src/utils/lockedReportAmendment.ts";
 
 const baseline = {
   next_day_plan: "Tiếp tục",
@@ -72,4 +75,97 @@ test("no-op and whitespace do not become corrections; required changed text cann
     }).changes,
     { next_day_plan: "Kế hoạch mới" },
   );
+});
+
+const addedItem = {
+  key: 1,
+  status: "COMPLETED",
+  content: " Việc mới ",
+  result: " Xong ",
+  note: "",
+  issue: "",
+  evidence: " https://example.test/proof \n\n",
+};
+
+test("locked amendment serializes manual additions and only authorized existing deletions", () => {
+  const draft = {
+    items: { 11: { result: "Bỏ qua vì đang xóa" } },
+    deletedItemIds: new Set([11, 12, 13]),
+    addedItems: [addedItem],
+  };
+  assert.deepEqual(
+    collectLockedReportChanges(
+      baseline,
+      {
+        editable_item_ids: [11],
+        deletable_item_ids: [11],
+        can_edit_next_day_plan: false,
+        can_add_items: true,
+      },
+      draft,
+    ).changes,
+    {
+      deleted_item_ids: [11],
+      added_items: [
+        {
+          status: "COMPLETED",
+          content: "Việc mới",
+          result: "Xong",
+          evidence_links: ["https://example.test/proof"],
+        },
+      ],
+    },
+  );
+  assert.deepEqual(
+    collectLockedReportChanges(
+      baseline,
+      {
+        editable_item_ids: [11],
+        can_edit_next_day_plan: false,
+      },
+      draft,
+    ).changes,
+    { items: [{ id: 11, result: "Bỏ qua vì đang xóa" }] },
+  );
+});
+
+test("new completed items require result and safe per-item evidence", () => {
+  assert.deepEqual(newAmendmentItemErrors(addedItem), {});
+  assert.deepEqual(
+    newAmendmentItemErrors({
+      ...addedItem,
+      content: " ",
+      result: " ",
+      evidence: "\n ",
+    }),
+    {
+      content: "required",
+      result: "required",
+      evidence: "required",
+    },
+  );
+  for (const evidence of [
+    "https://user:secret@example.test",
+    "https://example.test/a\nhttps://example.test/a",
+    "ftp://example.test/file",
+    Array.from(
+      { length: 11 },
+      (_, index) => `https://example.test/${index}`,
+    ).join("\n"),
+  ]) {
+    assert.deepEqual(newAmendmentItemErrors({ ...addedItem, evidence }), {
+      evidence: "invalid",
+    });
+  }
+  for (const status of ["IN_PROGRESS", "BLOCKED"]) {
+    assert.deepEqual(
+      newAmendmentItemErrors({
+        ...addedItem,
+        status,
+        result: "",
+        evidence: "",
+      }),
+      {},
+    );
+  }
 });

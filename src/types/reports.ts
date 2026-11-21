@@ -60,6 +60,8 @@ export type LockedReportAmendment = {
   expected_revision: string | null;
   reason_required: boolean;
   editable_item_ids: number[];
+  can_add_items?: boolean;
+  deletable_item_ids?: number[];
   can_edit_next_day_plan: boolean;
   history: LockedReportAmendmentHistoryEntry[];
   history_truncated?: boolean;
@@ -74,11 +76,22 @@ export type LockedReportAmendmentItemInput = {
   issue?: string | null;
 };
 
+export type LockedReportAmendmentNewItemInput = {
+  status: WorkStatus;
+  content: string;
+  result?: string;
+  note?: string;
+  issue?: string;
+  evidence_links?: string[];
+};
+
 export type LockedReportAmendmentInput = {
   expected_revision: string;
   reason?: string;
   next_day_plan?: string;
   items?: LockedReportAmendmentItemInput[];
+  added_items?: LockedReportAmendmentNewItemInput[];
+  deleted_item_ids?: number[];
 };
 
 export type DailyReport = {

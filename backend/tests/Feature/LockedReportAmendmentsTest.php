@@ -40,14 +40,7 @@ class LockedReportAmendmentsTest extends TestCase
         $report = $this->report($admin);
         $url = "/api/reports/{$report->id}";
         $item = $report->items()->firstOrFail();
-        DB::table('daily_report_ai_documents')->insert([
-            'organization_id' => $report->organization_id, 'daily_report_id' => $report->id,
-            'requested_by_user_id' => $admin->id, 'report_date' => '2026-11-19',
-            'cache_key' => str_repeat('a', 64), 'source_hash' => str_repeat('b', 64),
-            'snapshot' => 'frozen-source', 'analysis_config' => 'frozen-contract', 'status' => 'completed',
-            'result' => 'finalized-result', 'captured_at' => now()->subMinute(),
-        ]);
-        $document = (array) DB::table('daily_report_ai_documents')->first();
+        $document = $this->saveFrozenAiDocument($report, $admin);
 
         $revision = $this->actingAs($admin, 'web')->getJson($url)->assertOk()
             ->assertJsonPath('data.actions.can_edit', false)
@@ -91,6 +84,132 @@ class LockedReportAmendmentsTest extends TestCase
             'assistant editing employee' => ['EXECUTIVE_ASSISTANT', false],
             'assistant editing own report' => ['EXECUTIVE_ASSISTANT', true],
         ];
+    }
+
+    public function test_admin_can_replace_manual_row_without_unlocking_and_audit_contains_both_snapshots(): void
+    {
+        $admin = $this->member('ADMIN');
+        $report = $this->report($admin);
+        $oldItem = $report->items()->firstOrFail();
+        $document = $this->saveFrozenAiDocument($report, $admin);
+        $path = "/api/reports/{$report->id}";
+        $revision = $this->actingAs($admin, 'web')->getJson($path)->assertOk()
+            ->assertJsonPath('data.locked_amendment.can_add_items', true)
+            ->assertJsonPath('data.locked_amendment.deletable_item_ids', [$oldItem->id])
+            ->json('data.locked_amendment.expected_revision');
+        $input = [
+            'expected_revision' => $revision, 'deleted_item_ids' => [$oldItem->id],
+            'added_items' => [[
+                'status' => 'COMPLETED', 'content' => '  Công việc bổ sung  ', 'result' => 'Kết quả mới',
+                'evidence_links' => ['https://example.test/new-proof'],
+            ]],
+        ];
+        $newId = $this->patchJson($path.'/locked-amendment', $input)->assertOk()
+            ->assertJsonPath('data.is_locked', true)
+            ->assertJsonPath('data.locked_at', $report->locked_at->toIso8601String())
+            ->assertJsonPath('data.employee.id', $admin->id)
+            ->assertJsonCount(1, 'data.items')
+            ->assertJsonPath('data.items.0.content', 'Công việc bổ sung')
+            ->assertJsonPath('data.items.0.evidence_links', ['https://example.test/new-proof'])
+            ->assertJsonPath('data.locked_amendment.history', [])
+            ->json('data.items.0.id');
+        $event = DB::table('daily_report_amendments')->sole();
+        $changes = json_decode(Crypt::decryptString($event->encrypted_changes), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertFalse((bool) $event->visible_in_report);
+        $this->assertNull($changes['added_items'][$newId]['before']);
+        $this->assertSame('Công việc bổ sung', $changes['added_items'][$newId]['after']['content']);
+        $this->assertSame(['https://example.test/source'], $changes['deleted_items'][$oldItem->id]['before']['evidence_links']);
+        $this->assertNull($changes['deleted_items'][$oldItem->id]['after']);
+        $this->assertModelMissing($oldItem);
+        $this->assertSame($document, (array) DB::table('daily_report_ai_documents')->sole());
+        $this->patchJson($path.'/locked-amendment', $input)->assertConflict()->assertJsonPath('code', 'LOCKED_AMENDMENT_STALE');
+        $this->assertDatabaseCount('daily_report_amendments', 1);
+    }
+
+    public function test_add_and_remove_validate_manually_entered_rows_and_leave_original_on_error(): void
+    {
+        $assistant = $this->member('EXECUTIVE_ASSISTANT');
+        $report = $this->report($this->member('OFFICE_STAFF', DataScope::OWN));
+        $report->update(['next_day_plan' => null]);
+        $oldItem = $report->items()->firstOrFail();
+        $path = "/api/reports/{$report->id}";
+        $revision = $this->actingAs($assistant, 'web')->getJson($path)->assertOk()->json('data.locked_amendment.expected_revision');
+        $base = ['expected_revision' => $revision, 'reason' => 'Đính chính'];
+        $completed = ['status' => 'COMPLETED', 'content' => 'Công việc bổ sung'];
+        $this->patchJson($path.'/locked-amendment', [...$base, 'added_items' => [$completed]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['added_items.0.result', 'added_items.0.evidence_links']);
+        $links = ['https://example.test/duplicate', 'https://example.test/duplicate', 'https://name:secret@example.test/proof'];
+        $this->patchJson($path.'/locked-amendment', [...$base, 'added_items' => [[...$completed, 'result' => 'Kết quả', 'evidence_links' => $links]]])
+            ->assertUnprocessable()->assertJsonValidationErrors(['added_items.0.evidence_links.1', 'added_items.0.evidence_links.2']);
+        $this->patchJson($path.'/locked-amendment', [...$base, 'added_items' => [[...$completed, 'task_id' => 1]]])
+            ->assertUnprocessable()->assertJsonValidationErrors('added_items.0');
+        $deletion = [...$base, 'deleted_item_ids' => [$oldItem->id]];
+        $this->patchJson($path.'/locked-amendment', [...$deletion, 'items' => [['id' => $oldItem->id, 'content' => 'Không lưu']]])
+            ->assertUnprocessable()->assertJsonValidationErrors('items.0.id');
+        $this->patchJson($path.'/locked-amendment', $deletion)
+            ->assertUnprocessable()->assertJsonValidationErrors('deleted_item_ids');
+        $this->assertModelExists($oldItem);
+        $this->assertDatabaseCount('daily_report_amendments', 0);
+
+        $this->patchJson($path.'/locked-amendment', [...$deletion, 'next_day_plan' => 'Kế hoạch mới'])
+            ->assertOk()->assertJsonPath('data.items', [])->assertJsonPath('data.next_day_plan', 'Kế hoạch mới')
+            ->assertJsonPath('data.locked_amendment.history.0.reason', 'Đính chính');
+    }
+
+    public function test_add_at_the_item_limit_requires_deleting_a_row_in_same_amendment(): void
+    {
+        $admin = $this->member('ADMIN');
+        $report = $this->report($admin);
+        $oldItem = $report->items()->firstOrFail();
+        foreach (range(2, 50) as $position) {
+            $report->items()->create(['content' => "Công việc $position", 'result' => '', 'status' => 'IN_PROGRESS', 'sort_order' => $position]);
+        }
+        $path = "/api/reports/{$report->id}";
+        $revision = $this->actingAs($admin, 'web')->getJson($path)->assertOk()
+            ->assertJsonPath('data.locked_amendment.can_add_items', true)
+            ->json('data.locked_amendment.expected_revision');
+        $input = ['expected_revision' => $revision, 'added_items' => [['status' => 'BLOCKED', 'content' => 'Đầu việc cuối']]];
+        $this->patchJson($path.'/locked-amendment', $input)->assertUnprocessable()->assertJsonValidationErrors('added_items');
+        $this->patchJson($path.'/locked-amendment', [...$input, 'deleted_item_ids' => [$oldItem->id]])
+            ->assertOk()->assertJsonCount(50, 'data.items')
+            ->assertJsonPath('data.items.49.content', 'Đầu việc cuối');
+        $this->assertModelMissing($oldItem);
+    }
+
+    public function test_linked_social_and_reconciled_work_rows_cannot_be_deleted_even_without_embedded_metadata(): void
+    {
+        $admin = $this->member('ADMIN');
+        $report = $this->report($admin);
+        $social = $report->items()->firstOrFail();
+        $reconciled = $report->items()->create(['content' => 'Đầu việc đối soát', 'result' => '', 'status' => 'IN_PROGRESS', 'sort_order' => 2]);
+        $manual = $report->items()->create(['content' => 'Đầu việc nhập tay riêng', 'result' => '', 'status' => 'IN_PROGRESS', 'sort_order' => 3]);
+        $post = DB::table('social_posts')->insertGetId([
+            'organization_id' => $report->organization_id, 'external_id' => '100_100', 'url' => 'https://facebook.com/posts/100',
+        ]);
+        DB::table('social_post_sources')->insert(['social_post_id' => $post, 'daily_report_item_id' => $social->id, 'link_hash' => str_repeat('b', 64)]);
+        $task = DB::table('tasks')->insertGetId([
+            'organization_id' => $report->organization_id, 'creator_id' => $admin->id, 'assignee_id' => $admin->id,
+            'title' => 'Nhiệm vụ đã đối soát', 'priority' => 'NORMAL', 'due_date' => '2026-11-21',
+        ]);
+        DB::table('task_progress_imports')->insert([
+            'organization_id' => $report->organization_id, 'task_id' => $task, 'actor_id' => $admin->id,
+            'report_id' => $report->id, 'report_item_id' => $reconciled->id,
+            'report_date' => $report->report_date->toDateString(), 'unit' => 'video', 'source_hash' => str_repeat('a', 64),
+            'selection_hash' => str_repeat('b', 64), 'outputs' => '[]', 'confirmation_note' => 'Đã đối soát', 'created_at' => now(),
+        ]);
+        $path = "/api/reports/{$report->id}";
+        $revision = $this->actingAs($admin, 'web')->getJson($path)->assertOk()
+            ->assertJsonPath('data.locked_amendment.deletable_item_ids', [$manual->id])
+            ->json('data.locked_amendment.expected_revision');
+        foreach ([$social, $reconciled] as $linked) {
+            $this->patchJson($path.'/locked-amendment', [
+                'expected_revision' => $revision, 'deleted_item_ids' => [$manual->id, $linked->id],
+            ])->assertUnprocessable()->assertJsonValidationErrors('deleted_item_ids.1');
+        }
+        $this->assertModelExists($manual);
+        $this->assertDatabaseCount('social_post_sources', 1);
+        $this->assertDatabaseCount('task_progress_imports', 1);
+        $this->assertDatabaseCount('daily_report_amendments', 0);
     }
 
     #[DataProvider('visibleEditors')]
@@ -202,6 +321,9 @@ class LockedReportAmendmentsTest extends TestCase
                 'expected_revision' => $revision, 'next_day_plan' => 'Không lưu',
                 'items' => [['id' => $item->id, 'content' => 'Không lưu'], ['id' => $forbidden->id, 'content' => 'Không lưu']],
             ])->assertUnprocessable()->assertJsonValidationErrors('items.1.id');
+            $this->patchJson($path.'/locked-amendment', [
+                'expected_revision' => $revision, 'deleted_item_ids' => [$forbidden->id],
+            ])->assertUnprocessable()->assertJsonValidationErrors('deleted_item_ids.0');
         }
         $this->patchJson($path.'/locked-amendment', ['expected_revision' => $revision, 'next_day_plan' => 'Kế hoạch ban đầu'])
             ->assertUnprocessable()->assertJsonValidationErrors('amendment');
@@ -220,10 +342,18 @@ class LockedReportAmendmentsTest extends TestCase
         $revision = $this->actingAs($admin, 'web')->getJson($path)->assertOk()
             ->assertJsonPath('data.locked_amendment.editable_item_ids', [])
             ->assertJsonPath('data.locked_amendment.can_edit_next_day_plan', true)
+            ->assertJsonPath('data.locked_amendment.can_add_items', false)
+            ->assertJsonPath('data.locked_amendment.deletable_item_ids', [])
             ->json('data.locked_amendment.expected_revision');
         $this->patchJson($path.'/locked-amendment', [
             'expected_revision' => $revision, 'items' => [['id' => $item->id, 'content' => 'Không lưu']],
         ])->assertUnprocessable()->assertJsonValidationErrors('items.0.id');
+        $this->patchJson($path.'/locked-amendment', [
+            'expected_revision' => $revision, 'added_items' => [['status' => 'BLOCKED', 'content' => 'Không lưu']],
+        ])->assertUnprocessable()->assertJsonValidationErrors('added_items');
+        $this->patchJson($path.'/locked-amendment', [
+            'expected_revision' => $revision, 'deleted_item_ids' => [$item->id],
+        ])->assertUnprocessable()->assertJsonValidationErrors('deleted_item_ids.0');
         $this->linkCrm($report, 'FOLLOW_UP');
         $this->getJson($path)->assertOk()->assertJsonPath('data.locked_amendment.allowed', false)
             ->assertJsonPath('data.locked_amendment.can_edit_next_day_plan', false);
@@ -258,6 +388,19 @@ class LockedReportAmendmentsTest extends TestCase
         $this->grantPermission($roleId, $this->createPermission('reports.view'), $scope->value);
 
         return $user;
+    }
+
+    private function saveFrozenAiDocument(DailyReport $report, User $admin): array
+    {
+        DB::table('daily_report_ai_documents')->insert([
+            'organization_id' => $report->organization_id, 'daily_report_id' => $report->id,
+            'requested_by_user_id' => $admin->id, 'report_date' => '2026-11-19',
+            'cache_key' => str_repeat('a', 64), 'source_hash' => str_repeat('b', 64),
+            'snapshot' => 'frozen-source', 'analysis_config' => 'frozen-contract', 'status' => 'completed',
+            'result' => 'finalized-result', 'captured_at' => now()->subMinute(),
+        ]);
+
+        return (array) DB::table('daily_report_ai_documents')->sole();
     }
 
     private function report(User $user, string $date = '2026-11-19', bool $locked = true, bool $makeup = false): DailyReport
