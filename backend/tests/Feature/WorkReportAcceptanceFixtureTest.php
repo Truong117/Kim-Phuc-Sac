@@ -30,6 +30,8 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 {
     use AuthorizationFixtures, RefreshDatabase;
 
+    private const PENDING_AMENDMENT_MIGRATION = '2026_11_21_000000_create_daily_report_amendments';
+
     private WorkReportAcceptanceFixture $fixture;
 
     private WorkReportFixtureManifest $store;
@@ -238,6 +240,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_dry_run_before_m23_m24_is_readable_but_apply_requires_both_migrations(): void
     {
+        $this->makeAmendmentMigrationPending();
         (require database_path('migrations/2026_11_19_010000_create_facebook_post_tracking.php'))->down();
         (require database_path('migrations/2026_11_19_000000_create_internal_crm.php'))->down();
         (require database_path('migrations/2026_11_18_000000_create_spa_bookings.php'))->down();
@@ -397,12 +400,37 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_facebook_tracking_migration_can_be_pending_on_an_existing_database(): void
     {
+        $this->makeAmendmentMigrationPending();
         $migration = '2026_11_19_010000_create_facebook_post_tracking';
         (require database_path("migrations/$migration.php"))->down();
         DB::table('migrations')->where('migration', $migration)->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertTrue($preview['schema_ready']);
-        $this->assertSame([$migration], $preview['pending_migrations']);
+        $this->assertSame([$migration, self::PENDING_AMENDMENT_MIGRATION], $preview['pending_migrations']);
+    }
+
+    public function test_locked_amendment_migration_can_be_pending_without_changing_fixture_readiness(): void
+    {
+        $this->makeAmendmentMigrationPending();
+
+        $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
+        $this->assertTrue($preview['schema_ready']);
+        $this->assertSame([self::PENDING_AMENDMENT_MIGRATION], $preview['pending_migrations']);
+    }
+
+    public function test_locked_amendment_ledger_refuses_an_incomplete_audit_table(): void
+    {
+        Schema::table('daily_report_amendments', fn ($table) => $table->dropColumn('encrypted_changes'));
+
+        $this->expectExceptionMessage('FIXTURE_DAILY_REPORT_AMENDMENT_SCHEMA_DRIFT');
+        $this->fixture->dryRun($this->batch, $this->end, $this->store);
+    }
+
+    private function makeAmendmentMigrationPending(): void
+    {
+        $migration = self::PENDING_AMENDMENT_MIGRATION;
+        (require database_path("migrations/$migration.php"))->down();
+        DB::table('migrations')->where('migration', $migration)->delete();
     }
 
     public function test_facebook_tracking_ledger_refuses_an_incomplete_state_table(): void
@@ -414,6 +442,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     public function test_sampling_columns_must_match_the_reviewed_ledger(): void
     {
+        $this->makeAmendmentMigrationPending();
         (require database_path('migrations/2026_11_19_010000_create_facebook_post_tracking.php'))->down();
         (require database_path('migrations/2026_11_19_000000_create_internal_crm.php'))->down();
         DB::table('migrations')->whereIn('migration', ['2026_11_19_010000_create_facebook_post_tracking', '2026_11_19_000000_create_internal_crm'])->delete();

@@ -115,6 +115,7 @@ class LockedReportAmendmentsTest extends TestCase
             ->assertJsonPath('data.locked_amendment.ai_may_be_stale', true)
             ->assertJsonMissingPath('data.locked_amendment.history.0.encrypted_changes')
             ->assertJsonMissingPath('data.locked_amendment.history.0.actor_user_id');
+        $this->app['auth']->forgetGuards();
         $this->actingAs($author, 'web')->getJson($path)->assertOk()
             ->assertJsonPath('data.locked_amendment.history.0.editor_name', $editor->name)
             ->assertJsonPath('data.locked_amendment.allowed', $own);
@@ -134,9 +135,12 @@ class LockedReportAmendmentsTest extends TestCase
         $data = ['expected_revision' => str_repeat('a', 64), 'next_day_plan' => 'Sửa kế hoạch', 'reason' => 'Lý do'];
         $this->patchJson("/api/reports/{$report->id}/locked-amendment", $data)->assertUnauthorized();
         foreach ([$owner, $staff, $hr] as $actor) {
+            $this->app['auth']->forgetGuards();
             $this->actingAs($actor, 'web')->patchJson("/api/reports/{$report->id}/locked-amendment", $data)->assertForbidden();
         }
+        $this->app['auth']->forgetGuards();
         $this->actingAs($foreign, 'web')->patchJson("/api/reports/{$report->id}/locked-amendment", $data)->assertUnauthorized();
+        $this->app['auth']->forgetGuards();
         $this->actingAs($admin, 'web')->patchJson('/api/reports/9999/locked-amendment', $data)->assertNotFound();
         $foreignReport = $this->report($foreign);
         $this->patchJson("/api/reports/{$foreignReport->id}/locked-amendment", $data)->assertNotFound();
