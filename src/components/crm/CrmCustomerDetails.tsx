@@ -25,20 +25,27 @@ export default function CrmCustomerDetails({
     <div className="space-y-4">
       <ComponentCard title={customer.name} desc={customer.code}>
         <div className="flex flex-wrap gap-2">
+          {(customer.can_consult ?? customer.can_update) && (
+            <Button
+              size="sm"
+              type="button"
+              onClick={() => open("CONSULTATION")}
+            >
+              {t("actions.CONSULTATION")}
+            </Button>
+          )}
           {customer.can_update &&
-            (["CONSULTATION", "OPPORTUNITY", "FOLLOW_UP"] as const).map(
-              (kind) => (
-                <Button
-                  key={kind}
-                  size="sm"
-                  type="button"
-                  variant={kind === "CONSULTATION" ? "primary" : "outline"}
-                  onClick={() => open(kind)}
-                >
-                  {t("actions." + kind)}
-                </Button>
-              ),
-            )}
+            (["OPPORTUNITY", "FOLLOW_UP"] as const).map((kind) => (
+              <Button
+                key={kind}
+                size="sm"
+                type="button"
+                variant="outline"
+                onClick={() => open(kind)}
+              >
+                {t("actions." + kind)}
+              </Button>
+            ))}
           {customer.can_assign && (
             <Button
               size="sm"

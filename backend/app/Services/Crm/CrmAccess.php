@@ -24,6 +24,11 @@ final class CrmAccess
             && DB::table('migrations')->where('migration', '2026_11_19_000000_create_internal_crm')->exists();
     }
 
+    public function canConsult(OrganizationMembership $member): bool
+    {
+        return $this->authorization->allows($member->user, 'customers.update');
+    }
+
     public function scopes(OrganizationMembership $member, string $permission): array
     {
         // Anyone granted CRM viewing can read the shared customer directory in their organization.
