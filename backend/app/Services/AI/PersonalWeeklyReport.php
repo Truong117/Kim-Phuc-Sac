@@ -31,11 +31,15 @@ final class PersonalWeeklyReport
     {
         $payload = $this->forMail($viewer, $endDate);
         if ($payload['employee'] !== null) {
-            $payload['employee'] = WeeklyRevenuePresentation::employee($payload['employee'], $endDate);
+            $employee = WeeklyRevenuePresentation::employee($payload['employee'], $endDate);
+            if ($payload['_concise_weekly']) {
+                $employee['weekly_figures'] = WeeklyReportFigures::build($employee['work_totals'], $employee['weekly_revenue'] ?? null);
+            }
+            $payload['employee'] = $employee;
             // Pin the same readable revision and employee content without exposing company identifiers.
             $payload['export_version'] = WorkReportSnapshot::hash([$payload['_analysis_id'], $payload['employee'], $payload['captured_at']]);
         }
-        unset($payload['_analysis_id']);
+        unset($payload['_analysis_id'], $payload['_concise_weekly']);
 
         return $payload;
     }
@@ -156,8 +160,18 @@ final class PersonalWeeklyReport
 
     private function project(User $viewer, WorkReportAnalysis $run, array $period, array $reports): array
     {
+        $conciseWeekly = (int) $run->days === 7
+            && ($run->analysis_config['weekly_summary_version'] ?? null) === WorkReportAnalysisOutput::WEEKLY_SUMMARY_VERSION;
         $result = array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []);
         $groups = $quantities = [];
+        $namedSources = [];
+        if ($conciseWeekly) {
+            foreach (WorkReportWorkTotals::normalize([], $reports) as $source) {
+                if (! empty($source['named_outputs'])) {
+                    $namedSources[$source['report_id']][$source['item_id']] = $source;
+                }
+            }
+        }
         $done = $invalid = 0;
         foreach ($run->units as $unit) {
             if ($unit->status !== 'completed') {
@@ -166,7 +180,7 @@ final class PersonalWeeklyReport
             $output = $unit->result;
             try {
                 // Validate against only this user's sources; cross-person evidence fails closed.
-                WorkReportAnalysisOutput::validate($output ?? [], $reports);
+                WorkReportAnalysisOutput::validate($output ?? [], $reports, conciseWeekly: $conciseWeekly);
                 if (! array_key_exists('work_groups', $output)) {
                     throw new RuntimeException('AI_INVALID_SCHEMA');
                 }
@@ -178,7 +192,12 @@ final class PersonalWeeklyReport
             $done++;
             array_push($groups, ...$output['work_groups']);
             foreach ($output['quantity_observations'] ?? [] as $observation) {
-                $quantities[] = array_intersect_key($observation, array_flip(['metric', 'unit', 'quantity', 'basis', 'report_id', 'item_id', 'quote']));
+                $entry = array_intersect_key($observation, array_flip(['metric', 'unit', 'quantity', 'basis', 'report_id', 'item_id', 'quote']));
+                $source = $namedSources[$entry['report_id']][$entry['item_id']] ?? null;
+                if ($source !== null && array_intersect_key($source, $entry) == $entry) {
+                    $entry['named_outputs'] = $source['named_outputs'];
+                }
+                $quantities[] = $entry;
             }
             foreach (WorkReportAnalysisOutput::SECTIONS as $section) {
                 foreach ($output[$section] as $claim) {
@@ -192,7 +211,7 @@ final class PersonalWeeklyReport
         $status = $reports === [] ? 'no_data' : ($total > 0 && $done === $total ? 'completed'
             : ($running ? 'running' : ($done > 0 ? 'partial' : ($total > 0 ? 'failed' : 'not_analyzed'))));
 
-        return ['period' => $period, 'status' => $status, 'source_changed' => false, 'updating' => false,
+        return ['period' => $period, 'status' => $status, '_concise_weekly' => $conciseWeekly, 'source_changed' => false, 'updating' => false,
             'captured_at' => $run->captured_at->toIso8601String(), 'is_mock' => ($run->analysis_config['driver'] ?? null) === 'fake',
             'employee' => ['employee_id' => (int) $viewer->id, 'name' => $viewer->name, 'department_name' => null,
                 'status' => $status, 'completed_units' => $done, 'total_units' => $total, 'failed_units' => $failed,

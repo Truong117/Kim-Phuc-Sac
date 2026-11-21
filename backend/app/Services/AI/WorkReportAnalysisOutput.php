@@ -6,7 +6,9 @@ use RuntimeException;
 
 final class WorkReportAnalysisOutput
 {
-    public const VERSION = 'work-report-v3.2';
+    public const VERSION = 'work-report-v3.3';
+
+    public const WEEKLY_SUMMARY_VERSION = 'concise-weekly-v1';
 
     public const SCHEMA_VERSION = 'work-report-v3.2';
 
@@ -31,6 +33,11 @@ final class WorkReportAnalysisOutput
             'Ví dụ: báo cáo nói chi phí mỗi tin nhắn vượt 100k, chưa có đơn hàng/doanh thu: đề xuất đối chiếu chi phí, khách hỏi phù hợp, đơn và doanh thu trong cùng khoảng quan sát trước khi quyết định ngân sách. Không kết luận hiệu quả hay nguyên nhân quảng cáo chỉ từ số nội dung đã đăng.',
             'Chỉ đề xuất yêu cầu thêm số liệu khi nguồn có vấn đề hoặc quyết định cụ thể cần dữ liệu đó; không tự sinh danh sách thiếu KPI cho mọi công việc.',
             'Mỗi đề xuất cần nói rõ công việc liên quan, kết quả/vướng mắc làm căn cứ, và hành động hoặc quyết định quản lý hữu ích. Chỉ đề xuất khi nguồn thực sự cho thấy cần; nội dung rõ thì được để trống đề xuất.',
+            'Chỉ khi period.days=7: viết báo cáo tuần cô đọng theo đầu ra. Trong work_groups, gộp các lần thực hiện cùng chủ đề; dùng tiêu đề nhận diện việc và nêu kết quả chính, trạng thái mới nhất có căn cứ cùng phần còn mở. Mỗi đầu việc vẫn có evidence đúng một lần; câu tổng hợp phải thể hiện được các loại việc khác nhau, kết quả riêng, bước chờ duyệt, phụ thuộc, phần bị chặn và mâu thuẫn thực sự. Dùng ngày khi cần phân biệt mốc hay phạm vi, tránh kể nhật ký từng ngày. Không cắt việc để vừa một số trang hay số chữ cố định.',
+            'Chỉ khi period.days=7: review qua overview/highlights chỉ thêm ý nghĩa hoặc giới hạn kết luận mà work_groups/chỉ số chưa nói. Dùng ongoing cho bước tiếp theo, attention/support cho trở ngại cần can thiệp, uncertainties cho điểm cần đối chiếu ảnh hưởng kết luận. Các phần được để trống. Ở company_summary và consolidation, giữ bốn phần nghiệp vụ; mỗi ý nêu tên đúng người, đầu ra hoặc vấn đề cụ thể, tránh nhắc lại toàn bộ báo cáo cá nhân.',
+            'Chỉ khi period.days=7: phân biệt quay, dựng, đăng và đăng lại trên kênh khác. Nêu kết quả theo cùng đơn vị, công đoạn, phạm vi và người; có thể đặt ảnh và video/Reel đã đăng cùng một dòng nhưng giữ riêng số từng loại. Lượt đăng đa kênh không cho biết số nội dung sản xuất mới. Không cộng các phiên bản, lượt khách, số lũy kế hoặc số của nhiều người khi chưa xác nhận độc lập. Khi source_scope=partial, employee_complete=false hoặc missing_units>0, chỉ mô tả phần nguồn đã xử lý; không gọi một phần dữ liệu là kết quả toàn tuần hay toàn công ty.',
+            'Chỉ khi period.days=7: doanh thu tuần được hệ thống trình bày riêng cho từng nhân viên. Ở employee_review nêu sản phẩm bán, giao dịch và trạng thái có căn cứ khi cần; giữ đúng phạm vi nguồn, không liệt kê doanh thu từng ngày hay tự tính tổng tuần từ lời kể. Ở company_summary, gồm cả consolidation, bỏ số doanh thu cá nhân khỏi phần diễn giải, không cộng số tiền giữa các nhân viên hoặc suy ra doanh thu từ lời kể, lượt tư vấn hay lượng bài đăng. Giữ đủ evidence và quan sát định lượng hợp lệ theo quy tắc của từng giai đoạn.',
+            'Chỉ khi period.days=7: mỗi recommendations nêu một việc cần quyết định. Giữ text là tiêu đề, action là hành động cụ thể, expected_outcome là kết quả mong đợi, priority và evidence như quy định. Tất cả khóa vẫn bắt buộc; với rationale, impact, verification, decision_needed, để chuỗi rỗng nếu không có thông tin riêng đáng giữ, điền khi có căn cứ hoặc quyết định quan trọng ngoài phần đã nêu. Không diễn đạt lại cùng một ý để lấp đầy trường.',
             'Khi summary_stage=consolidation, parts là các bản tổng hợp thành phần. Tổng hợp lại thành kết luận và thứ tự đề xuất chung, loại ý lặp; chỉ sử dụng trích đoạn nguồn đi kèm, không coi nhận xét của bước trước là sự thật mới. Không tự cộng số liệu giữa các thành phần hoặc tự tạo liên hệ nhân quả.',
             'Giai đoạn company_summary: parts chứa danh sách công việc đã tổng hợp và nhận xét theo từng nhân viên. Đọc work_groups và work_totals của từng người (cùng work_inventory nếu có) trước khi tổng hợp công ty; phân biệt dữ kiện từ danh sách với nhận xét/đề xuất AI và chỉ gộp liên phòng ban khi có căn cứ.',
             'quantity_observations: ở giai đoạn employee_review, trích xuất các số lượng kết quả công việc được báo cáo rõ bằng chữ số, kèm metric, unit, quantity, basis, report_id, item_id và field chứa số đó (content/result/note); không tự viết quote. Hệ thống sẽ tự cộng bằng phép tính, bạn không tự tạo số tổng.',
@@ -80,6 +87,7 @@ final class WorkReportAnalysisOutput
         // This deployment only implements its exact current contract. Never relabel
         // new instructions as an old version or combine results across contracts.
         return ($settings['prompt_version'] ?? null) === self::VERSION
+            && ($settings['weekly_summary_version'] ?? null) === self::WEEKLY_SUMMARY_VERSION
             && ($settings['schema_version'] ?? null) === self::SCHEMA_VERSION
             && ($settings['work_inventory_version'] ?? null) === WorkReportWeeklyWork::VERSION
             && is_string($settings['instructions_hash'] ?? null)
@@ -117,7 +125,7 @@ final class WorkReportAnalysisOutput
         return ['type' => 'object', 'properties' => $properties, 'required' => array_keys($properties), 'additionalProperties' => false];
     }
 
-    public static function validate(array $result, array $reports, bool $currentContract = false): void
+    public static function validate(array $result, array $reports, bool $currentContract = false, bool $conciseWeekly = false): void
     {
         if (array_diff(array_keys($result), [...self::SECTIONS, 'quantity_observations', 'work_totals', 'work_groups']) || array_diff(self::SECTIONS, array_keys($result))) {
             throw new RuntimeException('AI_INVALID_SCHEMA');
@@ -152,7 +160,7 @@ final class WorkReportAnalysisOutput
                     throw new RuntimeException('AI_INVALID_SCHEMA');
                 }
                 if ($field === 'recommendations') {
-                    WorkReportDecision::validate($claim, $currentContract);
+                    WorkReportDecision::validate($claim, $currentContract, $conciseWeekly);
                 }
                 foreach ($claim['evidence'] as $ref) {
                     if (! is_array($ref) || count($ref) !== 3 || ! is_int($ref['report_id'] ?? null)
@@ -207,7 +215,7 @@ final class WorkReportAnalysisOutput
                 }
                 if ($item['status'] === 'BLOCKED' && count($result['recommendations']) < 12) {
                     $claim['text'] = 'Hỏi người báo cáo về nguyên nhân và hỗ trợ cần thiết cho đầu việc này.';
-                    $result['recommendations'][] = WorkReportDecision::fake($claim);
+                    $result['recommendations'][] = WorkReportDecision::fake($claim, ($input['period']['days'] ?? null) === 7);
                 }
             }
         }
