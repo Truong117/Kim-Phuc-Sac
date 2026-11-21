@@ -12,6 +12,7 @@ export default function CrmReportPreview({
   return (
     <div
       data-crm-report-preview
+      role="group"
       tabIndex={-1}
       aria-label={t("previewTitle")}
       className="space-y-3 rounded-xl border border-kps-primary/25 bg-white p-4 focus-visible:ring-2 focus-visible:ring-kps-primary dark:bg-gray-900"
@@ -72,6 +73,7 @@ export function CrmPlanPreview({ lines }: { lines: string[] }) {
   return (
     <div
       data-crm-report-preview
+      role="group"
       tabIndex={-1}
       aria-label={t("previewTitle")}
       className="mt-3 rounded-xl border border-kps-primary/25 p-4 text-sm focus-visible:ring-2 focus-visible:ring-kps-primary dark:border-kps-primary/40"

@@ -88,7 +88,7 @@
     "noCareTask": "Bạn có thể ghi nội dung tư vấn trong báo cáo. Cần công việc CSKH đang được giao để cộng tiến độ.",
     "refresh": "Tải lại từ CRM",
     "loading": "Đang tải hoạt động CRM…",
-    "refreshed": "Đã tải {{count}} hoạt động CRM. Nội dung báo cáo đã cập nhật theo các mục đang chọn.",
+    "refreshed": "Đã tải {count} hoạt động CRM. Nội dung báo cáo đã cập nhật theo các mục đang chọn.",
     "viewReport": "Xem trong báo cáo",
     "previewTitle": "Từ CRM · Sẽ ghi nhận khi lưu báo cáo",
     "appendToTask": "Các lượt tư vấn này sẽ được thêm vào công việc đã có trong báo cáo.",
