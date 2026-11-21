@@ -173,8 +173,9 @@ class HrUserManagementTest extends TestCase
         $this->assertFalse($roleReferences->contains('id', $this->roleId('OWNER')));
         $this->assertFalse($roleReferences->contains('id', $this->roleId('ADMIN')));
         $this->assertFalse($roleReferences->contains('id', $this->roleId('HR_MANAGER')));
+        $this->assertFalse($roleReferences->contains('id', $this->roleId('EXECUTIVE_ASSISTANT')));
 
-        foreach (['OWNER', 'ADMIN', 'HR_MANAGER'] as $index => $roleCode) {
+        foreach (['OWNER', 'ADMIN', 'HR_MANAGER', 'EXECUTIVE_ASSISTANT'] as $index => $roleCode) {
             $roleId = $this->roleId($roleCode);
 
             $this->actingAs($hr['user'], 'web')
@@ -192,6 +193,21 @@ class HrUserManagementTest extends TestCase
         $this->assertDatabaseMissing('users', ['email' => 'blocked-role-0@example.com']);
         $this->assertDatabaseMissing('users', ['email' => 'blocked-role-1@example.com']);
         $this->assertDatabaseMissing('users', ['email' => 'blocked-role-2@example.com']);
+        $this->assertDatabaseMissing('users', ['email' => 'blocked-role-3@example.com']);
+    }
+
+    public function test_owner_and_admin_can_still_assign_executive_assistant(): void
+    {
+        $roleId = $this->roleId('EXECUTIVE_ASSISTANT');
+        foreach (['OWNER', 'ADMIN'] as $role) {
+            $actor = $this->createManagedUser($role);
+            $target = $this->createManagedUser('OFFICE_STAFF');
+
+            $this->actingAs($actor['user'], 'web')->getJson('/api/reference/roles')
+                ->assertOk()->assertJsonFragment(['id' => $roleId]);
+            $this->actingAs($actor['user'], 'web')->patchJson("/api/users/{$target['user']->id}/role", ['role_id' => $roleId])
+                ->assertOk();
+        }
     }
 
     public function test_owner_and_admin_control_the_single_active_hr_manager_holder(): void

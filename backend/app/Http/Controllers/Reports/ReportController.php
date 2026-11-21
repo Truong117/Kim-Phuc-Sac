@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Reports;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Reports\AmendLockedReportRequest;
 use App\Http\Requests\Reports\IndexReportsRequest;
 use App\Http\Requests\Reports\StoreReportRequest;
 use App\Http\Requests\Reports\UpdateReportRequest;
 use App\Http\Resources\DailyReportResource;
 use App\Http\Resources\ReportListResource;
+use App\Services\LockedReportAmendments;
 use App\Services\WorkReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -32,7 +34,20 @@ class ReportController extends Controller
 
     public function show(int $id, IndexReportsRequest $request, WorkReportService $reports): DailyReportResource
     {
-        return DailyReportResource::make($reports->findVisible($request->user(), $id));
+        return DailyReportResource::make($reports->findVisible($request->user(), $id))
+            ->withLockedAmendment();
+    }
+
+    public function amendLocked(
+        int $id,
+        AmendLockedReportRequest $request,
+        LockedReportAmendments $amendments,
+        WorkReportService $reports,
+    ): DailyReportResource {
+        $amendments->amend($request->user(), $id, $request->validated());
+
+        return DailyReportResource::make($reports->findVisible($request->user(), $id))
+            ->withLockedAmendment();
     }
 
     public function update(

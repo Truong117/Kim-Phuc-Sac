@@ -48,6 +48,39 @@ export type ReportComment = {
   created_at: string;
 };
 
+export type LockedReportAmendmentHistoryEntry = {
+  id: number;
+  editor_name: string;
+  reason: string;
+  created_at: string;
+};
+
+export type LockedReportAmendment = {
+  allowed: boolean;
+  expected_revision: string | null;
+  reason_required: boolean;
+  editable_item_ids: number[];
+  can_edit_next_day_plan: boolean;
+  history: LockedReportAmendmentHistoryEntry[];
+  history_truncated?: boolean;
+  ai_may_be_stale: boolean;
+};
+
+export type LockedReportAmendmentItemInput = {
+  id: number;
+  content?: string;
+  result?: string;
+  note?: string | null;
+  issue?: string | null;
+};
+
+export type LockedReportAmendmentInput = {
+  expected_revision: string;
+  reason?: string;
+  next_day_plan?: string;
+  items?: LockedReportAmendmentItemInput[];
+};
+
 export type DailyReport = {
   id: number;
   report_date: string;
@@ -64,6 +97,7 @@ export type DailyReport = {
   comment_count: number;
   unread_comment_count: number;
   actions: { can_edit: boolean; can_comment: boolean };
+  locked_amendment?: LockedReportAmendment;
   created_at: string | null;
   updated_at: string | null;
 };
