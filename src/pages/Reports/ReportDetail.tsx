@@ -1,3 +1,5 @@
+import LockedReportAmendmentDialog from "@/components/reports/LockedReportAmendmentDialog";
+import LockedReportAmendmentHistory from "@/components/reports/LockedReportAmendmentHistory";
 import ReportNextDayPlan from "@/components/reports/ReportNextDayPlan";
 import ComponentCard from "@/components/common/ComponentCard";
 import PageBreadCrumb from "@/components/common/PageBreadCrumb";
@@ -7,6 +9,7 @@ import Label from "@/components/form/Label";
 import ReportStatusBadge from "@/components/reports/ReportStatusBadge";
 import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
 import Button from "@/components/ui/button/Button";
+import { useAuth } from "@/hooks/useAuth";
 import { useNotifications } from "@/hooks/useNotifications";
 import { ChatIcon, TimeIcon } from "@/icons";
 import { ApiServiceError } from "@/services/apiClient";
@@ -33,15 +36,24 @@ const formatDateTime = (value: string | null) =>
     : "—";
 
 export default function ReportDetail() {
+  const { id } = useParams();
+  const { currentUser } = useAuth();
+  return (
+    <ReportDetailView key={`${currentUser?.id ?? ""}:${id ?? ""}`} id={id} />
+  );
+}
+
+function ReportDetailView({ id }: { id: string | undefined }) {
   const { t } = useTranslation("common", { keyPrefix: "reportDetail" });
   const { t: tMakeup } = useTranslation("common", {
     keyPrefix: "dailyReport.makeup",
   });
-  const { id } = useParams();
   const { markReportCommentsRead } = useNotifications();
   const [report, setReport] = useState<DailyReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [amendmentOpen, setAmendmentOpen] = useState(false);
+  const [amendmentNotice, setAmendmentNotice] = useState("");
   const [comment, setComment] = useState("");
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
@@ -55,11 +67,14 @@ export default function ReportDetail() {
 
     getReport(id, abortController.signal)
       .then((nextReport) => {
+        if (abortController.signal.aborted) return;
+        if (nextReport.id !== Number(id))
+          throw new Error("Mismatched report ID");
         setReport(nextReport);
         setLoadError(null);
       })
       .catch((error: unknown) => {
-        if (isAbortError(error)) return;
+        if (abortController.signal.aborted || isAbortError(error)) return;
         if (error instanceof ApiServiceError && error.status === 404) {
           setLoadError(t("errors.notFound"));
         } else if (error instanceof ApiServiceError && error.status === 403) {
@@ -111,7 +126,8 @@ export default function ReportDetail() {
     try {
       const created = await addReportComment(report.id, content);
       setReport((current) =>
-        current
+        current?.id === report.id &&
+        !current.comments.some(({ id }) => id === created.id)
           ? {
               ...current,
               comments: [...current.comments, created],
@@ -135,6 +151,12 @@ export default function ReportDetail() {
       setIsSubmittingComment(false);
     }
   };
+
+  const amendment = report?.locked_amendment;
+  const canAmend =
+    report?.is_locked &&
+    amendment?.allowed &&
+    Boolean(amendment.expected_revision);
 
   return (
     <>
@@ -177,6 +199,14 @@ export default function ReportDetail() {
         </section>
       ) : (
         <div className="space-y-6">
+          {amendmentNotice && (
+            <p
+              role="status"
+              className="rounded-lg bg-success-50 p-3 text-sm text-success-700 dark:bg-success-950 dark:text-success-200"
+            >
+              {amendmentNotice}
+            </p>
+          )}
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-theme-xs sm:p-6 dark:border-gray-800 dark:bg-white/3">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -226,7 +256,22 @@ export default function ReportDetail() {
               ))}
             </dl>
 
-            {report.actions.can_edit && (
+            {canAmend && (
+              <div className="mt-5 flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  className="!bg-kps-primary hover:!bg-kps-primary-hover"
+                  onClick={() => {
+                    setAmendmentNotice("");
+                    setAmendmentOpen(true);
+                  }}
+                >
+                  {t("lockedAmendment.action")}
+                </Button>
+              </div>
+            )}
+            {!report.is_locked && report.actions.can_edit && (
               <div className="mt-5 flex justify-end">
                 <Link
                   to="/reports/new"
@@ -242,6 +287,26 @@ export default function ReportDetail() {
             <ReportWorkItemDetails items={report.items} />
             <ReportNextDayPlan readOnly value={report.next_day_plan ?? ""} />
           </ComponentCard>
+
+          {amendment && <LockedReportAmendmentHistory amendment={amendment} />}
+          {amendmentOpen && canAmend && amendment && (
+            <LockedReportAmendmentDialog
+              report={report}
+              amendment={amendment}
+              onClose={() => setAmendmentOpen(false)}
+              onResolved={(latest, saved) => {
+                setReport(latest);
+                setAmendmentOpen(false);
+                setAmendmentNotice(
+                  t(
+                    saved
+                      ? "lockedAmendment.saved"
+                      : "lockedAmendment.reloaded",
+                  ),
+                );
+              }}
+            />
+          )}
 
           <ComponentCard title={t("comments.title")} compact>
             {report.comments.length === 0 ? (

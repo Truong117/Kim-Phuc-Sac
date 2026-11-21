@@ -24,6 +24,7 @@ class UserManagementGuard
         'OWNER',
         'ADMIN',
         self::HR_MANAGER_ROLE_CODE,
+        'EXECUTIVE_ASSISTANT',
     ];
 
     /** @var array<int, list<string>> */

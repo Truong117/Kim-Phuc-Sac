@@ -7,6 +7,7 @@ export default defineConfig({
     "spa-ui.spec.ts",
     "crm-ui.spec.ts",
     "report-validation-ui.spec.ts",
+    "locked-report-amendment-ui.spec.ts",
     "task-report-progress-ui.spec.ts",
     "task-progress-reconciliation-ui.spec.ts",
     "facebook-post-picker-ui.spec.ts",

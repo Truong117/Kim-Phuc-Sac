@@ -1,6 +1,7 @@
 import { apiRequest } from "@/services/apiClient";
 import type {
   DailyReport,
+  LockedReportAmendmentInput,
   MakeupReportOptions,
   MarkReportNotificationsReadResponse,
   ReportComment,
@@ -93,6 +94,17 @@ export const getReport = async (
   );
   return response.data;
 };
+
+export const amendLockedReport = async (
+  reportId: number,
+  input: LockedReportAmendmentInput,
+): Promise<DailyReport> =>
+  (
+    await apiRequest<DataResponse<DailyReport>>(
+      `/api/reports/${reportId}/locked-amendment`,
+      { method: "PATCH", body: JSON.stringify(input) },
+    )
+  ).data;
 
 export const addReportComment = async (
   reportId: number,
