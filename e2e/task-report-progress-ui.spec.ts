@@ -314,18 +314,20 @@ for (const excludeAll of [false, true]) {
         };
       });
     }
-    const intake = sources.getByRole("checkbox", {
-      name: "Tiếp nhận khách mới · Khách A",
-      exact: true,
-    });
+    // The full checkbox name includes placement, customer code, and result.
+    // Find the exact row label first, then use its checkbox.
+    const activityCheckbox = (heading: string) =>
+      sources
+        .getByRole("listitem")
+        .filter({ has: page.getByText(heading, { exact: true }) })
+        .getByRole("checkbox");
+    const intake = activityCheckbox("Tiếp nhận khách mới · Khách A");
+    const consultation = activityCheckbox("Tư vấn khách hàng · Khách A");
+    const followUp = activityCheckbox("Gọi lại sau dùng thử · Khách A");
     await intake.uncheck();
     if (excludeAll) {
-      await sources
-        .getByRole("checkbox", { name: /Tư vấn khách hàng/ })
-        .uncheck();
-      await sources
-        .getByRole("checkbox", { name: /Gọi lại sau dùng thử/ })
-        .uncheck();
+      await consultation.uncheck();
+      await followUp.uncheck();
     }
     const manual = page.locator("#quick-draft-completed");
     await manual.fill("Việc nhập tay → Kết quả cần giữ");
@@ -376,12 +378,25 @@ for (const excludeAll of [false, true]) {
       "Đã tải 4 hoạt động CRM",
     );
     await expect(intake).not.toBeChecked();
+    await expect(consultation).toBeChecked({ checked: !excludeAll });
+    await expect(followUp).toBeChecked({ checked: !excludeAll });
     await expect(
-      sources.getByRole("checkbox", { name: /Tư vấn khách hàng/ }),
-    ).toBeChecked({ checked: !excludeAll });
+      activityCheckbox("Tiếp nhận khách bổ sung · Khách B"),
+    ).toBeChecked();
+    const task = sources.getByRole("combobox", {
+      name: "Công việc nhận các lượt tư vấn",
+    });
+    if (excludeAll) {
+      await expect(task).toHaveCount(0);
+    } else {
+      await expect(task).toHaveValue("51");
+    }
     await expect(
-      page.locator("[data-crm-report-preview]").first(),
-    ).toContainText("Tiếp nhận khách bổ sung");
+      page.getByRole("heading", {
+        name: "Tiếp nhận khách bổ sung — KH-702",
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(manual).toHaveValue("Việc nhập tay → Kết quả cần giữ");
     await expect(page.locator("#next-day-plan")).toHaveValue(
       "Tiếp tục việc nhập tay",
