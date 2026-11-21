@@ -220,9 +220,23 @@ test("CRM activities are selected in the daily draft and only selected sources a
   page,
 }) => {
   const submissions = await setup(page, { unit: "khách hàng", crm: true });
+  const completed = page
+    .locator("section")
+    .filter({ has: page.locator("#quick-draft-completed") })
+    .last();
+  const preview = completed.locator("[data-crm-report-preview]");
+  await expect(preview).toContainText("Chăm sóc khách hàng");
+  await expect(preview).toContainText("Tư vấn sản phẩm · Theo dõi");
+  await expect(preview).toContainText("Khách cần thêm thông tin");
+  await expect(
+    page
+      .locator("[data-crm-report-preview]")
+      .getByText("Liên hệ lại KH-701 — Gọi lại sau dùng thử", { exact: true }),
+  ).toBeVisible();
   const intake = page.getByRole("checkbox", { name: /Tiếp nhận khách mới/ });
   await expect(intake).toBeChecked();
   await intake.uncheck();
+  await expect(preview).not.toContainText("Tiếp nhận khách mới");
   await page.reload();
   await expect(intake).not.toBeChecked();
   await expect(
@@ -231,6 +245,27 @@ test("CRM activities are selected in the daily draft and only selected sources a
   await expect(
     page.getByRole("checkbox", { name: /Gọi lại sau dùng thử/ }),
   ).toBeChecked();
+  await page
+    .getByRole("button", { name: "Tải lại từ CRM", exact: true })
+    .click();
+  await expect(
+    page.locator("#crm-report-sources").getByRole("status"),
+  ).toContainText("Đã tải 3 hoạt động CRM");
+  await page.getByRole("button", { name: "Xem trong báo cáo" }).click();
+  await expect(preview).toBeFocused();
+  await expect(preview).toBeInViewport();
+  await page.locator("#detailed-report-tab").click();
+  const detailedPreview = page.locator(
+    "#detailed-report-panel [data-crm-report-preview]",
+  );
+  await expect(detailedPreview.first()).toContainText(
+    "Khách cần thêm thông tin",
+  );
+  await page.locator("#quick-report-tab").click();
+  await page.locator("#crm-report-task").selectOption("0");
+  await expect(preview).toContainText("Tư vấn khách hàng — KH-701");
+  await expect(preview).not.toContainText("Chăm sóc khách hàng");
+  await page.locator("#crm-report-task").selectOption("51");
   await page
     .locator("#quick-draft-completed")
     .fill("Công việc vãng lai → Đã xử lý");
@@ -248,6 +283,233 @@ test("CRM activities are selected in the daily draft and only selected sources a
     }),
   ]);
 });
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((finish) => {
+    resolve = finish;
+  });
+  return { promise, resolve };
+}
+
+for (const excludeAll of [false, true]) {
+  test(`manual CRM refresh blocks saving ${excludeAll ? "with no old selection" : "with selected CRM items"} until the latest data arrives`, async ({
+    page,
+  }) => {
+    const oldResponse = page.waitForResponse("**/api/crm/report-draft");
+    const submissions = await setup(page, { unit: "khách hàng", crm: true });
+    const { data } = await (await oldResponse).json();
+    const sources = page.locator("#crm-report-sources");
+    if (excludeAll) {
+      await page.evaluate(() => {
+        const setItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function (key, value) {
+          if (this === sessionStorage && key.startsWith("kps.crm.report:")) {
+            throw new DOMException(
+              "Storage not available",
+              "QuotaExceededError",
+            );
+          }
+          setItem.call(this, key, value);
+        };
+      });
+    }
+    // The full checkbox name includes placement, customer code, and result.
+    // Find the exact row label first, then use its checkbox.
+    const activityCheckbox = (heading: string) =>
+      sources
+        .getByRole("listitem")
+        .filter({ has: page.getByText(heading, { exact: true }) })
+        .getByRole("checkbox");
+    const intake = activityCheckbox("Tiếp nhận khách mới · Khách A");
+    const consultation = activityCheckbox("Tư vấn khách hàng · Khách A");
+    const followUp = activityCheckbox("Gọi lại sau dùng thử · Khách A");
+    await intake.uncheck();
+    if (excludeAll) {
+      await consultation.uncheck();
+      await followUp.uncheck();
+    }
+    const manual = page.locator("#quick-draft-completed");
+    await manual.fill("Việc nhập tay → Kết quả cần giữ");
+    await page.locator("#next-day-plan").fill("Tiếp tục việc nhập tay");
+    const save = page.locator('form button[type="submit"]');
+    const reply = deferred();
+    const requested = deferred();
+    const newActivity = {
+      id: 93,
+      kind: "INTAKE",
+      customer_code: "KH-702",
+      customer_name: "Khách B",
+      title: "Tiếp nhận khách bổ sung",
+      result: "Yêu cầu CRM mới nhất",
+      services: [],
+      due_on: null,
+    };
+    await page.route("**/api/crm/report-draft", async (route) => {
+      requested.resolve();
+      await reply.promise;
+      await route.fulfill({
+        json: {
+          data: { ...data, activities: [...data.activities, newActivity] },
+        },
+      });
+    });
+    await sources
+      .getByRole("button", { name: "Tải lại từ CRM", exact: true })
+      .click();
+    await requested.promise;
+    try {
+      await expect(sources.getByRole("status")).toContainText(
+        "Chờ tải xong để lưu báo cáo",
+      );
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect(save).toBeDisabled();
+      // A form submission not initiated by the save button must be blocked too.
+      await save.evaluate((button: HTMLButtonElement) =>
+        button.form?.requestSubmit(),
+      );
+      await expect(sources).toBeFocused();
+      expect(submissions).toHaveLength(0);
+      await expect(manual).toHaveValue("Việc nhập tay → Kết quả cần giữ");
+    } finally {
+      reply.resolve();
+    }
+    await expect(sources.getByRole("status")).toContainText(
+      "Đã tải 4 hoạt động CRM",
+    );
+    await expect(intake).not.toBeChecked();
+    await expect(consultation).toBeChecked({ checked: !excludeAll });
+    await expect(followUp).toBeChecked({ checked: !excludeAll });
+    await expect(
+      activityCheckbox("Tiếp nhận khách bổ sung · Khách B"),
+    ).toBeChecked();
+    const task = sources.getByRole("combobox", {
+      name: "Công việc nhận các lượt tư vấn",
+    });
+    if (excludeAll) {
+      await expect(task).toHaveCount(0);
+    } else {
+      await expect(task).toHaveValue("51");
+    }
+    await expect(
+      page.getByRole("heading", {
+        name: "Tiếp nhận khách bổ sung — KH-702",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(manual).toHaveValue("Việc nhập tay → Kết quả cần giữ");
+    await expect(page.locator("#next-day-plan")).toHaveValue(
+      "Tiếp tục việc nhập tay",
+    );
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect.poll(() => submissions.length).toBe(1);
+    expect(submissions[0].crm_draft).toEqual(
+      excludeAll
+        ? { activity_ids: [93] }
+        : { activity_ids: [91, 92, 93], task_id: 51, expected_revision: 3 },
+    );
+    expect(submissions[0].next_day_plan).toBe("Tiếp tục việc nhập tay");
+    expect(submissions[0].items).toEqual([
+      expect.objectContaining({
+        content: "Việc nhập tay",
+        result: "Kết quả cần giữ",
+      }),
+    ]);
+  });
+}
+
+test("background CRM refresh leaves a manual-only report save available", async ({
+  page,
+}) => {
+  const submissions = await setup(page, { unit: "khách hàng", crm: true });
+  const sources = page.locator("#crm-report-sources");
+  const activities = sources.getByRole("checkbox");
+  await expect(activities).toHaveCount(3);
+  for (const activity of await activities.all()) await activity.uncheck();
+  await page.locator("#quick-draft-completed").fill("Việc nhập tay → Đã xong");
+  await page.locator("#next-day-plan").fill("Tiếp tục việc nhập tay");
+
+  const requested = deferred();
+  const reply = deferred();
+  await page.route("**/api/crm/report-draft", async (route) => {
+    requested.resolve();
+    await reply.promise;
+    await route.fulfill({
+      json: {
+        data: { business_date: "2026-11-12", tasks: [], activities: [] },
+      },
+    });
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await requested.promise;
+  try {
+    await expect(sources.getByRole("status")).toContainText(
+      "Đang tải hoạt động CRM",
+    );
+    const save = page.locator('form button[type="submit"]');
+    await expect(save).toBeEnabled();
+    await save.click();
+    await expect.poll(() => submissions.length).toBe(1);
+    expect(submissions[0]).not.toHaveProperty("crm_draft");
+    expect(submissions[0].items).toEqual([
+      expect.objectContaining({ content: "Việc nhập tay", result: "Đã xong" }),
+    ]);
+  } finally {
+    reply.resolve();
+  }
+});
+
+test("a failed CRM refresh preserves its preview and manual work, then recovers before saving", async ({
+  page,
+}) => {
+  const submissions = await setup(page, { unit: "khách hàng", crm: true });
+  await expect(
+    page.getByRole("checkbox", { name: /Tư vấn khách hàng/ }),
+  ).toBeChecked();
+  const manual = page.locator("#quick-draft-completed");
+  await manual.fill("Việc nhập tay → Kết quả cần giữ");
+  const preview = page.locator("[data-crm-report-preview]").first();
+  await page.route("**/api/crm/report-draft", (route) =>
+    route.fulfill({ status: 503, json: { message: "Chưa tải được dữ liệu" } }),
+  );
+  await page
+    .getByRole("button", { name: "Tải lại từ CRM", exact: true })
+    .click();
+  const sources = page.locator("#crm-report-sources");
+  await expect(sources.getByRole("alert")).toContainText(
+    "Chưa tải được hoạt động CRM",
+  );
+  await expect(preview).toContainText("Khách cần thêm thông tin");
+  await page.locator('form button[type="submit"]').click();
+  await expect(sources).toBeFocused();
+  await expect(manual).toHaveValue("Việc nhập tay → Kết quả cần giữ");
+  expect(submissions).toHaveLength(0);
+
+  await page.unroute("**/api/crm/report-draft");
+  await page
+    .getByRole("button", { name: "Tải lại từ CRM", exact: true })
+    .click();
+  await expect(sources.getByRole("alert")).toHaveCount(0);
+  await expect(sources.getByRole("status")).toContainText(
+    "Đã tải 3 hoạt động CRM",
+  );
+  await expect(preview).toContainText("Khách cần thêm thông tin");
+  await page.locator('form button[type="submit"]').click();
+  await expect.poll(() => submissions.length).toBe(1);
+  expect(submissions[0].crm_draft).toEqual({
+    activity_ids: [90, 91, 92],
+    task_id: 51,
+    expected_revision: 3,
+  });
+  expect(submissions[0].items).toEqual([
+    expect.objectContaining({
+      content: "Việc nhập tay",
+      result: "Kết quả cần giữ",
+    }),
+  ]);
+});
+
 async function fillUpdate(page: Page) {
   await page
     .getByRole("button", { name: "Cập nhật tiến độ", exact: true })
