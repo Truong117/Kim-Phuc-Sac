@@ -47,6 +47,7 @@ export type CrmActivity = {
   services: { name: string }[];
 };
 export type CrmCustomerDetail = CrmCustomer & {
+  can_consult?: boolean;
   can_update: boolean;
   can_assign: boolean;
   contacts: { channel: string; value: string | null }[];

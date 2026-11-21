@@ -195,6 +195,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
     Route::get('/reports/{id}', [ReportController::class, 'show'])
         ->whereNumber('id')
         ->middleware('permission:reports.view');
+    Route::patch('/reports/{id}/locked-amendment', [ReportController::class, 'amendLocked'])
+        ->whereNumber('id')
+        ->middleware(['permission:reports.view', 'throttle:20,1,locked-report-amendment']);
     Route::patch('/reports/{id}', [ReportController::class, 'update'])
         ->whereNumber('id')
         ->middleware(['report_participant', 'permission:reports.create']);

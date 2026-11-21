@@ -33,6 +33,9 @@ interface QuickReportEditorProps {
   reportDate?: string;
   facebookPages?: FacebookReportPage[];
   planSection?: ReactNode;
+  additionalItems?: Partial<
+    Record<WorkStatus, { content: ReactNode; count: number }>
+  >;
   items: WorkItemFormData[];
   drafts: QuickReportDrafts;
   errors: Record<string, WorkItemValidationErrors>;
@@ -54,6 +57,7 @@ export default function QuickReportEditor({
   facebookPages,
   reportDate,
   planSection,
+  additionalItems = {},
   drafts,
   errors,
   batchError,
@@ -130,6 +134,7 @@ export default function QuickReportEditor({
               ? "inProgress"
               : "blocked";
         const groupItems = itemsByStatus[group.status];
+        const additional = additionalItems[group.status];
         const pendingCount = parseQuickReportText(drafts[group.status]).length;
         const draftId = `quick-draft-${group.status.toLowerCase()}`;
 
@@ -157,7 +162,9 @@ export default function QuickReportEditor({
                       {t(`groups.${groupKey}.title`)}
                     </h2>
                     <p className="text-theme-xs text-gray-500 dark:text-gray-400">
-                      {t("count", { count: groupItems.length })}
+                      {t("count", {
+                        count: groupItems.length + (additional?.count ?? 0),
+                      })}
                     </p>
                   </div>
                 </div>
@@ -193,7 +200,7 @@ export default function QuickReportEditor({
                 </div>
               </div>
 
-              {groupItems.length > 0 ? (
+              {groupItems.length > 0 || additional ? (
                 <div className="mt-5 custom-scrollbar max-h-96 space-y-3 overflow-y-auto pe-1">
                   {groupItems.map((item, index) =>
                     item.taskLink ? (
@@ -297,6 +304,7 @@ export default function QuickReportEditor({
                       </article>
                     ),
                   )}
+                  {additional?.content}
                 </div>
               ) : (
                 <p className="mt-5 rounded-xl border border-dashed border-gray-300 bg-white/60 px-4 py-4 text-center text-theme-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">

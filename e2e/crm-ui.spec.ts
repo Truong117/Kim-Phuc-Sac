@@ -123,6 +123,96 @@ test("CRM uses the KPS calendar to validate and save a follow-up date", async ({
   ]);
 });
 
+test("CRM lets a second salesperson record an attributed consultation on a shared customer", async ({
+  page,
+}) => {
+  const submissions: unknown[] = [];
+  let canConsult = true;
+  const consultation = {
+    id: 42,
+    kind: "CONSULTATION",
+    title: "Tư vấn khách hàng",
+    result: "Khách đã hiểu cách dùng.",
+    services: [{ name: "Hướng dẫn sử dụng" }, { name: "Giải đáp phản hồi" }],
+    actor_name: "Sales B",
+    business_date: "2026-11-30",
+    due_on: null,
+  };
+  const sharedCustomer = () => ({
+    ...customer,
+    owner_name: "Sales A",
+    owner_membership_id: 41,
+    can_consult: canConsult,
+    can_update: false,
+    activities: submissions.length ? [consultation] : [],
+  });
+  await page.route("**/api/**", async (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === "/api/crm/customers") {
+      return route.fulfill({
+        json: {
+          data: {
+            data: [sharedCustomer()],
+            total: 1,
+            current_page: 1,
+            last_page: 1,
+            follow_up_summary: noFollowUps,
+          },
+        },
+      });
+    }
+    if (pathname === "/api/crm/customers/1") {
+      return route.fulfill({ json: { data: sharedCustomer() } });
+    }
+    if (pathname === "/api/crm/customers/1/activities") {
+      submissions.push(route.request().postDataJSON());
+      return route.fulfill({ status: 201, json: { data: { id: 42 } } });
+    }
+    return route.fulfill({ json: responses[pathname] ?? emptyResponse });
+  });
+
+  await page.goto("/customers/1");
+  await page
+    .getByRole("button", { name: "Ghi lượt tư vấn", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Ghi lượt tư vấn" });
+  await dialog
+    .getByLabel("Nội dung hỗ trợ")
+    .fill("Hướng dẫn sử dụng\nGiải đáp phản hồi");
+  await dialog.getByLabel("Kết quả đã thực hiện").fill(consultation.result);
+  await dialog.getByRole("button", { name: "Lưu", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByText("2026-11-30 · Sales B", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(consultation.result, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("definition").filter({ hasText: "Sales A" }),
+  ).toBeVisible();
+  expect(submissions).toEqual([
+    {
+      request_key: expect.any(String),
+      kind: "CONSULTATION",
+      services: ["Hướng dẫn sử dụng", "Giải đáp phản hồi"],
+      result: consultation.result,
+    },
+  ]);
+  await expect(
+    page.getByRole("button", { name: "Bàn giao khách" }),
+  ).toHaveCount(0);
+
+  canConsult = false;
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: customer.name, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Ghi lượt tư vấn", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("CRM balances the list and detail while paginating a full customer list", async ({
   page,
 }) => {

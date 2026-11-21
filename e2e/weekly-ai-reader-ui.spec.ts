@@ -98,6 +98,7 @@ function sampleRun(
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
+    figures?: boolean;
     days?: 1 | 7 | 30;
   } = {},
 ): WorkReportAnalysis {
@@ -105,6 +106,10 @@ function sampleRun(
   if ((options.days ?? 7) === 7) {
     employees[0].weekly_revenue = { amount: 2000000, display: "2.000.000 đồng" };
     employees[1].weekly_revenue = { amount: 1500000, display: "1.500.000 đồng" };
+  }
+  if (options.figures) {
+    employees[0].weekly_figures = [{ label: "Ảnh và video/Reel đã đăng", text: "6 ảnh, 4 video/Reel (2 kênh)" }];
+    employees[1].weekly_figures = [{ label: "Ảnh và video/Reel đã đăng", text: "2 ảnh, 1 video/Reel (1 kênh)" }];
   }
   if (options.partial || options.truncated)
     employees[1] = {
@@ -208,6 +213,7 @@ async function setup(
     changed?: boolean;
     legacy?: boolean;
     readable?: boolean;
+    figures?: boolean;
     days?: 1 | 7 | 30;
   } = {},
 ) {
@@ -326,6 +332,24 @@ test("weekly reader downloads the displayed full, summary and selected employee 
     { mode: "summary" },
     { mode: "employee", employee_id: "8" },
   ]);
+  expect(posts).toEqual([]);
+});
+
+test("admin weekly figures use the personal row display and follow the selected employee", async ({ page }) => {
+  const posts = await setup(page, { figures: true });
+  await page.getByRole("tab", { name: "Theo nhân viên", exact: true }).click();
+  const first = employeePanel(page, "Nhân viên A");
+  await expect(first.locator("dt").filter({ hasText: "Ảnh và video/Reel đã đăng" })).toBeVisible();
+  await expect(first.locator("dd").filter({ hasText: "6 ảnh, 4 video/Reel (2 kênh)" })).toBeVisible();
+  await expect(first.getByRole("heading", { name: "Thiết kế của Nhân viên A" })).toBeVisible();
+  await expect(first.getByText("Ảnh đã tạo:", { exact: false })).toHaveCount(0);
+  await first.locator("summary").filter({ hasText: "Cần làm rõ" }).click();
+  await expect(first.getByText("Doanh thu (đồng)", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: /^Nhân viên B / }).click();
+  const second = employeePanel(page, "Nhân viên B");
+  await expect(second.locator("dd").filter({ hasText: "2 ảnh, 1 video/Reel (1 kênh)" })).toBeVisible();
+  await expect(page.getByText("6 ảnh, 4 video/Reel (2 kênh)", { exact: true })).toHaveCount(0);
+  await expect(second.getByRole("heading", { name: "Thiết kế của Nhân viên B" })).toBeVisible();
   expect(posts).toEqual([]);
 });
 

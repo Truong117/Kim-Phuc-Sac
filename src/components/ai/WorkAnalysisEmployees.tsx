@@ -168,6 +168,7 @@ export default function WorkAnalysisEmployees({
                     <WorkAnalysisWeeklyWork
                       weekly={weekly}
                       groups={selected.work_groups ?? []}
+                      figures={selected.weekly_figures}
                       totals={selected.work_totals ?? []}
                       partial={selected.status !== "completed"}
                     />

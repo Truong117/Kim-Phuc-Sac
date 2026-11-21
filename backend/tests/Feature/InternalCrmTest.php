@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DailyReport;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\CustomerCare;
 use App\Services\TaskService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
@@ -105,7 +106,7 @@ class InternalCrmTest extends TestCase
         $this->assertDatabaseCount('crm_report_activities', 2);
     }
 
-    public function test_ownership_handoff_and_replay_use_scope_without_exposing_other_sales_contacts(): void
+    public function test_shared_customer_directory_keeps_handoff_and_replay_permissions(): void
     {
         [$seller] = $this->member('SALES_STAFF');
         [$receiver, $receiverId] = $this->member('SALES_STAFF');
@@ -120,12 +121,24 @@ class InternalCrmTest extends TestCase
         $followUp = $this->activity($created, 'FOLLOW_UP', ['title' => 'Gọi lại', 'due_on' => '2026-11-20']);
 
         $this->as($receiver);
-        $this->getJson('/api/crm/customers/'.$created)->assertNotFound();
+        $this->getJson('/api/crm/customers')->assertOk()
+            ->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $created);
+        $this->getJson('/api/crm/customers?search=%2B84900001234')->assertOk()
+            ->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $created);
+        $this->getJson('/api/crm/customers/'.$created)->assertOk()
+            ->assertJsonPath('data.contacts.0.value', '0900001234')
+            ->assertJsonPath('data.can_consult', true)
+            ->assertJsonPath('data.can_update', false)->assertJsonPath('data.can_assign', false);
         $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
-            ->assertJsonPath('data.follow_up_summary.upcoming', 0)->assertJsonCount(0, 'data.data');
+            ->assertJsonPath('data.follow_up_summary.upcoming', 1)->assertJsonPath('data.data.0.id', $created);
         $this->postJson('/api/crm/customers', [...$input, 'request_key' => (string) Str::uuid(), 'contact' => '+84900001234'])
             ->assertUnprocessable()->assertJsonValidationErrors('contact');
         $this->assertDatabaseCount('care_customers', 1);
+        $this->postJson('/api/crm/customers/'.$created.'/activities', [
+            'kind' => 'FOLLOW_UP', 'request_key' => (string) Str::uuid(),
+            'title' => 'Gọi lại', 'due_on' => '2026-11-20',
+        ])->assertForbidden();
+        $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(0, 'data.activities');
 
         $this->as($admin);
         $this->getJson('/api/crm/assignees')->assertOk();
@@ -144,10 +157,120 @@ class InternalCrmTest extends TestCase
             ->assertJsonPath('data.activities.0.id', $followUp);
 
         $this->as($seller);
-        $this->getJson('/api/crm/customers/'.$created)->assertNotFound();
+        $this->getJson('/api/crm/customers/'.$created)->assertOk()
+            ->assertJsonPath('data.owner_membership_id', $receiverId)
+            ->assertJsonPath('data.can_consult', true)->assertJsonPath('data.can_update', false);
         $this->getJson('/api/crm/customers?follow_up=upcoming')->assertOk()
-            ->assertJsonPath('data.follow_up_summary.upcoming', 0)->assertJsonCount(0, 'data.data');
+            ->assertJsonPath('data.follow_up_summary.upcoming', 1)->assertJsonPath('data.data.0.id', $created);
         $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(1, 'data.activities');
+    }
+
+    public function test_sales_can_add_a_consultation_to_a_shared_customer_and_report_only_their_own_work(): void
+    {
+        [$seller, $sellerMembership] = $this->member('SALES_STAFF');
+        [$contributor] = $this->member('SALES_STAFF');
+        [$admin] = $this->member('ADMIN');
+        $task = $this->task($admin, $contributor);
+        $this->as($seller);
+        $customer = $this->customer();
+        $sellerConsultation = $this->consultation($customer, ['Tư vấn ban đầu']);
+
+        $this->as($contributor);
+        $this->getJson('/api/crm/customers/'.$customer)->assertOk()
+            ->assertJsonPath('data.can_consult', true)->assertJsonPath('data.can_update', false);
+        $payload = [
+            'request_key' => (string) Str::uuid(), 'kind' => 'CONSULTATION',
+            'services' => ['Hướng dẫn sử dụng', 'Giải đáp phản hồi'], 'result' => 'Khách đã hiểu cách dùng.',
+            'actor_id' => $seller->id, 'business_date' => '2026-11-18',
+        ];
+        $activity = $this->postJson('/api/crm/customers/'.$customer.'/activities', $payload)
+            ->assertCreated()->json('data.id');
+        $this->postJson('/api/crm/customers/'.$customer.'/activities', $payload)
+            ->assertCreated()->assertJsonPath('data.id', $activity);
+        $this->postJson('/api/crm/customers/'.$customer.'/activities', [...$payload, 'result' => 'Nội dung khác'])
+            ->assertConflict();
+        $this->assertDatabaseCount('crm_activities', 3);
+        $this->assertDatabaseHas('crm_activities', [
+            'id' => $activity, 'actor_id' => $contributor->id, 'customer_id' => $customer,
+            'kind' => 'CONSULTATION', 'business_date' => '2026-11-19', 'result' => $payload['result'],
+        ]);
+        $this->assertNotNull(DB::table('crm_activities')->where('id', $activity)->value('created_at'));
+        $this->assertDatabaseHas('crm_customer_profiles', [
+            'customer_id' => $customer, 'owner_membership_id' => $sellerMembership, 'version' => 1,
+        ]);
+        $this->getJson('/api/crm/customers/'.$customer)->assertOk()
+            ->assertJsonPath('data.owner_membership_id', $sellerMembership)
+            ->assertJsonPath('data.activities.0.actor_name', $contributor->name)
+            ->assertJsonPath('data.activities.0.services.1.name', 'Giải đáp phản hồi');
+        $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(1, 'data.activities')
+            ->assertJsonPath('data.activities.0.id', $activity);
+        $this->postJson('/api/reports', [
+            'form_version' => 3, 'next_day_plan' => 'Theo dõi phản hồi', 'items' => [],
+            'crm_draft' => ['activity_ids' => [$activity], 'task_id' => $task->id, 'expected_revision' => $task->progress_revision],
+        ])->assertCreated()
+            ->assertJsonPath('data.items.0.task_link.progress.input.care_work_items.0.crm_activity_id', $activity);
+        $this->assertDatabaseHas('daily_reports', ['user_id' => $contributor->id]);
+        $this->assertDatabaseHas('task_outputs', ['task_id' => $task->id, 'care_customer_id' => $customer, 'completed' => true]);
+
+        $this->as($seller);
+        $draft = $this->getJson('/api/crm/report-draft')->assertOk()->assertJsonCount(2, 'data.activities')->json('data.activities');
+        $this->assertContains($sellerConsultation, array_column($draft, 'id'));
+        $this->assertNotContains($activity, array_column($draft, 'id'));
+        $this->postJson('/api/reports', [
+            'form_version' => 3, 'next_day_plan' => 'Theo dõi', 'items' => [], 'crm_draft' => ['activity_ids' => [$activity]],
+        ])->assertUnprocessable()->assertJsonValidationErrors('crm_draft');
+        $this->assertDatabaseCount('daily_reports', 1);
+    }
+
+    public function test_shared_directory_includes_legacy_customers_for_existing_view_grants_within_the_same_organization(): void
+    {
+        [$seller] = $this->member('SALES_STAFF');
+        $this->as($seller);
+        $current = $this->customer();
+        $organization = DB::table('organization_memberships')->where('user_id', $seller->id)->value('organization_id');
+        $care = app(CustomerCare::class);
+        $input = ['request_key' => (string) Str::uuid(), 'name' => 'Khách từ báo cáo cũ', 'channel' => 'PHONE', 'contact' => '0901234567'];
+        $legacy = $care->createCustomer($seller, $organization, $input, 'contact');
+        $foreignUser = User::factory()->create();
+        $foreignOrganization = $this->createMembership($foreignUser, organizationCode: 'OTHER')['organization_id'];
+        $foreignCustomer = $care->createCustomer($foreignUser, $foreignOrganization, $input, 'contact');
+        $permission = $this->createPermission('customers.view');
+
+        foreach (['SELF', 'OWN', 'TEAM', 'DEPARTMENT', 'LOCATION', 'ORGANIZATION', 'ALL', null] as $scope) {
+            $viewer = User::factory()->create();
+            $membership = $this->createMembership($viewer);
+            $role = $this->createRole();
+            $this->grantPermission($role, $permission, $scope);
+            $this->attachRole($membership['membership_id'], $role, true);
+            $this->as($viewer);
+
+            $this->getJson('/api/crm/capabilities')->assertOk()->assertJsonPath('data.can_create', false);
+            $this->getJson('/api/crm/customers')->assertOk()->assertJsonPath('data.total', 2)
+                ->assertJsonPath('data.data.0.id', $legacy->id)->assertJsonPath('data.data.1.id', $current);
+            $this->getJson('/api/crm/customers?search=%2B84901234567')->assertOk()
+                ->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $legacy->id);
+            $this->getJson('/api/crm/customers/'.$legacy->id)->assertOk()
+                ->assertJsonPath('data.contacts.0.value', '0901234567')
+                ->assertJsonPath('data.can_consult', false)
+                ->assertJsonPath('data.can_update', false)->assertJsonPath('data.can_assign', false);
+            $this->postJson('/api/crm/customers/'.$legacy->id.'/activities', [
+                'kind' => 'CONSULTATION', 'request_key' => (string) Str::uuid(),
+                'services' => ['Tư vấn'], 'result' => 'Tài khoản chỉ có quyền xem.',
+            ])->assertForbidden();
+            $this->getJson('/api/crm/customers/'.$foreignCustomer->id)->assertNotFound();
+        }
+
+        $this->as($seller);
+        $this->postJson('/api/crm/customers/'.$foreignCustomer->id.'/activities', [
+            'kind' => 'CONSULTATION', 'request_key' => (string) Str::uuid(),
+            'services' => ['Tư vấn'], 'result' => 'Khách thuộc công ty khác.',
+        ])->assertNotFound();
+
+        [$office] = $this->member('OFFICE_STAFF');
+        $this->as($office);
+        $this->getJson('/api/crm/capabilities')->assertForbidden();
+        $this->getJson('/api/crm/customers')->assertForbidden();
+        $this->getJson('/api/crm/customers/'.$legacy->id)->assertForbidden();
     }
 
     public function test_follow_up_windows_use_local_dates_and_count_distinct_visible_customers(): void

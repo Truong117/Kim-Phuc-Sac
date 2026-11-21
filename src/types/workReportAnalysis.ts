@@ -61,6 +61,10 @@ export interface AnalysisSource {
   date: string;
   item_ids: number[];
 }
+export interface WeeklyFigure {
+  label: string;
+  text: string;
+}
 export interface WeeklyRevenue {
   amount: number | null;
   display: string;
@@ -68,6 +72,7 @@ export interface WeeklyRevenue {
 
 export interface AnalysisEmployee {
   weekly_revenue?: WeeklyRevenue;
+  weekly_figures?: WeeklyFigure[];
   employee_id: number;
   name: string;
   department_name: string | null;

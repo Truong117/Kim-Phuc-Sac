@@ -1,16 +1,22 @@
 import { useTranslation } from "react-i18next";
-import type { GroupedWork, WorkTotal } from "@/types/workReportAnalysis";
+import type {
+  GroupedWork,
+  WeeklyFigure,
+  WorkTotal,
+} from "@/types/workReportAnalysis";
 
 import { reportText } from "@/utils/reportPresentation";
 
 export default function WorkAnalysisWeeklyWork({
   groups,
   totals,
+  figures,
   partial,
   weekly = false,
 }: {
   groups: GroupedWork[];
   totals: WorkTotal[];
+  figures?: WeeklyFigure[];
   partial: boolean;
   weekly?: boolean;
 }) {
@@ -51,7 +57,27 @@ export default function WorkAnalysisWeeklyWork({
           {t("reader.noGroups")}
         </p>
       )}
-      {confirmed.length > 0 && (
+      {figures && figures.length > 0 && (
+        <dl
+          aria-label={t("weeklyWork.totals")}
+          className="divide-y divide-brand-100 rounded-lg bg-brand-50 px-4 dark:divide-brand-900 dark:bg-brand-500/10"
+        >
+          {figures.map((figure, index) => (
+            <div
+              key={index}
+              className="grid gap-1 py-2 text-sm leading-6 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] sm:gap-4"
+            >
+              <dt className="font-medium break-words text-brand-800 dark:text-brand-200">
+                {figure.label}
+              </dt>
+              <dd className="break-words text-gray-700 dark:text-gray-300">
+                {figure.text}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {figures === undefined && confirmed.length > 0 && (
         <div
           aria-label={t("weeklyWork.totals")}
           className="flex flex-wrap gap-2"

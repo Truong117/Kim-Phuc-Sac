@@ -1,5 +1,6 @@
 import { careEntryPayload, careWorkPayload } from "@/utils/careReports";
-import { normalizeNextDayPlan } from "@/utils/nextDayPlan";
+import { normalizeNextDayPlan, parseNextDayPlan } from "@/utils/nextDayPlan";
+import { buildCrmReportPreview } from "@/utils/crmReportPreview";
 import {
   focusFirstReportError,
   mapReportFieldErrors,
@@ -24,6 +25,9 @@ import ReportWorkItemDetails from "@/components/reports/ReportWorkItemDetails";
 import QuickReportEditor from "@/components/reports/QuickReportEditor";
 import AssignedTaskReportPanel from "@/components/reports/AssignedTaskReportPanel";
 import CrmReportDraftPanel from "@/components/reports/CrmReportDraftPanel";
+import CrmReportPreview, {
+  CrmPlanPreview,
+} from "@/components/reports/CrmReportPreview";
 import WorkItemList from "@/components/reports/WorkItemList";
 import Button from "@/components/ui/button/Button";
 import { useAuthorization } from "@/hooks/useAuthorization";
@@ -143,6 +147,7 @@ export default function NewReport({
   dateSelection,
 }: { makeupDate?: string; dateSelection?: ReactNode } = {}) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport" });
+  const { t: crmT } = useTranslation("common", { keyPrefix: "crm.report" });
   const { t: progressT } = useTranslation("common", {
     keyPrefix: "taskProgress",
   });
@@ -275,6 +280,36 @@ export default function NewReport({
       : null,
     today?.business_date ?? null,
   );
+  const crmPreview = buildCrmReportPreview(
+    crmDraft.selectedActivities,
+    crmDraft.tasks.find((task) => task.id === crmDraft.taskId),
+    items,
+    parseNextDayPlan(nextDayPlan),
+    crmT("followUpLabel"),
+  );
+  const additionalReportItems: Partial<
+    Record<WorkStatus, { content: ReactNode; count: number }>
+  > = {};
+  for (const status of ["COMPLETED", "IN_PROGRESS", "BLOCKED"] as const) {
+    const group = crmPreview.groups[status];
+    if (group.rows.length) {
+      additionalReportItems[status] = {
+        count: group.count,
+        content: <CrmReportPreview rows={group.rows} />,
+      };
+    }
+  }
+  const crmPlanPreview = crmPreview.plans.length ? (
+    <CrmPlanPreview lines={crmPreview.plans} />
+  ) : null;
+
+  const viewCrmInReport = () => {
+    const preview = reportSurfaceRef.current?.querySelector<HTMLElement>(
+      "[data-crm-report-preview]",
+    );
+    preview?.scrollIntoView({ block: "center", behavior: "smooth" });
+    preview?.focus({ preventScroll: true });
+  };
 
   const facebookPages = useFacebookReportPages(
     currentUser?.id ?? null,
@@ -561,6 +596,12 @@ export default function NewReport({
 
   const handleSubmit = async () => {
     if (saveInFlightRef.current || saveState.status !== "idle") return;
+    if (crmDraft.saveWaiting || (crmDraft.error && crmDraft.selection)) {
+      const sources = document.getElementById("crm-report-sources");
+      sources?.scrollIntoView({ block: "center", behavior: "smooth" });
+      sources?.focus({ preventScroll: true });
+      return;
+    }
     if (taskDrafts.length > 0) {
       setError(progressT("unapplied"));
       const id = taskDrafts[0].taskLink?.task_id;
@@ -1015,6 +1056,7 @@ export default function NewReport({
                 <CrmReportDraftPanel
                   crm={crmDraft}
                   disabled={isSaveFlowActive}
+                  onViewReport={viewCrmInReport}
                 />
                 {currentUser &&
                   (canNavigate("tasks") || taskDrafts.length > 0) && (
@@ -1101,6 +1143,7 @@ export default function NewReport({
                     aria-labelledby="quick-report-tab"
                   >
                     <QuickReportEditor
+                      additionalItems={additionalReportItems}
                       facebookPages={facebookPages}
                       reportDate={today.business_date}
                       planSection={
@@ -1111,6 +1154,7 @@ export default function NewReport({
                           value={nextDayPlan}
                           onChange={handlePlanChange}
                           disabled={isSaveFlowActive}
+                          preview={crmPlanPreview}
                         />
                       }
                       items={realWorkItems(items)}
@@ -1144,6 +1188,7 @@ export default function NewReport({
                     aria-labelledby="detailed-report-tab"
                   >
                     <WorkItemList
+                      additionalItems={additionalReportItems}
                       facebookPages={facebookPages}
                       disabled={isSaveFlowActive}
                       reportDate={today.business_date}
@@ -1155,6 +1200,7 @@ export default function NewReport({
                           value={nextDayPlan}
                           onChange={handlePlanChange}
                           disabled={isSaveFlowActive}
+                          preview={crmPlanPreview}
                         />
                       }
                       items={items}
@@ -1195,7 +1241,7 @@ export default function NewReport({
                     type="submit"
                     size="sm"
                     className="w-full !bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none sm:w-auto"
-                    disabled={isSaveFlowActive}
+                    disabled={isSaveFlowActive || crmDraft.saveWaiting}
                   >
                     {isSaving
                       ? t("actions.saving")

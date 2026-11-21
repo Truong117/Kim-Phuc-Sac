@@ -79,6 +79,8 @@ class WorkReportAnalysisContractTest extends TestCase
     public static function contractChanges(): array
     {
         return [
+            'last full weekly prompt with the same JSON schema' => [['prompt_version' => 'work-report-v3.2', 'weekly_summary_version' => null]],
+            'missing weekly summary marker' => [['weekly_summary_version' => null]],
             'previous production field-copy contract' => [['prompt_version' => 'work-report-v3.1', 'schema_version' => 'work-report-v3.0']],
             'previous prompt version' => [['prompt_version' => 'work-report-v2.1']],
             'different instructions without a version bump' => [['instructions_hash' => hash('sha256', 'Earlier instructions')]],
@@ -124,6 +126,7 @@ class WorkReportAnalysisContractTest extends TestCase
         $this->assertNotSame($run->id, $current->id);
         $this->assertSame(WorkReportAnalysisOutput::VERSION, $current->analysis_config['prompt_version']);
         $this->assertSame(WorkReportAnalysisOutput::SCHEMA_VERSION, $current->analysis_config['schema_version']);
+        $this->assertSame(WorkReportAnalysisOutput::WEEKLY_SUMMARY_VERSION, $current->analysis_config['weekly_summary_version']);
         $this->assertSame($current->id, $this->createAnalysis()->id);
         Http::assertNothingSent();
     }

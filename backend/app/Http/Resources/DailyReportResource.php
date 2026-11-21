@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\DailyReport;
+use App\Services\LockedReportAmendments;
 use App\Services\ReportClock;
 use App\Services\Social\ReportFacebookPosts;
 use Illuminate\Http\Request;
@@ -11,6 +12,15 @@ use Illuminate\Http\Resources\Json\JsonResource;
 /** @mixin DailyReport */
 class DailyReportResource extends JsonResource
 {
+    private bool $includeLockedAmendment = false;
+
+    public function withLockedAmendment(): self
+    {
+        $this->includeLockedAmendment = true;
+
+        return $this;
+    }
+
     /** @return array<string, mixed> */
     public function toArray(Request $request): array
     {
@@ -57,6 +67,9 @@ class DailyReportResource extends JsonResource
                 'can_edit' => (bool) $this->getAttribute('can_edit'),
                 'can_comment' => (bool) $this->getAttribute('can_comment'),
             ],
+            ...($this->includeLockedAmendment ? [
+                'locked_amendment' => app(LockedReportAmendments::class)->describe($request->user(), $this->resource),
+            ] : []),
             'created_at' => $this->created_at?->utc()->toIso8601String(),
             'updated_at' => $this->updated_at?->utc()->toIso8601String(),
         ];

@@ -77,7 +77,8 @@ final class WorkReportDailyDocuments
                 $entry = [...$report, 'items' => array_values(array_filter($report['items'], fn ($item) => in_array($item['item_id'], $ids, true)))];
                 $base = ['employee_id' => $id, 'period' => $snapshot['period'], 'review_feedback' => $feedback];
                 $size = fn (array $docs): int => strlen(json_encode(WorkReportEvidence::prepare(
-                    [...$base, 'analysis_stage' => 'employee_review', 'daily_documents' => $docs], $snapshot['reports'],
+                    [...$base, 'analysis_stage' => 'employee_review', 'daily_documents' => $docs,
+                        ...((int) $snapshot['period']['days'] === 7 ? ['source_scope' => 'complete'] : [])], $snapshot['reports'],
                 ), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
                 if ($size([$fragment]) > $limit) {
                     throw ValidationException::withMessages(['daily_documents' => 'Một nhóm công việc ngày vượt kích thước xử lý tuần; cần tổng hợp lại ngày thành các nhóm nhỏ hơn. Không có nội dung bị cắt.']);

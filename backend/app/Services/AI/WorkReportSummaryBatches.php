@@ -9,9 +9,12 @@ final class WorkReportSummaryBatches
         $batches = [];
         $results = [];
         $ids = [];
-        $input = fn (array $values): array => ['period' => $period, 'parts' => $values,
-            'analysis_stage' => 'company_summary', 'review_feedback' => $feedback, 'missing_units' => $missing];
-        $bytes = fn (array $values): int => strlen(json_encode($input($values), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
+        $weekly = ($period['days'] ?? null) === 7;
+        $input = fn (array $values, string $scope = 'partial'): array => ['period' => $period, 'parts' => $values,
+            'analysis_stage' => 'company_summary', 'review_feedback' => $feedback, 'missing_units' => $missing,
+            ...($weekly ? ['source_scope' => $scope] : [])];
+        // A single planned batch runs as the terminal summary and can use the longer scope label.
+        $bytes = fn (array $values): int => strlen(json_encode($input($values, 'complete'), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         $flush = function () use (&$batches, &$results, &$ids, $input): void {
             if ($results !== []) {
                 $batches[] = ['input' => $input($results), 'source_unit_ids' => array_values(array_unique($ids))];
@@ -36,25 +39,41 @@ final class WorkReportSummaryBatches
                 continue;
             }
             $metadata = array_intersect_key($part['result'], array_flip(['employee_id', 'employee_name', 'employee_complete']));
-            if (($part['result']['work_totals'] ?? []) !== []) {
-                // Emit each subtotal once, even when this employee is split across batches.
-                $append($part['id'], [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata,
-                    'work_totals' => $part['result']['work_totals']]);
+            $pendingTotals = $part['result']['work_totals'] ?? [];
+            if (! $weekly && $pendingTotals !== []) {
+                $append($part['id'], [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_totals' => $pendingTotals]);
+                $pendingTotals = [];
             }
+            // For weekly runs, co-locate each subtotal with source content. A totals-only
+            // batch would have nothing the reviewer may cite, even if the number is valid.
+            $appendFragment = function (array $fragment) use ($append, $part, $bytes, $limit, &$pendingTotals): void {
+                foreach ($pendingTotals as $index => $total) {
+                    $candidate = $fragment;
+                    $candidate['work_totals'][] = $total;
+                    if ($bytes([$candidate]) <= $limit) {
+                        $fragment = $candidate;
+                        unset($pendingTotals[$index]);
+                    }
+                }
+                $append($part['id'], $fragment);
+            };
             foreach ($part['result']['work_groups'] ?? [] as $group) {
-                $append($part['id'], [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_groups' => [$group]]);
+                $appendFragment([...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_groups' => [$group]]);
             }
             // Preserve source inventory before partitioning the employee's AI assessment.
             foreach ($part['result']['work_inventory'] ?? [] as $group) {
                 $fragment = [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata, 'work_inventory' => [$group]];
-                if ($bytes([$fragment]) <= $limit) {
-                    $append($part['id'], $fragment);
+                // Splitting a dense inventory by its existing observations can leave
+                // enough room for a subtotal while keeping every observation exactly once.
+                if ($bytes([$fragment]) <= $limit && ($pendingTotals === [] || count($group['observations']) < 2
+                    || $bytes([[...$fragment, 'work_totals' => array_values($pendingTotals)]]) <= $limit)) {
+                    $appendFragment($fragment);
 
                     continue;
                 }
                 foreach ($group['observations'] as $observation) {
                     $fragment['work_inventory'] = [['content' => $group['content'], 'observations' => [$observation]]];
-                    $append($part['id'], $fragment);
+                    $appendFragment($fragment);
                 }
             }
             // Partition at whole claim boundaries. Never truncate text or evidence.
@@ -62,8 +81,11 @@ final class WorkReportSummaryBatches
                 foreach ($part['result'][$section] as $claim) {
                     $result = [...array_fill_keys(WorkReportAnalysisOutput::SECTIONS, []), ...$metadata];
                     $result[$section][] = $claim;
-                    $append($part['id'], $result);
+                    $appendFragment($result);
                 }
+            }
+            if ($pendingTotals !== []) {
+                throw new AiGatewayException('AI_REDUCE_SCOPE', 'A weekly subtotal cannot fit with source evidence in the input budget.');
             }
         }
         $flush();

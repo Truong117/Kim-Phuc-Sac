@@ -32,6 +32,7 @@ export default function PersonalWeeklyReportContent({
           <WorkAnalysisWeeklyWork
             weekly
             groups={employee.work_groups ?? []}
+            figures={employee.weekly_figures}
             totals={employee.work_totals ?? []}
             partial={report.status !== "completed"}
           />

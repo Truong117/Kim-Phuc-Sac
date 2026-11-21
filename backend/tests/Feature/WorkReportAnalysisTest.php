@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\AuthorizationFixtures;
 use Tests\TestCase;
 
@@ -682,6 +683,113 @@ class WorkReportAnalysisTest extends TestCase
         $this->assertEquals(5, $totals['Ảnh đã chỉnh sửa']);
         $this->assertEquals(3, $totals['Video đã dựng']);
         Http::assertSentCount(3); // No extra paid synthesis call: inventory is prepared before each employee review.
+    }
+
+    public static function weeklyRevenueCoverage(): array
+    {
+        return ['all leaves succeeded' => [false], 'one leaf failed' => [true]];
+    }
+
+    #[DataProvider('weeklyRevenueCoverage')]
+    public function test_weekly_ai_receives_scoped_sources_and_revenue_cards_stay_with_each_employee(bool $failLeaf): void
+    {
+        config(['work_report_ai.use_daily_documents' => false, 'work_report_ai.unit_input_bytes' => 2000,
+            'work_report_ai.summary_input_bytes' => 24000, 'work_report_ai.summary_parts_per_batch' => 2,
+            'work_report_ai.queue_connection' => 'sync']);
+        $owner = $this->member('OWNER');
+        $a = $this->member('OFFICE_STAFF');
+        $b = $this->member('OFFICE_STAFF');
+        foreach ([[$a, '2026-10-30', '410.000 đồng'], [$a, '2026-10-31', '220.000 đồng'], [$b, '2026-11-01', '70.000 đồng']] as [$person, $date, $value]) {
+            $report = $this->report($person, $date, 'Doanh thu trong ngày');
+            DB::table('daily_report_items')->where('daily_report_id', $report)
+                ->update(['result' => $value, 'status' => 'COMPLETED', 'note' => str_repeat('a', 1100)]);
+        }
+        $other = $this->report($this->member('OFFICE_STAFF'), content: 'Gửi tài liệu');
+        DB::table('daily_report_items')->where('daily_report_id', $other)->update(['status' => 'COMPLETED']);
+
+        $leaves = $batchParts = $batchScopes = [];
+        $final = null;
+        $provider = \Mockery::mock(WorkReportAnalysisProvider::class);
+        $provider->shouldReceive('analyze')->andReturnUsing(function ($run, $unit, $input) use (&$leaves, &$batchParts, &$batchScopes, &$final, $failLeaf) {
+            if ($input['analysis_stage'] === 'employee_review') {
+                $leaves[$input['employee_id']][] = $input['source_scope'];
+                if ($failLeaf && $input['work_inventory'][0]['observations'][0]['date'] === '2026-10-31') {
+                    throw new AiGatewayException('AI_TIMEOUT', 'Synthetic interruption.');
+                }
+            } elseif ($unit->unit_key === 'summary') {
+                $final = $input;
+            } else {
+                $batchScopes[] = $input['source_scope'];
+                array_push($batchParts, ...$input['parts']);
+            }
+
+            return (new WorkReportAnalysisProvider)->analyze($run, $unit, $input);
+        });
+        $this->app->instance(WorkReportAnalysisProvider::class, $provider);
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner, 7));
+        $this->assertSame($failLeaf ? 'partial' : 'completed', $run->status);
+        $this->assertSame(['partial', 'partial'], $leaves[$a->id]);
+        $this->assertSame(['complete'], $leaves[$b->id]);
+        $this->assertSame('consolidation', $final['summary_stage']);
+        $this->assertArrayNotHasKey('weekly_revenue', $final);
+        $this->assertArrayNotHasKey('employee_revenues', $final);
+        $this->assertSame($failLeaf ? 'partial' : 'complete', $final['source_scope']);
+        $this->assertNotEmpty($batchScopes);
+        $this->assertSame(['partial'], array_values(array_unique($batchScopes)));
+        foreach ($batchParts as $part) {
+            $this->assertArrayNotHasKey('weekly_revenue', $part);
+            $this->assertSame($part['employee_id'] !== $a->id || ! $failLeaf, $part['employee_complete']);
+        }
+        $web = $this->actingAs($owner, 'web')->getJson('/api/ai/work-report-analyses/'.$run->id)->assertOk()
+            ->assertJsonMissingPath('data.weekly_revenue');
+        $people = collect($web->json('data.employees'))->keyBy('employee_id');
+        $this->assertSame(630000, $people[$a->id]['weekly_revenue']['amount']);
+        $this->assertSame(70000, $people[$b->id]['weekly_revenue']['amount']);
+    }
+
+    public static function invalidWeeklySourceOutputs(): array
+    {
+        return [
+            'missing grouped source' => ['omit', 'AI_INCOMPLETE_INVENTORY'],
+            'claim citing another employee' => ['claim', 'AI_INVALID_EVIDENCE'],
+            'quantity citing another employee' => ['quantity', 'AI_INVALID_EVIDENCE'],
+        ];
+    }
+
+    #[DataProvider('invalidWeeklySourceOutputs')]
+    public function test_weekly_generation_still_rejects_an_omitted_work_item_or_foreign_source(string $fault, string $error): void
+    {
+        Queue::fake();
+        $owner = $this->member('OWNER');
+        $a = $this->member('OFFICE_STAFF');
+        $this->report($a, content: 'Chuẩn bị 2 mẫu');
+        $foreign = $this->report($this->member('OFFICE_STAFF'), content: 'Gửi 5 mẫu');
+        $foreignRef = ['report_id' => $foreign,
+            'item_id' => DB::table('daily_report_items')->where('daily_report_id', $foreign)->value('id'), 'field' => 'content'];
+        $provider = \Mockery::mock(WorkReportAnalysisProvider::class);
+        $provider->shouldReceive('analyze')->once()->andReturnUsing(function ($run, $unit, $input) use ($fault, $foreignRef) {
+            $response = (new WorkReportAnalysisProvider)->analyze($run, $unit, $input);
+            switch ($fault) {
+                case 'omit':
+                    $response['result']['work_groups'] = [];
+                    break;
+                case 'claim':
+                    $response['result']['overview'] = [['text' => 'Gửi mẫu', 'evidence' => [$foreignRef]]];
+                    break;
+                case 'quantity':
+                    $response['result']['quantity_observations'] = [[...$foreignRef,
+                        'metric' => 'Mẫu đã gửi', 'unit' => 'mẫu', 'quantity' => 5, 'basis' => 'incremental']];
+                    break;
+            }
+
+            return $response;
+        });
+        $this->app->instance(WorkReportAnalysisProvider::class, $provider);
+        $run = WorkReportAnalysis::findOrFail($this->createRun($owner, 7));
+        $unit = $run->units()->where('unit_key', 'like', 'employee:'.$a->id.':%')->firstOrFail();
+        app(WorkReportAnalysisWorker::class)->process($unit->id);
+        $this->assertSame($error, $unit->refresh()->error_code);
+        $this->assertNull($unit->result);
     }
 
     public function test_valid_ids_and_quotes_are_not_a_semantic_truth_guarantee(): void

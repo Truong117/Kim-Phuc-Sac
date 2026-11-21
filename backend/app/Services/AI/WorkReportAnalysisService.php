@@ -27,6 +27,7 @@ class WorkReportAnalysisService
         $settings['grouped_work_version'] = WorkReportGroupedWork::VERSION;
         $settings['prompt_version'] = WorkReportAnalysisOutput::VERSION;
         $settings['schema_version'] = WorkReportAnalysisOutput::SCHEMA_VERSION;
+        $settings['weekly_summary_version'] = WorkReportAnalysisOutput::WEEKLY_SUMMARY_VERSION;
         $settings['instructions_hash'] = hash('sha256', WorkReportAnalysisOutput::instructions());
         $settings['schema_hash'] = WorkReportSnapshot::hash(WorkReportAnalysisOutput::schema());
 
@@ -130,7 +131,7 @@ class WorkReportAnalysisService
             unset($input['_reused_from_unit_id']);
             // Feedback belongs to the frozen input and must also match; never silently reuse a different review.
             try {
-                WorkReportAnalysisOutput::validate($unit->result, $input['reports'], true);
+                WorkReportAnalysisOutput::validate($unit->result, $input['reports'], true, conciseWeekly: (int) $previous->days === 7);
                 WorkReportGroupedWork::validate($unit->result['work_groups'] ?? null, $input['reports']);
                 $candidates[WorkReportSnapshot::hash($input)] = $unit;
             } catch (\RuntimeException) {
@@ -208,6 +209,7 @@ class WorkReportAnalysisService
         $bytes = fn (array $reports, int $id): int => strlen(json_encode([
             'employee_id' => $id, 'period' => $snapshot['period'], 'work_inventory' => WorkReportWeeklyWork::build($reports),
             'review_feedback' => $feedback, 'analysis_stage' => 'employee_review',
+            ...((int) $snapshot['period']['days'] === 7 ? ['source_scope' => 'complete'] : []),
         ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
         foreach ($snapshot['reports'] as $report) {
             foreach ($report['items'] as $item) {
@@ -342,6 +344,11 @@ class WorkReportAnalysisService
         $weeklyFields = [];
         if ($weekly) {
             $employees = array_map(fn ($e) => WeeklyRevenuePresentation::employee($e, $snapshot['period']['end_date']), $employees);
+            if (($run->analysis_config['weekly_summary_version'] ?? null) === WorkReportAnalysisOutput::WEEKLY_SUMMARY_VERSION) {
+                $employees = array_map(fn ($e) => [...$e, 'weekly_figures' => WeeklyReportFigures::build(
+                    $e['work_totals'], $e['weekly_revenue'] ?? null,
+                )], $employees);
+            }
             $weeklyFields['can_export_word'] = $this->sources->membership($viewer)->roles()
                 ->whereIn('roles.code', ['ADMIN', 'EXECUTIVE_ASSISTANT'])->exists();
         }
