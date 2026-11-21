@@ -96,6 +96,7 @@ final class CrmCustomers
 
         return [
             ...$this->publicFields($customer),
+            'can_consult' => $this->access->canConsult($member),
             'can_update' => $this->access->customers($member, 'customers.update')->where('customer.id', $id)->exists(),
             'can_assign' => $this->access->customers($member, 'customers.assign')->where('customer.id', $id)->exists(),
             'contacts' => DB::table('care_customer_contacts')->where('organization_id', $member->organization_id)
@@ -147,8 +148,11 @@ final class CrmCustomers
                 return (int) $previous->id;
             }
 
-            $this->lockCustomer($member, $id, 'customers.update');
             $kind = $input['kind'];
+            if ($kind === 'CONSULTATION') {
+                abort_unless($this->access->canConsult($member), 403);
+            }
+            $this->lockCustomer($member, $id, $kind === 'CONSULTATION' ? 'customers.view' : 'customers.update');
             if ($kind === 'OPPORTUNITY') {
                 $opportunity = DB::table('crm_opportunities')->insertGetId([
                     'customer_id' => $id, 'title' => $input['title'], 'created_at' => now(), 'updated_at' => now(),
