@@ -7,6 +7,8 @@ import {
 
 type Preference = { excluded: number[]; task?: number };
 type LoadedDraft = { scope: string; draft: CrmDraft; preference: Preference };
+type DraftRequest = { revision: number; manualScope: string | null };
+const refreshTimeoutMs = 20_000;
 
 function readPreference(scope: string): Preference {
   try {
@@ -29,11 +31,27 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
   const scope = user && date ? user + ":" + date : null;
   const [loaded, setLoaded] = useState<LoadedDraft | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const [revision, setRevision] = useState(0);
+  const [request, setRequest] = useState<DraftRequest>({
+    revision: 0,
+    manualScope: null,
+  });
+  const [finishedRequest, setFinishedRequest] = useState<string | null>(null);
+  const requestKey = scope ? scope + ":" + request.revision : null;
+  const isManualRequest = scope !== null && request.manualScope === scope;
 
   useEffect(() => {
     if (!scope) return;
     const controller = new AbortController();
+    let settled = false;
+    const finish = () => {
+      settled = true;
+      setFinishedRequest(requestKey);
+    };
+    const deadline = window.setTimeout(() => {
+      controller.abort();
+      setFailure(scope);
+      finish();
+    }, refreshTimeoutMs);
     getCrmReportDraft(controller.signal)
       .then((draft) => {
         if (controller.signal.aborted) return;
@@ -41,21 +59,41 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
           setFailure(scope);
           return;
         }
-        setLoaded({ scope, draft, preference: readPreference(scope) });
+        const savedPreference = readPreference(scope);
+        setLoaded((current) => ({
+          scope,
+          draft,
+          preference:
+            current?.scope === scope ? current.preference : savedPreference,
+        }));
         setFailure(null);
       })
       .catch(() => {
         if (!controller.signal.aborted) setFailure(scope);
+      })
+      .finally(() => {
+        window.clearTimeout(deadline);
+        if (!controller.signal.aborted) finish();
       });
-    const refresh = () => setRevision((version) => version + 1);
-    window.addEventListener("focus", refresh);
+    const refreshOnFocus = () => {
+      if (isManualRequest && !settled) return;
+      setRequest((current) =>
+        current === request
+          ? { revision: current.revision + 1, manualScope: null }
+          : current,
+      );
+    };
+    window.addEventListener("focus", refreshOnFocus);
     return () => {
       controller.abort();
-      window.removeEventListener("focus", refresh);
+      window.clearTimeout(deadline);
+      window.removeEventListener("focus", refreshOnFocus);
     };
-  }, [date, revision, scope]);
+  }, [date, isManualRequest, request, requestKey, scope]);
 
   const state = loaded?.scope === scope ? loaded : null;
+  const loading = scope !== null && finishedRequest !== requestKey;
+  const error = scope !== null && failure === scope;
   const selected =
     state?.draft.activities.filter(
       ({ id }) => !state.preference.excluded.includes(id),
@@ -91,14 +129,25 @@ export function useCrmReportDraft(user: string | null, date: string | null) {
 
   return {
     activities: state?.draft.activities ?? [],
+    selectedActivities: selected,
     excluded: state?.preference.excluded ?? [],
-    error: scope !== null && failure === scope,
+    hasScope: scope !== null,
+    error,
+    loading,
+    saveWaiting: loading && (isManualRequest || selection !== null),
+    refreshed: isManualRequest && !loading && !error,
     hasConsultation,
     hasPlan: selected.some(({ kind }) => kind === "FOLLOW_UP"),
     selection,
     taskId: task?.id ?? 0,
     tasks,
-    refresh: () => setRevision((version) => version + 1),
+    refresh: () => {
+      if (!scope) return;
+      setRequest((current) => ({
+        revision: current.revision + 1,
+        manualScope: scope,
+      }));
+    },
     toggle(id: number) {
       if (!state) return;
       const { excluded } = state.preference;

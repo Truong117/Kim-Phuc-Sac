@@ -1,5 +1,5 @@
 import { normalizeNextDayPlan, parseNextDayPlan } from "@/utils/nextDayPlan";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Label from "@/components/form/Label";
 import TextArea from "@/components/form/input/TextArea";
 import { useTranslation } from "react-i18next";
@@ -11,6 +11,7 @@ export default function ReportNextDayPlan({
   referenceDate,
   showValidation = false,
   serverError,
+  preview,
 }: {
   value: string;
   onChange?: (value: string) => void;
@@ -19,13 +20,14 @@ export default function ReportNextDayPlan({
   referenceDate?: string;
   showValidation?: boolean;
   serverError?: string;
+  preview?: ReactNode;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "dailyReport.v3" });
   const [touched, setTouched] = useState(false);
   const normalized = normalizeNextDayPlan(value);
   const error =
     serverError ??
-    (!normalized
+    (!normalized && !preview
       ? t("planRequired")
       : normalized.length > 5000
         ? t("planTooLong")
@@ -50,13 +52,14 @@ export default function ReportNextDayPlan({
       ) : (
         <div className="mt-3">
           <Label htmlFor="next-day-plan">
-            {t("planLabel")} <span className="text-error-500">*</span>
+            {t("planLabel")}
+            {!preview && <span className="text-error-500"> *</span>}
           </Label>
           <TextArea
             id="next-day-plan"
             value={value}
             rows={4}
-            required
+            required={!preview}
             onBlur={() => setTouched(true)}
             disabled={disabled}
             placeholder={t("planPlaceholder")}
@@ -66,6 +69,7 @@ export default function ReportNextDayPlan({
           />
         </div>
       )}
+      {preview}
       <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
         {referenceDate
           ? t("planHistoricalHint", {
