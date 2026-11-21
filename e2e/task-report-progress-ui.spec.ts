@@ -315,7 +315,8 @@ for (const excludeAll of [false, true]) {
       });
     }
     const intake = sources.getByRole("checkbox", {
-      name: /Tiếp nhận khách mới/,
+      name: "Tiếp nhận khách mới · Khách A",
+      exact: true,
     });
     await intake.uncheck();
     if (excludeAll) {
