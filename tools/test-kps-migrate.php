@@ -34,6 +34,15 @@ try {
     $reject(fn () => kpsMigrationPlan($files, $ledger));
     unlink($files[25]['path']);
     $reject(fn () => kpsMigrationPlan($files, $ledger));
+    // Diagnostics must identify the failure class and phase without echoing exception arguments.
+    $diagnostic = kpsMigrationFailure(new TypeError('secret-password SELECT private_data'), 'plan', 'secret-password');
+    $assert(str_contains($diagnostic, 'type=TypeError; phase=plan;'));
+    $assert(!str_contains($diagnostic, 'secret-password') && !str_contains($diagnostic, 'SELECT private_data'));
+    $assert(str_contains(kpsMigrationFailure(new JsonException('private JSON input'), 'input_decode'), 'type=JsonException; phase=input_decode;'));
+    $assert(!str_contains(kpsMigrationFailure(new Error('private SQL text'), 'execute'), 'private SQL text'));
+    $assert(str_contains(kpsMigrationFailure(new RuntimeException('Bad secret-password target'), 'plan', 'secret-password'), 'Bad [REDACTED] target'));
+    $assert(str_contains(kpsMigrationFailure(new PDOException('private connection and password', 1045), 'plan'), 'code 1045'));
+    $assert(!str_contains(kpsMigrationFailure(new PDOException('private connection and password'), 'plan'), 'private connection'));
     echo "PASS: $tests offline migration safety checks.\n";
 } finally {
     foreach (glob($dir.'/*') as $f) { unlink($f); }
