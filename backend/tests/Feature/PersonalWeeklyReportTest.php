@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\ReportAutomationCycle;
 use App\Models\User;
 use App\Models\WorkReportAnalysis;
+use App\Services\AI\WorkReportAnalysisProvider;
 use App\Services\AI\WorkReportAnalysisService;
 use App\Services\AI\WorkReportAnalysisWorker;
 use App\Services\AI\WorkReportDecision;
@@ -281,12 +282,89 @@ class PersonalWeeklyReportTest extends TestCase
         $this->assertNotSame($lists['Công ty — Đối chiếu bản đầu.']['id'], $lists['Cá nhân — Đối chiếu bản đầu.']['id']);
     }
 
+    public function test_a_new_concise_weekly_review_is_the_same_in_storage_admin_personal_and_word(): void
+    {
+        DB::table('daily_report_items')->where('daily_report_id', $this->aliceReport)->update(['result' => 'Đã đăng 2 ảnh']);
+        $next = $this->report($this->alice, 'Đăng ảnh ở kênh thứ hai', '2026-11-05');
+        DB::table('daily_report_items')->where('daily_report_id', $next)->update(['result' => 'Đã đăng 3 ảnh']);
+        $provider = \Mockery::mock(WorkReportAnalysisProvider::class);
+        $provider->shouldReceive('analyze')->andReturnUsing(function ($run, $unit, $input) {
+            $response = (new WorkReportAnalysisProvider)->analyze($run, $unit, $input);
+            if (($input['employee_id'] ?? null) === $this->alice->id) {
+                foreach ($input['work_inventory'] as $group) {
+                    $row = $group['observations'][0];
+                    $first = $row['report_id'] === $this->aliceReport;
+                    $response['result']['quantity_observations'][] = [
+                        'metric' => $first ? 'Ảnh đã đăng trên Trang Mẫu A' : 'Ảnh đã đăng trên Trang Mẫu B',
+                        'unit' => 'ảnh', 'quantity' => $first ? 2 : 3, 'basis' => 'incremental',
+                        'report_id' => $row['report_id'], 'item_id' => $row['item_id'], 'field' => 'result',
+                    ];
+                }
+                $response['result']['recommendations'] = [[
+                    'text' => 'Chốt mẫu để gửi duyệt.', 'priority' => 'normal', 'rationale' => '', 'impact' => '',
+                    'action' => 'Gửi mẫu A & B.', 'expected_outcome' => 'Nhận lựa chọn bằng văn bản.',
+                    'verification' => '', 'decision_needed' => '', 'evidence' => $response['result']['work_groups'][0]['evidence'],
+                ]];
+            }
+
+            return $response;
+        });
+        $this->app->instance(WorkReportAnalysisProvider::class, $provider);
+        $run = $this->createAnalysis();
+        $this->assertSame('completed', $run->status);
+        $unit = $run->units()->where('unit_key', 'like', 'employee:'.$this->alice->id.':%')->firstOrFail();
+        $saved = $unit->result;
+        $this->assertSame($this->aliceReport, $saved['recommendations'][0]['evidence'][0]['report_id']);
+        $person = collect($this->actingAs($this->owner, 'web')->getJson('/api/ai/work-report-analyses/'.$run->id)
+            ->assertOk()->json('data.employees'))->firstWhere('employee_id', $this->alice->id);
+        $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->assertSame($saved['recommendations'], $person['result']['recommendations']);
+        $this->assertSame($person['result'], $mine->json('data.employee.result'));
+        $this->assertCount(2, $person['work_totals']);
+        $this->assertCount(1, $person['weekly_figures']);
+        $this->assertStringContainsString('5 ảnh', $person['weekly_figures'][0]['text']);
+        $this->assertSame($person['weekly_figures'], $mine->json('data.employee.weekly_figures'));
+        $word = $this->wordText($this->get('/api/reports/my-weekly-summary/word?end_date=2026-11-07&version='.$mine->json('data.export_version')));
+        foreach ($person['weekly_figures'][0] as $value) {
+            $this->assertStringContainsString($value, $word);
+        }
+        foreach (['text', 'action', 'expected_outcome'] as $field) {
+            $this->assertStringContainsString($saved['recommendations'][0][$field], $word);
+        }
+        $this->assertStringNotContainsString('Căn cứ · ', $word);
+        $this->assertStringNotContainsString('BÍ MẬT CỦA BOB', $word);
+        $this->assertSame($saved, $unit->fresh()->result);
+    }
+
+    public function test_overlapping_named_videos_need_confirmation_for_both_personal_and_admin_readers(): void
+    {
+        $again = $this->report($this->alice, 'Dựng video', '2026-11-05');
+        foreach ([$this->aliceReport, $again] as $id) {
+            DB::table('daily_report_items')->where('daily_report_id', $id)->update(['result' => 'Đã dựng video "Bản thử A"']);
+        }
+        $run = $this->createAnalysis();
+        $people = $this->actingAs($this->owner, 'web')->getJson('/api/ai/work-report-analyses/'.$run->id)->assertOk()
+            ->json('data.employees');
+        $admin = collect($people)->firstWhere('employee_id', $this->alice->id);
+        $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.status', 'completed')->json('data.employee');
+
+        $this->assertSame('needs_confirmation', $admin['work_totals'][0]['status']);
+        $this->assertNull($admin['work_totals'][0]['total']);
+        $this->assertCount(2, $admin['work_totals'][0]['entries']);
+        $this->assertSame($admin['work_totals'], $mine['work_totals']);
+        $this->assertSame([], $admin['weekly_figures']);
+        $this->assertSame($admin['weekly_figures'], $mine['weekly_figures']);
+    }
+
     public function test_word_preserves_saved_ai_claims_groups_metrics_and_decisions_in_order(): void
     {
         $quotedSource = 'Công việc <A> & "kiểm tra"';
         DB::table('daily_report_items')->where('daily_report_id', $this->aliceReport)->update(['content' => $quotedSource]);
         $admin = $this->member('ADMIN');
         $run = $this->createAnalysis();
+        $historical = $run->analysis_config;
+        unset($historical['weekly_summary_version']);
+        $run->update(['analysis_config' => [...$historical, 'prompt_version' => 'work-report-v3.2']]);
         $unit = $run->units()->where('unit_key', 'like', 'employee:'.$this->alice->id.':%')->firstOrFail();
         $saved = $unit->result;
         $evidence = $saved['work_groups'][0]['evidence'];
@@ -321,7 +399,9 @@ class PersonalWeeklyReportTest extends TestCase
         $base = '/api/ai/work-report-analyses/'.$run->id;
         $web = $this->actingAs($admin, 'web')->getJson($base)->assertOk()->assertJsonPath('data.result', $company);
         $person = collect($web->json('data.employees'))->firstWhere('employee_id', $this->alice->id);
-        $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.status', 'completed');
+        $this->assertArrayNotHasKey('weekly_figures', $person);
+        $mine = $this->read($this->alice)->assertOk()->assertJsonPath('data.status', 'completed')
+            ->assertJsonMissingPath('data.employee.weekly_figures');
         foreach (['overview', 'highlights', 'ongoing', 'attention', 'support', 'uncertainties', 'recommendations'] as $section) {
             $this->assertSame($saved[$section], $person['result'][$section]);
             $this->assertSame($saved[$section], $mine->json('data.employee.result.'.$section));

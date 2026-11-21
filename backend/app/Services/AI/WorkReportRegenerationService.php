@@ -56,7 +56,7 @@ class WorkReportRegenerationService
                 }
                 $reusedUnits = $source->units->filter(fn ($u) => str_starts_with($u->unit_key, 'employee:'))->values()->all();
                 foreach ($reusedUnits as $unit) {
-                    WorkReportAnalysisOutput::validate($unit->result, $unit->input['reports']);
+                    WorkReportAnalysisOutput::validate($unit->result, $unit->input['reports'], conciseWeekly: (int) $source->days === 7);
                 }
                 $inputs = array_map(function ($unit): array {
                     $input = $unit->input;
