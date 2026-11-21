@@ -596,7 +596,7 @@ export default function NewReport({
 
   const handleSubmit = async () => {
     if (saveInFlightRef.current || saveState.status !== "idle") return;
-    if (crmDraft.error && crmDraft.selection) {
+    if (crmDraft.saveWaiting || (crmDraft.error && crmDraft.selection)) {
       const sources = document.getElementById("crm-report-sources");
       sources?.scrollIntoView({ block: "center", behavior: "smooth" });
       sources?.focus({ preventScroll: true });
@@ -1241,7 +1241,7 @@ export default function NewReport({
                     type="submit"
                     size="sm"
                     className="w-full !bg-kps-primary hover:!bg-kps-primary-hover focus-visible:ring-3 focus-visible:ring-kps-primary/35 focus-visible:outline-none sm:w-auto"
-                    disabled={isSaveFlowActive}
+                    disabled={isSaveFlowActive || crmDraft.saveWaiting}
                   >
                     {isSaving
                       ? t("actions.saving")

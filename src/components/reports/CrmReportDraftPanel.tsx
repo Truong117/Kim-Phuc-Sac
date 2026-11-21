@@ -15,16 +15,10 @@ export default function CrmReportDraftPanel({
   onViewReport: () => void;
 }) {
   const { t } = useTranslation("common", { keyPrefix: "crm.report" });
-  if (!crm.activities.length && !crm.error && !crm.loading && !crm.refreshed)
-    return null;
+  if (!crm.hasScope) return null;
 
   return (
-    <section
-      id="crm-report-sources"
-      tabIndex={-1}
-      aria-label={t("title")}
-      aria-busy={crm.loading}
-    >
+    <section id="crm-report-sources" tabIndex={-1} aria-label={t("title")}>
       <ComponentCard title={t("title")} desc={t("hint")}>
         <div className="space-y-3">
           {crm.error && (
@@ -32,10 +26,15 @@ export default function CrmReportDraftPanel({
               role="alert"
               className="text-sm text-error-600 dark:text-error-300"
             >
-              {t("loadError")}
+              {t(crm.selection ? "loadErrorWithSelection" : "loadError")}
             </p>
           )}
-          {!crm.error && (
+          {!crm.loading && !crm.error && !crm.activities.length && (
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {t("empty")}
+            </p>
+          )}
+          {!!crm.activities.length && (
             <ul className="max-h-80 divide-y divide-gray-200 overflow-y-auto dark:divide-gray-700">
               {crm.activities.map((activity) => (
                 <li key={activity.id}>
@@ -116,12 +115,14 @@ export default function CrmReportDraftPanel({
               {t(crm.loading ? "loading" : "refresh")}
             </Button>
           </div>
-          {crm.refreshed && (
+          {(crm.loading || crm.refreshed) && (
             <p
               role="status"
               className="text-sm text-gray-600 dark:text-gray-400"
             >
-              {t("refreshed", { count: crm.activities.length })}
+              {crm.loading
+                ? t(crm.saveWaiting ? "loadingBeforeSave" : "loading")
+                : t("refreshed", { count: crm.activities.length })}
             </p>
           )}
         </div>
