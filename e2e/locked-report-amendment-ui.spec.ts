@@ -49,6 +49,8 @@ function sampleReport(id: number, own = false): DailyReport {
       expected_revision: "original-revision",
       reason_required: !own,
       editable_item_ids: [11],
+      can_add_items: true,
+      deletable_item_ids: [11],
       can_edit_next_day_plan: own,
       history: [],
       ai_may_be_stale: false,
@@ -93,14 +95,26 @@ async function setup(page: Page, own = false) {
       report = {
         ...report,
         next_day_plan: body.next_day_plan ?? report.next_day_plan,
-        items: report.items.map((item) => {
-          const fields = body.items?.find(({ id }) => id === item.id);
-          return {
+        items: [
+          ...report.items
+            .filter(({ id }) => !body.deleted_item_ids?.includes(id))
+            .map((item) => {
+              const fields = body.items?.find(({ id }) => id === item.id);
+              return {
+                ...item,
+                ...fields,
+                issue:
+                  fields?.issue === null ? "" : (fields?.issue ?? item.issue),
+              };
+            }),
+          ...(body.added_items ?? []).map((item, index) => ({
             ...item,
-            ...fields,
-            issue: fields?.issue === null ? "" : (fields?.issue ?? item.issue),
-          };
-        }),
+            id: 100 + index,
+            result: item.result ?? "",
+            note: item.note ?? null,
+            sort_order: 2 + index,
+          })),
+        ],
         locked_amendment: {
           ...report.locked_amendment!,
           expected_revision: "saved-revision",
@@ -330,4 +344,77 @@ test("changing report IDs closes a dirty amendment and waits for the new report"
   ).toBeVisible();
   await expect(open).toHaveCount(0);
   expect(api.recorded).toHaveLength(0);
+});
+
+test("queues a manual deletion with undo and saves a validated manual addition atomically", async ({
+  page,
+}) => {
+  const api = await setup(page);
+  await page.goto("/reports/41");
+  await page.getByRole("button", { name: openName }).click();
+  const dialog = page.getByRole("dialog", { name: openName });
+  const original = dialog.getByRole("group", { name: "Công việc #1" });
+  const remove = original.getByRole("button", {
+    name: "Xóa đầu việc",
+    exact: true,
+  });
+  await expect(
+    dialog.getByRole("button", { name: "Xóa đầu việc", exact: true }),
+  ).toHaveCount(1);
+  await original
+    .getByLabel("Kết quả", { exact: true })
+    .fill("Bản nháp giữ khi hoàn tác");
+  await remove.click();
+  await expect(original.getByRole("status")).toContainText("sẽ bị xóa khi lưu");
+  expect(api.recorded).toHaveLength(0);
+  await original.getByRole("button", { name: "Hoàn tác xóa" }).click();
+  await expect(original.getByLabel("Kết quả", { exact: true })).toHaveValue(
+    "Bản nháp giữ khi hoàn tác",
+  );
+  await remove.click();
+
+  const add = dialog.getByRole("button", {
+    name: "Thêm đầu việc",
+    exact: true,
+  });
+  await add.click();
+  const added = dialog.getByRole("group", { name: "Đầu việc mới #1" });
+  await added.getByLabel("Trạng thái").selectOption("COMPLETED");
+  await added.getByLabel("Nội dung công việc").fill("Việc mới đã hoàn thành");
+  await added.getByLabel("Kết quả", { exact: true }).fill("Có kết quả");
+  await dialog
+    .getByLabel("Lý do hiệu chỉnh")
+    .fill("Cập nhật danh sách việc sau đối chiếu");
+  const save = dialog.getByRole("button", { name: saveName });
+  const evidence = added.getByLabel("Minh chứng", { exact: true });
+  await save.click();
+  await expect(evidence).toBeFocused();
+  await expect(evidence).toHaveAttribute("aria-invalid", "true");
+  expect(api.recorded).toHaveLength(0);
+  await evidence.fill("https://example.test/proof");
+  await save.click();
+
+  await expect(dialog).toBeHidden();
+  expect(api.recorded).toHaveLength(1);
+  expect(api.recorded[0].body).toEqual({
+    expected_revision: "original-revision",
+    reason: "Cập nhật danh sách việc sau đối chiếu",
+    added_items: [
+      {
+        status: "COMPLETED",
+        content: "Việc mới đã hoàn thành",
+        result: "Có kết quả",
+        evidence_links: ["https://example.test/proof"],
+      },
+    ],
+    deleted_item_ids: [11],
+  });
+  await expect(page.getByText("Việc nhập tay", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("Việc mới đã hoàn thành", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Mục được bảo vệ", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Đã khóa", { exact: true })).toBeVisible();
 });
