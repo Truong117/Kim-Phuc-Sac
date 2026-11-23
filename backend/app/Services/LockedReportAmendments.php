@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\WorkStatus;
 use App\Models\DailyReport;
+use App\Models\DailyReportItem;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\User;
@@ -23,6 +24,8 @@ final class LockedReportAmendments
     private const TEXT_FIELDS = ['content', 'result', 'note', 'issue'];
 
     private const HISTORY_LIMIT = 50;
+
+    private const ITEM_LIMIT = 50;
 
     public function __construct(
         private readonly KpsMembershipResolver $memberships,
@@ -47,7 +50,8 @@ final class LockedReportAmendments
     public function describe(User $viewer, DailyReport $report): array
     {
         $empty = ['allowed' => false, 'expected_revision' => null, 'reason_required' => false,
-            'can_edit_next_day_plan' => false, 'editable_item_ids' => [], 'history' => [], 'history_truncated' => false,
+            'can_edit_next_day_plan' => false, 'editable_item_ids' => [], 'can_add_items' => false, 'deletable_item_ids' => [],
+            'history' => [], 'history_truncated' => false,
             'ai_may_be_stale' => false];
         if (! $this->clock->isLocked($report->locked_at) || ! Schema::hasTable(self::TABLE)) {
             return $empty;
@@ -69,14 +73,15 @@ final class LockedReportAmendments
         if ($role === null || ! $this->withinWindow($report)) {
             return $empty;
         }
-        [$editable, $canEditPlan] = $this->editableFields($report, $report->items);
-        if ($editable === [] && ! $canEditPlan) {
+        [$editable, $canEditPlan, $canAddItems] = $this->editableFields($report, $report->items);
+        if ($editable === [] && ! $canEditPlan && ! $canAddItems) {
             return $empty;
         }
 
         return [...$empty, 'allowed' => true, 'expected_revision' => $this->revision($report, $report->items),
             'reason_required' => ! $this->hidden($viewer, $report, $role),
-            'can_edit_next_day_plan' => $canEditPlan, 'editable_item_ids' => $editable];
+            'can_edit_next_day_plan' => $canEditPlan, 'editable_item_ids' => $editable, 'can_add_items' => $canAddItems,
+            'deletable_item_ids' => $this->deletableItemIds($editable)];
     }
 
     public function amend(User $actor, int $id, array $input): void
@@ -110,7 +115,25 @@ final class LockedReportAmendments
                 throw ValidationException::withMessages(['reason' => 'Vui lòng nhập lý do chỉnh sửa.']);
             }
 
-            [$editable, $canEditPlan] = $this->editableFields($report, $items);
+            [$editable, $canEditPlan, $canAddItems] = $this->editableFields($report, $items);
+            $added = $input['added_items'] ?? [];
+            $deleted = array_map('intval', $input['deleted_item_ids'] ?? []);
+            if ($added !== [] && ! $canAddItems) {
+                throw ValidationException::withMessages(['added_items' => 'Không thể thêm đầu việc vào báo cáo có dòng CRM chưa xác định được nguồn.']);
+            }
+            if ($deleted !== []) {
+                $deletable = $this->deletableItemIds(array_values(array_intersect($editable, $deleted)), lock: true);
+                foreach ($deleted as $index => $id) {
+                    if (! in_array($id, $deletable, true)) {
+                        throw ValidationException::withMessages(["deleted_item_ids.$index" => 'Đầu việc không thuộc báo cáo hoặc có dữ liệu liên kết được bảo vệ.']);
+                    }
+                }
+            }
+            $finalCount = $items->count() + count($added) - count($deleted);
+            if ($added !== [] && $finalCount > self::ITEM_LIMIT) {
+                throw ValidationException::withMessages(['added_items' => 'Báo cáo chỉ được có tối đa 50 đầu việc.']);
+            }
+
             $changes = [];
             if (array_key_exists('next_day_plan', $input)) {
                 if (! $canEditPlan) {
@@ -128,6 +151,9 @@ final class LockedReportAmendments
 
             $byId = $items->keyBy('id');
             foreach ($input['items'] ?? [] as $index => $patch) {
+                if (in_array((int) $patch['id'], $deleted, true)) {
+                    throw ValidationException::withMessages(["items.$index.id" => 'Không thể vừa sửa vừa xóa cùng một đầu việc.']);
+                }
                 $item = $byId->get((int) $patch['id']);
                 if ($item === null || ! in_array((int) $item->id, $editable, true)) {
                     throw ValidationException::withMessages(["items.$index.id" => 'Đầu việc không thuộc báo cáo hoặc có dữ liệu liên kết được bảo vệ.']);
@@ -151,6 +177,23 @@ final class LockedReportAmendments
                     $changes['items'][(int) $item->id] = $fields;
                     $item->save();
                 }
+            }
+
+            if ($deleted !== [] && $finalCount === 0 && $this->trim($report->next_day_plan) === '') {
+                throw ValidationException::withMessages(['deleted_item_ids' => 'Báo cáo phải còn ít nhất một đầu việc hoặc kế hoạch ngày tiếp theo.']);
+            }
+            foreach ($deleted as $id) {
+                $item = $byId->get($id);
+                $changes['deleted_items'][$id] = ['before' => $this->itemSnapshot($item), 'after' => null];
+                $item->delete();
+            }
+
+            // Append without reordering existing (potentially linked) rows or reusing occupied positions.
+            $position = (int) $items->max('sort_order');
+            foreach ($added as $index => $entry) {
+                $data = $this->newItem($entry, $index);
+                $item = $report->items()->create([...$data, 'sort_order' => ++$position]);
+                $changes['added_items'][(int) $item->id] = ['before' => null, 'after' => $this->itemSnapshot($item)];
             }
 
             if ($changes === []) {
@@ -182,7 +225,7 @@ final class LockedReportAmendments
             && $this->clock->isLocked($report->locked_at);
     }
 
-    /** @return array{list<int>, bool} */
+    /** @return array{list<int>, bool, bool} */
     private function editableFields(DailyReport $report, Collection $items): array
     {
         $sources = Schema::hasTable('crm_report_activities') && Schema::hasTable('crm_activities')
@@ -195,7 +238,61 @@ final class LockedReportAmendments
             && $item->task_progress === null && $item->task_snapshot === null
             && empty($item->facebook_selections))->map(fn ($item): int => (int) $item->id)->values()->all();
 
-        return [$editable, ! $sources->contains('kind', 'FOLLOW_UP')];
+        return [$editable, ! $sources->contains('kind', 'FOLLOW_UP'), ! $direct];
+    }
+
+    /** @param  list<int>  $editable */
+    private function deletableItemIds(array $editable, bool $lock = false): array
+    {
+        if ($editable === []) {
+            return [];
+        }
+
+        // Manually entered rows can be linked later by social synchronization or historical reconciliation.
+        $linked = [];
+        foreach ([
+            'social_post_sources' => 'daily_report_item_id',
+            'care_report_entries' => 'report_item_id',
+            'task_progress_imports' => 'report_item_id',
+            'task_progress_events' => 'report_item_id',
+            'task_outputs' => 'first_report_item_id',
+        ] as $table => $column) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+            $query = DB::table($table)->whereIn($column, $editable);
+            if ($lock) {
+                // The item's write lock serializes against creators; use current reads for references.
+                $query->lockForUpdate();
+            }
+            foreach ($query->pluck($column) as $id) {
+                $linked[(int) $id] = true;
+            }
+        }
+
+        return array_values(array_filter($editable, fn (int $id): bool => ! isset($linked[$id])));
+    }
+
+    private function newItem(array $entry, int $index): array
+    {
+        $status = WorkStatus::from($entry['status']);
+        $content = $this->trim($entry['content']);
+        $result = $this->trim($entry['result'] ?? null);
+        if ($content === '' || ($status === WorkStatus::COMPLETED && $result === '')) {
+            $field = $content === '' ? 'content' : 'result';
+            throw ValidationException::withMessages(["added_items.$index.$field" => 'Không thể để trống nội dung này.']);
+        }
+        $note = $this->trim($entry['note'] ?? null);
+        $issue = $this->trim($entry['issue'] ?? null);
+
+        return ['content' => $content, 'result' => $result, 'status' => $status, 'note' => $note === '' ? null : $note,
+            'issue' => $issue === '' ? null : $issue, 'evidence_links' => $entry['evidence_links'] ?? null];
+    }
+
+    private function itemSnapshot(DailyReportItem $item): array
+    {
+        return ['content' => $item->content, 'result' => $item->result, 'status' => $item->status->value,
+            'note' => $item->note, 'issue' => $item->issue, 'evidence_links' => $item->evidence_links, 'sort_order' => $item->sort_order];
     }
 
     private function revision(DailyReport $report, Collection $items): string
