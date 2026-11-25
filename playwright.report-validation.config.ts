@@ -24,8 +24,8 @@ export default defineConfig({
     "mail-compose-ui.spec.ts",
   ],
   workers: 1,
-  // Leave one minute for failure diagnostics before the CI step times out.
-  globalTimeout: process.env.CI ? 8 * 60 * 1000 : undefined,
+  // Budget for the complete serial regression suite; leave one minute before the CI step timeout.
+  globalTimeout: process.env.CI ? 12 * 60 * 1000 : undefined,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: "list",
