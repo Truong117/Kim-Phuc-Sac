@@ -8,6 +8,7 @@ use App\Http\Controllers\AI\WorkReportAnalysisController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Crm\CrmController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DashboardWeeklyReportingController;
 use App\Http\Controllers\Integrations\FacebookAnalyticsController;
 use App\Http\Controllers\Integrations\FacebookMonthlyReportController;
 use App\Http\Controllers\Integrations\IntegrationController;
@@ -168,6 +169,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
 
     Route::get('/dashboard', DashboardController::class)
         ->middleware('permission:dashboard.view');
+
+    Route::get('/dashboard/weekly-reporting', DashboardWeeklyReportingController::class)
+        ->middleware('permission:dashboard.view,organization');
 
     Route::get('/reports/facebook-pages', [ReportFacebookPostsController::class, 'pages'])
         ->middleware(['report_participant', 'permission:reports.create', 'throttle:60,1,report-facebook-pages']);

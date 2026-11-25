@@ -573,6 +573,56 @@
       "forbidden": "Phạm vi Tổng quan của tài khoản chưa được cấu hình hợp lệ.",
       "load": "Đã xảy ra lỗi khi tải dữ liệu Tổng quan.",
       "retry": "Thử lại"
+    },
+    "weeklyReporting": {
+      "title": "Báo cáo trong tuần",
+      "description": "Theo dõi báo cáo từng người theo tuần, tính từ khi tài khoản tham gia hệ thống và theo lịch báo cáo hiện tại.",
+      "currentWeek": "Tuần này",
+      "previousWeek": "Tuần trước",
+      "nextWeek": "Tuần sau",
+      "loading": "Đang tải báo cáo trong tuần…",
+      "loadError": "Không thể tải thống kê báo cáo tuần. Vui lòng thử lại.",
+      "retry": "Thử lại",
+      "employee": "Nhân viên",
+      "submitted": "Đã nộp",
+      "missingDays": "Ngày còn thiếu",
+      "expected": "Cần {count} ngày/tuần",
+      "missingCount": "Thiếu {count} ngày",
+      "noMissing": "Không thiếu ngày đã đến hạn",
+      "search": "Nhân viên",
+      "searchPlaceholder": "Tìm theo họ tên…",
+      "department": "Phòng ban",
+      "allDepartments": "Tất cả phòng ban",
+      "unassigned": "Chưa phân phòng ban",
+      "missingOnly": "Chỉ xem người còn thiếu",
+      "legend": "Thiếu: ngày làm việc đã hết hạn nộp. Chờ nộp: hôm nay còn trong hạn. Sắp tới: ngày chưa đến. Bấm vào ô Đã nộp để xem báo cáo khi có quyền.",
+      "empty": "Không có nhân viên phù hợp với bộ lọc.",
+      "pagination": "{count} nhân viên · Trang {page}/{pages}",
+      "previousPage": "Trang trước",
+      "nextPage": "Trang sau",
+      "weekdays": [
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6",
+        "T7",
+        "CN"
+      ],
+      "totals": {
+        "people": "Người cần báo cáo",
+        "submitted": "Báo cáo đã nộp",
+        "people_missing": "Người còn thiếu",
+        "missing_days": "Tổng ngày còn thiếu"
+      },
+      "states": {
+        "submitted": "Đã nộp",
+        "missing": "Thiếu",
+        "pending": "Chờ nộp",
+        "upcoming": "Sắp tới",
+        "non_working_day": "Nghỉ",
+        "not_expected": "Chưa tham gia"
+      }
     }
   },
   "userManagement": {
