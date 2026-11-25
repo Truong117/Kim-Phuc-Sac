@@ -33,8 +33,8 @@ class AccountAuditMigrationTest extends TestCase
         $files = glob(database_path('migrations/*.php'));
         sort($files, SORT_STRING);
         $names = array_map(static fn (string $path): string => basename($path, '.php'), $files);
-        $this->assertCount(47, $names);
-        $this->assertCount(47, array_unique($names));
+        $this->assertCount(48, $names);
+        $this->assertCount(48, array_unique($names));
         $this->assertSame(StagingBootstrapPlan::EXPECTED_MIGRATIONS, $names);
         $this->applyAuditMigration();
         $this->assertSame(array_slice($names, 0, 22), $this->ledger());

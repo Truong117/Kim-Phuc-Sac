@@ -29,6 +29,8 @@ const statusClasses: Record<WeeklyReportingStatus, string> = {
     "bg-warning-50 text-warning-700 dark:bg-warning-500/15 dark:text-warning-400",
   upcoming: "bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
   non_working_day: "text-gray-400 dark:text-gray-500",
+  holiday:
+    "bg-kps-primary/5 text-kps-primary dark:bg-kps-primary/15 dark:text-sidebar-selected",
   not_expected: "text-gray-400 dark:text-gray-500",
 };
 
@@ -108,7 +110,7 @@ export default function WeeklyReportingTable({
               </TableCell>
               {row.days.map((day) => {
                 const label = t(`states.${day.status}`);
-                const title = `${row.employee.name} · ${formatDateOnly(day.date)} · ${label}`;
+                const title = `${row.employee.name} · ${formatDateOnly(day.date)} · ${label}${day.holiday ? ` · ${day.holiday.name}` : ""}`;
                 const className = `inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-lg px-2 py-1 text-theme-xs font-medium ${statusClasses[day.status]}`;
                 return (
                   <TableCell key={day.date} className="px-2 py-4 text-center">
@@ -122,7 +124,11 @@ export default function WeeklyReportingTable({
                         {label}
                       </Link>
                     ) : (
-                      <span title={title} className={className}>
+                      <span
+                        title={title}
+                        aria-label={title}
+                        className={className}
+                      >
                         {label}
                       </span>
                     )}

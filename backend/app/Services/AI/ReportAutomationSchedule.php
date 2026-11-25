@@ -2,12 +2,13 @@
 
 namespace App\Services\AI;
 
+use App\Services\ReportCalendar;
 use App\Services\ReportClock;
 use Carbon\CarbonImmutable;
 
 final class ReportAutomationSchedule
 {
-    public function __construct(private readonly ReportClock $clock) {}
+    public function __construct(private readonly ReportClock $clock, private readonly ReportCalendar $calendar) {}
 
     public function forDate(string $date, string $kind): array
     {
@@ -20,10 +21,12 @@ final class ReportAutomationSchedule
 
     public function kinds(string $date): array
     {
-        if (! $this->clock->isWorkingDate($date)) {
-            return [];
+        $kinds = $this->calendar->isReportingDate($date) ? ['daily'] : [];
+        // Weekly close is a calendar boundary, including a holiday on Saturday.
+        if (CarbonImmutable::parse($date)->isSaturday()) {
+            $kinds[] = 'weekly';
         }
 
-        return CarbonImmutable::parse($date)->isSaturday() ? ['daily', 'weekly'] : ['daily'];
+        return $kinds;
     }
 }

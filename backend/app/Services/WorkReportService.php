@@ -6,6 +6,7 @@ use App\Enums\WorkStatus;
 use App\Models\DailyReport;
 use App\Models\Department;
 use App\Models\Location;
+use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\ReportComment;
 use App\Models\User;
@@ -23,6 +24,7 @@ class WorkReportService
 {
     public function __construct(
         private readonly ReportClock $clock,
+        private readonly ReportCalendar $calendar,
         private readonly ReportScopeService $scope,
         private readonly AuthorizationService $authorization,
         private readonly KpsMembershipResolver $memberships,
@@ -62,7 +64,8 @@ class WorkReportService
     {
         $membership = $this->activeMembership($user);
         $businessDate = $this->clock->businessDate();
-        $isWorkingDay = $this->clock->isWorkingDate($businessDate);
+        $holiday = $this->calendar->holidayForDate($businessDate, $membership->organization_id);
+        $isWorkingDay = $this->clock->isWorkingDate($businessDate) && $holiday === null;
         $reportingRequired = $isWorkingDay && $this->participation->isParticipant($membership);
         $cutoff = $this->clock->cutoffForDate($businessDate);
         $report = DailyReport::query()
@@ -79,7 +82,8 @@ class WorkReportService
             'business_date' => $businessDate,
             'cutoff_at' => $this->clock->inBusinessTimezone($cutoff)->toIso8601String(),
             'is_working_day' => $isWorkingDay,
-            'is_window_closed' => $this->clock->isWindowClosed(),
+            'holiday' => $holiday?->notice(),
+            'is_window_closed' => ! $isWorkingDay || $this->clock->isWindowClosed(),
             'reporting_required' => $reportingRequired,
             'report' => $report,
             'can_create' => $reportingRequired
@@ -94,8 +98,8 @@ class WorkReportService
         $membership = $this->activeMembership($user);
         $this->participation->ensureParticipant($membership);
         $today = $this->clock->businessDate();
-        $end = $this->clock->isWorkingDate($today) && $this->clock->isWindowClosed() ? $today : $this->clock->now()->subDay()->toDateString();
-        $dates = $end < $this->clock->makeupPeriodStart() ? [] : $this->clock->workingDatesBetween($this->clock->makeupPeriodStart(), $end);
+        $end = $this->calendar->isReportingDate($today, $membership->organization_id) && $this->clock->isWindowClosed() ? $today : $this->clock->now()->subDay()->toDateString();
+        $dates = $end < $this->clock->makeupPeriodStart() ? [] : $this->calendar->reportingDatesBetween($this->clock->makeupPeriodStart(), $end, $membership->organization_id);
         $existing = DailyReport::query()->where('organization_id', $membership->organization_id)
             ->where('user_id', $user->id)->whereBetween('report_date', [$this->clock->makeupPeriodStart(), $end])
             ->pluck('report_date')->map(fn ($date) => substr((string) $date, 0, 10))->all();
@@ -104,7 +108,7 @@ class WorkReportService
             'business_date' => $this->clock->businessDate(),
             'period_start' => $this->clock->makeupPeriodStart(), 'period_end' => $this->clock->now()->startOfWeek(1)->addDays(5)->toDateString(),
             'days' => collect(array_reverse($dates))->reject(fn ($date) => in_array($date, $existing, true))
-                ->map(fn ($date) => ['date' => $date, 'can_submit' => $this->clock->canMakeupDate($date),
+                ->map(fn ($date) => ['date' => $date, 'can_submit' => $this->calendar->canMakeupDate($date),
                     'deadline_at' => $this->clock->inBusinessTimezone($this->clock->makeupDeadline($date)->subSecond())->toIso8601String()])->values()->all(),
         ];
     }
@@ -113,7 +117,7 @@ class WorkReportService
     {
         $membership = $this->activeMembership($user);
         $this->participation->ensureParticipant($membership);
-        if ($date < $this->clock->makeupPeriodStart() || $date > $this->clock->businessDate() || ! $this->clock->isWorkingDate($date)) {
+        if ($date < $this->clock->makeupPeriodStart() || $date > $this->clock->businessDate() || ! $this->calendar->isReportingDate($date, $membership->organization_id)) {
             throw ValidationException::withMessages(['report_date' => 'Chọn ngày làm việc trong tuần hiện tại (Thứ Hai–Thứ Bảy).']);
         }
         $report = DailyReport::query()->where('organization_id', $membership->organization_id)
@@ -124,9 +128,9 @@ class WorkReportService
 
         return [
             'business_date' => $date, 'cutoff_at' => $this->clock->inBusinessTimezone($this->clock->makeupDeadline($date)->subSecond())->toIso8601String(),
-            'is_working_day' => true, 'is_window_closed' => ! $this->clock->canMakeupDate($date),
+            'is_working_day' => true, 'is_window_closed' => ! $this->calendar->canMakeupDate($date),
             'reporting_required' => true, 'report' => $report,
-            'can_create' => $report === null && $this->clock->canMakeupDate($date) && $this->authorization->allows($user, 'reports.create'),
+            'can_create' => $report === null && $this->calendar->canMakeupDate($date) && $this->authorization->allows($user, 'reports.create'),
         ];
     }
 
@@ -149,14 +153,15 @@ class WorkReportService
         $this->participation->ensureParticipant($membership);
         $lockedAt = $this->clock->cutoffForDate($date);
 
-        if (! $this->clock->isWorkingDate($date)) {
-            throw new ConflictHttpException('Chủ Nhật là ngày nghỉ, không thể tạo báo cáo công việc mới.');
+        if (! $this->calendar->isReportingDate($date, $membership->organization_id)) {
+            throw new ConflictHttpException('Ngày này thuộc lịch nghỉ, không thể tạo báo cáo công việc mới.');
         }
 
         $this->ensureSubmissionWindow($date, $isMakeup);
 
         try {
             $report = DB::transaction(function () use ($author, $membership, $date, $lockedAt, $items, $details, $isMakeup): DailyReport {
+                Organization::query()->whereKey($membership->organization_id)->lockForUpdate()->firstOrFail();
                 $this->ensureSubmissionWindow($date, $isMakeup);
 
                 $report = DailyReport::query()->create([
@@ -199,8 +204,12 @@ class WorkReportService
 
     private function ensureSubmissionWindow(string $date, bool $isMakeup): void
     {
+        if (! $this->calendar->isReportingDate($date)) {
+            throw new ConflictHttpException('Ngày này thuộc lịch nghỉ, không thể tạo báo cáo công việc mới.');
+        }
+
         if ($isMakeup) {
-            if (! $this->clock->canMakeupDate($date)) {
+            if (! $this->calendar->canMakeupDate($date)) {
                 throw ValidationException::withMessages(['report_date' => 'Chỉ được nộp bù trong 3 ngày lịch tiếp theo và trong cùng tuần (Thứ Hai–Thứ Bảy).']);
             }
         } elseif ($this->clock->isLocked($this->clock->cutoffForDate($date))) {
@@ -224,13 +233,14 @@ class WorkReportService
         $this->participation->ensureParticipant($membership);
 
         $report = DB::transaction(function () use ($author, $membership, $reportId, $items, $details): DailyReport {
+            Organization::query()->whereKey($membership->organization_id)->lockForUpdate()->firstOrFail();
             $report = DailyReport::query()
                 ->where('organization_id', $membership->organization_id)
                 ->where('user_id', $author->id)
                 ->lockForUpdate()
                 ->findOrFail($reportId);
 
-            if (! $this->clock->isWorkingDate($report->report_date->toDateString())) {
+            if (! $this->calendar->isReportingDate($report->report_date->toDateString(), $membership->organization_id)) {
                 throw new ConflictHttpException('Báo cáo ngày nghỉ chỉ có thể xem và không thể chỉnh sửa.');
             }
 
@@ -441,7 +451,7 @@ class WorkReportService
         $report->setAttribute('can_edit', $report->user_id === $viewer->id
             && $this->participation->isParticipant($viewer)
             && $this->authorization->allows($viewer, 'reports.create')
-            && $this->clock->isWorkingDate($report->report_date->toDateString())
+            && $this->calendar->isReportingDate($report->report_date->toDateString(), $report->organization_id)
             && ! $this->clock->isLocked($report->locked_at));
         $report->setAttribute('can_comment', $this->canComment($viewer, $report));
 

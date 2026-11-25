@@ -1,4 +1,8 @@
-import type { ReportWorkItem, WorkStatus } from "@/types/reports";
+import type {
+  ReportHolidayNotice,
+  ReportWorkItem,
+  WorkStatus,
+} from "@/types/reports";
 
 export type DashboardMode =
   "organization" | "department" | "location" | "personal";
@@ -11,9 +15,11 @@ export type WeeklyReportingStatus =
   | "pending"
   | "upcoming"
   | "non_working_day"
+  | "holiday"
   | "not_expected";
 
 export type WeeklyReportingDay = {
+  holiday?: ReportHolidayNotice | null;
   date: string;
   status: WeeklyReportingStatus;
   report_id: number | null;
@@ -33,7 +39,12 @@ export type DashboardWeeklyReporting = {
   week_end: string;
   current_week_start: string;
   business_date: string;
-  dates: { date: string; is_working_day: boolean; is_due: boolean }[];
+  dates: {
+    date: string;
+    is_working_day: boolean;
+    is_due: boolean;
+    holiday?: ReportHolidayNotice | null;
+  }[];
   totals: {
     people: number;
     submitted: number;
@@ -64,6 +75,7 @@ export type DashboardSelfReportState =
   | "non_working_day";
 
 export type DashboardSelfReport = {
+  holiday?: ReportHolidayNotice | null;
   state: DashboardSelfReportState;
   report_id: number | null;
   report_date: string;

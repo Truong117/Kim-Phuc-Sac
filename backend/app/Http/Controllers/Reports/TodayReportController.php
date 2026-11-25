@@ -19,6 +19,7 @@ class TodayReportController extends Controller
                 'business_date' => $state['business_date'],
                 'cutoff_at' => $state['cutoff_at'],
                 'is_working_day' => $state['is_working_day'],
+                'holiday' => $state['holiday'],
                 'is_window_closed' => $state['is_window_closed'],
                 'reporting_required' => $state['reporting_required'],
                 'report' => $state['report'] === null

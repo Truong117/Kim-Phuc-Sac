@@ -24,6 +24,7 @@ class DashboardService
         private readonly ReportParticipationService $participation,
         private readonly ReportScopeService $reportScope,
         private readonly ReportClock $clock,
+        private readonly ReportCalendar $calendar,
         private readonly WorkReportService $workReports,
     ) {}
 
@@ -37,7 +38,7 @@ class DashboardService
         ]) ?? throw new AccessDeniedHttpException;
         $mode = $this->modeResolver->resolve($viewer, $membership);
         $businessDate = $this->clock->businessDate();
-        $isWorkingDay = $this->clock->isWorkingDate($businessDate);
+        $isWorkingDay = $this->calendar->isReportingDate($businessDate, $membership->organization_id);
         $cutoff = $this->clock->cutoffForDate($businessDate);
         $todayReports = $this->dashboardReports($viewer, $membership, $mode)
             ->where('daily_reports.report_date', $businessDate);
@@ -545,6 +546,7 @@ class DashboardService
                     : ($today['is_window_closed'] ? 'not_submitted_closed' : 'not_submitted_open'),
                 'report_id' => null,
                 'report_date' => $today['business_date'],
+                'holiday' => $today['holiday'],
                 'cutoff_at' => $today['cutoff_at'],
                 'overall_status' => null,
                 'work' => $this->emptyWorkCounts(),
@@ -576,6 +578,7 @@ class DashboardService
                 : ($this->clock->isLocked($report->locked_at) ? 'locked' : 'submitted_editable'),
             'report_id' => (int) $report->id,
             'report_date' => $report->report_date->toDateString(),
+            'holiday' => $today['holiday'],
             'cutoff_at' => $this->clock->inBusinessTimezone($report->locked_at)->toIso8601String(),
             'overall_status' => $report->overallStatus()->value,
             'work' => $work,

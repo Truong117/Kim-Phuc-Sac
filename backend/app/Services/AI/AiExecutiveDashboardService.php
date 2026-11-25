@@ -10,6 +10,7 @@ use App\Models\OrganizationMembership;
 use App\Models\User;
 use App\Services\AuthorizationService;
 use App\Services\KpsMembershipResolver;
+use App\Services\ReportCalendar;
 use App\Services\ReportClock;
 use App\Services\ReportParticipationService;
 use App\Services\ReportScopeService;
@@ -28,6 +29,7 @@ class AiExecutiveDashboardService
         private readonly ReportParticipationService $participation,
         private readonly ReportScopeService $reportScope,
         private readonly ReportClock $clock,
+        private readonly ReportCalendar $calendar,
     ) {}
 
     /** @return array<string, mixed> */
@@ -46,7 +48,7 @@ class AiExecutiveDashboardService
         $dateKeys = collect(range(0, $days - 1))
             ->map(fn (int $offset): string => $startDate->addDays($offset)->toDateString())
             ->all();
-        $workingDateKeys = $this->clock->workingDatesBetween(
+        $workingDateKeys = $this->calendar->reportingDatesBetween(
             $startDate->toDateString(),
             $endDate->toDateString(),
         );
@@ -180,7 +182,7 @@ class AiExecutiveDashboardService
             'rate_percent' => $expectedSubmissions > 0
                 ? round(($submitted / $expectedSubmissions) * 100, 2)
                 : null,
-            'basis' => 'current_active_default_memberships_across_monday_to_saturday_working_days',
+            'basis' => 'current_active_default_memberships_across_configured_reporting_dates',
         ];
     }
 

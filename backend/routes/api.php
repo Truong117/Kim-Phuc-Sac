@@ -16,6 +16,7 @@ use App\Http\Controllers\Integrations\MailController;
 use App\Http\Controllers\Integrations\SocialMetricsController;
 use App\Http\Controllers\NavigationController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ReportHolidayController;
 use App\Http\Controllers\Reports\AssignedReportTasksController;
 use App\Http\Controllers\Reports\CustomerCareController;
 use App\Http\Controllers\Reports\MakeupReportController;
@@ -165,6 +166,13 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
         Route::post('/', [IntegrationController::class, 'store'])->middleware(['permission:integrations.manage', 'throttle:30,1']);
         Route::patch('/{id}', [IntegrationController::class, 'update'])->whereNumber('id')->middleware(['permission:integrations.manage', 'throttle:30,1']);
         Route::delete('/{id}', [IntegrationController::class, 'destroy'])->whereNumber('id')->middleware(['permission:integrations.manage', 'throttle:30,1']);
+    });
+
+    Route::prefix('settings/report-holidays')->middleware('permission:settings.view')->group(function (): void {
+        Route::get('/', [ReportHolidayController::class, 'index']);
+        Route::post('/', [ReportHolidayController::class, 'store'])->middleware(['permission:report_holidays.manage', 'throttle:30,1']);
+        Route::patch('/{id}', [ReportHolidayController::class, 'update'])->whereNumber('id')->middleware(['permission:report_holidays.manage', 'throttle:30,1']);
+        Route::delete('/{id}', [ReportHolidayController::class, 'destroy'])->whereNumber('id')->middleware(['permission:report_holidays.manage', 'throttle:30,1']);
     });
 
     Route::get('/dashboard', DashboardController::class)

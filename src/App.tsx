@@ -13,6 +13,7 @@ import AiExecutiveDashboard from "./pages/AI/AiExecutiveDashboard";
 import Account from "./pages/Account/Account";
 import Login from "./pages/Auth/Login";
 import Overview from "./pages/Dashboard/Overview";
+import ReportHolidays from "./pages/Settings/ReportHolidays";
 import EmployeeCreate from "./pages/Employees/EmployeeCreate";
 import EmployeeEdit from "./pages/Employees/EmployeeEdit";
 import EmployeeList from "./pages/Employees/EmployeeList";
@@ -247,7 +248,7 @@ export default function App() {
                 >
                   <Route
                     path="/settings"
-                    element={<ModulePlaceholder titleKey="modules.settings" />}
+                    element={<ReportHolidays />}
                   />
                 </Route>
               </Route>

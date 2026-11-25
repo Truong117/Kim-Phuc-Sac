@@ -227,7 +227,7 @@
       "description": "Bạn có thể theo dõi báo cáo của nhân viên tại Lịch sử báo cáo."
     },
     "nonWorkingDay": {
-      "title": "Chủ Nhật là ngày nghỉ hằng tuần",
+      "title": "Hôm nay là ngày nghỉ",
       "description": "Ngày {date} không thuộc lịch làm việc nên bạn không cần và không thể tạo báo cáo mới."
     },
     "existing": {
@@ -294,6 +294,10 @@
       "submittedAt": "Nộp thực tế: {time}",
       "planLabel": "Kế hoạch sau ngày báo cáo",
       "planHint": "Kế hoạch thuộc thời điểm ngày được báo cáo; ghi rõ ngày dự kiến. Không tính là kết quả đã thực hiện."
+    },
+    "holiday": {
+      "title": "Ngày nghỉ: {name}",
+      "makeup": "Bạn vẫn có thể nộp bù cho ngày làm việc khác nếu còn trong hạn cho phép."
     }
   },
   "reportHistory": {
@@ -496,7 +500,8 @@
         "open": "Có thể gửi hoặc cập nhật báo cáo đến {cutoff}.",
         "locked": "Báo cáo đã được chốt lúc {cutoff} và không thể chỉnh sửa.",
         "closed": "Thời gian gửi báo cáo đã kết thúc lúc {cutoff}.",
-        "nonWorkingDay": "Chủ Nhật không thuộc lịch làm việc và không yêu cầu nộp báo cáo."
+        "nonWorkingDay": "Hôm nay không thuộc lịch báo cáo và không yêu cầu nộp báo cáo.",
+        "holiday": "Ngày nghỉ: {name}. Báo cáo bù cho ngày làm việc khác vẫn được phép khi còn hạn."
       },
       "workSummary": "{total} công việc · {completed} hoàn thành · {inProgress} đang thực hiện · {blocked} có vấn đề",
       "actions": {
@@ -595,7 +600,7 @@
       "allDepartments": "Tất cả phòng ban",
       "unassigned": "Chưa phân phòng ban",
       "missingOnly": "Chỉ xem người còn thiếu",
-      "legend": "Thiếu: ngày làm việc đã hết hạn nộp. Chờ nộp: hôm nay còn trong hạn. Sắp tới: ngày chưa đến. Bấm vào ô Đã nộp để xem báo cáo khi có quyền.",
+      "legend": "Thiếu: ngày làm việc đã hết hạn nộp. Chờ nộp: hôm nay còn trong hạn. Sắp tới: ngày chưa đến. Bấm vào ô Đã nộp để xem báo cáo khi có quyền. Ngày nghỉ theo lịch công ty không tính thiếu.",
       "empty": "Không có nhân viên phù hợp với bộ lọc.",
       "pagination": "{count} nhân viên · Trang {page}/{pages}",
       "previousPage": "Trang trước",
@@ -621,7 +626,8 @@
         "pending": "Chờ nộp",
         "upcoming": "Sắp tới",
         "non_working_day": "Nghỉ",
-        "not_expected": "Chưa tham gia"
+        "not_expected": "Chưa tham gia",
+        "holiday": "Ngày nghỉ"
       }
     }
   },
@@ -4678,5 +4684,80 @@
       "fileLimit": "Ảnh JPG, PNG, WebP hoặc PDF; tối đa 1 MB/tệp, 3 tệp/công việc.",
       "proofPlaceholder": "Dán liên kết minh chứng, mỗi dòng một link…"
     }
+  },
+  "reportHolidays": {
+    "title": "Ngày nghỉ & ngày lễ",
+    "description": "Chọn thủ công những ngày công ty nghỉ để tạm dừng báo cáo trong ngày.",
+    "addTitle": "Thêm ngày nghỉ",
+    "editTitle": "Chỉnh sửa ngày nghỉ",
+    "name": "Tên ngày nghỉ",
+    "namePlaceholder": "Ví dụ: Nghỉ sinh hoạt nội bộ",
+    "selectionMode": "Kiểu chọn ngày",
+    "single": "Một ngày",
+    "range": "Khoảng ngày",
+    "date": "Ngày nghỉ",
+    "fromDate": "Từ ngày",
+    "toDate": "Đến ngày",
+    "datePlaceholder": "Chọn ngày",
+    "note": "Ghi chú (không bắt buộc)",
+    "notePlaceholder": "Thông tin hiển thị cho nhân viên khi đến ngày nghỉ",
+    "scope": "Áp dụng cho toàn công ty · Báo cáo công việc nội bộ",
+    "impact": "Tạm dừng báo cáo cho {count} ngày làm việc. Báo cáo bù vẫn mở khi còn hạn.",
+    "pastImpact": "Lịch có ngày đã qua: thay đổi này sẽ cập nhật số ngày cần báo cáo trong thống kê. Báo cáo đã nộp vẫn được giữ nguyên.",
+    "makeupTitle": "Báo cáo bù vẫn được phép khi còn hạn",
+    "makeupDescription": "Lịch nghỉ chỉ áp dụng cho ngày được chọn. Các báo cáo đã nộp vẫn được giữ nguyên.",
+    "cancel": "Hủy",
+    "save": "Lưu ngày nghỉ",
+    "saving": "Đang lưu…",
+    "listTitle": "Lịch nghỉ đã tạo ({count})",
+    "period": "Thời gian",
+    "reportingDays": "Ngày tắt báo cáo",
+    "status": "Trạng thái",
+    "actions": "Thao tác",
+    "weeklyRest": "Ngày nghỉ hằng tuần: {days}",
+    "noWeeklyRest": "Không có",
+    "dayCount": "{count} ngày",
+    "empty": "Chưa có lịch nghỉ. Thêm ngày nghỉ đầu tiên để bắt đầu.",
+    "toggleHelp": "Bật/tắt để áp dụng hoặc tạm ngừng từng lịch nghỉ.",
+    "edit": "Sửa",
+    "editName": "Sửa {name}",
+    "toggleName": "Áp dụng {name}",
+    "loading": "Đang tải lịch nghỉ…",
+    "retry": "Thử lại",
+    "readOnly": "Bạn có quyền xem lịch nghỉ. Liên hệ quản trị viên để thay đổi.",
+    "saved": "Đã lưu “{name}”.",
+    "enabled": "Đã bật “{name}”.",
+    "disabled": "Đã tạm tắt “{name}”.",
+    "statuses": {
+      "upcoming": "Sắp tới",
+      "current": "Đang nghỉ",
+      "past": "Đã kết thúc",
+      "inactive": "Tạm tắt"
+    },
+    "weekdays": {
+      "1": "Thứ Hai",
+      "2": "Thứ Ba",
+      "3": "Thứ Tư",
+      "4": "Thứ Năm",
+      "5": "Thứ Sáu",
+      "6": "Thứ Bảy",
+      "7": "Chủ nhật"
+    },
+    "errors": {
+      "load": "Không thể tải lịch nghỉ. Vui lòng thử lại.",
+      "save": "Không thể lưu lịch nghỉ. Vui lòng thử lại.",
+      "name": "Nhập tên ngày nghỉ.",
+      "dates": "Chọn đầy đủ ngày nghỉ.",
+      "order": "Ngày kết thúc cần bằng hoặc sau ngày bắt đầu.",
+      "noWorkingDays": "Khoảng này chỉ có ngày nghỉ hằng tuần, không phát sinh ngày cần tắt báo cáo.",
+      "overlap": "Khoảng ngày này trùng với “{name}”."
+    },
+    "delete": "Xóa",
+    "deleteName": "Xóa {name}",
+    "deleteTitle": "Xóa ngày nghỉ",
+    "deleteDescription": "Xóa “{name}” khỏi lịch nghỉ? Những ngày này sẽ áp dụng lịch báo cáo bình thường; hạn nộp bù không thay đổi. Báo cáo đã nộp và lịch sử thay đổi vẫn được giữ.",
+    "deleteConfirm": "Xóa ngày nghỉ",
+    "deleting": "Đang xóa…",
+    "deleted": "Đã xóa “{name}”."
   }
 }

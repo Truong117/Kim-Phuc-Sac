@@ -251,6 +251,7 @@ class NavigationTest extends TestCase
                     'reports.history',
                     'tasks',
                     'employees',
+                    'settings',
                 ],
             ]);
     }

@@ -8,6 +8,7 @@ export default defineConfig({
     "crm-ui.spec.ts",
     "report-validation-ui.spec.ts",
     "dashboard-weekly-reporting-ui.spec.ts",
+    "report-holidays-ui.spec.ts",
     "locked-report-amendment-ui.spec.ts",
     "task-report-progress-ui.spec.ts",
     "task-progress-reconciliation-ui.spec.ts",
@@ -23,8 +24,8 @@ export default defineConfig({
     "mail-compose-ui.spec.ts",
   ],
   workers: 1,
-  // Leave one minute for failure diagnostics before the CI step times out.
-  globalTimeout: process.env.CI ? 8 * 60 * 1000 : undefined,
+  // Budget for the complete serial regression suite; leave one minute before the CI step timeout.
+  globalTimeout: process.env.CI ? 12 * 60 * 1000 : undefined,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: "list",
