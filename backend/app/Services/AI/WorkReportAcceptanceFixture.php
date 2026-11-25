@@ -42,7 +42,7 @@ final class WorkReportAcceptanceFixture
                 throw new LogicException('FIXTURE_PARTIAL_SCHEMA_REQUIRES_RECOVERY');
             }
         }
-        if (count($ledger) >= 48 && (! Schema::hasColumns('report_holidays', ['organization_id', 'name', 'start_date', 'end_date', 'note', 'is_active', 'version', 'created_by', 'updated_by'])
+        if (count($ledger) >= 48 && (! Schema::hasColumns('report_holidays', ['organization_id', 'name', 'start_date', 'end_date', 'note', 'is_active', 'version', 'created_by', 'updated_by', 'deleted_at'])
             || ! Schema::hasColumns('report_holiday_changes', ['organization_id', 'report_holiday_id', 'actor_user_id', 'before_state', 'after_state', 'created_at']))) {
             throw new LogicException('FIXTURE_REPORT_HOLIDAY_SCHEMA_DRIFT');
         }

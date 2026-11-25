@@ -29,7 +29,7 @@ class ReportHolidayService
             'meta' => [
                 'business_date' => $this->clock->businessDate(),
                 'working_days' => config('reports.working_days'),
-                'can_manage' => $this->authorization->allows($viewer, 'settings.manage'),
+                'can_manage' => $this->authorization->allows($viewer, 'report_holidays.manage'),
             ],
         ];
     }
@@ -37,7 +37,7 @@ class ReportHolidayService
     /** @param array<string, mixed> $input */
     public function save(User $actor, ?int $id, array $input): ReportHoliday
     {
-        if (! $this->authorization->allows($actor, 'settings.manage')) {
+        if (! $this->authorization->allows($actor, 'report_holidays.manage')) {
             throw new AccessDeniedHttpException;
         }
 
@@ -107,7 +107,35 @@ class ReportHolidayService
             'note' => $holiday->note, 'is_active' => (bool) $holiday->is_active, 'version' => $holiday->version,
             'reporting_days' => $this->calendar->scheduledDayCount($start, $end),
             'created_at' => $holiday->created_at?->toIso8601String(), 'updated_at' => $holiday->updated_at?->toIso8601String(),
+            'deleted_at' => $holiday->deleted_at?->toIso8601String(),
         ];
+    }
+
+    public function remove(User $actor, int $id, int $expectedVersion): void
+    {
+        if (! $this->authorization->allows($actor, 'report_holidays.manage')) {
+            throw new AccessDeniedHttpException;
+        }
+        $organizationId = $this->organizationId($actor);
+        DB::transaction(function () use ($organizationId, $actor, $id, $expectedVersion): void {
+            Organization::query()->whereKey($organizationId)->lockForUpdate()->firstOrFail();
+            $holiday = ReportHoliday::query()->where('organization_id', $organizationId)->lockForUpdate()->findOrFail($id);
+            if ($holiday->version !== $expectedVersion) {
+                throw new ConflictHttpException('Lịch nghỉ đã được thay đổi. Hãy tải lại danh sách trước khi xóa.');
+            }
+            $before = $this->serialize($holiday);
+            $holiday->is_active = false;
+            $holiday->version++;
+            $holiday->updated_by = $actor->id;
+            $holiday->save();
+            $holiday->delete();
+            DB::table('report_holiday_changes')->insert([
+                'organization_id' => $organizationId, 'report_holiday_id' => $holiday->id, 'actor_user_id' => $actor->id,
+                'before_state' => json_encode($before, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                'after_state' => json_encode($this->serialize($holiday), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+            ]);
+        }, 3);
     }
 
     private function organizationId(User $viewer): int

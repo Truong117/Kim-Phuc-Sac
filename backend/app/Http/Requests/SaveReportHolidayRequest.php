@@ -8,7 +8,7 @@ class SaveReportHolidayRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return true; // Active membership and settings.manage are enforced by route middleware.
+        return true; // Active membership and report_holidays.manage are enforced by route middleware.
     }
 
     protected function prepareForValidation(): void

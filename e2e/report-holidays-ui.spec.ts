@@ -33,6 +33,8 @@ async function setup(
   page: Page,
   options: {
     canManage?: boolean;
+    roleName?: string;
+    failDelete?: boolean;
     failLoad?: boolean;
     staleEdit?: boolean;
     path?: string;
@@ -41,6 +43,7 @@ async function setup(
   let rows = structuredClone(initialRows);
   let failing = options.failLoad ?? false;
   let stale = options.staleEdit ?? false;
+  let failDelete = options.failDelete ?? false;
   const mutations: { method: string; body: Record<string, unknown> }[] = [];
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -64,7 +67,7 @@ async function setup(
     }
     if (
       url.pathname.startsWith(endpoint) &&
-      ["POST", "PATCH"].includes(request.method())
+      ["POST", "PATCH", "DELETE"].includes(request.method())
     ) {
       const body = request.postDataJSON();
       mutations.push({ method: request.method(), body });
@@ -92,6 +95,17 @@ async function setup(
       const previous = rows.find(
         (row) => String(row.id) === url.pathname.split("/").pop(),
       );
+      if (request.method() === "DELETE") {
+        if (failDelete) {
+          failDelete = false;
+          return route.fulfill({
+            status: 503,
+            json: { message: "Chưa xóa được lịch nghỉ." },
+          });
+        }
+        rows = rows.filter((row) => row.id !== previous?.id);
+        return route.fulfill({ status: 204 });
+      }
       const next = {
         ...(previous ?? {
           id: 3,
@@ -119,7 +133,7 @@ async function setup(
             id: 10001,
             name: "Quản trị kiểm thử",
             email: "holidays@example.test",
-            role: { name: "Quản trị viên" },
+            role: { name: options.roleName ?? "Quản trị viên" },
             organization: { id: 1, name: "KPS Test" },
             department: null,
             location: null,
@@ -258,7 +272,7 @@ test("date ranges count workdays and prevent overlaps before sending a request",
   ).toContainText("2 ngày");
 });
 
-test("assistant reads the schedule without mutation controls", async ({
+test("a viewer without management permission cannot mutate the schedule", async ({
   page,
 }) => {
   const state = await setup(page, { canManage: false });
@@ -272,6 +286,9 @@ test("assistant reads the schedule without mutation controls", async ({
     page.getByRole("button", { name: "Thêm ngày nghỉ", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^(Sửa|Xóa) / })).toHaveCount(
+    0,
+  );
   expect(state.mutations).toHaveLength(0);
 });
 
@@ -361,4 +378,114 @@ test("the manual editor fits a mobile screen and preserves the date controls", a
       () => document.documentElement.scrollWidth > window.innerWidth,
     ),
   ).toBe(false);
+});
+
+for (const roleName of ["Trợ lý Giám đốc", "Nhân sự"]) {
+  test(`${roleName} can add, edit and delete a holiday after confirmation`, async ({
+    page,
+  }) => {
+    if (roleName === "Nhân sự")
+      await page.setViewportSize({ width: 390, height: 844 });
+    const state = await setup(page, { roleName });
+    await page
+      .getByRole("button", { name: "Thêm ngày nghỉ", exact: true })
+      .click();
+    await page.getByLabel("Tên ngày nghỉ", { exact: false }).fill("Lịch mới");
+    await page
+      .getByRole("button", { name: "Lưu ngày nghỉ", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Sửa Lịch mới", exact: true })
+      .click();
+    await page
+      .getByLabel("Tên ngày nghỉ", { exact: false })
+      .fill("Lịch đã sửa");
+    await page
+      .getByRole("button", { name: "Lưu ngày nghỉ", exact: true })
+      .click();
+    await page
+      .getByRole("button", { name: "Xóa Lịch đã sửa", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Xóa ngày nghỉ" });
+    await expect(dialog).toContainText("hạn nộp bù không thay đổi");
+    await dialog.getByRole("button", { name: "Hủy", exact: true }).click();
+    expect(
+      state.mutations.filter((row) => row.method === "DELETE"),
+    ).toHaveLength(0);
+    await expect(page.getByText("Lịch đã sửa", { exact: true })).toBeVisible();
+    await page
+      .getByRole("button", { name: "Xóa Lịch đã sửa", exact: true })
+      .click();
+    await dialog
+      .getByRole("button", { name: "Xóa ngày nghỉ", exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText("Lịch đã sửa", { exact: true })).toHaveCount(0);
+    expect(state.mutations.map((row) => row.method)).toEqual([
+      "POST",
+      "PATCH",
+      "DELETE",
+    ]);
+    expect(state.mutations[2].body).toEqual({ expected_version: 2 });
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: "Thêm ngày nghỉ", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Lịch đã sửa", { exact: true })).toHaveCount(0);
+    expect(state.errors).toEqual([]);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+    ).toBe(true);
+  });
+}
+
+test("failed deletes keep the confirmation and row available for retry", async ({
+  page,
+}) => {
+  const state = await setup(page, { failDelete: true });
+  await page
+    .getByRole("button", { name: "Xóa Sinh hoạt nội bộ", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Xóa ngày nghỉ" });
+  await dialog
+    .getByRole("button", { name: "Xóa ngày nghỉ", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toContainText("Chưa xóa được");
+  await expect(
+    page.getByRole("row").filter({ hasText: "Sinh hoạt nội bộ" }),
+  ).toHaveCount(1);
+  await dialog
+    .getByRole("button", { name: "Xóa ngày nghỉ", exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByText("Sinh hoạt nội bộ", { exact: true })).toHaveCount(
+    0,
+  );
+  expect(state.mutations.map((row) => row.method)).toEqual([
+    "DELETE",
+    "DELETE",
+  ]);
+});
+
+test("a stale delete refreshes the current calendar without removing the row", async ({
+  page,
+}) => {
+  const state = await setup(page, { staleEdit: true });
+  await page
+    .getByRole("button", { name: "Xóa Sinh hoạt nội bộ", exact: true })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Xóa ngày nghỉ", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "Lịch nghỉ đã được thay đổi" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Sinh hoạt nội bộ", { exact: true }),
+  ).toBeVisible();
+  expect(state.mutations[0].body).toEqual({ expected_version: 1 });
 });

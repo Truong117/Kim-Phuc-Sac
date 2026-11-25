@@ -21,6 +21,7 @@ return new class extends Migration
             $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
             $table->foreignId('updated_by')->constrained('users')->restrictOnDelete();
             $table->timestamps();
+            $table->softDeletes();
             $table->index(['organization_id', 'is_active', 'start_date', 'end_date'], 'report_holidays_calendar_index');
         });
 

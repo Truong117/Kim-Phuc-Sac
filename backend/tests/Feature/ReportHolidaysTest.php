@@ -6,11 +6,13 @@ use App\Models\DailyReport;
 use App\Models\ReportHoliday;
 use App\Models\User;
 use App\Services\AI\ReportAutomationSchedule;
+use App\Services\AuthorizationService;
 use App\Services\ReportCalendar;
 use App\Services\ReportClock;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AuthorizationSeeder;
 use Database\Seeders\OrganizationStructureSeeder;
+use Database\Seeders\ReportHolidayPermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\AuthorizationFixtures;
@@ -37,28 +39,97 @@ class ReportHolidaysTest extends TestCase
 
     public function test_settings_roles_are_enforced_server_side(): void
     {
-        $this->getJson('/api/settings/report-holidays')->assertUnauthorized();
-        foreach (['OWNER', 'ADMIN', 'EXECUTIVE_ASSISTANT', 'OFFICE_STAFF'] as $role) {
+        $endpoint = '/api/settings/report-holidays';
+        $this->getJson($endpoint)->assertUnauthorized();
+        $this->deleteJson($endpoint.'/1', ['expected_version' => 1])->assertUnauthorized();
+        foreach (['OWNER', 'ADMIN', 'EXECUTIVE_ASSISTANT', 'HR_MANAGER'] as $role) {
             $user = $this->person($role);
             $this->app['auth']->forgetGuards();
             $this->actingAs($user, 'web');
-            $response = $this->getJson('/api/settings/report-holidays');
-            if ($role === 'OFFICE_STAFF') {
-                $response->assertForbidden();
-            } else {
-                $response->assertOk()->assertJsonPath('meta.can_manage', $role !== 'EXECUTIVE_ASSISTANT');
-            }
-            $this->postJson('/api/settings/report-holidays', $this->input('2026-12-07'))
-                ->assertStatus(in_array($role, ['OWNER', 'ADMIN'], true) ? 201 : 403);
-            if ($role === 'OWNER') {
-                // Allow the administrator's separate non-overlapping record.
-                $this->patchJson('/api/settings/report-holidays/1', ['is_active' => false, 'expected_version' => 1])->assertOk();
+            $this->getJson($endpoint)->assertOk()->assertJsonPath('meta.can_manage', true);
+            $this->assertContains('settings', $this->getJson('/api/navigation')->assertOk()->json('items'));
+            $holiday = $this->postJson($endpoint, $this->input('2026-12-07'))->assertCreated()->json('data');
+            $this->patchJson($endpoint.'/'.$holiday['id'], ['note' => $role, 'expected_version' => 1])->assertOk()->assertJsonPath('data.version', 2);
+            $this->deleteJson($endpoint.'/'.$holiday['id'], ['expected_version' => 2])->assertNoContent();
+            $this->assertSoftDeleted('report_holidays', ['id' => $holiday['id'], 'updated_by' => $user->id]);
+            if (in_array($role, ['EXECUTIVE_ASSISTANT', 'HR_MANAGER'], true)) {
+                $this->assertFalse(app(AuthorizationService::class)->allows($user, 'settings.manage'));
             }
         }
-        $inactive = $this->person('ADMIN');
+        foreach (['OFFICE_STAFF', 'SALES_STAFF', 'DEPARTMENT_MANAGER', 'KPS_SPA_STAFF'] as $role) {
+            $this->app['auth']->forgetGuards();
+            $this->actingAs($this->person($role), 'web');
+            $this->getJson($endpoint)->assertForbidden();
+            $this->postJson($endpoint, $this->input('2026-12-07'))->assertForbidden();
+            $this->patchJson($endpoint.'/1', ['note' => 'Forbidden', 'expected_version' => 1])->assertForbidden();
+            $this->deleteJson($endpoint.'/1', ['expected_version' => 1])->assertForbidden();
+        }
+        $inactive = $this->person('HR_MANAGER');
         DB::table('organization_memberships')->where('user_id', $inactive->id)->update(['is_active' => false]);
         $this->app['auth']->forgetGuards();
-        $this->actingAs($inactive, 'web')->getJson('/api/settings/report-holidays')->assertUnauthorized();
+        $this->actingAs($inactive, 'web')->getJson($endpoint)->assertUnauthorized();
+        $this->deleteJson($endpoint.'/1', ['expected_version' => 1])->assertUnauthorized();
+    }
+
+    public function test_delete_restores_reporting_and_retains_the_original_report_and_audit_history(): void
+    {
+        $owner = $this->person('OWNER');
+        $hr = $this->person('HR_MANAGER');
+        $staff = $this->person('OFFICE_STAFF');
+        $report = DailyReport::query()->create(['organization_id' => $staff->defaultOrganizationMembership->organization_id, 'user_id' => $staff->id, 'report_date' => '2026-11-25', 'locked_at' => '2026-11-25 16:00:00']);
+        $holiday = $this->actingAs($owner, 'web')->postJson('/api/settings/report-holidays', $this->input('2026-11-25'))->assertCreated()->json('data');
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($hr, 'web')->deleteJson('/api/settings/report-holidays/'.$holiday['id'], ['expected_version' => 1])->assertNoContent();
+        $this->getJson('/api/settings/report-holidays')->assertOk()->assertJsonCount(0, 'data');
+        $this->assertSoftDeleted('report_holidays', ['id' => $holiday['id'], 'version' => 2, 'is_active' => false, 'updated_by' => $hr->id]);
+        $this->assertDatabaseCount('report_holiday_changes', 2);
+        $change = DB::table('report_holiday_changes')->latest('id')->first();
+        $this->assertSame($hr->id, $change->actor_user_id);
+        $this->assertNull(json_decode($change->before_state, true)['deleted_at']);
+        $this->assertNotNull(json_decode($change->after_state, true)['deleted_at']);
+        $this->assertTrue(app(ReportCalendar::class)->isReportingDate('2026-11-25'));
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($staff, 'web')->getJson('/api/reports/today')->assertOk()->assertJsonPath('data.is_working_day', true)->assertJsonPath('data.holiday', null);
+        $this->getJson('/api/reports/'.$report->id)->assertOk()->assertJsonPath('data.actions.can_edit', true);
+        $this->assertDatabaseCount('daily_reports', 1);
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($owner, 'web')->postJson('/api/settings/report-holidays', $this->input('2026-11-25'))->assertCreated();
+        $this->patchJson('/api/settings/report-holidays/'.$holiday['id'], ['is_active' => true, 'expected_version' => 2])->assertNotFound();
+        $this->deleteJson('/api/settings/report-holidays/'.$holiday['id'], ['expected_version' => 2])->assertNotFound();
+    }
+
+    public function test_delete_rejects_stale_versions_missing_versions_and_foreign_organization_ids(): void
+    {
+        $owner = $this->person('OWNER');
+        $this->actingAs($owner, 'web');
+        $endpoint = '/api/settings/report-holidays';
+        $holiday = $this->postJson($endpoint, $this->input('2026-12-07'))->assertCreated()->json('data');
+        $this->patchJson($endpoint.'/'.$holiday['id'], ['note' => 'Updated', 'expected_version' => 1])->assertOk();
+        $this->deleteJson($endpoint.'/'.$holiday['id'], ['expected_version' => 1])->assertConflict();
+        $this->deleteJson($endpoint.'/'.$holiday['id'])->assertUnprocessable();
+        $this->assertNotSoftDeleted('report_holidays', ['id' => $holiday['id']]);
+        $this->assertDatabaseCount('report_holiday_changes', 2);
+        $other = $this->createMembership(User::factory()->create(), organizationCode: 'OTHER');
+        $foreign = ReportHoliday::query()->create([...$this->input('2026-12-07'), 'organization_id' => $other['organization_id'], 'created_by' => $owner->id, 'updated_by' => $owner->id, 'is_active' => true]);
+        $this->deleteJson($endpoint.'/'.$foreign->id, ['expected_version' => 1])->assertNotFound();
+        $this->assertNotSoftDeleted('report_holidays', ['id' => $foreign->id]);
+    }
+
+    public function test_permission_backfill_is_additive_and_idempotent_on_existing_roles(): void
+    {
+        $manageId = DB::table('permissions')->where('code', 'report_holidays.manage')->value('id');
+        $viewId = DB::table('permissions')->where('code', 'settings.view')->value('id');
+        $hrId = DB::table('roles')->where('code', 'HR_MANAGER')->value('id');
+        DB::table('role_permissions')->where('permission_id', $manageId)->delete();
+        DB::table('role_permissions')->where('role_id', $hrId)->where('permission_id', $viewId)->delete();
+        $original = DB::table('role_permissions')->orderBy('role_id')->orderBy('permission_id')->get();
+        $this->seed(ReportHolidayPermissionSeeder::class);
+        $this->seed(ReportHolidayPermissionSeeder::class);
+        foreach ($original as $grant) {
+            $this->assertDatabaseHas('role_permissions', (array) $grant);
+        }
+        $this->assertDatabaseCount('role_permissions', $original->count() + 5);
+        $this->assertDatabaseCount('permissions', 42);
     }
 
     public function test_create_update_toggle_and_audit_are_durable_and_versioned(): void

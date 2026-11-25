@@ -4751,6 +4751,13 @@
       "order": "Ngày kết thúc cần bằng hoặc sau ngày bắt đầu.",
       "noWorkingDays": "Khoảng này chỉ có ngày nghỉ hằng tuần, không phát sinh ngày cần tắt báo cáo.",
       "overlap": "Khoảng ngày này trùng với “{name}”."
-    }
+    },
+    "delete": "Xóa",
+    "deleteName": "Xóa {name}",
+    "deleteTitle": "Xóa ngày nghỉ",
+    "deleteDescription": "Xóa “{name}” khỏi lịch nghỉ? Những ngày này sẽ áp dụng lịch báo cáo bình thường; hạn nộp bù không thay đổi. Báo cáo đã nộp và lịch sử thay đổi vẫn được giữ.",
+    "deleteConfirm": "Xóa ngày nghỉ",
+    "deleting": "Đang xóa…",
+    "deleted": "Đã xóa “{name}”."
   }
 }

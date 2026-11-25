@@ -4,9 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ReportHoliday extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'organization_id', 'name', 'start_date', 'end_date', 'note', 'is_active',
         'version', 'created_by', 'updated_by',

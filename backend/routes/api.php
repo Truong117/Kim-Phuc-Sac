@@ -170,8 +170,9 @@ Route::middleware(['auth:sanctum', 'active_kps_membership'])->group(function () 
 
     Route::prefix('settings/report-holidays')->middleware('permission:settings.view')->group(function (): void {
         Route::get('/', [ReportHolidayController::class, 'index']);
-        Route::post('/', [ReportHolidayController::class, 'store'])->middleware(['permission:settings.manage', 'throttle:30,1']);
-        Route::patch('/{id}', [ReportHolidayController::class, 'update'])->whereNumber('id')->middleware(['permission:settings.manage', 'throttle:30,1']);
+        Route::post('/', [ReportHolidayController::class, 'store'])->middleware(['permission:report_holidays.manage', 'throttle:30,1']);
+        Route::patch('/{id}', [ReportHolidayController::class, 'update'])->whereNumber('id')->middleware(['permission:report_holidays.manage', 'throttle:30,1']);
+        Route::delete('/{id}', [ReportHolidayController::class, 'destroy'])->whereNumber('id')->middleware(['permission:report_holidays.manage', 'throttle:30,1']);
     });
 
     Route::get('/dashboard', DashboardController::class)

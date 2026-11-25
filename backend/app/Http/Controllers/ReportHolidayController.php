@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\DeleteReportHolidayRequest;
 use App\Http\Requests\SaveReportHolidayRequest;
 use App\Services\ReportHolidayService;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +18,13 @@ class ReportHolidayController extends Controller
     public function store(SaveReportHolidayRequest $request, ReportHolidayService $holidays): JsonResponse
     {
         return response()->json(['data' => $holidays->serialize($holidays->save($request->user(), null, $request->validated()))], 201);
+    }
+
+    public function destroy(DeleteReportHolidayRequest $request, ReportHolidayService $holidays, int $id): JsonResponse
+    {
+        $holidays->remove($request->user(), $id, (int) $request->validated('expected_version'));
+
+        return response()->json(null, 204);
     }
 
     public function update(SaveReportHolidayRequest $request, ReportHolidayService $holidays, int $id): JsonResponse

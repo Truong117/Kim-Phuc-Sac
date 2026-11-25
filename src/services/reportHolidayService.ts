@@ -28,3 +28,9 @@ export const updateReportHoliday = async (
       body: JSON.stringify({ ...input, expected_version: holiday.version }),
     })
   ).data;
+
+export const deleteReportHoliday = (holiday: ReportHoliday) =>
+  apiRequest<void>(`${endpoint}/${holiday.id}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expected_version: holiday.version }),
+  });

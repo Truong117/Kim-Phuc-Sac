@@ -3,10 +3,13 @@ import PageBreadCrumb from "@/components/common/PageBreadCrumb";
 import ReportHolidayForm from "@/components/settings/ReportHolidayForm";
 import ReportHolidaysTable from "@/components/settings/ReportHolidaysTable";
 import Button from "@/components/ui/button/Button";
+import { Modal } from "@/components/ui/modal";
+import { useModal } from "@/hooks/useModal";
 import { CheckCircleIcon, PlusIcon } from "@/icons";
 import { ApiServiceError } from "@/services/apiClient";
 import {
   createReportHoliday,
+  deleteReportHoliday,
   getReportHolidays,
   updateReportHoliday,
 } from "@/services/reportHolidayService";
@@ -28,6 +31,14 @@ export default function ReportHolidays() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ReportHoliday | null>(null);
+  const deleteModal = useModal();
+  const closeDeleteModal = () => {
+    if (saving) return;
+    deleteModal.closeModal();
+    setDeleteTarget(null);
+    setSaveError(null);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,8 +67,13 @@ export default function ReportHolidays() {
             .flat()
             .join(" ") || error.message
         : t("errors.save");
-    if (error instanceof ApiServiceError && [403, 409].includes(error.status)) {
+    if (
+      error instanceof ApiServiceError &&
+      [403, 404, 409].includes(error.status)
+    ) {
       setEditing(undefined);
+      setDeleteTarget(null);
+      deleteModal.closeModal();
       setNotice(message);
       refresh();
     } else setSaveError(message);
@@ -115,6 +131,31 @@ export default function ReportHolidays() {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget || !data?.meta.can_manage || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setNotice(null);
+    try {
+      await deleteReportHoliday(deleteTarget);
+      setData((current) =>
+        current
+          ? {
+              ...current,
+              data: current.data.filter((row) => row.id !== deleteTarget.id),
+            }
+          : current,
+      );
+      deleteModal.closeModal();
+      setDeleteTarget(null);
+      setNotice(t("deleted", { name: deleteTarget.name }));
+    } catch (error) {
+      failed(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <PageMeta
@@ -130,7 +171,9 @@ export default function ReportHolidays() {
           {data?.meta.can_manage && !loadError && (
             <Button
               size="sm"
-              disabled={loading || saving || editing !== undefined}
+              disabled={
+                loading || saving || editing !== undefined || deleteModal.isOpen
+              }
               startIcon={<PlusIcon className="size-4" />}
               className="bg-kps-primary hover:bg-kps-primary-hover"
               onClick={() => {
@@ -162,7 +205,7 @@ export default function ReportHolidays() {
             {notice}
           </p>
         )}
-        {saveError && editing === undefined && (
+        {saveError && editing === undefined && !deleteModal.isOpen && (
           <p
             role="alert"
             className="text-theme-sm text-error-600 dark:text-error-400"
@@ -215,17 +258,66 @@ export default function ReportHolidays() {
               businessDate={data.meta.business_date}
               workingDays={data.meta.working_days}
               canManage={data.meta.can_manage}
-              disabled={saving || editing !== undefined}
+              disabled={saving || editing !== undefined || deleteModal.isOpen}
               onEdit={(holiday) => {
                 setEditing(holiday);
                 setSaveError(null);
                 setNotice(null);
               }}
               onToggle={(holiday) => void toggle(holiday)}
+              onDelete={(holiday) => {
+                setDeleteTarget(holiday);
+                setSaveError(null);
+                setNotice(null);
+                deleteModal.openModal();
+              }}
             />
           </>
         )}
       </div>
+      <Modal
+        isOpen={deleteModal.isOpen}
+        onClose={closeDeleteModal}
+        showCloseButton={false}
+        className="max-w-lg p-6"
+        ariaLabelledBy="holiday-delete-title"
+      >
+        <h2
+          id="holiday-delete-title"
+          className="text-lg font-semibold text-gray-900 dark:text-white"
+        >
+          {t("deleteTitle")}
+        </h2>
+        <p className="mt-3 text-theme-sm text-gray-600 dark:text-gray-300">
+          {t("deleteDescription", { name: deleteTarget?.name ?? "" })}
+        </p>
+        {saveError && (
+          <p
+            role="alert"
+            className="mt-4 text-theme-sm text-error-600 dark:text-error-400"
+          >
+            {saveError}
+          </p>
+        )}
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={saving}
+            onClick={closeDeleteModal}
+          >
+            {t("cancel")}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={saving}
+            onClick={() => void confirmDelete()}
+          >
+            {t(saving ? "deleting" : "deleteConfirm")}
+          </Button>
+        </div>
+      </Modal>
     </>
   );
 }

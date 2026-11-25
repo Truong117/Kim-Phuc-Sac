@@ -20,6 +20,7 @@ interface ReportHolidaysTableProps {
   disabled: boolean;
   onEdit: (holiday: ReportHoliday) => void;
   onToggle: (holiday: ReportHoliday) => void;
+  onDelete: (holiday: ReportHoliday) => void;
 }
 
 export default function ReportHolidaysTable({
@@ -30,6 +31,7 @@ export default function ReportHolidaysTable({
   disabled,
   onEdit,
   onToggle,
+  onDelete,
 }: ReportHolidaysTableProps) {
   const { t } = useTranslation("common", { keyPrefix: "reportHolidays" });
   const restDays = [1, 2, 3, 4, 5, 6, 7]
@@ -122,6 +124,15 @@ export default function ReportHolidaysTable({
                           className="py-2 text-theme-sm font-medium text-kps-primary focus-visible:rounded focus-visible:ring-3 focus-visible:ring-kps-primary/20 focus-visible:outline-none disabled:opacity-50 dark:text-sidebar-selected"
                         >
                           {t("edit")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => onDelete(holiday)}
+                          aria-label={t("deleteName", { name: holiday.name })}
+                          className="py-2 text-theme-sm font-medium text-error-600 focus-visible:rounded focus-visible:ring-3 focus-visible:ring-error-500/20 focus-visible:outline-none disabled:opacity-50 dark:text-error-400"
+                        >
+                          {t("delete")}
                         </button>
                         <input
                           type="checkbox"
