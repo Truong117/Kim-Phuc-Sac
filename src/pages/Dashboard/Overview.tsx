@@ -116,7 +116,6 @@ export default function Overview() {
               {dashboard.reporting && (
                 <ReportingSummary reporting={dashboard.reporting} />
               )}
-              {dashboard.mode === "organization" && <WeeklyReporting />}
               <WorkSummary work={dashboard.work} />
               {dashboard.self_report && (
                 <SelfReportCard report={dashboard.self_report} />
@@ -128,6 +127,7 @@ export default function Overview() {
                 <PeopleProgressTable rows={dashboard.people_progress} />
               )}
               <RecentReports reports={dashboard.recent_reports} />
+              {dashboard.mode === "organization" && <WeeklyReporting />}
             </>
           )}
         </div>

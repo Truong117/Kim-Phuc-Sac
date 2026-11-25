@@ -135,7 +135,7 @@ test("weekly overview filters names and departments, paginates, and preserves re
   await expect(
     page.getByRole("button", { name: "Tuần sau", exact: true }),
   ).toBeDisabled();
-  const table = page.getByRole("table").first();
+  const table = page.getByRole("table").last();
   await expect(table.getByRole("row")).toHaveCount(11);
   await expect(table.getByRole("link")).toHaveCount(1);
   await expect(table.getByRole("link")).toHaveAttribute("href", "/reports/71");
@@ -216,7 +216,7 @@ test("mobile keeps the weekly grid inside a horizontally scrollable table", asyn
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(overflow).toBe(false);
-  const scrollable = page.getByRole("table").first().locator("..");
+  const scrollable = page.getByRole("table").last().locator("..");
   expect(
     await scrollable.evaluate(
       (element) => element.scrollWidth > element.clientWidth,
