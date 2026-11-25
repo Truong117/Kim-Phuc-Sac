@@ -8,6 +8,7 @@ import RecentReports from "@/components/dashboard/RecentReports";
 import ReportingSummary from "@/components/dashboard/ReportingSummary";
 import SelfReportCard from "@/components/dashboard/SelfReportCard";
 import WorkSummary from "@/components/dashboard/WorkSummary";
+import WeeklyReporting from "@/components/dashboard/WeeklyReporting";
 import PageMeta from "@/components/common/PageMeta";
 import { ApiServiceError } from "@/services/apiClient";
 import { getDashboard } from "@/services/dashboardService";
@@ -30,7 +31,10 @@ export default function Overview() {
     getDashboard(abortController.signal)
       .then(setDashboard)
       .catch((loadError: unknown) => {
-        if (loadError instanceof DOMException && loadError.name === "AbortError") {
+        if (
+          loadError instanceof DOMException &&
+          loadError.name === "AbortError"
+        ) {
           return;
         }
 
@@ -112,6 +116,7 @@ export default function Overview() {
               {dashboard.reporting && (
                 <ReportingSummary reporting={dashboard.reporting} />
               )}
+              {dashboard.mode === "organization" && <WeeklyReporting />}
               <WorkSummary work={dashboard.work} />
               {dashboard.self_report && (
                 <SelfReportCard report={dashboard.self_report} />

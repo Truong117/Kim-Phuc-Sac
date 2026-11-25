@@ -1,12 +1,47 @@
 import type { ReportWorkItem, WorkStatus } from "@/types/reports";
 
 export type DashboardMode =
-  | "organization"
-  | "department"
-  | "location"
-  | "personal";
+  "organization" | "department" | "location" | "personal";
 
 export type DashboardEntity = { id: number; name: string };
+
+export type WeeklyReportingStatus =
+  | "submitted"
+  | "missing"
+  | "pending"
+  | "upcoming"
+  | "non_working_day"
+  | "not_expected";
+
+export type WeeklyReportingDay = {
+  date: string;
+  status: WeeklyReportingStatus;
+  report_id: number | null;
+};
+
+export type WeeklyReportingPerson = {
+  employee: DashboardEntity;
+  department: DashboardEntity | null;
+  submitted: number;
+  expected: number;
+  missing_dates: string[];
+  days: WeeklyReportingDay[];
+};
+
+export type DashboardWeeklyReporting = {
+  week_start: string;
+  week_end: string;
+  current_week_start: string;
+  business_date: string;
+  dates: { date: string; is_working_day: boolean; is_due: boolean }[];
+  totals: {
+    people: number;
+    submitted: number;
+    people_missing: number;
+    missing_days: number;
+  };
+  rows: WeeklyReportingPerson[];
+};
 
 export type DashboardReporting = {
   expected: number;
