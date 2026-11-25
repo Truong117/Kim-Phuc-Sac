@@ -8,6 +8,7 @@ export default defineConfig({
     "crm-ui.spec.ts",
     "report-validation-ui.spec.ts",
     "dashboard-weekly-reporting-ui.spec.ts",
+    "report-holidays-ui.spec.ts",
     "locked-report-amendment-ui.spec.ts",
     "task-report-progress-ui.spec.ts",
     "task-progress-reconciliation-ui.spec.ts",

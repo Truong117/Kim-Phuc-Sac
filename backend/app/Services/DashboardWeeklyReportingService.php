@@ -18,6 +18,7 @@ class DashboardWeeklyReportingService
         private readonly ReportParticipationService $participation,
         private readonly ReportScopeService $reportScope,
         private readonly ReportClock $clock,
+        private readonly ReportCalendar $calendar,
     ) {}
 
     /** @return array<string, mixed> */
@@ -39,14 +40,9 @@ class DashboardWeeklyReportingService
         $end = $start->addDays(6)->toDateString();
         $dates = [];
 
-        for ($offset = 0; $offset < 7; $offset++) {
-            $date = $start->addDays($offset)->toDateString();
-            $dates[] = [
-                'date' => $date,
-                'is_working_day' => $this->clock->isWorkingDate($date),
-                'is_due' => $this->clock->isWorkingDate($date)
-                    && $now->greaterThanOrEqualTo($this->clock->cutoffForDate($date)),
-            ];
+        foreach ($this->calendar->daysBetween($start->toDateString(), $end, $membership->organization_id) as $day) {
+            $dates[] = [...$day, 'is_due' => $day['is_working_day']
+                && $now->greaterThanOrEqualTo($this->clock->cutoffForDate($day['date']))];
         }
 
         $people = $this->participation->applyParticipantScope(
@@ -83,6 +79,7 @@ class DashboardWeeklyReportingService
                 $expected += (int) $isExpected;
                 $status = match (true) {
                     $report !== null => 'submitted',
+                    $day['holiday'] !== null => 'holiday',
                     ! $day['is_working_day'] => 'non_working_day',
                     ! $isExpected => 'not_expected',
                     $day['is_due'] => 'missing',
@@ -97,6 +94,7 @@ class DashboardWeeklyReportingService
                 $days[] = [
                     'date' => $date,
                     'status' => $status,
+                    'holiday' => $day['holiday'],
                     'report_id' => $report !== null && $viewableIds->has($report->id)
                         ? (int) $report->id : null,
                 ];

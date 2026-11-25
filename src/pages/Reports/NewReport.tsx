@@ -872,12 +872,22 @@ export default function NewReport({
           <section className="rounded-2xl border border-gray-200 bg-white px-6 py-10 text-center shadow-theme-xs dark:border-gray-800 dark:bg-white/3">
             <TimeIcon className="mx-auto size-9 text-kps-primary dark:text-sidebar-selected" />
             <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
-              {t("nonWorkingDay.title")}
+              {today.holiday
+                ? t("holiday.title", { name: today.holiday.name })
+                : t("nonWorkingDay.title")}
             </h2>
             <p className="mx-auto mt-2 max-w-xl text-theme-sm text-gray-600 dark:text-gray-300">
               {t("nonWorkingDay.description", {
                 date: formatDate(today.business_date),
               })}
+            </p>
+            {today.holiday?.note && (
+              <p className="mt-2 text-theme-sm text-gray-600 dark:text-gray-300">
+                {today.holiday.note}
+              </p>
+            )}
+            <p className="mt-3 text-theme-sm text-gray-500 dark:text-gray-400">
+              {t("holiday.makeup")}
             </p>
           </section>
           <ReportStateActions
