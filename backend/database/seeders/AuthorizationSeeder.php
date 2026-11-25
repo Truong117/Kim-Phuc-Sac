@@ -100,6 +100,8 @@ class AuthorizationSeeder extends Seeder
 
             $role->permissions()->sync($assignments);
         }
+
+        $this->call(ReportHolidayPermissionSeeder::class);
     }
 
     /**

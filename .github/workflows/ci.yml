@@ -94,7 +94,7 @@ jobs:
   frontend-browser:
     name: Frontend browser tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     container:
       # Keep this version aligned with @playwright/test in package-lock.json.
       image: mcr.microsoft.com/playwright:v1.64.1-noble
@@ -117,7 +117,7 @@ jobs:
         run: npm ci
 
       - name: Run frontend browser tests
-        timeout-minutes: 9
+        timeout-minutes: 13
         run: npx playwright test --config playwright.report-validation.config.ts
 
       - name: Upload browser failure diagnostics

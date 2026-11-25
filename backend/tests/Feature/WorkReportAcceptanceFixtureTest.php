@@ -32,6 +32,8 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
     private const PENDING_AMENDMENT_MIGRATION = '2026_11_21_000000_create_daily_report_amendments';
 
+    private const PENDING_HOLIDAY_MIGRATION = '2026_11_25_010000_create_report_holidays_tables';
+
     private WorkReportAcceptanceFixture $fixture;
 
     private WorkReportFixtureManifest $store;
@@ -406,7 +408,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         DB::table('migrations')->where('migration', $migration)->delete();
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertTrue($preview['schema_ready']);
-        $this->assertSame([$migration, self::PENDING_AMENDMENT_MIGRATION], $preview['pending_migrations']);
+        $this->assertSame([$migration, self::PENDING_AMENDMENT_MIGRATION, self::PENDING_HOLIDAY_MIGRATION], $preview['pending_migrations']);
     }
 
     public function test_locked_amendment_migration_can_be_pending_without_changing_fixture_readiness(): void
@@ -415,7 +417,7 @@ class WorkReportAcceptanceFixtureTest extends TestCase
 
         $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
         $this->assertTrue($preview['schema_ready']);
-        $this->assertSame([self::PENDING_AMENDMENT_MIGRATION], $preview['pending_migrations']);
+        $this->assertSame([self::PENDING_AMENDMENT_MIGRATION, self::PENDING_HOLIDAY_MIGRATION], $preview['pending_migrations']);
     }
 
     public function test_locked_amendment_ledger_refuses_an_incomplete_audit_table(): void
@@ -426,11 +428,31 @@ class WorkReportAcceptanceFixtureTest extends TestCase
         $this->fixture->dryRun($this->batch, $this->end, $this->store);
     }
 
-    private function makeAmendmentMigrationPending(): void
+    public function test_report_holiday_migration_can_be_pending_without_changing_fixture_readiness(): void
     {
-        $migration = self::PENDING_AMENDMENT_MIGRATION;
+        $migration = self::PENDING_HOLIDAY_MIGRATION;
         (require database_path("migrations/$migration.php"))->down();
         DB::table('migrations')->where('migration', $migration)->delete();
+
+        $preview = $this->fixture->dryRun($this->batch, $this->end, $this->store);
+        $this->assertTrue($preview['schema_ready']);
+        $this->assertSame([$migration], $preview['pending_migrations']);
+    }
+
+    public function test_report_holiday_ledger_refuses_an_incomplete_audit_table(): void
+    {
+        Schema::table('report_holiday_changes', fn ($table) => $table->dropColumn('after_state'));
+
+        $this->expectExceptionMessage('FIXTURE_REPORT_HOLIDAY_SCHEMA_DRIFT');
+        $this->fixture->dryRun($this->batch, $this->end, $this->store);
+    }
+
+    private function makeAmendmentMigrationPending(): void
+    {
+        foreach ([self::PENDING_HOLIDAY_MIGRATION, self::PENDING_AMENDMENT_MIGRATION] as $migration) {
+            (require database_path("migrations/$migration.php"))->down();
+            DB::table('migrations')->where('migration', $migration)->delete();
+        }
     }
 
     public function test_facebook_tracking_ledger_refuses_an_incomplete_state_table(): void

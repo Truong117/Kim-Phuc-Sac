@@ -31,8 +31,8 @@ class AuthorizationSeederTest extends TestCase
             'description' => 'Hỗ trợ Giám đốc điều hành, rà soát kế hoạch và quản lý nghiệp vụ nội bộ.',
             'is_system' => true,
         ]);
-        $this->assertDatabaseCount('permissions', 41);
-        $this->assertDatabaseCount('role_permissions', 192);
+        $this->assertDatabaseCount('permissions', 42);
+        $this->assertDatabaseCount('role_permissions', 197);
 
         $this->assertDatabaseCount('users', 0);
         $this->assertDatabaseCount('departments', 0);
@@ -46,10 +46,10 @@ class AuthorizationSeederTest extends TestCase
         $this->seed(AuthorizationSeeder::class);
 
         $expectedGrantCounts = [
-            'OWNER' => 40,
-            'ADMIN' => 41,
-            'EXECUTIVE_ASSISTANT' => 36,
-            'HR_MANAGER' => 10,
+            'OWNER' => 41,
+            'ADMIN' => 42,
+            'EXECUTIVE_ASSISTANT' => 37,
+            'HR_MANAGER' => 12,
             'DEPARTMENT_MANAGER' => 9,
             'OFFICE_STAFF' => 5,
             'SALES_MANAGER' => 16,

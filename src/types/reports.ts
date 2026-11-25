@@ -151,7 +151,10 @@ export type ReportListResponse = {
   meta: PaginationMeta;
 };
 
+export type ReportHolidayNotice = { name: string; note: string | null };
+
 export type TodayReportState = {
+  holiday?: ReportHolidayNotice | null;
   business_date: string;
   cutoff_at: string;
   is_working_day: boolean;
