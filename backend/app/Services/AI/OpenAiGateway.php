@@ -180,6 +180,7 @@ class OpenAiGateway
 
             if (! $response->successful()) {
                 $code = match (true) {
+                    $this->quotaRejected($response) => 'AI_PROVIDER_QUOTA_EXCEEDED',
                     in_array($response->status(), [401, 403], true) => 'AI_AUTHENTICATION_FAILED',
                     $response->status() === 429 => 'AI_RATE_LIMITED',
                     $response->serverError() => 'AI_PROVIDER_UNAVAILABLE',
@@ -193,12 +194,13 @@ class OpenAiGateway
                     $providerAttempts,
                     $inputTokens,
                     $outputTokens,
-                    $response->status() === 429 || $response->serverError(),
+                    $code !== 'AI_PROVIDER_QUOTA_EXCEEDED' && ($response->status() === 429 || $response->serverError()),
                 );
                 throw new AiGatewayException(
                     $code,
                     'OpenAI request failed.',
-                    $response->status() === 429 || $response->serverError(),
+                    $code !== 'AI_PROVIDER_QUOTA_EXCEEDED' && ($response->status() === 429 || $response->serverError()),
+                    noExecution: $code === 'AI_PROVIDER_QUOTA_EXCEEDED' && $providerAttempts === 1,
                 );
             }
 
@@ -345,7 +347,7 @@ class OpenAiGateway
                 throw $exception;
             }
 
-            if ($attempt === $maxAttempts || ! ($response->status() === 429 || $response->serverError())) {
+            if ($this->quotaRejected($response) || $attempt === $maxAttempts || ! ($response->status() === 429 || $response->serverError())) {
                 return ['response' => $response, 'attempts' => $attempt];
             }
 
@@ -630,6 +632,14 @@ class OpenAiGateway
                 'completed_at' => now('UTC'),
             ])->save();
         }
+    }
+
+    private function quotaRejected(Response $response): bool
+    {
+        return $response->status() === 429
+            && ($response->json('error.code') === 'insufficient_quota' || $response->json('error.type') === 'insufficient_quota')
+            && $this->usageValue($response, 'input_tokens') === null
+            && $this->usageValue($response, 'output_tokens') === null;
     }
 
     private function refusal(Response $response): ?string

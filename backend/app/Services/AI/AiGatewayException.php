@@ -12,6 +12,7 @@ class AiGatewayException extends RuntimeException
         string $message,
         public readonly bool $retryable = false,
         ?Throwable $previous = null,
+        public readonly bool $noExecution = false,
     ) {
         parent::__construct($message, 0, $previous);
     }
