@@ -72,8 +72,19 @@ class WorkReportAnalysisService
         }
         $settings = $this->settings();
         $inputs = $this->inputsFor($snapshot, $settings);
-        $key = WorkReportSnapshot::hash([$snapshot['scope'], $snapshot['period'], $department, $capture['source_hash'], $settings]);
+        $key = WorkReportSnapshot::hash([$snapshot['scope'], $snapshot['period'], $department, $capture['source_hash'], WorkReportBudgetPolicy::contentSettings($settings)]);
         $run = DB::transaction(function () use ($viewer, $snapshot, $capture, $settings, $inputs, $key, $department, $end, $days): WorkReportAnalysis {
+            // Retain pre-fix canonical cache entries when only the operational monthly cap changed.
+            // Explicit revisions have their own identity and must never replace the canonical run.
+            $legacy = WorkReportAnalysis::query()->where('organization_id', $snapshot['scope']['organization_id'])
+                ->where('scope_hash', WorkReportSnapshot::hash($snapshot['scope']))
+                ->where('source_hash', $capture['source_hash'])->where('end_date', $end)->where('days', $days)
+                ->where('department_id', $department)->whereDoesntHave('revisionRecord')->latest('id')->get()
+                ->first(fn ($candidate) => WorkReportSnapshot::hash(WorkReportBudgetPolicy::contentSettings($candidate->analysis_config))
+                    === WorkReportSnapshot::hash(WorkReportBudgetPolicy::contentSettings($settings)));
+            if ($legacy !== null) {
+                return $legacy;
+            }
             $run = WorkReportAnalysis::query()->createOrFirst(['cache_key' => $key], [
                 'organization_id' => $snapshot['scope']['organization_id'], 'requested_by_user_id' => $viewer->id,
                 'scope_hash' => WorkReportSnapshot::hash($snapshot['scope']), 'source_hash' => $capture['source_hash'],
@@ -152,7 +163,8 @@ class WorkReportAnalysisService
     private function reuseContractHash(array $settings): string
     {
         // Output caps affect generation capacity, not already validated content.
-        // All semantic, model, source, privacy and budget settings must still match.
+        // Monthly policy does not alter content. Model, prices, source and privacy still match.
+        $settings = WorkReportBudgetPolicy::contentSettings($settings);
         unset($settings['employee_output_tokens'], $settings['summary_output_tokens']);
 
         return WorkReportSnapshot::hash($settings);
@@ -358,7 +370,8 @@ class WorkReportAnalysisService
             'id' => $run->id, 'status' => $run->status, 'period' => $snapshot['period'],
             'department_id' => $run->department_id, 'scope' => $snapshot['scope'], 'source_hash' => $run->source_hash,
             'source_changed' => $currentHash === null ? null : $run->source_hash !== $currentHash,
-            'config_changed' => WorkReportSnapshot::hash($run->analysis_config) !== WorkReportSnapshot::hash($this->settings()),
+            'config_changed' => WorkReportSnapshot::hash(WorkReportBudgetPolicy::contentSettings($run->analysis_config))
+                !== WorkReportSnapshot::hash(WorkReportBudgetPolicy::contentSettings($this->settings())),
             'requires_new_run' => ! WorkReportAnalysisOutput::canExecute($run->analysis_config),
             'captured_at' => $run->captured_at->toIso8601String(), 'completed_at' => $run->completed_at?->toIso8601String(),
             'requested_by_user_id' => $run->requested_by_user_id,

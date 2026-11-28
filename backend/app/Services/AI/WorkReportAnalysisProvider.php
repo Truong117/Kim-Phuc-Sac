@@ -20,8 +20,7 @@ class WorkReportAnalysisProvider
         }
         // Secret stays in process configuration, never in snapshots or serialized jobs.
         $tokens = WorkReportExecutionPolicy::outputTokens($settings, str_starts_with($unit->unit_key, 'summary'));
-        $gateway = new OpenAiGateway([...$settings['gateway'], 'max_output_tokens' => $tokens,
-            'api_key' => config('work_report_ai.gateway.api_key')]);
+        $gateway = new OpenAiGateway([...WorkReportBudgetPolicy::gateway($settings), 'max_output_tokens' => $tokens]);
         $response = $gateway->respond(new AiGatewayRequest(
             organizationId: (int) $run->organization_id,
             requestedByUserId: (int) $run->requested_by_user_id,
