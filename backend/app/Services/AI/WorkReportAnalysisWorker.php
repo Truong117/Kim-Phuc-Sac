@@ -40,6 +40,7 @@ class WorkReportAnalysisWorker
         }
         $unit = WorkReportAnalysisUnit::query()->findOrFail($unitId);
         $response = null;
+        $runReservation = 0;
         $stage = 'prepare';
         try {
             if (! config('work_report_ai.enabled')) {
@@ -104,7 +105,7 @@ class WorkReportAnalysisWorker
             if (strlen(json_encode($input, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)) > $limit) {
                 throw new AiGatewayException('AI_REDUCE_SCOPE', 'Summary exceeds operational limit; reduce scope.');
             }
-            $this->reserveBudget($run, $summaryUnit);
+            $runReservation = $this->reserveBudget($run, $summaryUnit);
             WorkReportAnalysis::query()->whereKey($run->id)->whereIn('status', ['pending', 'running'])->update(['status' => 'running']);
             $stage = 'provider';
             $response = $this->provider->analyze($run, $unit, $input);
@@ -149,8 +150,25 @@ class WorkReportAnalysisWorker
             if (($response['usage_record_id'] ?? null) !== null) {
                 (new OpenAiGateway)->rejectCompletedResult($response['usage_record_id'], $code);
             }
-            WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')->where('lease_token', $token)
-                ->update(['status' => 'failed', 'error_code' => $code, 'leased_until' => null]);
+            $noExecution = WorkReportBudgetPolicy::noExecution($code)
+                || ($exception instanceof AiGatewayException && $exception->noExecution);
+            DB::transaction(function () use ($run, $unit, $token, $code, $runReservation, $noExecution): void {
+                $lockedRun = WorkReportAnalysis::query()->lockForUpdate()->findOrFail($run->id);
+                $lockedUnit = WorkReportAnalysisUnit::query()->whereKey($unit->id)->where('status', 'running')
+                    ->where('lease_token', $token)->lockForUpdate()->first();
+                if ($lockedUnit === null) {
+                    return;
+                }
+                $changes = ['status' => 'failed', 'error_code' => $code, 'leased_until' => null];
+                if ($noExecution) {
+                    // Only a proven rejection before model execution can refund an attempt.
+                    // Timeouts, 5xx and validation errors retain their conservative accounting.
+                    $changes['attempts'] = max(0, (int) $lockedUnit->attempts - 1);
+                    $lockedRun->update(['reserved_cost_microusd' => max(0,
+                        (int) $lockedRun->reserved_cost_microusd - $runReservation)]);
+                }
+                $lockedUnit->update($changes);
+            });
             // No report/provider payload or exception message enters application logs.
             Log::warning('Work report AI unit failed', ['analysis_id' => $run->id, 'unit_id' => $unit->id, 'error_code' => $code,
                 'validation_stage' => $stage,
@@ -160,21 +178,20 @@ class WorkReportAnalysisWorker
         $this->settle((int) $run->id);
     }
 
-    private function reserveBudget(WorkReportAnalysis $run, bool $summary): void
+    private function reserveBudget(WorkReportAnalysis $run, bool $summary): int
     {
         $config = $run->analysis_config;
         if ($config['driver'] === 'fake') {
-            return;
+            return 0;
         }
-        $settings = $config['gateway'];
+        $settings = WorkReportBudgetPolicy::gateway($config);
         if ($config['max_run_budget_usd'] <= 0) {
             throw new AiGatewayException('AI_RUN_BUDGET_EXCEEDED', 'Run budget is disabled.');
         }
         if (! (new OpenAiGateway([...$settings, 'api_key' => config('work_report_ai.gateway.api_key')]))->isConfigured()) {
             throw new AiGatewayException('AI_NOT_CONFIGURED', 'Feature Gateway configuration is incomplete.');
         }
-        $reserve = (int) ceil(($settings['max_input_tokens'] * $settings['input_usd_per_million_tokens']
-            + WorkReportExecutionPolicy::outputTokens($config, $summary) * $settings['output_usd_per_million_tokens']) * $settings['max_attempts']);
+        $reserve = WorkReportBudgetPolicy::reservation($config, $summary);
         DB::transaction(function () use ($run, $config, $reserve): void {
             $locked = WorkReportAnalysis::query()->lockForUpdate()->findOrFail($run->id);
             if ($reserve < 1 || $locked->reserved_cost_microusd + $reserve > (int) round($config['max_run_budget_usd'] * 1_000_000)) {
@@ -183,6 +200,8 @@ class WorkReportAnalysisWorker
             // Retain all reservations, including failed/ambiguous attempts and summary retries.
             $locked->increment('reserved_cost_microusd', $reserve);
         });
+
+        return $reserve;
     }
 
     private function summaryParts(WorkReportAnalysis $run, Collection $parts): array
